@@ -753,11 +753,15 @@
  * The "Z" constraint normally means a zero immediate, but when combined with
  * the "%x0" template means XZR.
  */
+#if defined(__aarch64__)
 #define write_sysreg(v, r) do {					\
 	u64 __val = (u64)(v);					\
 	asm volatile("msr " __stringify(r) ", %x0"		\
 		     : : "rZ" (__val));				\
 } while (0)
+#else
+#define write_sysreg(v, r) BUG()
+#endif
 
 /*
  * For registers without architectural names, or simply unsupported by
