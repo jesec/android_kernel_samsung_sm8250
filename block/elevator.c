@@ -605,6 +605,7 @@ void __elv_add_request(struct request_queue *q, struct request *rq, int where)
 	blk_queue_io_vol_add(q, rq->cmd_flags, blk_rq_bytes(rq));
 
 	blk_pm_add_request(q, rq);
+	blk_pm_request_resume(q);
 
 	rq->q = q;
 
