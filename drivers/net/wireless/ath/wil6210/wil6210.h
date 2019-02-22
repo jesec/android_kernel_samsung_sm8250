@@ -826,6 +826,7 @@ struct wil_halp {
 	unsigned int		ref_cnt;
 	struct completion	comp;
 	atomic_t		handle_icr;
+	u8			handle_icr;
 };
 
 struct wil_blob_wrapper {
