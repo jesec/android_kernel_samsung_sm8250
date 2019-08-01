@@ -696,6 +696,14 @@ KBUILD_CFLAGS   += -O3 -mcpu=cortex-a55
 endif
 endif
 
+polly-flags-$(CONFIG_LLVM_POLLY) += -mllvm -polly \
+				-mllvm -polly-run-inliner \
+				-mllvm -polly-run-dce \
+				-mllvm -polly-opt-fusion=max \
+				-mllvm -polly-vectorizer=stripmine
+
+KBUILD_CFLAGS += $(polly-flags-y)
+
 KBUILD_CFLAGS += $(call cc-ifversion, -lt, 0409, \
 			$(call cc-disable-warning,maybe-uninitialized,))
 
