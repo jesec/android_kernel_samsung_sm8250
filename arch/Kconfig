@@ -554,6 +554,19 @@ config CFI_CLANG_SHADOW
 	  If you select this option, the kernel builds a fast look-up table of
 	  CFI check functions in loaded modules to reduce overhead.
 
+config LLVM_POLLY
+	bool "Enable LLVM's polyhedral loop optimizer (Polly)"
+	depends on $(cc-option,-mllvm -polly)
+	depends on $(cc-option,-mllvm -polly-run-inliner)
+	depends on $(cc-option,-mllvm -polly-run-dce)
+	depends on $(cc-option,-mllvm -polly-opt-fusion=max)
+	depends on $(cc-option,-mllvm -polly-vectorizer=polly)
+	help
+	  This option enables LLVM's polyhedral loop optimizer known as Polly.
+	  Polly is able to optimize various loops throughout the kernel for
+	  maximum cache locality. This requires an LLVM toolchain explicitly
+	  compiled with Polly support.
+
 config HAVE_ARCH_WITHIN_STACK_FRAMES
 	bool
 	help
