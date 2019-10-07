@@ -49,6 +49,12 @@ static struct fscrypt_mode available_modes[] = {
 		.keysize = 32,
 		.ivsize = 32,
 	},
+	[FSCRYPT_MODE_PRIVATE] = {
+		.friendly_name = "Inline encryption (AES-256-XTS)",
+		.cipher_str = NULL,
+		.keysize = 64,
+		.ivsize = 16,
+	},
 };
 
 static struct fscrypt_mode *
@@ -416,6 +422,7 @@ static void put_crypt_info(struct fscrypt_info *ci)
 			key_invalidate(key);
 		key_put(key);
 	}
+	memset(ci, 0, sizeof(*ci)); /* sanitizes ->ci_raw_key */
 	kmem_cache_free(fscrypt_info_cachep, ci);
 }
 

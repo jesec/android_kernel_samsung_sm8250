@@ -9,8 +9,7 @@ int fscrypt_using_hardware_encryption(const struct inode *inode)
 {
 	struct fscrypt_info *ci = inode->i_crypt_info;
 
-	return S_ISREG(inode->i_mode) && ci &&
-		ci->ci_data_mode == FS_ENCRYPTION_MODE_PRIVATE;
+	return ci && is_private_mode(ci->ci_mode);
 }
 EXPORT_SYMBOL(fscrypt_using_hardware_encryption);
 
@@ -58,7 +57,7 @@ int fscrypt_is_aes_xts_cipher(const struct inode *inode)
 	if (!ci)
 		return 0;
 
-	return (ci->ci_data_mode == FS_ENCRYPTION_MODE_PRIVATE);
+	return fscrypt_policy_contents_mode(&ci->ci_policy) == FSCRYPT_MODE_PRIVATE;
 }
 
 /*
