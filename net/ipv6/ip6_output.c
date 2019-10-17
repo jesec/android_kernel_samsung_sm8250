@@ -588,6 +588,7 @@ int ip6_fragment(struct net *net, struct sock *sk, struct sk_buff *skb,
 	struct ipv6hdr *tmp_hdr;
 	struct frag_hdr *fh;
 	unsigned int mtu, hlen, left, len, nexthdr_offset;
+	ktime_t tstamp = skb->tstamp;
 	int hroom, troom;
 	__be32 frag_id;
 	int ptr, offset = 0, err = 0;
@@ -718,6 +719,7 @@ int ip6_fragment(struct net *net, struct sock *sk, struct sk_buff *skb,
 				ip6_copy_metadata(frag, skb);
 			}
 
+			skb->tstamp = tstamp;
 			err = output(net, sk, skb);
 			if (!err)
 				IP6_INC_STATS(net, ip6_dst_idev(&rt->dst),
@@ -843,6 +845,7 @@ slow_path:
 		/*
 		 *	Put this fragment into the sending queue.
 		 */
+		frag->tstamp = tstamp;
 		err = output(net, sk, frag);
 		if (err)
 			goto fail;

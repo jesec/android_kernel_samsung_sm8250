@@ -579,6 +579,7 @@ int ip_do_fragment(struct net *net, struct sock *sk, struct sk_buff *skb,
 	int offset;
 	__be16 not_last_frag;
 	struct rtable *rt = skb_rtable(skb);
+	ktime_t tstamp = skb->tstamp;
 	int err = 0;
 
 	/* for offloaded checksums cleanup checksum before fragmentation */
@@ -676,6 +677,7 @@ int ip_do_fragment(struct net *net, struct sock *sk, struct sk_buff *skb,
 				ip_send_check(iph);
 			}
 
+			skb->tstamp = tstamp;
 			err = output(net, sk, skb);
 
 			if (!err)
@@ -811,6 +813,7 @@ slow_path:
 
 		ip_send_check(iph);
 
+		skb2->tstamp = tstamp;
 		err = output(net, sk, skb2);
 		if (err)
 			goto fail;
