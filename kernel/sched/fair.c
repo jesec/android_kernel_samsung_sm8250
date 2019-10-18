@@ -6410,9 +6410,7 @@ find_idlest_group(struct sched_domain *sd, struct task_struct *p,
 {
 	struct sched_group *idlest = NULL, *group = sd->groups;
 	struct sched_group *most_spare_sg = NULL;
-	unsigned long min_runnable_load = ULONG_MAX;
-	unsigned long this_runnable_load = ULONG_MAX;
-	unsigned long min_avg_load = ULONG_MAX, this_avg_load = ULONG_MAX;
+	unsigned long min_load = ULONG_MAX, this_load = ULONG_MAX;
 	unsigned long most_spare = 0, this_spare = 0;
 	int load_idx = sd->forkexec_idx;
 	int imbalance_scale = 100 + (sd->imbalance_pct-100)/2;
@@ -6423,7 +6421,7 @@ find_idlest_group(struct sched_domain *sd, struct task_struct *p,
 		load_idx = sd->wake_idx;
 
 	do {
-		unsigned long load, avg_load, runnable_load;
+		unsigned long load;
 		unsigned long spare_cap, max_spare_cap;
 		int local_group;
 		int i;
@@ -6440,20 +6438,15 @@ find_idlest_group(struct sched_domain *sd, struct task_struct *p,
 		 * Tally up the load of all CPUs in the group and find
 		 * the group containing the CPU with most spare capacity.
 		 */
-		avg_load = 0;
-		runnable_load = 0;
+		load = 0;
 		max_spare_cap = 0;
 
 		for_each_cpu(i, sched_group_span(group)) {
 			/* Bias balancing toward CPUs of our domain */
 			if (local_group)
-				load = source_load(i, load_idx);
+				load += source_load(i, load_idx);
 			else
-				load = target_load(i, load_idx);
-
-			runnable_load += load;
-
-			avg_load += cfs_rq_load_avg(&cpu_rq(i)->cfs);
+				load += target_load(i, load_idx);
 
 			spare_cap = capacity_spare_without(i, p);
 
@@ -6462,31 +6455,15 @@ find_idlest_group(struct sched_domain *sd, struct task_struct *p,
 		}
 
 		/* Adjust by relative CPU capacity of the group */
-		avg_load = (avg_load * SCHED_CAPACITY_SCALE) /
-					group->sgc->capacity;
-		runnable_load = (runnable_load * SCHED_CAPACITY_SCALE) /
+		load = (load * SCHED_CAPACITY_SCALE) /
 					group->sgc->capacity;
 
 		if (local_group) {
-			this_runnable_load = runnable_load;
-			this_avg_load = avg_load;
+			this_load = load;
 			this_spare = max_spare_cap;
 		} else {
-			if (min_runnable_load > (runnable_load + imbalance)) {
-				/*
-				 * The runnable load is significantly smaller
-				 * so we can pick this new CPU:
-				 */
-				min_runnable_load = runnable_load;
-				min_avg_load = avg_load;
-				idlest = group;
-			} else if ((runnable_load < (min_runnable_load + imbalance)) &&
-				   (100*min_avg_load > imbalance_scale*avg_load)) {
-				/*
-				 * The runnable loads are close so take the
-				 * blocked load into account through avg_load:
-				 */
-				min_avg_load = avg_load;
+			if (load < min_load) {
+				min_load = load;
 				idlest = group;
 			}
 
@@ -6527,18 +6504,18 @@ skip_spare:
 	 * local domain to be very lightly loaded relative to the remote
 	 * domains but "imbalance" skews the comparison making remote CPUs
 	 * look much more favourable. When considering cross-domain, add
-	 * imbalance to the runnable load on the remote node and consider
-	 * staying local.
+	 * imbalance to the load on the remote node and consider staying
+	 * local.
 	 */
 	if ((sd->flags & SD_NUMA) &&
-	    min_runnable_load + imbalance >= this_runnable_load)
+	     min_load + imbalance >= this_load)
 		return NULL;
 
-	if (min_runnable_load > (this_runnable_load + imbalance))
+	if (min_load >= this_load + imbalance)
 		return NULL;
 
-	if ((this_runnable_load < (min_runnable_load + imbalance)) &&
-	     (100*this_avg_load < imbalance_scale*min_avg_load))
+	if ((this_load < (min_load + imbalance)) &&
+	    (100*this_load < imbalance_scale*min_load))
 		return NULL;
 
 	return idlest;
