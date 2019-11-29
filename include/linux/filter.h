@@ -731,8 +731,10 @@ bpf_ctx_narrow_access_ok(u32 off, u32 size, u32 size_default)
 
 static inline void bpf_prog_lock_ro(struct bpf_prog *fp)
 {
+#ifndef CONFIG_BPF_JIT_ALWAYS_ON
 	fp->undo_set_mem = 1;
 	set_memory_ro((unsigned long)fp, fp->pages);
+#endif
 }
 
 static inline void bpf_prog_unlock_ro(struct bpf_prog *fp)
