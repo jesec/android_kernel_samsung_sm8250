@@ -282,7 +282,7 @@ static int cam_vfe_camif_lite_resource_start(
 	val = cam_io_r_mb(rsrc_data->mem_base +
 		rsrc_data->common_reg->core_cfg_0);
 
-	CAM_INFO(CAM_ISP, "operating_mode_shift %d input_mux_sel_pdaf %d val: 0x%x", 
+	CAM_INFO(CAM_ISP, "operating_mode_shift %d input_mux_sel_pdaf %d val: 0x%x",
 	   rsrc_data->reg_data->operating_mode_shift,
 	   rsrc_data->cam_common_cfg.input_mux_sel_pdaf, val);
 
@@ -431,7 +431,7 @@ static int cam_vfe_camif_lite_reg_dump(
 		CAM_ERR(CAM_ISP, "Invalid soc_private");
 		return -ENODEV;
 	}
-/*
+
 	CAM_INFO(CAM_ISP, "IFE:%d TOP", camif_lite_priv->hw_intf->hw_idx);
 	if (!soc_private->is_ife_lite) {
 		for (offset = 0x0; offset <= 0x1FC; offset += 0x4) {
@@ -640,12 +640,29 @@ dump_lcr:
 			offset = 0xA1EC;
 	}
 
-wr_dump: */
+wr_dump:
 	if (!soc_private->is_ife_lite) {
-		CAM_INFO(CAM_ISP, "IFE:%d BUS WR image_addr", camif_lite_priv->hw_intf->hw_idx);
+		CAM_INFO(CAM_ISP, "IFE:%d CSID", camif_lite_priv->hw_intf->hw_idx);
+		for (offset = 0x1400; offset <= 0x19DC; offset += 0x4) {
+			val = cam_soc_util_r(camif_lite_priv->soc_info, 0, offset);
+			CAM_INFO(CAM_ISP, "offset 0x%X value 0x%X", offset, val);
+		}
+
+		CAM_INFO(CAM_ISP, "IFE:%d PP Stats CLC Modules", camif_lite_priv->hw_intf->hw_idx);
+			for (offset = 0x7E00; offset <= 0x8FFC; offset += 0x4) {
+				val = cam_soc_util_r(camif_lite_priv->soc_info, 0, offset);
+				CAM_INFO(CAM_ISP, "offset 0x%X value 0x%X", offset, val);
+			}
+
+		CAM_INFO(CAM_ISP, "IFE:%d BUS WR", camif_lite_priv->hw_intf->hw_idx);
+		for (offset = 0xAA00; offset <= 0xAADC; offset += 0x4) {
+			val = cam_soc_util_r(camif_lite_priv->soc_info, 0, offset);
+			CAM_DBG(CAM_ISP, "offset 0x%X value 0x%X", offset, val);
+		}
+
 		for (wm_idx = 0; wm_idx <= 25; wm_idx++) {
-			for (offset = 0xAC04 + 0x100 * wm_idx;
-				offset < 0xAC84 + 0x100 * wm_idx; offset += 0x100) {
+			for (offset = 0xAC00 + 0x100 * wm_idx;
+				offset < 0xAC84 + 0x100 * wm_idx; offset += 0x4) {
 				val = cam_soc_util_r(camif_lite_priv->soc_info, 0, offset);
 				CAM_INFO(CAM_ISP, "offset 0x%X value 0x%X",
 					offset, val);
@@ -653,12 +670,19 @@ wr_dump: */
 		}
 		goto end_dump;
 	}
-/*
+
+	CAM_INFO(CAM_ISP, "IFE:%d CSID", camif_lite_priv->hw_intf->hw_idx);
+	for (offset = 0x400; offset <= 0x7E4; offset += 0x4) {
+		val = cam_soc_util_r(camif_lite_priv->soc_info, 0, offset);
+		CAM_INFO(CAM_ISP, "offset 0x%X value 0x%X", offset, val);
+	}
+
+	CAM_INFO(CAM_ISP, "IFE:%d BUS WR", camif_lite_priv->hw_intf->hw_idx);
 	for (offset = 0x1A00; offset <= 0x1AE0; offset += 0x4) {
 		val = cam_soc_util_r(camif_lite_priv->soc_info, 0, offset);
 		CAM_DBG(CAM_ISP, "offset 0x%X value 0x%X", offset, val);
 	}
-*/
+
 	CAM_INFO(CAM_ISP, "IFE:%d LITE BUS WR image_addr",
 		camif_lite_priv->hw_intf->hw_idx);
 	for (wm_idx = 0; wm_idx <= 3; wm_idx++) {

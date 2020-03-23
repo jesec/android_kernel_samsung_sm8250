@@ -1247,7 +1247,7 @@ int subsystem_restart_dev(struct subsys_device *dev)
 	} else
 		pr_info("SSR by only ap debug level!!\n");
 
-	if (!sec_debug_is_enabled() || (!ssr_disable) || !strcmp(name, "slpi"))
+	if (!sec_debug_is_enabled() || (!ssr_disable))
 		dev->restart_level = RESET_SUBSYS_COUPLED;
 	else
 		dev->restart_level = RESET_SOC;

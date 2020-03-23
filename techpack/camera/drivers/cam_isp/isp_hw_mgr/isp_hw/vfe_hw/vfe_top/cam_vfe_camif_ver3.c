@@ -572,10 +572,48 @@ static int cam_vfe_camif_ver3_reg_dump(
 
 	camif_priv = (struct cam_vfe_mux_camif_ver3_data *)camif_res->res_priv;
 
-	CAM_INFO(CAM_ISP, "IFE:%d BUS WR image_addr", camif_res->hw_intf->hw_idx);
+	CAM_INFO(CAM_ISP, "IFE:%d TOP", camif_res->hw_intf->hw_idx);
+	for (offset = 0x0; offset <= 0x1FC; offset += 0x4) {
+		if (offset == 0x1C || offset == 0x34 ||
+			offset == 0x38 || offset == 0x90)
+			continue;
+		val = cam_soc_util_r(camif_priv->soc_info, 0, offset);
+		CAM_INFO(CAM_ISP, "offset 0x%X value 0x%X", offset, val);
+	}
+
+	CAM_INFO(CAM_ISP, "IFE:%d CSID", camif_res->hw_intf->hw_idx);
+	for (offset = 0x1400; offset <= 0x19DC; offset += 0x4) {
+		val = cam_soc_util_r(camif_priv->soc_info, 0, offset);
+		CAM_INFO(CAM_ISP, "offset 0x%X value 0x%X", offset, val);
+	}
+
+	CAM_INFO(CAM_ISP, "IFE:%d PP CLC CAMIF", camif_res->hw_intf->hw_idx);
+	for (offset = 0x2600; offset <= 0x27FC; offset += 0x4) {
+		if (offset == 0x2608)
+			offset = 0x2660;
+		val = cam_soc_util_r(camif_priv->soc_info, 0, offset);
+		CAM_INFO(CAM_ISP, "offset 0x%X value 0x%X", offset, val);
+		if (offset == 0x2660)
+			offset = 0x2664;
+		else if (offset == 0x2680)
+			offset = 0x27EC;
+	}
+
+	CAM_INFO(CAM_ISP, "IFE:%d PP Stats CLC Modules", camif_res->hw_intf->hw_idx);
+	for (offset = 0x7E00; offset <= 0x8FFC; offset += 0x4) {
+		val = cam_soc_util_r(camif_priv->soc_info, 0, offset);
+		CAM_INFO(CAM_ISP, "offset 0x%X value 0x%X", offset, val);
+	}
+
+	CAM_INFO(CAM_ISP, "IFE:%d BUS WR", camif_res->hw_intf->hw_idx);
+	for (offset = 0xAA00; offset <= 0xAADC; offset += 0x4) {
+		val = cam_soc_util_r(camif_priv->soc_info, 0, offset);
+		CAM_DBG(CAM_ISP, "offset 0x%X value 0x%X", offset, val);
+	}
+
 	for (wm_idx = 0; wm_idx <= 25; wm_idx++) {
-		for (offset = 0xAC04 + 0x100 * wm_idx;
-			offset < 0xAC84 + 0x100 * wm_idx; offset += 0x1000) {
+		for (offset = 0xAC00 + 0x100 * wm_idx;
+			offset < 0xAC84 + 0x100 * wm_idx; offset += 0x4) {
 			val = cam_soc_util_r(camif_priv->soc_info, 0, offset);
 			CAM_INFO(CAM_ISP, "offset 0x%X value 0x%X",
 				offset, val);

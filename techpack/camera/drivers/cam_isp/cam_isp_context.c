@@ -1242,10 +1242,10 @@ static int __cam_isp_ctx_sof_in_epoch(struct cam_isp_context *ctx_isp,
 
 	if (ctx_isp->frame_id == 1)
 		CAM_INFO(CAM_ISP,
-			"First SOF in EPCR ctx:%d frame_id:%lld next substate %s",
+			"First SOF in EPCR ctx:%d frame_id:%lld next substate %s ctx:%u",
 			ctx->ctx_id, ctx_isp->frame_id,
 			__cam_isp_ctx_substate_val_to_type(
-			ctx_isp->substate_activated));
+			ctx_isp->substate_activated), ctx->ctx_id);
 
 	CAM_DBG(CAM_ISP, "SOF in epoch ctx:%d frame_id:%lld next substate:%s",
 		ctx->ctx_id, ctx_isp->frame_id,
@@ -2029,8 +2029,8 @@ static int __cam_isp_ctx_apply_req_in_activated_state(
 
 	if (atomic_read(&ctx_isp->process_bubble)) {
 		CAM_INFO(CAM_ISP,
-			"Processing bubble cannot apply Request Id %llu",
-			apply->request_id);
+			"Processing bubble cannot apply Request Id %llu ctx:%u",
+			apply->request_id, ctx->ctx_id);
 		rc = -EAGAIN;
 		goto end;
 	}
@@ -2046,8 +2046,8 @@ static int __cam_isp_ctx_apply_req_in_activated_state(
 	 */
 	if (req->request_id != apply->request_id) {
 		CAM_ERR_RATE_LIMIT(CAM_ISP,
-			"Invalid Request Id asking %llu existing %llu",
-			apply->request_id, req->request_id);
+			"Invalid Request Id asking %llu existing %llu ctx:%u",
+			apply->request_id, req->request_id, ctx->ctx_id);
 		rc = -EFAULT;
 		goto end;
 	}
@@ -2631,6 +2631,7 @@ static int __cam_isp_ctx_rdi_only_sof_in_bubble_applied(
 			ctx_isp->frame_id,
 			ctx->ctx_id);
 		ctx->ctx_crm_intf->notify_err(&notify);
+		atomic_set(&ctx_isp->process_bubble, 1);
 	} else {
 		req_isp->bubble_report = 0;
 	}
@@ -2697,15 +2698,21 @@ static int __cam_isp_ctx_rdi_only_sof_in_bubble_state(
 				struct cam_ctx_request, list);
 		list_del_init(&req->list);
 		req_isp = (struct cam_isp_ctx_req *) req->req_priv;
+		req_isp->num_acked = 0;
+		req_isp->bubble_detected = false;
+		atomic_set(&ctx_isp->process_bubble, 0);
 		CAM_DBG(CAM_ISP, "signal fence in active list. fence num %d",
 			req_isp->num_fence_map_out);
-		for (i = 0; i < req_isp->num_fence_map_out; i++)
-			if (req_isp->fence_map_out[i].sync_id != -1) {
-				cam_sync_signal(
+		if (req->request_id <= ctx->last_flush_req) {
+			for (i = 0; i < req_isp->num_fence_map_out; i++)
+				if (req_isp->fence_map_out[i].sync_id != -1) {
+					cam_sync_signal(
 					req_isp->fence_map_out[i].sync_id,
 					CAM_SYNC_STATE_SIGNALED_ERROR);
-			}
-		list_add_tail(&req->list, &ctx->free_req_list);
+				}
+			list_add_tail(&req->list, &ctx->free_req_list);
+		} else
+			list_add_tail(&req->list, &ctx->pending_req_list);
 		ctx_isp->active_req_cnt--;
 	}
 
@@ -2782,6 +2789,8 @@ static int __cam_isp_ctx_rdi_only_reg_upd_in_bubble_applied_state(
 				"move active req %lld to free list(cnt=%d)",
 				req->request_id, ctx_isp->active_req_cnt);
 		}
+
+		atomic_set(&ctx_isp->process_bubble, 0);
 
 		notify.link_hdl = ctx->link_hdl;
 		notify.dev_hdl = ctx->dev_hdl;
@@ -2902,9 +2911,9 @@ static int __cam_isp_ctx_rdi_only_apply_req_top_state(
 		ctx_isp->substate_activated));
 
 	if (rc)
-		CAM_ERR(CAM_ISP, "Apply failed in Substate[%s], rc %d",
+		CAM_ERR(CAM_ISP, "Apply failed in Substate[%s], rc %d ctx:%u",
 			__cam_isp_ctx_substate_val_to_type(
-			ctx_isp->substate_activated), rc);
+			ctx_isp->substate_activated), rc, ctx->ctx_id);
 
 	return rc;
 }
@@ -4222,9 +4231,9 @@ static int __cam_isp_ctx_apply_req(struct cam_context *ctx,
 
 	if (rc)
 		CAM_WARN_RATE_LIMIT(CAM_ISP,
-			"Apply failed in active Substate[%s] rc %d",
+			"Apply failed in active Substate[%s] rc %d ctx:%d",
 			__cam_isp_ctx_substate_val_to_type(
-			ctx_isp->substate_activated), rc);
+			ctx_isp->substate_activated), rc, ctx->ctx_id);
 	return rc;
 }
 
