@@ -141,6 +141,7 @@
 #include <linux/poll.h>
 #include <linux/psi.h>
 #include <linux/oom.h>
+#include <linux/ologk.h>
 #include "sched.h"
 
 #define CREATE_TRACE_POINTS
@@ -171,6 +172,12 @@ __setup("psi=", setup_psi);
 #define WINDOW_MIN_US 500000	/* Min window size is 500ms */
 #define WINDOW_MAX_US 10000000	/* Max window size is 10s */
 #define UPDATES_PER_WINDOW 10	/* 10 updates per window */
+
+#define MONITOR_WINDOW_MIN_NS 1000000000 /* 1s */
+#define MONITOR_THRESHOLD_MIN_NS 100000000 /* 100ms */
+
+static int lmkd_count;
+static int lmkd_cricount;
 
 /* Sampling frequency in nanoseconds */
 static u64 psi_period __read_mostly;
@@ -363,6 +370,7 @@ static u64 update_averages(struct psi_group *group, u64 now)
 	u64 expires, period;
 	u64 avg_next_update;
 	int s;
+	unsigned long full_avg_max = 0;
 
 	/* avgX= */
 	expires = group->avg_next_update;
@@ -405,6 +413,32 @@ static u64 update_averages(struct psi_group *group, u64 now)
 			sample = period;
 		group->avg_total[s] += sample;
 		calc_avgs(group->avg[s], missed_periods, sample, period);
+		if (s % 2 && LOAD_INT(group->avg[s][0]) > full_avg_max) {
+			full_avg_max = LOAD_INT(group->avg[s][0]);
+		}
+	}
+
+	if (full_avg_max >= 3 && group != 0) {
+		int res, full;
+		char title[NR_PSI_RESOURCES][5] = {"IO", "MEM", "CPU"};
+
+		for (res = 0; res < NR_PSI_RESOURCES; res++) {
+			for (full = 0; full < 2 - (res == PSI_CPU); full++) {
+				u64 total;
+				char *strtitle;
+
+				total = div_u64(group->total[PSI_AVGS][res * 2 + full],
+						NSEC_PER_USEC);
+
+				strtitle = title[res];
+				perflog(PERFLOG_UNKNOWN, "[PSI][%s] %s avg10=%lu.%02lu avg60=%lu.%02lu avg300=%lu.%02lu total=%llu\n",
+					   strtitle, full ? "full" : "some",
+					   LOAD_INT(group->avg[res * 2 + full][0]), LOAD_FRAC(group->avg[res * 2 + full][0]),
+					   LOAD_INT(group->avg[res * 2 + full][1]), LOAD_FRAC(group->avg[res * 2 + full][1]),
+					   LOAD_INT(group->avg[res * 2 + full][2]), LOAD_FRAC(group->avg[res * 2 + full][2]),
+					   total);
+			}
+		}
 	}
 
 	return avg_next_update;
@@ -573,6 +607,11 @@ static u64 update_triggers(struct psi_group *group, u64 now)
 			continue;
 
 		trace_psi_event(t->state, t->threshold);
+
+		if ((t->win.size >= MONITOR_WINDOW_MIN_NS) && 
+		    (t->threshold >= MONITOR_THRESHOLD_MIN_NS))
+			printk_deferred("psi: %s %lu %lu %d %lu %lu\n", __func__, now,
+			       t->last_event_time, t->state, t->threshold, growth);
 
 		/* Generate an event */
 		if (cmpxchg(&t->event, 0, 1) == 0) {
@@ -1117,6 +1156,68 @@ static int psi_cpu_open(struct inode *inode, struct file *file)
 	return single_open(file, psi_cpu_show, NULL);
 }
 
+static ssize_t psi_lmkd_count_read(struct file *file, char __user *buf,
+			    size_t count, loff_t *ppos)
+{
+	size_t len;
+	char buffer[32];
+	len = snprintf(buffer, sizeof(buffer), "%d\n", lmkd_count);
+
+	return simple_read_from_buffer(buf, count, ppos, buffer, len);
+}
+
+static ssize_t psi_lmkd_cricount_read(struct file *file, char __user *buf,
+			    size_t count, loff_t *ppos)
+{
+	size_t len;
+	char buffer[32];
+	len = snprintf(buffer, sizeof(buffer), "%d\n", lmkd_cricount);
+
+	return simple_read_from_buffer(buf, count, ppos, buffer, len);
+}
+
+static ssize_t psi_lmkd_count_write(struct file *file, const char __user *user_buf,
+			    size_t count, loff_t *ppos)
+{
+	char buffer[32];
+	int err;
+	memset(buffer, 0, sizeof(buffer));
+
+	if (count > sizeof(buffer) - 1)
+		count = sizeof(buffer) - 1;
+	if (copy_from_user(buffer, user_buf, count)) {
+		err = -EFAULT;
+		return err;
+	}
+
+	err = kstrtoint(strstrip(buffer), 0, &lmkd_count);
+	if(err)
+		return err;
+
+	return count;
+}
+
+static ssize_t psi_lmkd_cricount_write(struct file *file, const char __user *user_buf,
+			    size_t count, loff_t *ppos)
+{
+	char buffer[32];
+	int err;
+	memset(buffer, 0, sizeof(buffer));
+
+	if (count > sizeof(buffer) - 1)
+		count = sizeof(buffer) - 1;
+	if (copy_from_user(buffer, user_buf, count)) {
+		err = -EFAULT;
+		return err;
+	}
+
+	err = kstrtoint(strstrip(buffer), 0, &lmkd_cricount);
+	if(err)
+		return err;
+
+	return count;
+}
+
 struct psi_trigger *psi_trigger_create(struct psi_group *group,
 			char *buf, size_t nbytes, enum psi_res res)
 {
@@ -1389,12 +1490,26 @@ static const struct file_operations psi_cpu_fops = {
 	.release        = psi_fop_release,
 };
 
+static const struct file_operations psi_lmkd_count_fops = {
+	.read           = psi_lmkd_count_read,
+	.write          = psi_lmkd_count_write,
+	.llseek         = default_llseek,
+};
+
+static const struct file_operations psi_lmkd_cricount_fops = {
+	.read           = psi_lmkd_cricount_read,
+	.write          = psi_lmkd_cricount_write,
+	.llseek         = default_llseek,
+};
+
 static int __init psi_proc_init(void)
 {
 	proc_mkdir("pressure", NULL);
 	proc_create("pressure/io", 0, NULL, &psi_io_fops);
 	proc_create("pressure/memory", 0, NULL, &psi_memory_fops);
 	proc_create("pressure/cpu", 0, NULL, &psi_cpu_fops);
+	proc_create("pressure/lmkd_count", 0644, NULL, &psi_lmkd_count_fops);
+	proc_create("pressure/lmkd_cricount", 0644, NULL, &psi_lmkd_cricount_fops);
 	return 0;
 }
 module_init(psi_proc_init);

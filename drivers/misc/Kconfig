@@ -493,6 +493,12 @@ config QSEECOM
 	  Manager (SCM) interface. It exposes APIs for both userspace and
 	  kernel clients.
 
+config QSEECOM_DEBUG
+        bool "QTI Secure Execution Communicator driver debug"
+	default	n
+        help
+          QTI Secure Execution Communicator driver debug
+
 config VEXPRESS_SYSCFG
 	bool "Versatile Express System Configuration driver"
 	depends on VEXPRESS_CONFIG
@@ -595,6 +601,10 @@ config WIGIG_SENSING_SPI
 	  operates over 60GHz frequency band, using low power SPI interface.
 	  The output of the driver is CIRs (Channel Impulse Response) which
 	  must be processed in user space in order to get meaningful results.
+
+config DEV_RIL_BRIDGE
+	bool "Support a bridge between device and RIL"
+	default n
 
 source "drivers/misc/c2port/Kconfig"
 source "drivers/misc/eeprom/Kconfig"

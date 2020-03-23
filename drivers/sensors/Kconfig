@@ -5,3 +5,67 @@ config SENSORS_SSC
 	  Add support for sensors SSC driver.
 	  This driver is used for exercising sensors use case,
 	  time syncing with ADSP clock.
+
+config SENSORS
+	bool "Sensors Class Support"
+	help
+	  This option enables the sensor sysfs class in /sys/class/sensors.
+	  You'll need this to do anything useful with sensorss. If unsure, say N.
+
+config SUPPORT_SSC_SPU
+	bool "Support SSC(SLPI) SPU(System Parameter update)"
+	help
+	  Add support for SSC SPU.
+
+config SENSORS_SX9360
+	depends on I2C
+	tristate "SX9360 driver"
+	default n
+	help
+	  Say Y here if you use sx9360.
+	  This option enables grip sensors using
+	  SemTech sx9360 device driver.
+	  Say N here if you do not use sx9360.
+
+config SUPPORT_MCC_THRESHOLD_CHANGE
+	depends on I2C
+	tristate "Change grip sensor threshold according to the MCC value"
+	default n
+	help
+	  Say Y here if you need to check mcc(mobile country code).
+	  This option enables when it is necessary to adjust the threshold
+	  according to the mcc value.
+	  Say N here if you do not need to check mcc.
+
+config SENSORS_A96T3X6
+	tristate "a96t3x6 Grip sensor"
+	default n
+	help
+	  Say Y here if you use a96t3x6.
+	  This option enables grip sensors using
+	  SemTech a96t3x6 device driver.
+	  Say N here if you do not use a96t3x6.
+
+config SENSORS_FW_VENDOR
+	bool "Locate the Firmware on Vendor"
+	default n
+	help
+	  To use the module automatic system, 
+	  locate the firmware on vendor side.
+
+config SENSORS_A96T3X6_CRC_CHECK
+	bool "check crc check instead of checksum compare"
+	default n
+	help
+	  Say Y here if you use crc check instead of checksum compare
+
+config SENSORS_A96T3X6_BLOCK_SAR_ONLY
+	tristate "Prevent entering sar only mode"
+	default n
+	help
+	  Prevent entering sar only mode.
+
+config SENSORS_A96T365IF
+	bool "Choose A96T365IF"
+	default n
+	help

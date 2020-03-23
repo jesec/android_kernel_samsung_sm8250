@@ -13,7 +13,7 @@
 #include "mdm-dbg.h"
 
 /* Default number of powerup trial requests per session */
-#define ESOC_DEF_PON_REQ	3
+#define ESOC_DEF_PON_REQ	5
 
 #define ESOC_MAX_PON_TRIES	5
 
@@ -420,7 +420,7 @@ static int mdm_handle_boot_fail(struct esoc_clink *esoc_clink, u8 *pon_trial)
 		break;
 	case BOOT_FAIL_ACTION_PANIC:
 		esoc_mdm_log("Calling panic!!\n");
-		panic("Panic requested on external modem boot failure\n");
+		panic("Panic requested on unrecoverable external_modem boot failure\n");
 		break;
 	case BOOT_FAIL_ACTION_NOP:
 		esoc_mdm_log("Leaving the modem in its curent state\n");

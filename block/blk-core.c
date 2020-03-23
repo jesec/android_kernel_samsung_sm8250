@@ -292,6 +292,332 @@ void blk_dump_rq_flags(struct request *rq, char *msg)
 }
 EXPORT_SYMBOL(blk_dump_rq_flags);
 
+#ifdef CONFIG_BLK_IO_VOLUME
+void blk_queue_reset_io_vol(struct request_queue *q)
+{
+	struct block_io_volume *vol;
+	int idx;
+
+	spin_lock_irq(q->queue_lock);
+	for (idx = 0; idx < BLK_MAX_IO_VOLS; idx++) {
+		vol = &(q->blk_io_vol[idx]);
+
+		vol->queuing_rqs = 0;
+		vol->queuing_bytes= 0;
+
+		vol->peak_rqs = 0;
+		vol->peak_bytes = 0;
+
+		vol->peak_rqs_cnt[0] = 0;
+		vol->peak_rqs_cnt[1] = 0;
+		vol->peak_rqs_cnt[2] = 0;
+		vol->peak_rqs_cnt[3] = 0;
+
+		vol->peak_bytes_cnt[0] = 0;
+		vol->peak_bytes_cnt[1] = 0;
+		vol->peak_bytes_cnt[2] = 0;
+		vol->peak_bytes_cnt[3] = 0;
+	}
+	spin_unlock_irq(q->queue_lock);
+}
+
+/* should be called with queue_lock held */
+void blk_queue_io_vol_add(struct request_queue *q, int opf, long long bytes)
+{
+	struct block_io_volume *vol;
+	int op = opf & REQ_OP_MASK;
+
+	lockdep_assert_held(q->queue_lock);
+
+	if ((bytes > 0) && ((op == REQ_OP_READ) || (op == REQ_OP_WRITE))) {
+		vol = &(q->blk_io_vol[op]);
+
+		vol->queuing_rqs++;
+		vol->queuing_bytes += bytes;
+
+		if (vol->queuing_rqs > vol->peak_rqs)
+			vol->peak_rqs = vol->queuing_rqs;
+		if (vol->queuing_bytes > vol->peak_bytes)
+			vol->peak_bytes = vol->queuing_bytes;
+	}
+}
+
+/* should be called with queue_lock held */
+void blk_queue_io_vol_del(struct request_queue *q, int opf, long long bytes)
+{
+	struct block_io_volume *vol;
+	int op = opf & REQ_OP_MASK;
+	int idx;
+
+	lockdep_assert_held(q->queue_lock);
+
+	if ((bytes > 0) && ((op == REQ_OP_READ) || (op == REQ_OP_WRITE))) {
+		vol = &(q->blk_io_vol[op]);
+
+		vol->queuing_rqs--;
+		vol->queuing_bytes -= bytes;
+
+		if (vol->queuing_rqs == 0) {
+			if (vol->peak_rqs >= 16) {
+				/*
+				 * count up index
+				 * 0 : 16 <= vol->peak_rqs < 32
+				 * 1 : 32 <= vol->peak_rqs < 64
+				 * 2 : 64 <= vol->peak_rqs < 128
+				 * 3 : 128 <= vol->peak_rqs
+				 */
+				idx = fls(vol->peak_rqs >> 5);
+				idx = (idx < 4) ? idx : 3;
+				vol->peak_rqs_cnt[idx]++;
+			}
+
+			if (vol->peak_bytes >= (1 << 23)) {
+				/*
+				 * count up index
+				 * 0 : 8MB <= vol->peak_bytes < 16MB
+				 * 1 : 16MB <= vol->peak_bytes < 32MB
+				 * 2 : 32MB <= vol->peak_bytes < 64MB
+				 * 3 : 64MB <= vol->peak_bytes
+				 */
+				idx = fls(vol->peak_bytes >> 24);
+				idx = (idx < 4) ? idx : 3;
+				vol->peak_bytes_cnt[idx]++;
+			}
+
+			vol->peak_rqs = 0;
+			vol->peak_bytes = 0;
+		}
+	}
+}
+
+/* should be called with queue_lock held */
+void blk_queue_io_vol_merge(struct request_queue *q, int opf, int rqs, long long bytes)
+{
+	struct block_io_volume *vol;
+	int op = opf & REQ_OP_MASK;
+
+	lockdep_assert_held(q->queue_lock);
+
+	if ((op == REQ_OP_READ) || (op == REQ_OP_WRITE)) {
+		vol = &(q->blk_io_vol[op]);
+
+		vol->queuing_rqs += rqs;
+		vol->queuing_bytes += bytes;
+
+		if (vol->queuing_rqs > vol->peak_rqs)
+			vol->peak_rqs = vol->queuing_rqs;
+		if (vol->queuing_bytes > vol->peak_bytes)
+			vol->peak_bytes = vol->queuing_bytes;
+	}
+}
+#endif /* CONFIG_BLK_IO_VOLUME */
+
+#ifdef CONFIG_BLK_TURBO_WRITE
+int blk_alloc_turbo_write(struct request_queue *q)
+{
+	struct blk_turbo_write	*new;
+
+	new = kmalloc(sizeof(struct blk_turbo_write), GFP_KERNEL);
+	if (!new)
+		return -ENOMEM;
+
+	new->state = TW_OFF;
+	new->state_ts = jiffies;
+
+	new->up_threshold_bytes = (20 * 1024 * 1024);
+	new->down_threshold_bytes = (4 * 1024);
+	new->on_delay_ms = 10;
+	new->off_delay_ms = 7000;
+
+	new->try_on = NULL;
+	new->try_off = NULL;
+
+	new->curr_issued_kb = 0;
+	new->total_issued_mb = 0;
+	new->issued_size_cnt[0] = 0;
+	new->issued_size_cnt[1] = 0;
+	new->issued_size_cnt[2] = 0;
+	new->issued_size_cnt[3] = 0;
+
+	spin_lock_irq(q->queue_lock);
+	if (q->tw) {
+		spin_unlock_irq(q->queue_lock);
+		kfree(new);
+		return -EEXIST;
+	} else {
+		q->tw = new;
+	}
+	spin_unlock_irq(q->queue_lock);
+
+	return 0;
+}
+
+void blk_free_turbo_write(struct request_queue *q)
+{
+	spin_lock_irq(q->queue_lock);
+	if (!q->tw) {
+		spin_unlock_irq(q->queue_lock);
+		return;
+	}
+
+	kfree(q->tw);
+	q->tw = NULL;
+	spin_unlock_irq(q->queue_lock);
+}
+
+int blk_register_tw_try_on_fn(struct request_queue *q, blk_tw_try_on_fn *fn)
+{
+	spin_lock_irq(q->queue_lock);
+	if (!q->tw) {
+		spin_unlock_irq(q->queue_lock);
+		return -ENODEV;
+	}
+
+	q->tw->try_on = fn;
+	spin_unlock_irq(q->queue_lock);
+
+	return 0;
+}
+
+int blk_register_tw_try_off_fn(struct request_queue *q, blk_tw_try_off_fn *fn)
+{
+	spin_lock_irq(q->queue_lock);
+	if (!q->tw) {
+		spin_unlock_irq(q->queue_lock);
+		return -ENODEV;
+	}
+
+	q->tw->try_off = fn;
+	spin_unlock_irq(q->queue_lock);
+
+	return 0;
+}
+
+int blk_reset_tw_state(struct request_queue *q)
+{
+	spin_lock_irq(q->queue_lock);
+	if (!q->tw) {
+		spin_unlock_irq(q->queue_lock);
+		return -ENODEV;
+	}
+
+	q->tw->state = TW_OFF;
+	q->tw->state_ts = jiffies;
+	spin_unlock_irq(q->queue_lock);
+
+	return 0;
+}
+
+static void blk_update_tw_stats(struct blk_turbo_write *tw)
+{
+	int idx;
+
+	if (tw->curr_issued_kb > 0) {
+		/*
+		 * count up index
+		 * 0 : tw->curr_issued_kb < 4GB
+		 * 1 : 4GB <= tw->curr_issued_kb < 8GB
+		 * 2 : 8GB <= tw->curr_issued_kb < 16GB
+		 * 3 : 16GB <= tw->curr_issued_kb
+		 */
+		idx = fls(tw->curr_issued_kb >> 22);
+		idx = (idx < 4) ? idx : 3;
+		tw->issued_size_cnt[idx]++;
+
+		tw->total_issued_mb += tw->curr_issued_kb >> 10;
+		tw->curr_issued_kb = 0;
+	}
+}
+
+/* should be called with queue_lock held */
+void blk_update_tw_state(struct request_queue *q, long long write_bytes)
+{
+	struct blk_turbo_write	*tw = q->tw;
+
+	lockdep_assert_held(q->queue_lock);
+
+	if (!tw)
+		return;
+
+	switch (tw->state) {
+		case TW_OFF:
+		{
+			if (write_bytes > tw->up_threshold_bytes) {
+				tw->state = TW_ON_READY;
+				tw->state_ts = jiffies;
+			}
+			break;
+		}
+
+		case TW_ON_READY:
+		{
+			if (write_bytes < tw->down_threshold_bytes) {
+				tw->state = TW_OFF;
+				tw->state_ts = jiffies;
+			} else if (write_bytes > tw->up_threshold_bytes &&
+					jiffies_to_msecs(jiffies - tw->state_ts) >= tw->on_delay_ms) {
+				tw->state = TW_ON;
+				tw->state_ts = jiffies;
+				if (tw->try_on) {
+					spin_unlock_irq(q->queue_lock);
+					tw->try_on(q);
+					spin_lock_irq(q->queue_lock);
+				}
+			}
+			break;
+		}
+
+		case TW_OFF_READY:
+		{
+			if (write_bytes > tw->up_threshold_bytes) {
+				tw->state = TW_ON;
+				tw->state_ts = jiffies;
+			} else if (jiffies_to_msecs(jiffies - tw->state_ts) >= tw->off_delay_ms) {
+				tw->state = TW_OFF;
+				tw->state_ts = jiffies;
+				if (tw->try_off) {
+					spin_unlock_irq(q->queue_lock);
+					tw->try_off(q);
+					spin_lock_irq(q->queue_lock);
+				}
+				blk_update_tw_stats(tw);
+			}
+			break;
+		}
+
+		case TW_ON:
+		{
+			if (write_bytes < tw->down_threshold_bytes) {
+				tw->state = TW_OFF_READY;
+				tw->state_ts = jiffies;
+			}
+			break;
+		}
+
+		default:
+		{
+			BUG();
+			break;
+		}
+	}
+}
+
+/* should be called with queue_lock held */
+void blk_account_tw_io(struct request_queue *q, int opf, int bytes)
+{
+	struct blk_turbo_write	*tw = q->tw;
+
+	lockdep_assert_held(q->queue_lock);
+
+	if (!tw)
+		return;
+
+	if ((tw->state != TW_OFF) && op_is_write(opf)) {
+		tw->curr_issued_kb += bytes / 1024;
+ 	}
+}
+#endif
+
 static void blk_delay_work(struct work_struct *work)
 {
 	struct request_queue *q;
@@ -550,7 +876,7 @@ EXPORT_SYMBOL(blk_put_queue);
  * If not, only ELVPRIV requests are drained.  The caller is responsible
  * for ensuring that no new requests which need to be drained are queued.
  */
-static void __blk_drain_queue(struct request_queue *q, bool drain_all)
+void __blk_drain_queue(struct request_queue *q, bool drain_all)
 	__releases(q->queue_lock)
 	__acquires(q->queue_lock)
 {
@@ -787,6 +1113,9 @@ void blk_cleanup_queue(struct request_queue *q)
 	spin_lock_irq(lock);
 	queue_flag_set(QUEUE_FLAG_DEAD, q);
 	spin_unlock_irq(lock);
+
+	blk_queue_reset_io_vol(q);
+	blk_free_turbo_write(q);
 
 	/*
 	 * make sure all in-progress dispatch are completed because
@@ -1081,6 +1410,12 @@ struct request_queue *blk_alloc_queue_node(gfp_t gfp_mask, int node_id,
 
 	if (blkcg_init_queue(q))
 		goto fail_ref;
+
+	blk_queue_reset_io_vol(q);
+
+#ifdef CONFIG_BLK_TURBO_WRITE
+	q->tw = NULL;
+#endif
 
 	return q;
 
@@ -1666,6 +2001,8 @@ void blk_requeue_request(struct request_queue *q, struct request *rq)
 
 	BUG_ON(blk_queued_rq(rq));
 
+	blk_account_tw_io(q, rq->cmd_flags, (-1 * blk_rq_bytes(rq)));
+
 	elv_requeue_request(q, rq);
 }
 EXPORT_SYMBOL(blk_requeue_request);
@@ -2037,11 +2374,14 @@ static blk_qc_t blk_queue_bio(struct request_queue *q, struct bio *bio)
 
 	spin_lock_irq(q->queue_lock);
 
+	blk_update_tw_state(q, blk_io_vol_bytes(q, REQ_OP_WRITE));
+
 	switch (elv_merge(q, &req, bio)) {
 	case ELEVATOR_BACK_MERGE:
 		if (!bio_attempt_back_merge(q, req, bio))
 			break;
 		elv_bio_merged(q, req, bio);
+		blk_queue_io_vol_merge(q, bio->bi_opf, 0, bio->bi_iter.bi_size);
 		free = attempt_back_merge(q, req);
 		if (free)
 			__blk_put_request(q, free);
@@ -2052,6 +2392,7 @@ static blk_qc_t blk_queue_bio(struct request_queue *q, struct bio *bio)
 		if (!bio_attempt_front_merge(q, req, bio))
 			break;
 		elv_bio_merged(q, req, bio);
+		blk_queue_io_vol_merge(q, bio->bi_opf, 0, bio->bi_iter.bi_size);
 		free = attempt_front_merge(q, req);
 		if (free)
 			__blk_put_request(q, free);
@@ -2724,16 +3065,72 @@ unsigned int blk_rq_err_bytes(const struct request *rq)
 }
 EXPORT_SYMBOL_GPL(blk_rq_err_bytes);
 
+static int rw_size_group(unsigned int bytes)
+{
+	int sg;
+
+	if (bytes <= 4 * 1024)
+		sg = 0;
+	else if (bytes <= 8 * 1024)
+		sg = 1;
+	else if (bytes <= 16 * 1024)
+		sg = 2;
+	else if (bytes <= 32 * 1024)
+		sg = 3;
+	else if (bytes <= 64 * 1024)
+		sg = 4;
+	else if (bytes <= 128 * 1024)
+		sg = 5;
+	else if (bytes <= 256 * 1024)
+		sg = 6;
+	else
+		sg = 7;
+
+	return sg;
+}
+
+static int discard_size_group(unsigned int bytes)
+{
+	int sg;
+
+	if (bytes <= 32 * 1024)
+		sg = 0;
+	else if (bytes <= 64 * 1024)
+		sg = 1;
+	else if (bytes <= 128 * 1024)
+		sg = 2;
+	else if (bytes <= 256 * 1024)
+		sg = 3;
+	else if (bytes <= 512 * 1024)
+		sg = 4;
+	else if (bytes <= 1024 * 1024)
+		sg = 5;
+	else if (bytes <= 2 * 1024 * 1024)
+		sg = 6;
+	else
+		sg = 7;
+
+	return sg;
+}
+
 void blk_account_io_completion(struct request *req, unsigned int bytes)
 {
 	if (blk_do_io_stat(req)) {
 		const int sgrp = op_stat_group(req_op(req));
 		struct hd_struct *part;
 		int cpu;
+		int sg;
 
 		cpu = part_stat_lock();
 		part = req->part;
 		part_stat_add(cpu, part, sectors[sgrp], bytes >> 9);
+
+		if (sgrp == STAT_DISCARD)
+			sg = discard_size_group(bytes);
+		else
+			sg = rw_size_group(bytes);
+		part_stat_inc(cpu, part, size_cnt[sgrp][sg]);
+
 		part_stat_unlock();
 	}
 }
@@ -2757,10 +3154,15 @@ void blk_account_io_done(struct request *req, u64 now)
 		part_stat_add(cpu, part, nsecs[sgrp], now - req->start_time_ns);
 		part_round_stats(req->q, cpu, part);
 		part_dec_in_flight(req->q, part, rq_data_dir(req));
+		if (!(req->rq_flags & RQF_STARTED))
+			part_stat_inc(cpu, part, flush_ios);
 
 		hd_struct_put(part);
 		part_stat_unlock();
 	}
+
+	if (req->rq_flags & RQF_FLUSH_SEQ)
+		req->q->flush_ios++;
 }
 
 #ifdef CONFIG_PM
@@ -2835,8 +3237,11 @@ static struct request *elv_next_request(struct request_queue *q)
 			if (blk_pm_allow_request(rq))
 				return rq;
 
-			if (rq->rq_flags & RQF_SOFTBARRIER)
-				break;
+			if (rq->rq_flags & RQF_SOFTBARRIER) {
+	                        if(rq->q && (rq->q->rpm_status == RPM_SUSPENDING) && !(rq->rq_flags & RQF_PM))
+        				continue;
+                                break;
+                        }
 		}
 
 		/*
@@ -2902,6 +3307,7 @@ struct request *blk_peek_request(struct request_queue *q)
 			 * not be passed by new incoming requests
 			 */
 			rq->rq_flags |= RQF_STARTED;
+			blk_account_tw_io(q, rq->cmd_flags, blk_rq_bytes(rq));
 			trace_block_rq_issue(q, rq);
 		}
 
@@ -2980,8 +3386,13 @@ static void blk_dequeue_request(struct request *rq)
 	 * and to it is freed is accounted as io that is in progress at
 	 * the driver side.
 	 */
-	if (blk_account_rq(rq))
+	if (blk_account_rq(rq)) {
+		if (!queue_in_flight(q))
+			q->in_flight_stamp = ktime_get();
 		q->in_flight[rq_is_sync(rq)]++;
+	}
+
+	blk_queue_io_vol_del(q, rq->cmd_flags, blk_rq_bytes(rq));
 }
 
 /**
@@ -3961,6 +4372,72 @@ void blk_set_runtime_active(struct request_queue *q)
 EXPORT_SYMBOL(blk_set_runtime_active);
 #endif
 
+#if !defined(CONFIG_SAMSUNG_PRODUCT_SHIP)
+/*********************************
+ * debugfs functions
+ **********************************/
+#ifdef CONFIG_DEBUG_FS
+#include <linux/debugfs.h>
+
+#define DBGFS_FUNC_DECL(name) \
+static int sio_open_##name(struct inode *inode, struct file *file) \
+{ \
+	return single_open(file, sio_show_##name, inode->i_private); \
+} \
+static const struct file_operations sio_fops_##name = { \
+	.owner		= THIS_MODULE, \
+	.open		= sio_open_##name, \
+	.llseek		= seq_lseek, \
+	.read		= seq_read, \
+	.release	= single_release, \
+}
+
+static int sio_show_patches(struct seq_file *s, void *p)
+{
+	extern char *__start_sio_patches;
+	extern char *__stop_sio_patches;
+	char **p_version_str;
+
+	for (p_version_str = &__start_sio_patches; p_version_str < &__stop_sio_patches; ++p_version_str)
+		seq_printf(s, "%s\n", *p_version_str);
+
+	return 0;
+}
+
+static struct dentry *sio_debugfs_root;
+
+DBGFS_FUNC_DECL(patches);
+
+SIO_PATCH_VERSION(SIO_patch_manager, 1, 0, "");
+
+static int __init sio_debugfs_init(void)
+{
+	if (!debugfs_initialized())
+		return -ENODEV;
+
+	sio_debugfs_root = debugfs_create_dir("sio", NULL);
+	if (!sio_debugfs_root)
+		return -ENOMEM;
+
+	debugfs_create_file("patches", 0400, sio_debugfs_root, NULL, &sio_fops_patches);
+
+	return 0;
+}
+
+static void __exit sio_debugfs_exit(void)
+{
+	debugfs_remove_recursive(sio_debugfs_root);
+}
+#else
+static int __init sio_debugfs_init(void)
+{
+	return 0;
+}
+
+static void __exit sio_debugfs_exit(void) { }
+#endif
+#endif
+
 int __init blk_dev_init(void)
 {
 	BUILD_BUG_ON(REQ_OP_LAST >= (1 << REQ_OP_BITS));
@@ -3983,6 +4460,10 @@ int __init blk_dev_init(void)
 
 #ifdef CONFIG_DEBUG_FS
 	blk_debugfs_root = debugfs_create_dir("block", NULL);
+#endif
+
+#if !defined(CONFIG_SAMSUNG_PRODUCT_SHIP)
+	sio_debugfs_init();
 #endif
 
 	return 0;

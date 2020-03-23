@@ -123,12 +123,19 @@ enum {
 	UPIU_TASK_ATTR_ORDERED	= 0x01,
 	UPIU_TASK_ATTR_HEADQ	= 0x02,
 	UPIU_TASK_ATTR_ACA	= 0x03,
+#ifdef CUSTOMIZE_UPIU_FLAGS
+	UPIU_COMMAND_PRIORITY_HIGH      = 0x4,
+#endif
 };
 
 /* UPIU Query request function */
 enum {
 	UPIU_QUERY_FUNC_STANDARD_READ_REQUEST           = 0x01,
 	UPIU_QUERY_FUNC_STANDARD_WRITE_REQUEST          = 0x81,
+};
+
+enum {
+	UPIU_QUERY_FUNC_VENDOR_TOSHIBA_FATALMODE        = 0xC2,
 };
 
 enum desc_header_offset {
@@ -138,11 +145,16 @@ enum desc_header_offset {
 
 enum ufs_desc_def_size {
 	QUERY_DESC_DEVICE_DEF_SIZE		= 0x59,
-	QUERY_DESC_CONFIGURATION_DEF_SIZE	= 0x90,
-	QUERY_DESC_UNIT_DEF_SIZE		= 0x23,
+	QUERY_DESC_CONFIGURATION_DEF_SIZE	= 0xE2,
+	QUERY_DESC_UNIT_DEF_SIZE		= 0x2D,
 	QUERY_DESC_INTERCONNECT_DEF_SIZE	= 0x06,
-	QUERY_DESC_GEOMETRY_DEF_SIZE		= 0x48,
+	QUERY_DESC_GEOMETRY_DEF_SIZE		= 0x58,
 	QUERY_DESC_POWER_DEF_SIZE		= 0x62,
+	/*
+	 * Max. 126 UNICODE characters (2 bytes per character) plus 2 bytes
+	 * of descriptor header.
+	 */
+	QUERY_DESC_STRING_DEF_SIZE		= 0xFE,
 	QUERY_DESC_HEALTH_DEF_SIZE		= 0x25,
 };
 
@@ -165,6 +177,12 @@ enum unit_desc_param {
 	UNIT_DESC_PARAM_PHY_MEM_RSRC_CNT	= 0x18,
 	UNIT_DESC_PARAM_CTX_CAPABILITIES	= 0x20,
 	UNIT_DESC_PARAM_LARGE_UNIT_SIZE_M1	= 0x22,
+#if defined(CONFIG_UFSHPB)
+	UNIT_DESC_HPB_LU_MAX_ACTIVE_REGIONS		= 0x23,
+	UNIT_DESC_HPB_LU_PIN_REGION_START_OFFSET	= 0x25,
+	UNIT_DESC_HPB_LU_NUM_PIN_REGIONS		= 0x27,
+#endif
+	UNIT_DESC_PARAM_TW_BUF_ALLOC_UNIT	= 0x29,
 };
 
 /* Device descriptor parameters offsets in bytes*/
@@ -204,6 +222,12 @@ enum device_desc_param {
 	DEVICE_DESC_PARAM_PSA_MAX_DATA		= 0x25,
 	DEVICE_DESC_PARAM_PSA_TMT		= 0x29,
 	DEVICE_DESC_PARAM_PRDCT_REV		= 0x2A,
+#if defined(CONFIG_UFSHPB)
+	DEVICE_DESC_PARAM_HPB_VER		= 0x40,
+#endif
+#if defined(CONFIG_UFSFEATURE)
+	DEVICE_DESC_PARAM_EX_FEAT_SUP		= 0x4F,
+#endif
 	DEVICE_DESC_PARAM_EXT_UFS_FEATURE_SUP	= 0x4F,
 };
 
@@ -249,6 +273,12 @@ enum geometry_desc_param {
 	GEOMETRY_DESC_PARAM_ENM4_MAX_NUM_UNITS	= 0x3E,
 	GEOMETRY_DESC_PARAM_ENM4_CAP_ADJ_FCTR	= 0x42,
 	GEOMETRY_DESC_PARAM_OPT_LOG_BLK_SIZE	= 0x44,
+#if defined(CONFIG_UFSHPB)
+	GEOMETRY_DESC_HPB_REGION_SIZE			= 0x48,
+	GEOMETRY_DESC_HPB_NUMBER_LU 			= 0x49,
+	GEOMETRY_DESC_HPB_SUBREGION_SIZE 		= 0x4A,
+	GEOMETRY_DESC_HPB_DEVICE_MAX_ACTIVE_REGIONS	= 0x4B,
+#endif
 };
 
 /* Health descriptor parameters offsets in bytes*/
@@ -299,7 +329,8 @@ enum power_desc_param_offset {
 
 /* Exception event mask values */
 enum {
-	MASK_EE_STATUS		= 0xFFFF,
+	/* disable tw event [bit 5] as default */
+	MASK_EE_STATUS		= 0xFFDF,
 	MASK_EE_URGENT_BKOPS	= (1 << 2),
 };
 
@@ -375,38 +406,6 @@ enum ufs_dev_pwr_mode {
 	UFS_POWERDOWN_PWR_MODE	= 3,
 };
 
-enum ufs_dev_wb_buf_avail_size {
-	UFS_WB_0_PERCENT_BUF_REMAIN = 0x0,
-	UFS_WB_10_PERCENT_BUF_REMAIN = 0x1,
-	UFS_WB_20_PERCENT_BUF_REMAIN = 0x2,
-	UFS_WB_30_PERCENT_BUF_REMAIN = 0x3,
-	UFS_WB_40_PERCENT_BUF_REMAIN = 0x4,
-	UFS_WB_50_PERCENT_BUF_REMAIN = 0x5,
-	UFS_WB_60_PERCENT_BUF_REMAIN = 0x6,
-	UFS_WB_70_PERCENT_BUF_REMAIN = 0x7,
-	UFS_WB_80_PERCENT_BUF_REMAIN = 0x8,
-	UFS_WB_90_PERCENT_BUF_REMAIN = 0x9,
-	UFS_WB_100_PERCENT_BUF_REMAIN = 0xA,
-};
-
-enum ufs_dev_wb_buf_life_time_est {
-	UFS_WB_0_10_PERCENT_USED = 0x1,
-	UFS_WB_10_20_PERCENT_USED = 0x2,
-	UFS_WB_20_30_PERCENT_USED = 0x3,
-	UFS_WB_30_40_PERCENT_USED = 0x4,
-	UFS_WB_40_50_PERCENT_USED = 0x5,
-	UFS_WB_50_60_PERCENT_USED = 0x6,
-	UFS_WB_60_70_PERCENT_USED = 0x7,
-	UFS_WB_70_80_PERCENT_USED = 0x8,
-	UFS_WB_80_90_PERCENT_USED = 0x9,
-	UFS_WB_90_100_PERCENT_USED = 0xA,
-	UFS_WB_MAX_USED = 0xB,
-};
-
-enum ufs_dev_wb_buf_user_cap_config {
-	UFS_WB_BUFF_PRESERVE_USER_SPACE = 1,
-	UFS_WB_BUFF_USER_SPACE_RED_EN = 2,
-};
 /**
  * struct utp_upiu_header - UPIU header structure
  * @dword_0: UPIU header DW-0
@@ -588,18 +587,15 @@ enum {
 	UFS_DEV_REMOVABLE_NON_BOOTABLE	= 0x03,
 };
 
-/* Possible values for dExtendedUFSFeaturesSupport */
-enum {
-	UFS_DEV_WRITE_BOOSTER_SUP	= BIT(8),
-};
-
 struct ufs_dev_info {
 	/* device descriptor info */
 	u8	b_device_sub_class;
 	u16	w_manufacturer_id;
+	u16	w_manufacturer_date;
 	u8	i_product_name;
 	u16	w_spec_version;
 	u32	d_ext_ufs_feature_sup;
+	u8	i_lt;
 
 	/* query flags */
 	bool f_power_on_wp_en;
@@ -611,8 +607,6 @@ struct ufs_dev_info {
 
 	/* Device deviations from standard UFS device spec. */
 	unsigned int quirks;
-
-	bool keep_vcc_on;
 };
 
 #define MAX_MODEL_LEN 16
@@ -626,6 +620,7 @@ struct ufs_dev_desc {
 	u16 wmanufacturerid;
 	char model[MAX_MODEL_LEN + 1];
 	u16 wspecversion;
+	u32 dextfeatsupport;
 };
 
 /**

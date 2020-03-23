@@ -1966,6 +1966,8 @@ static int sdhci_crypto_cfg_end(struct sdhci_host *host,
 	return 0;
 }
 
+static int sdhci_card_busy(struct mmc_host *mmc);
+
 static void sdhci_request(struct mmc_host *mmc, struct mmc_request *mrq)
 {
 	struct sdhci_host *host;
@@ -2001,6 +2003,16 @@ static void sdhci_request(struct mmc_host *mmc, struct mmc_request *mrq)
 		else
 			present = sdhci_readl(host, SDHCI_PRESENT_STATE) &
 					SDHCI_CARD_PRESENT;
+	}
+
+	/*
+	 * Check SDcard busy signal by DAT0 before sending CMD13
+	 * about 10ms : 100us * 100 times
+	 */
+	if (present && (mrq->cmd->opcode == MMC_SEND_STATUS)) {
+		int tries = 100;
+		while (sdhci_card_busy(mmc) && --tries)
+			usleep_range(95, 105);
 	}
 
 	spin_lock_irqsave(&host->lock, flags);
@@ -2195,6 +2207,10 @@ void sdhci_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 				mmc_card_sdio(host->mmc->card))
 			sdhci_cfg_irq(host, true, false);
 		spin_unlock_irqrestore(&host->lock, flags);
+#if defined(CONFIG_SEC_HYBRID_TRAY)
+		sdhci_set_power(host, ios->power_mode, ios->vdd);
+		host->ops->set_clock(host, ios->clock);
+#endif
 		return;
 	}
 	spin_unlock_irqrestore(&host->lock, flags);
@@ -3136,7 +3152,7 @@ static void sdhci_timeout_timer(struct timer_list *t)
 				"Timeout waiting for cmd interrupt\n");
 		sdhci_dumpregs(host);
 
-		host->cmd->error = -ETIMEDOUT;
+		host->cmd->error = -ENOMEDIUM;
 		sdhci_finish_mrq(host, host->cmd->mrq);
 	}
 
@@ -3168,13 +3184,13 @@ static void sdhci_timeout_data_timer(struct timer_list *t)
 				(host->data->blksz * host->data->blocks),
 				(sdhci_readw(host, SDHCI_BLOCK_SIZE) & 0xFFF) *
 				sdhci_readw(host, SDHCI_BLOCK_COUNT));
-			host->data->error = -ETIMEDOUT;
+			host->data->error = -ENOMEDIUM;
 			sdhci_finish_data(host);
 		} else if (host->data_cmd) {
-			host->data_cmd->error = -ETIMEDOUT;
+			host->data_cmd->error = -ENOMEDIUM;
 			sdhci_finish_mrq(host, host->data_cmd->mrq);
 		} else {
-			host->cmd->error = -ETIMEDOUT;
+			host->cmd->error = -ENOMEDIUM;
 			sdhci_finish_mrq(host, host->cmd->mrq);
 		}
 	}
@@ -4023,6 +4039,8 @@ struct sdhci_host *sdhci_alloc_host(struct device *dev,
 	host->tuning_delay = -1;
 
 	host->sdma_boundary = SDHCI_DEFAULT_BOUNDARY_ARG;
+
+	mmc->trigger_card_event = true;
 
 	spin_lock_init(&host->lock);
 	ratelimit_state_init(&host->dbg_dump_rs, SDHCI_DBG_DUMP_RS_INTERVAL,

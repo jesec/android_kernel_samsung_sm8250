@@ -7,6 +7,7 @@
 #include "cvp_hfi.h"
 #include <synx_api.h>
 #include "cvp_core_hfi.h"
+#include "cvp_hfi_helper.h"
 
 struct cvp_power_level {
 	unsigned long core_sum;
@@ -391,7 +392,7 @@ static int msm_cvp_map_buf_user_persist(struct msm_cvp_inst *inst,
 		return -EINVAL;
 	}
 
-	if (in_buf->fd > 0) {
+	if (in_buf->fd >= 0) {
 		dma_buf = msm_cvp_smem_get_dma_buf(in_buf->fd);
 		if (!dma_buf) {
 			dprintk(CVP_ERR, "%s: Invalid fd=%d", __func__,
@@ -462,7 +463,7 @@ static int msm_cvp_map_buf_cpu(struct msm_cvp_inst *inst,
 		return -EINVAL;
 	}
 
-	if (in_buf->fd > 0) {
+	if (in_buf->fd >= 0) {
 		dma_buf = msm_cvp_smem_get_dma_buf(in_buf->fd);
 		if (!dma_buf) {
 			dprintk(CVP_ERR, "%s: Invalid fd=%d", __func__,
@@ -717,8 +718,7 @@ static int msm_cvp_map_user_persist(struct msm_cvp_inst *inst,
 		return 0;
 
 	for (i = 0; i < buf_num; i++) {
-		buf_ptr = (struct cvp_buf_desc *)
-				&in_pkt->pkt_data[offset];
+		buf_ptr = (struct cvp_buf_desc *)&in_pkt->pkt_data[offset];
 
 		offset += sizeof(*new_buf) >> 2;
 		new_buf = (struct cvp_buf_type *)buf_ptr;
@@ -738,7 +738,7 @@ static int msm_cvp_map_user_persist(struct msm_cvp_inst *inst,
 			return -EINVAL;
 		}
 
-		if (new_buf->fd <= 0 && !new_buf->dbuf)
+		if ((new_buf->fd < 0 || new_buf->size == 0) && !new_buf->dbuf)
 			continue;
 
 		rc = msm_cvp_map_buf_user_persist(inst, new_buf, &iova);
@@ -817,7 +817,8 @@ static int msm_cvp_map_buf(struct msm_cvp_inst *inst,
 				return -EINVAL;
 			}
 
-			if (new_buf->fd <= 0 && !new_buf->dbuf)
+			if ((new_buf->fd < 0 || new_buf->size == 0) &&
+				!new_buf->dbuf)
 				continue;
 
 			rc = msm_cvp_map_buf_cpu(inst, new_buf, &iova, frame);
@@ -903,6 +904,7 @@ static int msm_cvp_session_process_hfi(
 	unsigned int offset, buf_num, signal;
 	struct cvp_session_queue *sq;
 	struct msm_cvp_inst *s;
+	unsigned int max_buf_num;
 
 	if (!inst || !inst->core || !in_pkt) {
 		dprintk(CVP_ERR, "%s: invalid params\n", __func__);
@@ -946,6 +948,16 @@ static int msm_cvp_session_process_hfi(
 		offset = in_offset;
 		buf_num = in_buf_num;
 	}
+
+	max_buf_num = sizeof(struct cvp_kmd_hfi_packet)
+			/ sizeof(struct cvp_buf_type);
+
+	if (buf_num > max_buf_num)
+		return -EINVAL;
+
+	if ((offset + buf_num * sizeof(struct cvp_buf_type)) >
+					sizeof(struct cvp_kmd_hfi_packet))
+		return -EINVAL;
 
 	if (in_pkt->pkt_data[1] == HFI_CMD_SESSION_CVP_SET_PERSIST_BUFFERS)
 		rc = msm_cvp_map_user_persist(inst, in_pkt, offset, buf_num);
@@ -1622,7 +1634,7 @@ static void aggregate_power_request(struct msm_cvp_core *core,
 static int adjust_bw_freqs(void)
 {
 	struct msm_cvp_core *core;
-	struct iris_hfi_device *hdev;
+	struct cvp_hfi_device *hdev;
 	struct bus_info *bus;
 	struct clock_set *clocks;
 	struct clock_info *cl;
@@ -1630,12 +1642,12 @@ static int adjust_bw_freqs(void)
 	unsigned int tbl_size;
 	unsigned int cvp_min_rate, cvp_max_rate, max_bw, min_bw;
 	struct cvp_power_level rt_pwr = {0}, nrt_pwr = {0};
-	unsigned long tmp, core_sum, op_core_sum, bw_sum;
+	unsigned long core_sum, op_core_sum, bw_sum;
 	int i, rc = 0;
 
 	core = list_first_entry(&cvp_driver->cores, struct msm_cvp_core, list);
 
-	hdev = core->device->hfi_device_data;
+	hdev = core->device;
 	clocks = &core->resources.clock_set;
 	cl = &clocks->clock_tbl[clocks->count - 1];
 	tbl = core->resources.allowed_clks_tbl;
@@ -1690,22 +1702,24 @@ static int adjust_bw_freqs(void)
 		return -EINVAL;
 	}
 
-	tmp = core->curr_freq;
-	core->curr_freq = core_sum;
-	rc = msm_cvp_set_clocks(core);
+	mutex_unlock(&core->lock);
+	rc = msm_bus_scale_update_bw(bus->client, bw_sum, 0);
 	if (rc) {
+		dprintk(CVP_ERR, "Failed voting bus %s to ab %u\n",
+			bus->name, bw_sum);
+		goto exit;
+	}
+
+	rc = call_hfi_op(hdev, scale_clocks, hdev->hfi_device_data, core_sum);
+	if (rc)
 		dprintk(CVP_ERR,
 			"Failed to set clock rate %u %s: %d %s\n",
 			core_sum, cl->name, rc, __func__);
-		core->curr_freq = tmp;
-		return rc;
-	}
-	hdev->clk_freq = core->curr_freq;
-	rc = msm_bus_scale_update_bw(bus->client,
-			bw_sum, 0);
-	if (rc)
-		dprintk(CVP_ERR, "Failed voting bus %s to ab %u\n",
-			bus->name, bw_sum);
+
+exit:
+	mutex_lock(&core->lock);
+	if (!rc)
+		core->curr_freq = core_sum;
 
 	return rc;
 }
@@ -1742,6 +1756,7 @@ static int msm_cvp_request_power(struct msm_cvp_inst *inst,
 	inst->cur_cmd_type = CVP_KMD_REQUEST_POWER;
 	core = inst->core;
 
+	mutex_lock(&core->power_lock);
 	mutex_lock(&core->lock);
 
 	memcpy(&inst->power, power, sizeof(*power));
@@ -1762,6 +1777,7 @@ static int msm_cvp_request_power(struct msm_cvp_inst *inst,
 	}
 
 	mutex_unlock(&core->lock);
+	mutex_unlock(&core->power_lock);
 	inst->cur_cmd_type = 0;
 	cvp_put_inst(s);
 
@@ -1786,9 +1802,11 @@ static int msm_cvp_update_power(struct msm_cvp_inst *inst)
 	inst->cur_cmd_type = CVP_KMD_UPDATE_POWER;
 	core = inst->core;
 
+	mutex_lock(&core->power_lock);
 	mutex_lock(&core->lock);
 	rc = adjust_bw_freqs();
 	mutex_unlock(&core->lock);
+	mutex_unlock(&core->power_lock);
 	inst->cur_cmd_type = 0;
 	cvp_put_inst(s);
 

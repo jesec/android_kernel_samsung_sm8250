@@ -580,7 +580,7 @@ inline int bio_phys_segments(struct request_queue *q, struct bio *bio)
 }
 EXPORT_SYMBOL(bio_phys_segments);
 
-inline void bio_clone_crypt_key(struct bio *dst, const struct bio *src)
+void bio_clone_crypt_key(struct bio *dst, const struct bio *src)
 {
 #ifdef CONFIG_PFK
 	dst->bi_iter.bi_dun = src->bi_iter.bi_dun;

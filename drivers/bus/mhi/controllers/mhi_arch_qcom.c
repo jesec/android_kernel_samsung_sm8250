@@ -49,10 +49,41 @@ enum MHI_DEBUG_LEVEL  mhi_ipc_log_lvl = MHI_MSG_LVL_VERBOSE;
 
 #else
 
-#define MHI_IPC_LOG_PAGES (10)
+#define MHI_IPC_LOG_PAGES (20)
 enum MHI_DEBUG_LEVEL  mhi_ipc_log_lvl = MHI_MSG_LVL_ERROR;
 
 #endif
+
+void mhi_reg_write_work(struct work_struct *w)
+{
+	struct mhi_controller *mhi_cntrl = container_of(w,
+						struct mhi_controller,
+						reg_write_work);
+	struct mhi_dev *mhi_dev = mhi_controller_get_devdata(mhi_cntrl);
+	struct pci_dev *pci_dev = mhi_dev->pci_dev;
+	struct reg_write_info *info =
+				&mhi_cntrl->reg_write_q[mhi_cntrl->read_idx];
+
+	if (!info->valid)
+		return;
+
+	if (mhi_is_active(mhi_cntrl->mhi_dev) && msm_pcie_prevent_l1(pci_dev))
+		return;
+
+	while (info->valid) {
+		if (!mhi_is_active(mhi_cntrl->mhi_dev))
+			return;
+
+		writel_relaxed(info->val, info->reg_addr);
+		info->valid = false;
+		mhi_cntrl->read_idx =
+				(mhi_cntrl->read_idx + 1) &
+						(REG_WRITE_QUEUE_LEN - 1);
+		info = &mhi_cntrl->reg_write_q[mhi_cntrl->read_idx];
+	}
+
+	msm_pcie_allow_l1(pci_dev);
+}
 
 static int mhi_arch_pm_notifier(struct notifier_block *nb,
 				unsigned long event, void *unused)
@@ -307,9 +338,9 @@ static void mhi_boot_monitor(void *data, async_cookie_t cookie)
 	struct mhi_controller *mhi_cntrl = data;
 	struct mhi_dev *mhi_dev = mhi_controller_get_devdata(mhi_cntrl);
 	struct arch_info *arch_info = mhi_dev->arch_info;
-	struct mhi_device *boot_dev;
 	/* 15 sec timeout for booting device */
 	const u32 timeout = msecs_to_jiffies(15000);
+	int retry = 0;
 
 	/* wait for device to enter boot stage */
 	wait_event_timeout(mhi_cntrl->state_event, mhi_cntrl->ee == MHI_EE_AMSS
@@ -320,15 +351,15 @@ static void mhi_boot_monitor(void *data, async_cookie_t cookie)
 	ipc_log_string(arch_info->boot_ipc_log, HLOG "Device current ee = %s\n",
 		       TO_MHI_EXEC_STR(mhi_cntrl->ee));
 
-	/* if we successfully booted to amss disable boot log channel */
-	if (mhi_cntrl->ee == MHI_EE_AMSS) {
-		boot_dev = arch_info->boot_dev;
-		if (boot_dev)
-			mhi_unprepare_from_transfer(boot_dev);
+	MHI_ERR("boot[%d] : ee %d(%s), drv sup %d, drv cnt %d\n", retry,
+		mhi_cntrl->ee == MHI_EE_AMSS, TO_MHI_EXEC_STR(mhi_cntrl->ee),
+		mhi_dev->drv_supported,
+		arch_info->drv_connected);
 
+	/* if we successfully booted to amss, enable runtime pm */
+	if (mhi_cntrl->ee == MHI_EE_AMSS)
 		if (!mhi_dev->drv_supported || arch_info->drv_connected)
 			pm_runtime_allow(&mhi_dev->pci_dev->dev);
-	}
 }
 
 int mhi_arch_power_up(struct mhi_controller *mhi_cntrl)
@@ -337,10 +368,22 @@ int mhi_arch_power_up(struct mhi_controller *mhi_cntrl)
 	struct arch_info *arch_info = mhi_dev->arch_info;
 
 	/* start a boot monitor if not in crashed state */
-	if (!mhi_dev->mdm_state)
+	/* boot_monitor running on crash case, to make pcie runtime pm work */
+	//if (!mhi_dev->mdm_state)
 		arch_info->cookie = async_schedule(mhi_boot_monitor, mhi_cntrl);
 
 	return 0;
+}
+
+void mhi_arch_mission_mode_enter(struct mhi_controller *mhi_cntrl)
+{
+ struct mhi_dev *mhi_dev = mhi_controller_get_devdata(mhi_cntrl);
+ struct arch_info *arch_info = mhi_dev->arch_info;
+ struct mhi_device *boot_dev = arch_info->boot_dev;
+
+ /* disable boot logger channel */
+ if (boot_dev)
+ mhi_unprepare_from_transfer(boot_dev);
 }
 
 static  int mhi_arch_pcie_scale_bw(struct mhi_controller *mhi_cntrl,
@@ -722,6 +765,7 @@ int mhi_arch_link_resume(struct mhi_controller *mhi_cntrl)
 	}
 
 	msm_pcie_l1ss_timeout_enable(pci_dev);
+	mhi_cntrl->force_m3_done = true;
 
 	MHI_LOG("Exited\n");
 

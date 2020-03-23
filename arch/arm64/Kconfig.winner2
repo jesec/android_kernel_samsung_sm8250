@@ -1,0 +1,8 @@
+#
+# Samsung Winner2 Projects
+#
+config MACH_WIN2Q_EUR_OPEN
+	default n
+	bool "Samsung WIN2Q EUR OPEN"
+	help
+	  Support for Samsung WIN2Q EUR OPEN device.

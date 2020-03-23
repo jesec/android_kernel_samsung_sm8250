@@ -1372,6 +1372,12 @@ config GPIO_XRA1403
 
 endmenu
 
+config SEC_GPIO_DVS
+	tristate "setting Samsung GPIO debugging and verification system"
+	help
+	  To verify gpio configurations of devices, set this feature.
+	  This feature should be enabled for user-debug mode.
+
 menu "USB GPIO expanders"
 	depends on USB
 
@@ -1387,5 +1393,10 @@ config GPIO_VIPERBOARD
           of the module parameters.
 
 endmenu
+config SEC_CONNECTOR_DETECTOR
+	tristate "Setting Samsung Connector Detector feature"
+	help
+	  To detect connection of connector, set this feature.
+	  This feature should be enabled for factory mode.
 
 endif

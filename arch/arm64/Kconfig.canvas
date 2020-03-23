@@ -1,0 +1,8 @@
+#
+# Samsung Canvas Projects
+#
+config MACH_C2Q_USA_SINGLE
+	default n
+	bool "Samsung C2Q USA SQ"
+	help
+	  Support for Samsung C2Q USA SQ device.

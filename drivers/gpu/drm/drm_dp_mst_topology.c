@@ -19,6 +19,7 @@
  * TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE
  * OF THIS SOFTWARE.
  */
+#define pr_fmt(fmt)	"[dp-mst-hlpr] %s: " fmt, __func__
 
 #include <linux/kernel.h>
 #include <linux/delay.h>
@@ -33,6 +34,20 @@
 #include <drm/drm_fixed.h>
 #include <drm/drm_atomic.h>
 #include <drm/drm_atomic_helper.h>
+
+#ifdef CONFIG_SEC_DISPLAYPORT
+#include <linux/secdp_logger.h>
+
+#ifdef DRM_DEBUG_KMS
+#undef DRM_DEBUG_KMS
+#define DRM_DEBUG_KMS	pr_debug
+#endif
+
+#ifdef DRM_ERROR
+#undef DRM_ERROR
+#define DRM_ERROR	pr_err
+#endif
+#endif
 
 /**
  * DOC: dp mst helper
@@ -823,8 +838,9 @@ static int drm_dp_mst_wait_tx_reply(struct drm_dp_mst_branch *mstb,
 			list_del(&txmsg->next);
 		}
 
-		if (txmsg->state == DRM_DP_SIDEBAND_TX_START_SEND ||
-		    txmsg->state == DRM_DP_SIDEBAND_TX_SENT) {
+		if ((txmsg->state == DRM_DP_SIDEBAND_TX_START_SEND ||
+			txmsg->state == DRM_DP_SIDEBAND_TX_SENT) &&
+			txmsg->seqno != -1) {
 			mstb->tx_slots[txmsg->seqno] = NULL;
 		}
 	}
@@ -1638,7 +1654,11 @@ static void process_single_up_tx_qlock(struct drm_dp_mst_topology_mgr *mgr,
 	if (ret != 1)
 		DRM_DEBUG_KMS("failed to send msg in q %d\n", ret);
 
-	txmsg->dst->tx_slots[txmsg->seqno] = NULL;
+	if (txmsg->seqno != -1) {
+		WARN_ON((unsigned)txmsg->seqno >
+			ARRAY_SIZE(txmsg->dst->tx_slots));
+		txmsg->dst->tx_slots[txmsg->seqno] = NULL;
+	}
 }
 
 static void drm_dp_queue_down_tx(struct drm_dp_mst_topology_mgr *mgr,
@@ -1661,6 +1681,8 @@ static void drm_dp_send_link_address(struct drm_dp_mst_topology_mgr *mgr,
 	txmsg = kzalloc(sizeof(*txmsg), GFP_KERNEL);
 	if (!txmsg)
 		return;
+
+	pr_debug("+++\n");
 
 	txmsg->dst = mstb;
 	len = build_link_address(txmsg);
@@ -1715,6 +1737,8 @@ static int drm_dp_send_enum_path_resources(struct drm_dp_mst_topology_mgr *mgr,
 	txmsg = kzalloc(sizeof(*txmsg), GFP_KERNEL);
 	if (!txmsg)
 		return -ENOMEM;
+
+	pr_debug("+++\n");
 
 	txmsg->dst = mstb;
 	len = build_enum_path_resources(txmsg, port->port_num);
@@ -1785,6 +1809,8 @@ static int drm_dp_payload_send_msg(struct drm_dp_mst_topology_mgr *mgr,
 	u8 sinks[DRM_DP_MAX_SDP_STREAMS];
 	int i;
 
+	pr_debug("+++\n");
+
 	port = drm_dp_get_validated_port_ref(mgr, port);
 	if (!port)
 		return -EINVAL;
@@ -1835,6 +1861,8 @@ int drm_dp_send_power_updown_phy(struct drm_dp_mst_topology_mgr *mgr,
 {
 	struct drm_dp_sideband_msg_tx *txmsg;
 	int len, ret;
+
+	pr_debug("+++\n");
 
 	port = drm_dp_get_validated_port_ref(mgr, port);
 	if (!port)
@@ -2087,6 +2115,8 @@ int drm_dp_send_dpcd_read(struct drm_dp_mst_topology_mgr *mgr,
 	struct drm_dp_sideband_msg_tx *txmsg;
 	struct drm_dp_mst_branch *mstb;
 
+	pr_debug("+++\n");
+
 	memset(bytes, 0, size);
 
 	mstb = drm_dp_get_validated_mstb_ref(mgr, port->parent);
@@ -2142,6 +2172,8 @@ int drm_dp_send_dpcd_write(struct drm_dp_mst_topology_mgr *mgr,
 	int ret;
 	struct drm_dp_sideband_msg_tx *txmsg;
 	struct drm_dp_mst_branch *mstb;
+
+	pr_debug("+++\n");
 
 	mstb = drm_dp_get_validated_mstb_ref(mgr, port->parent);
 	if (!mstb)
@@ -3429,6 +3461,8 @@ static int drm_dp_mst_i2c_xfer(struct i2c_adapter *adapter, struct i2c_msg *msgs
 	struct drm_dp_sideband_msg_req_body msg;
 	struct drm_dp_sideband_msg_tx *txmsg = NULL;
 	int ret;
+
+	pr_debug("+++\n");
 
 	mstb = drm_dp_get_validated_mstb_ref(mgr, port->parent);
 	if (!mstb)

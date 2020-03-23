@@ -516,6 +516,9 @@ static const struct of_device_id reserved_mem_matches[] = {
 	{ .compatible = "qcom,rmtfs-mem" },
 	{ .compatible = "qcom,cmd-db" },
 	{ .compatible = "ramoops" },
+#ifdef CONFIG_PSTORE_PMSG_SSPLOG
+	{ .compatible = "ss_plog" },
+#endif
 	{}
 };
 

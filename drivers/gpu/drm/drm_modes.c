@@ -994,6 +994,16 @@ static bool drm_mode_match_aspect_ratio(const struct drm_display_mode *mode1,
 	return mode1->picture_aspect_ratio == mode2->picture_aspect_ratio;
 }
 
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+/* Used for VRR SOT HS mode */
+static bool drm_mode_match_type_userdef(const struct drm_display_mode *mode1,
+					const struct drm_display_mode *mode2)
+{
+	return ((mode1->type & DRM_MODE_TYPE_USERDEF) ==
+			(mode2->type & DRM_MODE_TYPE_USERDEF));
+}
+#endif
+
 /**
  * drm_mode_match - test modes for (partial) equality
  * @mode1: first mode
@@ -1035,6 +1045,12 @@ bool drm_mode_match(const struct drm_display_mode *mode1,
 	    !drm_mode_match_aspect_ratio(mode1, mode2))
 		return false;
 
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+	if (match_flags & DRM_MODE_MATCH_TYPE_USERDEF  &&
+	    !drm_mode_match_type_userdef(mode1, mode2))
+		return false;
+#endif
+
 	return true;
 }
 EXPORT_SYMBOL(drm_mode_match);
@@ -1057,6 +1073,9 @@ bool drm_mode_equal(const struct drm_display_mode *mode1,
 			      DRM_MODE_MATCH_CLOCK |
 			      DRM_MODE_MATCH_FLAGS |
 			      DRM_MODE_MATCH_3D_FLAGS|
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+			      DRM_MODE_MATCH_TYPE_USERDEF |
+#endif
 			      DRM_MODE_MATCH_ASPECT_RATIO);
 }
 EXPORT_SYMBOL(drm_mode_equal);

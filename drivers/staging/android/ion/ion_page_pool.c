@@ -12,6 +12,10 @@
 
 #include "ion.h"
 
+#ifdef CONFIG_HUGEPAGE_POOL
+#include <linux/hugepage_pool.h>
+#endif
+
 /* do a simple check to see if we are in any low memory situation */
 static bool pool_refill_ok(struct ion_page_pool *pool)
 {
@@ -51,7 +55,17 @@ static inline struct page *ion_page_pool_alloc_pages(struct ion_page_pool *pool)
 {
 	if (fatal_signal_pending(current))
 		return NULL;
+
+#ifdef CONFIG_HUGEPAGE_POOL
+	/* we assume that this path is only being used by system heap */
+	if (pool->order == HUGEPAGE_ORDER)
+		return alloc_zeroed_hugepage(pool->gfp_mask, pool->order, true,
+					     HPAGE_ION);
+	else
+		return alloc_pages(pool->gfp_mask, pool->order);
+#else
 	return alloc_pages(pool->gfp_mask, pool->order);
+#endif
 }
 
 static void ion_page_pool_free_pages(struct ion_page_pool *pool,
@@ -81,7 +95,7 @@ void ion_page_pool_refill(struct ion_page_pool *pool)
 {
 	struct page *page;
 	gfp_t gfp_refill = (pool->gfp_mask | __GFP_RECLAIM) & ~__GFP_NORETRY;
-	struct device *dev = pool->heap.priv;
+	struct device *dev = pool->dev;
 
 	/* skip refilling order 0 pools */
 	if (!pool->order)
@@ -117,6 +131,26 @@ static struct page *ion_page_pool_remove(struct ion_page_pool *pool, bool high)
 	list_del(&page->lru);
 	mod_node_page_state(page_pgdat(page), NR_INDIRECTLY_RECLAIMABLE_BYTES,
 			    -(1 << (PAGE_SHIFT + pool->order)));
+	return page;
+}
+
+struct page *ion_page_pool_only_alloc(struct ion_page_pool *pool)
+{
+	struct page *page = NULL;
+
+	BUG_ON(!pool);
+
+	if (!pool->high_count && !pool->low_count)
+		goto done;
+
+	if (mutex_trylock(&pool->mutex)) {
+		if (pool->high_count)
+			page = ion_page_pool_remove(pool, true);
+		else if (pool->low_count)
+			page = ion_page_pool_remove(pool, false);
+		mutex_unlock(&pool->mutex);
+	}
+done:
 	return page;
 }
 

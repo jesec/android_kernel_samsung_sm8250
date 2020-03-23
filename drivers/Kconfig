@@ -225,9 +225,40 @@ source "drivers/slimbus/Kconfig"
 
 source "drivers/esoc/Kconfig"
 
+source "drivers/battery_v2/Kconfig"
+
 source "drivers/sensors/Kconfig"
+
+source "drivers/optics/Kconfig"
 
 source "drivers/gpu/msm/Kconfig"
 
 source "drivers/energy_model/Kconfig"
+
+source "drivers/samsung/Kconfig"
+
+source "drivers/adsp_factory/Kconfig"
+
+source "drivers/staging/samsung/sec_notifier/Kconfig"
+
+source "drivers/switch/Kconfig"
+
+source "drivers/muic/Kconfig"
+
+source "drivers/ccic/Kconfig"
+
+source "drivers/motor/Kconfig"
+
+source "drivers/fingerprint/Kconfig"
+
+source "drivers/five/Kconfig"
+
+source "drivers/security/samsung/icdrv/Kconfig"
+
+source "drivers/gator/Kconfig"
+
+source "drivers/perf_mgr/Kconfig"
+
+source "drivers/kperfmon/Kconfig"
+
 endmenu
