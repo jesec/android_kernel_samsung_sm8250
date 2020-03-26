@@ -29,9 +29,6 @@ ifeq ($(CONFIG_FIVE_TEE_DRIVER),y)
 include $(srctree)/firmware/five/Makefile
 endif
 
-quiet_cmd_ihex  = IHEX    $@
-      cmd_ihex  = $(OBJCOPY) -Iihex -Obinary $< $@
-
 quiet_cmd_fwbin = MK_FW   $@
       cmd_fwbin = FWNAME="$(patsubst firmware/%.gen.S,%,$@)";		     \
 		  FWSTR="$(subst /,_,$(subst .,_,$(subst -,_,$(patsubst	     \
@@ -54,11 +51,6 @@ quiet_cmd_fwbin = MK_FW   $@
 		  echo "    $${ASM_WORD} _fw_$${FWSTR}_name"		>>$@;\
 		  echo "    $${ASM_WORD} _fw_$${FWSTR}_bin"		>>$@;\
 		  echo "    $${ASM_WORD} _fw_end - _fw_$${FWSTR}_bin"	>>$@;
-
-# .ihex is used just as a simple way to hold binary files in a source tree
-# where binaries are frowned upon. They are directly converted with objcopy.
-$(obj)/%: $(obj)/%.ihex
-	$(call cmd,ihex)
 
 # One of these files will change, or come into existence, whenever
 # the configuration changes between 32-bit and 64-bit. The .S files
