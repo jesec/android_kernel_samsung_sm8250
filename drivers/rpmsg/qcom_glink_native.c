@@ -295,6 +295,9 @@ static void qcom_glink_channel_release(struct kref *ref)
 	CH_INFO(channel, "\n");
 	wake_up(&channel->intent_req_event);
 
+	/* cancel pending rx_done work */
+	kthread_cancel_work_sync(&channel->intent_work);
+
 	spin_lock_irqsave(&channel->intent_lock, flags);
 	idr_for_each_entry(&channel->liids, tmp, iid) {
 		kfree(tmp->data);
@@ -1817,6 +1820,18 @@ static void qcom_glink_work(struct work_struct *work)
 	}
 }
 
+static void qcom_glink_cancel_rx_work(struct qcom_glink *glink)
+{
+	struct glink_defer_cmd *dcmd;
+	struct glink_defer_cmd *tmp;
+
+	/* cancel any pending deferred rx_work */
+	cancel_work_sync(&glink->rx_work);
+
+	list_for_each_entry_safe(dcmd, tmp, &glink->rx_queue, node)
+		kfree(dcmd);
+}
+
 static ssize_t rpmsg_name_show(struct device *dev,
 			       struct device_attribute *attr, char *buf)
 {
@@ -2035,7 +2050,7 @@ void qcom_glink_native_remove(struct qcom_glink *glink)
 	subsys_unregister_early_notifier(glink->name, XPORT_LAYER_NOTIF);
 	qcom_glink_notif_reset(glink);
 	disable_irq(glink->irq);
-	cancel_work_sync(&glink->rx_work);
+	qcom_glink_cancel_rx_work(glink);
 
 	ret = device_for_each_child(glink->dev, NULL, qcom_glink_remove_device);
 	if (ret)
@@ -2050,8 +2065,6 @@ void qcom_glink_native_remove(struct qcom_glink *glink)
 	}
 	spin_unlock_irqrestore(&glink->idr_lock, flags);
 
-	spin_lock_irqsave(&glink->idr_lock, flags);
-
 	/* Release any defunct local channels, waiting for close-ack */
 	idr_for_each_entry(&glink->lcids, channel, cid) {
 		kref_put(&channel->refcount, qcom_glink_channel_release);
@@ -2064,13 +2077,17 @@ void qcom_glink_native_remove(struct qcom_glink *glink)
 		idr_remove(&glink->rcids, cid);
 	}
 
+	/* Release any defunct local channels, waiting for close-req */
+	idr_for_each_entry(&glink->rcids, channel, cid)
+		kref_put(&channel->refcount, qcom_glink_channel_release);
+
 	idr_destroy(&glink->lcids);
 	idr_destroy(&glink->rcids);
-	spin_unlock_irqrestore(&glink->idr_lock, flags);
 
 	kthread_flush_worker(&glink->kworker);
 	kthread_stop(glink->task);
 	qcom_glink_pipe_reset(glink);
+
 	mbox_free_channel(glink->mbox_chan);
 }
 EXPORT_SYMBOL_GPL(qcom_glink_native_remove);
