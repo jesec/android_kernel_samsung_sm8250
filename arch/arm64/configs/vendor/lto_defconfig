@@ -1,1 +1,1 @@
-CONFIG_LTO_CLANG=y
+# CONFIG_THINLTO is not set
