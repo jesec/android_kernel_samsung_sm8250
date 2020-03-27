@@ -96,6 +96,12 @@ config PROC_AVC
           When PROC_AVC config is turned on, proc/avc_msg path is created and then,
           can use it to analyze the SEandroid denial.
 
+config PROC_PROP
+	bool "support (/proc/prop)"
+	default n
+	help
+	  support prop to Android userspace
+
 config PROC_CHILDREN
 	bool "Include /proc/<pid>/task/<tid>/children file"
 	default n

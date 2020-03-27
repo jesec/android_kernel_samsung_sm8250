@@ -36,3 +36,4 @@ proc-$(CONFIG_PROC_VMCORE)	+= vmcore.o
 proc-$(CONFIG_PRINTK)	+= kmsg.o
 proc-$(CONFIG_PROC_PAGE_MONITOR)	+= page.o
 proc-$(CONFIG_PROC_AVC) += proc_avc.o
+proc-$(CONFIG_PROC_PROP) += prop.o
