@@ -6,6 +6,12 @@
 
 static int prop_proc_show(struct seq_file *m, void *v)
 {
+	seq_puts(m, "ro.config.knox=v00");
+	seq_putc(m, '\n');
+	seq_puts(m, "ro.config.tima=0");
+	seq_putc(m, '\n');
+	seq_puts(m, "ro.config.iccc_version=iccc_disabled");
+	seq_putc(m, '\n');
 	return 0;
 }
 
