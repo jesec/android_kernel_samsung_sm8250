@@ -920,7 +920,7 @@ void input_booster_run_booster_off(void)
 	RUN_BOOSTER(BOOSTER_OFF,trgt_booster,trgt_booster_dt);
 }
 
-int is_ib_init_succeed()
+int is_ib_init_succeed(void)
 {
 	return (device_tree_infor != NULL) ? 1 : 0;
 }

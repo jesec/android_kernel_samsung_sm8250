@@ -848,7 +848,7 @@ int get_chipset_version(void)
 	return soc_id;
 }
 
-int bt_disable_asd()
+int bt_disable_asd(void)
 {
 	int rc = 0;
 	if (bt_power_pdata->bt_vdd_asd) {
