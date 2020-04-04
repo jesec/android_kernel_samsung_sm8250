@@ -250,7 +250,7 @@ static struct task_fps_util_info *get_target_task(pid_t tid){
 	return ret_fi;
 }
 
-unsigned long get_fps_req_util(){
+unsigned long get_fps_req_util(void){
 	return fps_required_util;
 }
 EXPORT_SYMBOL_GPL(get_fps_req_util);

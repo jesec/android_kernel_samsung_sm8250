@@ -617,7 +617,6 @@ static void mhi_pm_disable_transition(struct mhi_controller *mhi_cntrl,
 
 	/* trigger MHI RESET so device will not access host ddr */
 	if (MHI_REG_ACCESS_VALID(prev_state)) {
-		u32 in_reset = -1;
 		/* MHI_RESET always timed-out, give 500 msec for graceful reset */
 		unsigned long timeout = msecs_to_jiffies(500);
 
