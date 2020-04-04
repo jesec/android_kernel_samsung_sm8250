@@ -4362,10 +4362,6 @@ dhd_pktfilter_offload_set(dhd_pub_t * dhd, char *arg)
 					htod16(WL_PKT_FILTER_MFLAG_NEG);
 				(argv[i])++;
 			}
-			if (argv[i] == '\0') {
-				printf("Pattern not provided\n");
-				goto fail;
-			}
 			rc = wl_pattern_atoh(argv[i], (char*)&pf_el->mask_and_data[rc]);
 			if ((rc == -1) || (rc > MAX_PKTFLT_FIXED_PATTERN_SIZE)) {
 				printf("Rejecting: %s\n", argv[i]);

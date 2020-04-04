@@ -525,11 +525,12 @@ int ext4_bio_write_page(struct ext4_io_submit *io,
 			if (ret == -ENOMEM &&
 			    (io->io_bio || wbc->sync_mode == WB_SYNC_ALL)) {
 				gfp_flags = GFP_NOFS;
-				if (io->io_bio)
+				if (io->io_bio) {
 					if (ext4_io_submit_to_dd(inode, io) == -EOPNOTSUPP)
 						ext4_io_submit(io);
-				else
+				} else {
 					gfp_flags |= __GFP_NOFAIL;
+				}
 				congestion_wait(BLK_RW_ASYNC, HZ/50);
 				goto retry_encrypt;
 			}
