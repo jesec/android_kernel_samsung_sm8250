@@ -3262,13 +3262,7 @@ static void ipa3_recycle_rx_wrapper(struct ipa3_rx_pkt_wrapper *rx_pkt)
 
 static void ipa3_recycle_rx_page_wrapper(struct ipa3_rx_pkt_wrapper *rx_pkt)
 {
-	struct ipa_rx_page_data rx_page;
-
-	rx_page = rx_pkt->page_data;
-
-	/* Free rx_wrapper only for tmp alloc pages*/
-	if (rx_page.is_tmp_alloc)
-		kmem_cache_free(ipa3_ctx->rx_pkt_wrapper_cache, rx_pkt);
+	/* no-op */
 }
 
 /**
@@ -4980,8 +4974,15 @@ start_poll:
 	}
 	cnt += weight - remain_aggr_weight * IPA_WAN_AGGR_PKT_CNT;
 	/* call repl_hdlr before napi_reschedule / napi_complete */
-	if (cnt)
+
+	/* yanghao@PSW.Kernel.Stability merge CR2578501 */
+#ifdef VENDOR_EDIT
+	ep->sys->repl_hdlr(ep->sys);
+#else
+	if(cnt)
 		ep->sys->repl_hdlr(ep->sys);
+#endif
+
 	/* When not able to replenish enough descriptors pipe wait
 	 * until minimum number descripotrs to replish.
 	 */
@@ -4994,7 +4995,7 @@ start_poll:
 		ipa_pm_deferred_deactivate(ep->sys->pm_hdl);
 	} else {
 		cnt = weight;
-		IPADBG("Client = %d not replenished free descripotrs\n",
+		IPADBG_LOW("Client = %d not replenished free descripotrs\n",
 				ep->client);
 	}
 	return cnt;

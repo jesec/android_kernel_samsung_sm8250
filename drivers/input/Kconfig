@@ -213,6 +213,11 @@ source "drivers/input/misc/Kconfig"
 
 source "drivers/input/rmi4/Kconfig"
 
+#ifdef VENDOR_EDIT
+#Bangxiong.Wu@BSP.Fingerprint.Basic, 2019/04/17, Add for fingerprint driver
+source "drivers/input/oppo_fp_drivers/Kconfig"
+#endif
+
 endif
 
 menu "Hardware I/O ports"

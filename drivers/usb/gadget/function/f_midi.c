@@ -1235,9 +1235,12 @@ static ssize_t alsa_show(struct device *dev,
 
 	if (fi_midi && fi_midi->f) {
 		midi = func_to_midi(fi_midi->f);
-		if (midi->rmidi && midi->rmidi->card)
+		#ifdef VENDOR_EDIT
+		/* OuYangBaiLi@BSP.CHG.Basic,charging_bsp 2019/12/02,Add for charging_bsp */
+		if (midi->rmidi && midi->card && midi->rmidi->card)
 			return sprintf(buf, "%d %d\n",
 			midi->rmidi->card->number, midi->rmidi->device);
+		#endif /* VENDOR_EDIT */
 	}
 
 	/* print PCM card and device numbers */

@@ -355,10 +355,13 @@ static void dwc3_free_event_buffers(struct dwc3 *dwc)
 	struct dwc3_event_buffer	*evt;
 
 	evt = dwc->ev_buf;
+#ifdef VENDOR_EDIT
+	/*LiYue@BSP.CHG.Basic, 2019/08/14, add for support cdp charging*/
 	if (evt) {
 		dwc3_free_one_event_buffer(dwc, evt);
 		dwc->ev_buf = NULL;
 	}
+#endif
 
 	/* free GSI related event buffers */
 	dwc3_notify_event(dwc, DWC3_GSI_EVT_BUF_FREE, 0);

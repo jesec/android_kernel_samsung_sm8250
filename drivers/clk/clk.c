@@ -30,6 +30,9 @@
 #include <linux/regulator/consumer.h>
 
 #include "clk.h"
+#ifdef VENDOR_EDIT //Cong.Dai@BSP.TP.Function, 2019/07/03, modified for replace daily build macro
+#include <soc/oppo/oppo_project.h>
+#endif /* VENDOR_EDIT */
 
 static DEFINE_SPINLOCK(enable_lock);
 static DEFINE_MUTEX(prepare_lock);
@@ -3974,6 +3977,11 @@ static int __init clk_debug_init(void)
 
 	inited = 1;
 	mutex_unlock(&clk_debug_lock);
+
+	#ifdef VENDOR_EDIT /*Cong.Dai@BSP.TP.Function, 2019/07/03, modified for replace daily build macro*/
+	if (get_eng_version() != RELEASE)
+		debug_suspend = 1;
+	#endif/*VENDOR_EDIT*/
 
 	return 0;
 }

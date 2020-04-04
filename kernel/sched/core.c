@@ -25,6 +25,11 @@
 #define CREATE_TRACE_POINTS
 #include <trace/events/sched.h>
 
+#ifdef VENDOR_EDIT
+// Liujie.Xie@TECH.Kernel.Sched, 2019/05/22, add for ui first
+#include <linux/oppocfs/oppo_cfs_common.h>
+#endif
+
 DEFINE_PER_CPU_SHARED_ALIGNED(struct rq, runqueues);
 
 #if defined(CONFIG_SCHED_DEBUG) && defined(CONFIG_JUMP_LABEL)
@@ -3201,6 +3206,13 @@ void scheduler_tick(void)
 	trigger_load_balance(rq);
 #endif
 
+#ifdef VENDOR_EDIT
+// Liujie.Xie@TECH.Kernel.Sched, 2019/05/22, add for ui first
+    if (sysctl_uifirst_enabled) {
+        trigger_ux_balance(rq);
+    }
+#endif
+
 	rcu_read_lock();
 	grp = task_related_thread_group(curr);
 	if (update_preferred_cluster(grp, curr, old_load, true))
@@ -3690,6 +3702,11 @@ static void __sched notrace __schedule(bool preempt)
 		}
 		switch_count = &prev->nvcsw;
 	}
+
+#ifdef VENDOR_EDIT
+// Liujie.Xie@TECH.Kernel.Sched, 2019/05/22, add for ui first
+    prev->enqueue_time = rq->clock;
+#endif
 
 	next = pick_next_task(rq, prev, &rf);
 	clear_tsk_need_resched(prev);
@@ -6498,6 +6515,10 @@ void __init sched_init_smp(void)
 	cpumask_copy(&current->cpus_requested, cpu_possible_mask);
 	sched_init_granularity();
 
+#ifdef VENDOR_EDIT
+// Liujie.Xie@TECH.Kernel.Sched, 2019/10/26, add for ui first
+    ux_init_cpu_data();
+#endif
 	init_sched_rt_class();
 	init_sched_dl_class();
 
@@ -6616,6 +6637,10 @@ void __init sched_init(void)
 		init_cfs_rq(&rq->cfs);
 		init_rt_rq(&rq->rt);
 		init_dl_rq(&rq->dl);
+#ifdef VENDOR_EDIT
+// Liujie.Xie@TECH.Kernel.Sched, 2019/05/22, add for ui first
+        ux_init_rq_data(rq);
+#endif
 #ifdef CONFIG_FAIR_GROUP_SCHED
 		root_task_group.shares = ROOT_TASK_GROUP_LOAD;
 		INIT_LIST_HEAD(&rq->leaf_cfs_rq_list);
@@ -6875,6 +6900,252 @@ void ia64_set_curr_task(int cpu, struct task_struct *p)
 {
 	cpu_curr(cpu) = p;
 }
+
+#endif
+
+#ifdef CONFIG_PROC_SYSCTL
+static int find_capacity_margin_levels(void)
+{
+	int cpu, max_clusters;
+
+	for (cpu = max_clusters = 0; cpu < num_possible_cpus();) {
+		cpu += cpumask_weight(topology_possible_sibling_cpumask(cpu));
+		max_clusters++;
+	}
+
+	/*
+	 * Capacity margin levels is number of clusters available in
+	 * the system subtracted by 1.
+	 */
+	return max_clusters - 1;
+}
+
+static void sched_update_up_migrate_values(int cap_margin_levels,
+				const struct cpumask *cluster_cpus[])
+{
+	int i, cpu;
+
+	if (cap_margin_levels > 1) {
+		/*
+		 * No need to worry about CPUs in last cluster
+		 * if there are more than 2 clusters in the system
+		 */
+		for (i = 0; i < cap_margin_levels; i++)
+			if (cluster_cpus[i])
+				for_each_cpu(cpu, cluster_cpus[i])
+					sched_capacity_margin_up[cpu] =
+					sysctl_sched_capacity_margin_up[i];
+	} else {
+		for_each_possible_cpu(cpu)
+			sched_capacity_margin_up[cpu] =
+				sysctl_sched_capacity_margin_up[0];
+	}
+}
+
+static void sched_update_down_migrate_values(int cap_margin_levels,
+				const struct cpumask *cluster_cpus[])
+{
+	int i, cpu;
+
+	if (cap_margin_levels > 1) {
+		/*
+		 * Skip last cluster as down migrate value isn't needed.
+		 * Because there is no downmigration to it.
+		 */
+		for (i = 0; i < cap_margin_levels; i++)
+			if (cluster_cpus[i])
+				for_each_cpu(cpu, cluster_cpus[i])
+					sched_capacity_margin_down[cpu] =
+					sysctl_sched_capacity_margin_down[i];
+	} else {
+		for_each_possible_cpu(cpu)
+			sched_capacity_margin_down[cpu] =
+				sysctl_sched_capacity_margin_down[0];
+	}
+}
+
+static void sched_update_updown_migrate_values(unsigned int *data,
+					      int cap_margin_levels)
+{
+	int i, cpu;
+	static const struct cpumask *cluster_cpus[MAX_CLUSTERS];
+
+	for (i = cpu = 0; i < MAX_CLUSTERS &&
+				cpu < num_possible_cpus(); i++) {
+		cluster_cpus[i] = topology_possible_sibling_cpumask(cpu);
+		cpu += cpumask_weight(topology_possible_sibling_cpumask(cpu));
+	}
+
+	if (data == &sysctl_sched_capacity_margin_up[0])
+		sched_update_up_migrate_values(cap_margin_levels, cluster_cpus);
+	else
+		sched_update_down_migrate_values(cap_margin_levels,
+						 cluster_cpus);
+}
+
+#ifdef VENDOR_EDIT
+//cuixiaogang@SH.hypnus add for up/down migrate
+static DEFINE_MUTEX(mutex);
+#endif /* VENDOR_EDIT */
+int sched_updown_migrate_handler(struct ctl_table *table, int write,
+				void __user *buffer, size_t *lenp,
+				loff_t *ppos)
+{
+	int ret, i;
+	unsigned int *data = (unsigned int *)table->data;
+	unsigned int *old_val;
+#ifndef VENDOR_EDIT
+//cuixiaogang@SH.hypnus add for up/down migrate
+	static DEFINE_MUTEX(mutex);
+#endif /* VENDOR_EDIT */
+	static int cap_margin_levels = -1;
+
+	mutex_lock(&mutex);
+
+	if (cap_margin_levels == -1 ||
+		table->maxlen != (sizeof(unsigned int) * cap_margin_levels)) {
+		cap_margin_levels = find_capacity_margin_levels();
+		table->maxlen = sizeof(unsigned int) * cap_margin_levels;
+	}
+
+	if (cap_margin_levels <= 0) {
+		ret = -EINVAL;
+		goto unlock_mutex;
+	}
+
+	if (!write) {
+		ret = proc_douintvec_capacity(table, write, buffer, lenp, ppos);
+		goto unlock_mutex;
+	}
+
+	/*
+	 * Cache the old values so that they can be restored
+	 * if either the write fails (for example out of range values)
+	 * or the downmigrate and upmigrate are not in sync.
+	 */
+	old_val = kzalloc(table->maxlen, GFP_KERNEL);
+	if (!old_val) {
+		ret = -ENOMEM;
+		goto unlock_mutex;
+	}
+
+	memcpy(old_val, data, table->maxlen);
+
+	ret = proc_douintvec_capacity(table, write, buffer, lenp, ppos);
+
+	if (ret) {
+		memcpy(data, old_val, table->maxlen);
+		goto free_old_val;
+	}
+
+	for (i = 0; i < cap_margin_levels; i++) {
+		if (sysctl_sched_capacity_margin_up[i] >
+				sysctl_sched_capacity_margin_down[i]) {
+			memcpy(data, old_val, table->maxlen);
+			ret = -EINVAL;
+			goto free_old_val;
+		}
+	}
+
+	sched_update_updown_migrate_values(data, cap_margin_levels);
+
+free_old_val:
+	kfree(old_val);
+unlock_mutex:
+	mutex_unlock(&mutex);
+
+	return ret;
+}
+
+#ifdef VENDOR_EDIT
+//cuixiaogang@SRC.hypnus.2018.07.11. add for change up/down migrate
+static int find_max_clusters(void)
+{
+		int cpu;
+		static int s_max_clusters = -1;
+
+		if (likely(s_max_clusters != -1))
+				goto out_find;
+
+		for (cpu = s_max_clusters = 0; cpu < num_possible_cpus();) {
+				cpu += cpumask_weight(topology_core_cpumask(cpu));
+				s_max_clusters++;
+		}
+
+	out_find:
+		return s_max_clusters;
+}
+
+int sched_get_updown_migrate(unsigned int *up_pct, unsigned int *down_pct)
+{
+		int i, max_clusters;
+
+		if (!up_pct || !down_pct) {
+				pr_err("%s: up_pct or down_pct is null\n", __func__);
+				return -EINVAL;
+		}
+
+		mutex_lock(&mutex);
+
+		max_clusters = find_max_clusters();
+		if (max_clusters <= 1) {
+				pr_err("%s: the value of max clusters is %d\n",
+						__func__, max_clusters);
+				mutex_unlock(&mutex);
+				return -EINVAL;
+		}
+
+		for (i = 0; i < max_clusters - 1; i++) {
+				up_pct[i] = SCHED_FIXEDPOINT_SCALE * 100
+						/ sysctl_sched_capacity_margin_up[i];
+				down_pct[i] = SCHED_FIXEDPOINT_SCALE * 100
+						/ sysctl_sched_capacity_margin_down[i];
+		}
+
+		mutex_unlock(&mutex);
+
+		return 0;
+}
+EXPORT_SYMBOL(sched_get_updown_migrate);
+
+int sched_set_updown_migrate(unsigned int *up_pct, unsigned int *down_pct)
+{
+		int i, max_clusters;
+
+		if (!up_pct || !down_pct) {
+				pr_err("%s: up_pct or down_pct is null\n", __func__);
+				return -EINVAL;
+		}
+
+		mutex_lock(&mutex);
+
+		max_clusters = find_max_clusters();
+		if (max_clusters <= 1) {
+				pr_err("%s: the value of max clusters is %d\n",
+						__func__, max_clusters);
+				mutex_unlock(&mutex);
+				return -EINVAL;
+		}
+
+		for (i = 0; i < max_clusters - 1; i++) {
+				sysctl_sched_capacity_margin_up[i]
+						= SCHED_FIXEDPOINT_SCALE * 100 / up_pct[i];
+				sysctl_sched_capacity_margin_down[i]
+						= SCHED_FIXEDPOINT_SCALE * 100 / down_pct[i];
+		}
+
+		sched_update_updown_migrate_values(sysctl_sched_capacity_margin_up,
+											max_clusters - 1);
+
+		sched_update_updown_migrate_values(sysctl_sched_capacity_margin_down,
+											max_clusters - 1);
+
+		mutex_unlock(&mutex);
+
+		return 0;
+}
+EXPORT_SYMBOL(sched_set_updown_migrate);
+#endif /* VENDOR_EDIT */
 #endif
 
 #ifdef CONFIG_CGROUP_SCHED
@@ -7766,3 +8037,10 @@ void sched_exit(struct task_struct *p)
 #endif /* CONFIG_SCHED_WALT */
 
 __read_mostly bool sched_predl = 1;
+#ifdef VENDOR_EDIT
+/*fanhui@PhoneSW.BSP, 2016-06-23, get current task on one cpu*/
+struct task_struct *oppo_get_cpu_task(int cpu)
+{
+	return cpu_curr(cpu);
+}
+#endif

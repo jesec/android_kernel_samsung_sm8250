@@ -114,6 +114,12 @@ bool sch_direct_xmit(struct sk_buff *skb, struct Qdisc *q,
 
 void __qdisc_run(struct Qdisc *q);
 
+#ifdef VENDOR_EDIT
+//Junyuan.Huang@PSW.CN.WiFi.Network.1471780, 2018/06/26,
+//Add for limit speed function
+struct sk_buff *qdisc_dequeue_skb(struct Qdisc *q, bool *validate);
+#endif /* VENDOR_EDIT */
+
 static inline void qdisc_run(struct Qdisc *q)
 {
 	if (qdisc_run_begin(q)) {

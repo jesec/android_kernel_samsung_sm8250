@@ -1817,10 +1817,17 @@ fetch_events:
 			}
 
 			spin_unlock_irq(&ep->wq.lock);
+#if defined(VENDOR_EDIT) && defined(CONFIG_OPPO_HEALTHINFO)
+// Liujie.Xie@TECH.Kernel.Sched, 2019/08/29, add for stuck monitor
+            current->in_epoll = 1;
+#endif
 			if (!freezable_schedule_hrtimeout_range(to, slack,
 								HRTIMER_MODE_ABS))
 				timed_out = 1;
-
+#if defined(VENDOR_EDIT) && defined(CONFIG_OPPO_HEALTHINFO)
+// Liujie.Xie@TECH.Kernel.Sched, 2019/08/29, add for stuck monitor
+            current->in_epoll = 0;
+#endif
 			spin_lock_irq(&ep->wq.lock);
 		}
 

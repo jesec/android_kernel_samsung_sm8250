@@ -533,15 +533,13 @@ static int ipa3_attrib_dump(struct ipa_rule_attrib *attrib,
 		pr_cont("frg ");
 
 	if ((attrib->attrib_mask & IPA_FLT_MAC_SRC_ADDR_ETHER_II) ||
-		(attrib->attrib_mask & IPA_FLT_MAC_SRC_ADDR_802_3) ||
-		(attrib->attrib_mask & IPA_FLT_MAC_SRC_ADDR_802_1Q)) {
+		(attrib->attrib_mask & IPA_FLT_MAC_SRC_ADDR_802_3)) {
 		pr_cont("src_mac_addr:%pM ", attrib->src_mac_addr);
 	}
 
 	if ((attrib->attrib_mask & IPA_FLT_MAC_DST_ADDR_ETHER_II) ||
 		(attrib->attrib_mask & IPA_FLT_MAC_DST_ADDR_802_3) ||
-		(attrib->attrib_mask & IPA_FLT_MAC_DST_ADDR_L2TP) ||
-		(attrib->attrib_mask & IPA_FLT_MAC_DST_ADDR_802_1Q)) {
+		(attrib->attrib_mask & IPA_FLT_MAC_DST_ADDR_L2TP)) {
 		pr_cont("dst_mac_addr:%pM ", attrib->dst_mac_addr);
 	}
 

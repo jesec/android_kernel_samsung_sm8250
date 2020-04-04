@@ -48,6 +48,7 @@
 static bool tcp_write_xmit(struct sock *sk, unsigned int mss_now, int nonagle,
 			   int push_one, gfp_t gfp);
 
+extern void oppo_app_monitor_update_app_info(struct sock *sk, const struct sk_buff *skb, int send);
 /* Account for new data that has been sent to the network. */
 static void tcp_event_new_data_sent(struct sock *sk, struct sk_buff *skb)
 {
@@ -66,6 +67,8 @@ static void tcp_event_new_data_sent(struct sock *sk, struct sk_buff *skb)
 
 	NET_ADD_STATS(sock_net(sk), LINUX_MIB_TCPORIGDATASENT,
 		      tcp_skb_pcount(skb));
+
+	oppo_app_monitor_update_app_info(sk, skb, 1);
 }
 
 /* SND.NXT, if window was not shrunk or the amount of shrunk was less than one

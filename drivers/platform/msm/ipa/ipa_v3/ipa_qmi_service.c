@@ -1652,16 +1652,14 @@ static struct qmi_msg_handler server_handlers[] = {
 		.type = QMI_REQUEST,
 		.msg_id = QMI_IPA_INSTALL_FILTER_RULE_REQ_V01,
 		.ei = ipa3_install_fltr_rule_req_msg_data_v01_ei,
-		.decoded_size = sizeof(
-			struct ipa_install_fltr_rule_req_msg_v01),
+		.decoded_size = sizeof(struct ipa_install_fltr_rule_req_msg_v01),
 		.fn = ipa3_handle_install_filter_rule_req,
 	},
 	{
 		.type = QMI_REQUEST,
 		.msg_id = QMI_IPA_FILTER_INSTALLED_NOTIF_REQ_V01,
 		.ei = ipa3_fltr_installed_notif_req_msg_data_v01_ei,
-		.decoded_size = sizeof(
-			struct ipa_fltr_installed_notif_req_msg_v01),
+		.decoded_size = sizeof(struct ipa_fltr_installed_notif_req_msg_v01),
 		.fn = ipa3_handle_filter_installed_notify_req,
 	},
 	{
@@ -1675,24 +1673,21 @@ static struct qmi_msg_handler server_handlers[] = {
 		.type = QMI_REQUEST,
 		.msg_id = QMI_IPA_INIT_MODEM_DRIVER_CMPLT_REQ_V01,
 		.ei = ipa3_init_modem_driver_cmplt_req_msg_data_v01_ei,
-		.decoded_size = sizeof(
-			struct ipa_init_modem_driver_cmplt_req_msg_v01),
+		.decoded_size = sizeof(struct ipa_init_modem_driver_cmplt_req_msg_v01),
 		.fn = ipa3_handle_modem_init_cmplt_req,
 	},
 	{
 		.type = QMI_REQUEST,
 		.msg_id = QMI_IPA_INIT_MODEM_DRIVER_CMPLT_REQ_V01,
 		.ei = ipa3_init_modem_driver_cmplt_req_msg_data_v01_ei,
-		.decoded_size = sizeof(
-			struct ipa_init_modem_driver_cmplt_req_msg_v01),
+		.decoded_size = sizeof(struct ipa_init_modem_driver_cmplt_req_msg_v01),
 		.fn = ipa3_handle_modem_init_cmplt_req,
 	},
 	{
 		.type = QMI_REQUEST,
 		.msg_id = QMI_IPA_MHI_ALLOC_CHANNEL_REQ_V01,
 		.ei = ipa_mhi_alloc_channel_req_msg_v01_ei,
-		.decoded_size = sizeof(
-			struct ipa_mhi_alloc_channel_req_msg_v01),
+		.decoded_size = sizeof(struct ipa_mhi_alloc_channel_req_msg_v01),
 		.fn = ipa3_handle_mhi_alloc_channel_req,
 	},
 	{
@@ -1702,7 +1697,6 @@ static struct qmi_msg_handler server_handlers[] = {
 		.decoded_size = sizeof(struct ipa_mhi_clk_vote_req_msg_v01),
 		.fn = ipa3_handle_mhi_vote_req,
 	},
-
 };
 
 /*  clinet_handlers are client callbacks that will be called from QMI context
@@ -1716,16 +1710,14 @@ static struct qmi_msg_handler client_handlers[] = {
 		.type = QMI_INDICATION,
 		.msg_id = QMI_IPA_DATA_USAGE_QUOTA_REACHED_IND_V01,
 		.ei = ipa3_data_usage_quota_reached_ind_msg_data_v01_ei,
-		.decoded_size = sizeof(
-			struct ipa_data_usage_quota_reached_ind_msg_v01),
+		.decoded_size =sizeof(struct ipa_data_usage_quota_reached_ind_msg_v01),
 		.fn = ipa3_q6_clnt_quota_reached_ind_cb,
 	},
 	{
 		.type = QMI_INDICATION,
 		.msg_id = QMI_IPA_INSTALL_UL_FIREWALL_RULES_IND_V01,
 		.ei = ipa3_install_fltr_rule_req_msg_data_v01_ei,
-		.decoded_size = sizeof(
-			struct ipa_configure_ul_firewall_rules_ind_msg_v01),
+		.decoded_size = sizeof(struct ipa_configure_ul_firewall_rules_ind_msg_v01),
 		.fn = ipa3_q6_clnt_install_firewall_rules_ind_cb,
 	},
 	{

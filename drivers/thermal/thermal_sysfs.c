@@ -18,6 +18,10 @@
 #include <linux/slab.h>
 #include <linux/string.h>
 #include <linux/jiffies.h>
+#ifdef VENDOR_EDIT
+/*Mark.Yao@PSW.MM.Display.LCD.Stable,2019-09-17 temp modify for 1024 brightness */
+#include <linux/vmalloc.h>
+#endif /* VENDOR_EDIT */
 
 #include "thermal_core.h"
 
@@ -1063,7 +1067,12 @@ static void cooling_device_stats_setup(struct thermal_cooling_device *cdev)
 	var += sizeof(*stats->time_in_state) * states;
 	var += sizeof(*stats->trans_table) * states * states;
 
+#ifdef VENDOR_EDIT
+/*Mark.Yao@PSW.MM.Display.LCD.Stable,2019-09-17 temp modify for 1024 brightness */
+	stats = vzalloc(var);
+#else
 	stats = kzalloc(var, GFP_KERNEL);
+#endif /* VENDOR_EDIT */
 	if (!stats)
 		return;
 

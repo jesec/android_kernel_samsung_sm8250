@@ -571,6 +571,7 @@ static int a6xx_gmu_oob_set(struct kgsl_device *device,
 	struct gmu_device *gmu = KGSL_GMU_DEVICE(device);
 	int ret = 0;
 	int set, check;
+	u64 ao_pre_poll, ao_post_poll;
 
 	if (!adreno_is_a630(adreno_dev) && !adreno_is_a615_family(adreno_dev)) {
 		set = BIT(30 - req * 2);
@@ -587,6 +588,7 @@ static int a6xx_gmu_oob_set(struct kgsl_device *device,
 	}
 
 	gmu_core_regwrite(device, A6XX_GMU_HOST2GMU_INTR_SET, set);
+	ao_pre_poll = gmu_core_dev_read_ao_counter(device);
 
 	if (timed_poll_check(device,
 			A6XX_GMU_GMU2HOST_INTR_INFO,
@@ -594,8 +596,12 @@ static int a6xx_gmu_oob_set(struct kgsl_device *device,
 			GPU_START_TIMEOUT,
 			check)) {
 		ret = -ETIMEDOUT;
+		ao_post_poll = gmu_core_dev_read_ao_counter(device);
 		dev_err(&gmu->pdev->dev,
 			"OOB_set(0x%x) timed out\n", set);
+		dev_err(&gmu->pdev->dev, "oob timeout: AON %lld ms\n",
+			((ao_post_poll - ao_pre_poll) * 52)/1000000);
+		gmu_core_snapshot(device);
 	}
 
 	gmu_core_regwrite(device, A6XX_GMU_GMU2HOST_INTR_CLR, check);
@@ -936,8 +942,7 @@ static int a6xx_gmu_wait_for_lowest_idle(struct kgsl_device *device)
 		reg3, reg4);
 	dev_err(&gmu->pdev->dev, "A6XX_GMU_AO_SPARE_CNTL=%x\n", reg5);
 
-	/* Access GX registers only when GX is ON */
-	if (is_on(reg1)) {
+	if (a6xx_gmu_gx_is_on(device)) {
 		kgsl_regread(device, A6XX_CP_STATUS_1, &reg6);
 		kgsl_regread(device, A6XX_CP_CP2GMU_STATUS, &reg7);
 		kgsl_regread(device, A6XX_CP_CONTEXT_SWITCH_CNTL, &reg8);

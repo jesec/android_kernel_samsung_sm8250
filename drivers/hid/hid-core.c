@@ -850,6 +850,14 @@ static int hid_scan_report(struct hid_device *hid)
 		break;
 	}
 
+	if (0x248a == hid->vendor && 2 == hid->group) {
+		hid_warn(hid, "scan_report change to GENERIC %u\n", hid->group);
+		hid->group = HID_GROUP_GENERIC;
+	}
+
+	/* fall back to generic driver in case specific driver doesn't exist */
+	hid_warn(hid, "report vendor %u,group %u\n", hid->vendor, hid->group);
+
 	kfree(parser->collection_stack);
 	vfree(parser);
 	return 0;

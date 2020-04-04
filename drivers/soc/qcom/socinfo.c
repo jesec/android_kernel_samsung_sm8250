@@ -54,7 +54,6 @@ enum {
 	HW_PLATFORM_STP = 23,
 	HW_PLATFORM_SBC = 24,
 	HW_PLATFORM_HDK = 31,
-	HW_PLATFORM_IDP = 34,
 	HW_PLATFORM_INVALID
 };
 
@@ -76,7 +75,6 @@ const char *hw_platform[] = {
 	[HW_PLATFORM_STP] = "STP",
 	[HW_PLATFORM_SBC] = "SBC",
 	[HW_PLATFORM_HDK] = "HDK",
-	[HW_PLATFORM_IDP] = "IDP"
 };
 
 enum {
@@ -318,15 +316,16 @@ static struct msm_soc_info cpu_of_id[] = {
 
 	/* kona ID */
 	[356] = {MSM_CPU_KONA, "KONA"},
-
+#if defined(VENDOR_EDIT) && defined(CONFIG_CONFIDENTIAL_EUCLID_VERSION)
+/*Murphy@BSP.Kernel.Driver, 2019/04/19, Add for confidential version*/
 	/* Lito ID */
-	[400] = {MSM_CPU_LITO, "LITO"},
-
+	[400] = {MSM_CPU_LITO, "SDM730G AIE"},
+#else
+	/* Lito ID */
+	[400] = {MSM_CPU_LITO, "SDM765G 5G"},
+#endif
 	/* Bengal ID */
 	[417] = {MSM_CPU_BENGAL, "BENGAL"},
-
-	/* Lagoon ID */
-	[434] = {MSM_CPU_LAGOON, "LAGOON"},
 
 	/* Uninitialized IDs are not known to run Linux.
 	 * MSM_CPU_UNKNOWN is set to 0 to ensure these IDs are
@@ -1198,10 +1197,6 @@ static void * __init setup_dummy_socinfo(void)
 	} else if (early_machine_is_bengal()) {
 		dummy_socinfo.id = 417;
 		strlcpy(dummy_socinfo.build_id, "bengal - ",
-		sizeof(dummy_socinfo.build_id));
-	} else if (early_machine_is_lagoon()) {
-		dummy_socinfo.id = 434;
-		strlcpy(dummy_socinfo.build_id, "lagoon - ",
 		sizeof(dummy_socinfo.build_id));
 	} else if (early_machine_is_sdmshrike()) {
 		dummy_socinfo.id = 340;

@@ -2138,6 +2138,7 @@ out:
 	brelse(bh);
 	if (retval == 0)
 		ext4_set_inode_state(inode, EXT4_STATE_NEWENTRY);
+
 	return retval;
 }
 

@@ -3195,7 +3195,6 @@ static int ipa3_q6_clean_q6_flt_tbls(enum ipa_ip_type ip,
 		 */
 		if (!ipa3_ctx->ep[pipe_idx].valid ||
 		    ipa3_ctx->ep[pipe_idx].skip_ep_cfg) {
-
 			/*
 			 * When coal pipe is valid send close coalescing frame
 			 * command and increment the ep_flt_num accordingly.
@@ -3554,7 +3553,7 @@ static int ipa3_q6_set_ex_path_to_apps(void)
 	/* Set the exception path to AP */
 	for (client_idx = 0; client_idx < IPA_CLIENT_MAX; client_idx++) {
 		ep_idx = ipa3_get_ep_mapping(client_idx);
-		if (ep_idx == -1 || (ep_idx >= IPA3_MAX_NUM_PIPES))
+		if (ep_idx == -1)
 			continue;
 
 		/* disable statuses for all modem controlled prod pipes */
@@ -5785,6 +5784,15 @@ static int ipa3_post_init(const struct ipa3_plat_drv_res *resource_p,
 		goto fail_dma_task;
 	}
 
+	/* yanghao@PSW.Kernel.Stability merge CR2578501 */
+#ifdef VENDOR_EDIT
+	result = ipa3_allocate_coal_close_frame();
+	if (result) {
+		IPAERR("failed to allocate coal frame cmd\n");
+		goto fail_coal_frame;
+	}
+#endif
+
 	if (ipa3_nat_ipv6ct_init_devices()) {
 		IPAERR("unable to init NAT and IPv6CT devices\n");
 		result = -ENODEV;
@@ -5989,6 +5997,11 @@ fail_init_interrupts:
 fail_allok_pkt_init:
 	ipa3_nat_ipv6ct_destroy_devices();
 fail_nat_ipv6ct_init_dev:
+	/* yanghao@PSW.Kernel.Stability merge CR2578501 */
+#ifdef VENDOR_EDIT
+	ipa3_free_coal_close_frame();
+fail_coal_frame:
+#endif
 	ipa3_free_dma_task_for_gsi();
 fail_dma_task:
 fail_init_hw:

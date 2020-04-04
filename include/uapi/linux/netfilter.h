@@ -14,7 +14,16 @@
 #define NF_QUEUE 3
 #define NF_REPEAT 4
 #define NF_STOP 5	/* Deprecated, for userspace nf_queue compatibility. */
+
+#ifdef VENDOR_EDIT
+//Junyuan.Huang@PSW.CN.WiFi.Network.1471780, 2018/06/26,
+//Add for limit speed function
+#define NF_IMQ_QUEUE 6
+#define NF_MAX_VERDICT NF_IMQ_QUEUE
+#else /* VENDOR_EDIT */
 #define NF_MAX_VERDICT NF_STOP
+#endif /* VENDOR_EDIT */
+
 
 /* we overload the higher bits for encoding auxiliary data such as the queue
  * number or errno values. Not nice, but better than additional function

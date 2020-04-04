@@ -82,6 +82,29 @@
 #define USB_HSPHY_1P8_VOL_MIN			1704000 /* uV */
 #define USB_HSPHY_1P8_VOL_MAX			1800000 /* uV */
 #define USB_HSPHY_1P8_HPM_LOAD			19000	/* uA */
+#ifdef VENDOR_EDIT
+/* tongfeng.Huang@BSP.CHG.Basic, 2018/09/06,  Add for 18181 usb eye diagram  */
+
+#define QUSB2PHY_PORT_TUNE1 0x6c    // PARAMETER_OVERRIDE_X0
+#define QUSB2PHY_PORT_TUNE2 0x70    // PARAMETER_OVERRIDE_X1
+#define QUSB2PHY_PORT_TUNE3 0x74    // PARAMETER_OVERRIDE_X2
+#define QUSB2PHY_PORT_TUNE4 0x78    // PARAMETER_OVERRIDE_X3
+
+unsigned int dev_phy_tune1 = 0x05;
+module_param(dev_phy_tune1, uint, S_IRUGO | S_IWUSR);
+MODULE_PARM_DESC(dev_phy_tune1, "QUSB PHY v2 TUNE1");
+unsigned int dev_phy_tune2 = 0x0f;
+module_param(dev_phy_tune2, uint, S_IRUGO | S_IWUSR);
+MODULE_PARM_DESC(dev_phy_tune2, "QUSB PHY v2 TUNE2");
+
+unsigned int dev_phy_tune3 = 0x04;
+module_param(dev_phy_tune3, uint, S_IRUGO | S_IWUSR);
+MODULE_PARM_DESC(dev_phy_tune3, "QUSB PHY v2 TUNE1");
+unsigned int dev_phy_tune4 = 0;
+module_param(dev_phy_tune4, uint, S_IRUGO | S_IWUSR);
+MODULE_PARM_DESC(dev_phy_tune4, "QUSB PHY v2 TUNE2");
+
+#endif
 
 struct msm_hsphy {
 	struct usb_phy		phy;
@@ -326,15 +349,53 @@ static void hsusb_phy_write_seq(void __iomem *base, u32 *seq, int cnt,
 {
 	int i;
 
-	pr_debug("Seq count:%d\n", cnt);
 	for (i = 0; i < cnt; i = i+2) {
-		pr_debug("write 0x%02x to 0x%02x\n", seq[i], seq[i+1]);
+		pr_err("write_seq_otg_value:0x%02x to 0x%02x\n", seq[i], seq[i+1]);
 		writel_relaxed(seq[i], base + seq[i+1]);
 		if (delay)
 			usleep_range(delay, (delay + 2000));
 	}
 }
 
+#ifdef VENDOR_EDIT
+/* tongfeng.Huang@BSP.CHG.Basic, 2018/09/06,  Add for 18181 usb eye diagram  */
+static void hsusb_phy_read_seq(void __iomem *base, u32 *seq, int cnt,
+		unsigned long delay)
+{
+	///int i;
+	u32 tmp = 0;
+
+	pr_debug(" hsusb_phy_read_seq from dtsi Seq count:%d\n", cnt);
+
+	tmp = readl_relaxed(base + QUSB2PHY_PORT_TUNE1);
+	pr_err("dts TUNE1 value: 0x%02x addr: 0x%02x\n", tmp, QUSB2PHY_PORT_TUNE1);
+	if (delay)
+		usleep_range(delay, (delay + 2000));
+
+	tmp = readl_relaxed(base + QUSB2PHY_PORT_TUNE2);
+	pr_err("dts TUNE2 value: 0x%02x addr: 0x%02x\n", tmp, QUSB2PHY_PORT_TUNE2);
+	if (delay)
+		usleep_range(delay, (delay + 2000));
+
+	tmp = readl_relaxed(base + QUSB2PHY_PORT_TUNE3);
+	pr_err("dts TUNE3 value: 0x%02x addr: 0x%02x\n", tmp, QUSB2PHY_PORT_TUNE3);
+	if (delay)
+		usleep_range(delay, (delay + 2000));
+
+	tmp = readl_relaxed(base + QUSB2PHY_PORT_TUNE4);
+	pr_err("dts TUNE4 value: 0x%02x addr: 0x%02x\n", tmp, QUSB2PHY_PORT_TUNE4);
+}
+#endif
+#ifdef VENDOR_EDIT
+/* OuYangBaiLi@BSP.CHG.Basic,charging_bsp 2019/11/26,Add for charging_bsp */
+static int otg_status = 0;
+void oppo_set_otg_status(int status)
+{
+	otg_status = status;
+	pr_err("%s: otg_status :%d\n", __func__,otg_status);
+}
+EXPORT_SYMBOL(oppo_set_otg_status);
+#endif /* VENDOR_EDIT */
 static int msm_hsphy_init(struct usb_phy *uphy)
 {
 	struct msm_hsphy *phy = container_of(uphy, struct msm_hsphy, phy);
@@ -379,10 +440,14 @@ static int msm_hsphy_init(struct usb_phy *uphy)
 				VBUSVLDEXT0, VBUSVLDEXT0);
 
 	/* set parameter ovrride  if needed */
-	if (phy->param_override_seq)
-		hsusb_phy_write_seq(phy->base, phy->param_override_seq,
+#ifdef VENDOR_EDIT
+/* OuYangBaiLi@BSP.CHG.Basic,charging_bsp 2019/11/26,Add for charging_bsp */	
+	if (otg_status) {
+		if (phy->param_override_seq)
+			hsusb_phy_write_seq(phy->base, phy->param_override_seq,
 				phy->param_override_seq_cnt, 0);
-
+	}
+#endif /* VENDOR_EDIT */
 	if (phy->pre_emphasis) {
 		u8 val = TXPREEMPAMPTUNE0(phy->pre_emphasis) &
 				TXPREEMPAMPTUNE0_MASK;
@@ -436,6 +501,32 @@ static int msm_hsphy_init(struct usb_phy *uphy)
 		dev_dbg(uphy->dev, "rcal_mask:%08x reg:%pK code:%08x\n",
 				phy->rcal_mask, phy->phy_rcal_reg, rcal_code);
 	}
+#ifdef VENDOR_EDIT
+/* tongfeng.Huang@BSP.CHG.Basic, 2018/02/11,  Add for USB */
+	/*add for dynamic change tune settings*/
+	/* If phy_tune1 modparam set, override tune1 value */
+	if (!otg_status) {
+	if (dev_phy_tune1) {
+		pr_err("%s():oppo_usb_in (modparam) TUNE1 val:0x%02x\n", __func__, dev_phy_tune1);
+		writel_relaxed(dev_phy_tune1, phy->base + QUSB2PHY_PORT_TUNE1);
+	}
+	/* If phy_tune2 modparam set, override tune2 value */
+	if (dev_phy_tune2) {
+		pr_err("%s():oppo_usb_in (modparam) TUNE2 val:0x%02x\n", __func__, dev_phy_tune2);
+		writel_relaxed(dev_phy_tune2, phy->base + QUSB2PHY_PORT_TUNE2);
+	}
+	/* If phy_tune3 modparam set, override tune3 value */
+	if (dev_phy_tune3) {
+		pr_err("%s():oppo_usb_in (modparam) TUNE3 val:0x%02x\n", __func__, dev_phy_tune3);
+		writel_relaxed(dev_phy_tune3, phy->base + QUSB2PHY_PORT_TUNE3);
+	}
+	/* If phy_tune4 modparam set, override tune4 value */
+	if (dev_phy_tune4) {
+		pr_err("%s():oppo_usb_in (modparam) TUNE4 val:0x%02x\n", __func__, dev_phy_tune4);
+		writel_relaxed(dev_phy_tune4, phy->base + QUSB2PHY_PORT_TUNE4);
+	}
+	}
+#endif /* VENDOR_EDIT */
 
 	msm_usb_write_readback(phy->base, USB2_PHY_USB_PHY_HS_PHY_CTRL_COMMON2,
 				VREGBYPASS, VREGBYPASS);
@@ -456,6 +547,13 @@ static int msm_hsphy_init(struct usb_phy *uphy)
 	msm_usb_write_readback(phy->base, USB2_PHY_USB_PHY_CFG0,
 				UTMI_PHY_CMN_CTRL_OVERRIDE_EN, 0);
 
+#ifdef VENDOR_EDIT
+	if (otg_status) {
+	/* tongfeng.Huang@BSP.CHG.Basic, 2018/02/11,  Add for USB */
+	hsusb_phy_read_seq(phy->base, phy->param_override_seq,
+				phy->param_override_seq_cnt, 0);
+	}
+#endif
 	return 0;
 }
 

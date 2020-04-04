@@ -63,6 +63,11 @@ static void ion_page_pool_free_pages(struct ion_page_pool *pool,
 static void ion_page_pool_add(struct ion_page_pool *pool, struct page *page)
 {
 	mutex_lock(&pool->mutex);
+#ifdef VENDOR_EDIT
+/*Huacai.Zhou@PSW.BSP.Kernel.MM, 2018-09-25, add ion cached account*/
+	zone_page_state_add(1L << pool->order, page_zone(page),
+    		NR_IONCACHE_PAGES);
+#endif  /*VENDOR_EDIT*/
 	if (PageHighMem(page)) {
 		list_add_tail(&page->lru, &pool->high_items);
 		pool->high_count++;
@@ -112,6 +117,11 @@ static struct page *ion_page_pool_remove(struct ion_page_pool *pool, bool high)
 		page = list_first_entry(&pool->low_items, struct page, lru);
 		pool->low_count--;
 	}
+#ifdef VENDOR_EDIT
+/*Huacai.Zhou@PSW.BSP.Kernel.MM, 2018-09-25, add ion cached account*/
+	zone_page_state_add(-(1L << pool->order), page_zone(page),
+			NR_IONCACHE_PAGES);
+#endif /*VENDOR_EDIT*/
 
 	atomic_dec(&pool->count);
 	list_del(&page->lru);

@@ -40,6 +40,28 @@ struct kernel_stat {
 	unsigned int softirqs[NR_SOFTIRQS];
 };
 
+#ifdef VENDOR_EDIT
+/* Hailong.Liu@TECH.Kernel.CPU, 2019/10/24, stat cpu usage on each tick. */
+#define MAX_CTP_WINDOW (10 * NSEC_PER_SEC / TICK_NSEC)
+struct task_cpustat {
+	pid_t pid;
+	pid_t tgid;
+	enum cpu_usage_stat type;
+	int freq;
+	unsigned long begin;
+	unsigned long end;
+	char comm[TASK_COMM_LEN];
+};
+
+struct kernel_task_cpustat {
+	unsigned int idx;
+	struct task_cpustat cpustat[MAX_CTP_WINDOW];
+};
+
+DECLARE_PER_CPU(struct kernel_task_cpustat, ktask_cpustat);
+extern unsigned int sysctl_task_cpustats_enable;
+#endif /* VENDOR_EDIT */
+
 DECLARE_PER_CPU(struct kernel_stat, kstat);
 DECLARE_PER_CPU(struct kernel_cpustat, kernel_cpustat);
 

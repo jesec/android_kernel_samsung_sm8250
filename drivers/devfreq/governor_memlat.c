@@ -73,10 +73,18 @@ static ssize_t store_##name(struct device *dev,				\
 	return count;							\
 }
 
+#ifdef VENDOR_EDIT
+//cuixiaogang@SRC.hypnus.2019-06-12. add support for hypnusd devbw feature
+#define gov_attr(__attr, min, max)	\
+show_attr(__attr)			\
+store_attr(__attr, min, max)		\
+static DEVICE_ATTR(__attr, 0664, show_##__attr, store_##__attr)
+#else
 #define gov_attr(__attr, min, max)	\
 show_attr(__attr)			\
 store_attr(__attr, min, max)		\
 static DEVICE_ATTR(__attr, 0644, show_##__attr, store_##__attr)
+#endif
 
 static ssize_t freq_map_show(struct device *dev, struct device_attribute *attr,
 			char *buf)

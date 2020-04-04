@@ -721,10 +721,19 @@ static const struct adc_channels adc_chans_pmic5[ADC_MAX_CHANNEL] = {
 					SCALE_HW_CALIB_THERM_100K_PULLUP)
 	[ADC_AMUX_THM2_PU2]	= ADC_CHAN_TEMP("amux_thm2_pu2", 1,
 					SCALE_HW_CALIB_THERM_100K_PULLUP)
+#ifdef VENDOR_EDIT
+                /* Kun.Zhang@BSP.CHG.Basic, 2019/08/07,  Modify for charging */
 	[ADC_AMUX_THM3_PU2]	= ADC_CHAN_TEMP("amux_thm3_pu2", 1,
+					SCALE_HW_CALIB_DEFAULT)
+	[ADC_AMUX_THM4_PU2]	= ADC_CHAN_TEMP("amux_thm4_pu2", 1,
+					SCALE_HW_CALIB_DEFAULT)
+#else
+	[ADC_AMUX_THM3_PU2] = ADC_CHAN_TEMP("amux_thm3_pu2", 1,
 					SCALE_HW_CALIB_THERM_100K_PULLUP)
 	[ADC_AMUX_THM4_PU2]	= ADC_CHAN_TEMP("amux_thm4_pu2", 1,
 					SCALE_HW_CALIB_THERM_100K_PULLUP)
+#endif
+	
 	[ADC_INT_EXT_ISENSE_VBAT_VDATA]	= ADC_CHAN_POWER("int_ext_isense", 1,
 					SCALE_HW_CALIB_CUR)
 	[ADC_EXT_ISENSE_VBAT_VDATA]	= ADC_CHAN_POWER("ext_isense", 1,
@@ -739,10 +748,22 @@ static const struct adc_channels adc_chans_pmic5[ADC_MAX_CHANNEL] = {
 					SCALE_HW_CALIB_THERM_100K_PULLUP)
 	[ADC_GPIO2_PU2]	= ADC_CHAN_TEMP("gpio2_pu2", 1,
 					SCALE_HW_CALIB_THERM_100K_PULLUP)
-	[ADC_GPIO3_PU2]	= ADC_CHAN_TEMP("gpio3_pu2", 1,
+#ifdef VENDOR_EDIT
+/*Weizhong.Wu@Bsp.Power.Basic.2019/10/27,add PM7150A-GPIO7 to read board temp*/	
+	[ADC_GPIO3_PU2]	= ADC_CHAN_TEMP("board_temp", 1,
 					SCALE_HW_CALIB_THERM_100K_PULLUP)
+#endif
+				
 	[ADC_GPIO4_PU2]	= ADC_CHAN_TEMP("gpio4_pu2", 1,
 					SCALE_HW_CALIB_THERM_100K_PULLUP)
+	[ADC_GPIO3] 	= ADC_CHAN_VOLT("chgID_voltage_adc", 1,
+						SCALE_HW_CALIB_DEFAULT)
+#ifdef VENDOR_EDIT
+/*xing.xiong@BSP.Kernel.Driver, 2019/09/10, Add for adc read for aboard */
+	[ADC_GPIO1] 	= ADC_CHAN_VOLT("board_id_vdata", 1,
+						SCALE_HW_CALIB_DEFAULT)
+#endif
+
 };
 
 static const struct adc_channels adc_chans_rev2[ADC_MAX_CHANNEL] = {
@@ -760,8 +781,14 @@ static const struct adc_channels adc_chans_rev2[ADC_MAX_CHANNEL] = {
 					SCALE_HW_CALIB_PMIC_THERM)
 	[ADC_AMUX_THM1_PU2]	= ADC_CHAN_TEMP("amux_thm1_pu2", 1,
 					SCALE_HW_CALIB_THERM_100K_PULLUP)
+#ifdef VENDOR_EDIT
+        /* Kun.Zhang@BSP.CHG.Basic, 2019/08/07,  Modify for charging */
 	[ADC_AMUX_THM3_PU2]	= ADC_CHAN_TEMP("amux_thm3_pu2", 1,
+					SCALE_HW_CALIB_DEFAULT)
+#else
+	[ADC_AMUX_THM3_PU2] = ADC_CHAN_TEMP("amux_thm3_pu2", 1,
 					SCALE_HW_CALIB_THERM_100K_PULLUP)
+#endif
 	[ADC_AMUX_THM5_PU2]	= ADC_CHAN_TEMP("amux_thm5_pu2", 1,
 					SCALE_HW_CALIB_THERM_100K_PULLUP)
 	[ADC_XO_THERM_PU2]	= ADC_CHAN_TEMP("xo_therm", 1,

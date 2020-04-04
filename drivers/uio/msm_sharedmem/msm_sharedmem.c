@@ -17,6 +17,13 @@
 
 #define CLIENT_ID_PROP "qcom,client-id"
 #define MPSS_RMTS_CLIENT_ID 1
+//#ifdef VENDOR_EDIT
+//Zhengpeng.Tan@NW.MDM.NV.892767, 2016/11/30
+//add for nv backup and restore
+//#ifdef FEATURE_OPPO_NV_BACKUP
+#define MPSS_OEMBACK_CLIENT_ID 4
+//#endif /* FEATURE_OPPO_NV_BACKUP */
+//#endif /* VENDOR_EDIT */
 
 static int uio_get_mem_index(struct uio_info *info, struct vm_area_struct *vma)
 {
@@ -66,33 +73,29 @@ static int sharedmem_mmap(struct uio_info *info, struct vm_area_struct *vma)
 }
 
 /* Setup the shared ram permissions.
- * This function currently supports the mpss and nav clients only.
+ * This function currently supports the mpss client only.
  */
-static void setup_shared_ram_perms(u32 client_id, phys_addr_t addr, u32 size,
-				   bool vm_nav_path)
+static void setup_shared_ram_perms(u32 client_id, phys_addr_t addr, u32 size)
 {
 	int ret;
 	u32 source_vmlist[1] = {VMID_HLOS};
+	int dest_vmids[2] = {VMID_HLOS, VMID_MSS_MSA};
+	int dest_perms[2] = {PERM_READ|PERM_WRITE,
+			     PERM_READ|PERM_WRITE};
 
-	if (client_id != MPSS_RMTS_CLIENT_ID)
+	//#ifndef VENDOR_EDIT
+	//Zhengpeng.Tan@NW.MDM.NV.892767, 2016/11/30
+	//add for nv backup and restore
+	//#ifdef FEATURE_OPPO_NV_BACKUP
+	//if (client_id != MPSS_RMTS_CLIENT_ID)
+	//#else
+	if ((client_id != MPSS_RMTS_CLIENT_ID) && (client_id != MPSS_OEMBACK_CLIENT_ID))
+	//#endif /* FEATURE_OPPO_NV_BACKUP */
+	//#endif /* VENDOR_EDIT */
 		return;
 
-	if (vm_nav_path) {
-		int dest_vmids[3] = {VMID_HLOS, VMID_MSS_MSA, VMID_NAV};
-		int dest_perms[3] = {PERM_READ|PERM_WRITE,
-				     PERM_READ|PERM_WRITE,
-					PERM_READ|PERM_WRITE};
-
-		ret = hyp_assign_phys(addr, size, source_vmlist, 1, dest_vmids,
-					dest_perms, 3);
-	} else {
-		int dest_vmids[2] = {VMID_HLOS, VMID_MSS_MSA};
-		int dest_perms[2] = {PERM_READ|PERM_WRITE,
-				     PERM_READ|PERM_WRITE};
-
-		ret = hyp_assign_phys(addr, size, source_vmlist, 1, dest_vmids,
-					dest_perms, 2);
-	}
+	ret = hyp_assign_phys(addr, size, source_vmlist, 1, dest_vmids,
+				dest_perms, 2);
 	if (ret != 0) {
 		if (ret == -EINVAL)
 			pr_warn("hyp_assign_phys is not supported!\n");
@@ -114,7 +117,6 @@ static int msm_sharedmem_probe(struct platform_device *pdev)
 	phys_addr_t shared_mem_pyhsical = 0;
 	bool is_addr_dynamic = false;
 	bool guard_memory = false;
-	bool vm_nav_path = false;
 
 	/* Get the addresses from platform-data */
 	if (!pdev->dev.of_node) {
@@ -175,16 +177,8 @@ static int msm_sharedmem_probe(struct platform_device *pdev)
 			shared_mem_pyhsical += SZ_4K;
 	}
 
-	/*
-	 * If this dtsi property is set, then the shared memory region
-	 * will be given access to vm-nav-path also.
-	 */
-	vm_nav_path = of_property_read_bool(pdev->dev.of_node,
-			"qcom,vm-nav-path");
-
 	/* Set up the permissions for the shared ram that was allocated. */
-	setup_shared_ram_perms(client_id, shared_mem_pyhsical, shared_mem_size,
-				vm_nav_path);
+	setup_shared_ram_perms(client_id, shared_mem_pyhsical, shared_mem_size);
 
 	/* Setup device */
 	info->mmap = sharedmem_mmap; /* Custom mmap function. */

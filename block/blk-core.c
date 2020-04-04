@@ -48,6 +48,17 @@
 struct dentry *blk_debugfs_root;
 #endif
 
+/*Hank.liu@TECH.BSP Kernel IO Latency  2019-03-21,io information*/
+#if defined(VENDOR_EDIT) && defined(CONFIG_OPPO_HEALTHINFO)
+extern void ohm_iolatency_record(struct request * req,unsigned int nr_bytes, int fg, u64 delta_us);
+extern unsigned long ufs_outstanding;
+static u64 latency_count;
+static u32 io_print_count;
+bool       io_print_flag;
+#define    PRINT_LATENCY     500*1000
+#define    COUNT_TIME      24*60*60*1000
+#endif /*VENDOR_EDIT*/
+
 EXPORT_TRACEPOINT_SYMBOL_GPL(block_bio_remap);
 EXPORT_TRACEPOINT_SYMBOL_GPL(block_rq_remap);
 EXPORT_TRACEPOINT_SYMBOL_GPL(block_bio_complete);
@@ -188,6 +199,10 @@ void blk_rq_init(struct request_queue *q, struct request *rq)
 	memset(rq, 0, sizeof(*rq));
 
 	INIT_LIST_HEAD(&rq->queuelist);
+#ifdef VENDOR_EDIT
+/*Huacai.Zhou@PSW.BSP.Kernel.Performance, 2018-04-28, add foreground task io opt*/
+	INIT_LIST_HEAD(&rq->fg_list);
+#endif /*VENDOR_EDIT*/
 	INIT_LIST_HEAD(&rq->timeout_list);
 	rq->cpu = -1;
 	rq->q = q;
@@ -986,6 +1001,12 @@ static void blk_timeout_work_dummy(struct work_struct *work)
 {
 }
 
+#ifdef VENDOR_EDIT
+/*Huacai.Zhou@PSW.BSP.Kernel.Performance, 2018-04-28, add foreground task io opt*/
+#define FG_CNT_DEF 20
+#define BOTH_CNT_DEF 10
+#endif /*VENDOR_EDIT*/
+
 /**
  * blk_alloc_queue_node - allocate a request queue
  * @gfp_mask: memory allocation flags
@@ -1035,12 +1056,23 @@ struct request_queue *blk_alloc_queue_node(gfp_t gfp_mask, int node_id,
 			(VM_MAX_READAHEAD * 1024) / PAGE_SIZE;
 	q->backing_dev_info->capabilities = BDI_CAP_CGROUP_WRITEBACK;
 	q->backing_dev_info->name = "block";
+#ifdef VENDOR_EDIT
+/*Huacai.Zhou@PSW.BSP.Kernel.Performance, 2018-04-28, add foreground task io opt*/
+	q->fg_count_max = FG_CNT_DEF;
+	q->both_count_max = BOTH_CNT_DEF;
+	q->fg_count = FG_CNT_DEF;
+	q->both_count = BOTH_CNT_DEF;
+#endif /*VENDOR_EDIT*/
 	q->node = node_id;
 
 	timer_setup(&q->backing_dev_info->laptop_mode_wb_timer,
 		    laptop_mode_timer_fn, 0);
 	timer_setup(&q->timeout, blk_rq_timed_out_timer, 0);
 	INIT_WORK(&q->timeout_work, blk_timeout_work_dummy);
+#ifdef VENDOR_EDIT
+/*Huacai.Zhou@PSW.BSP.Kernel.Performance, 2018-04-28, add foreground task io opt*/
+	INIT_LIST_HEAD(&q->fg_head);
+#endif /*VENDOR_EDIT*/
 	INIT_LIST_HEAD(&q->timeout_list);
 	INIT_LIST_HEAD(&q->icq_list);
 #ifdef CONFIG_BLK_CGROUP
@@ -2536,6 +2568,76 @@ blk_qc_t direct_make_request(struct bio *bio)
 }
 EXPORT_SYMBOL_GPL(direct_make_request);
 
+#ifdef VENDOR_EDIT
+/*Huacai.Zhou@PSW.BSP.Kernel.Performance, 2018-04-28, add foreground task io opt*/
+#define SYSTEM_APP_UID 1000
+static bool is_system_uid(struct task_struct *t)
+{
+	int cur_uid;
+	cur_uid = task_uid(t).val;
+	if (cur_uid ==  SYSTEM_APP_UID)
+		return true;
+
+	return false;
+}
+
+static bool is_zygote_process(struct task_struct *t)
+{
+	const struct cred *tcred = __task_cred(t);
+
+	struct task_struct * first_child = NULL;
+	if(t->children.next && t->children.next != (struct list_head*)&t->children.next)
+		first_child = container_of(t->children.next, struct task_struct, sibling);
+	if(!strcmp(t->comm, "main") && (tcred->uid.val == 0) && (t->parent != 0 && !strcmp(t->parent->comm,"init"))  )
+		return true;
+	else
+		return false;
+	return false;
+}
+
+static bool is_system_process(struct task_struct *t)
+{
+	if (is_system_uid(t)) {
+		if (t->group_leader  && (!strncmp(t->group_leader->comm,"system_server", 13) ||
+			!strncmp(t->group_leader->comm, "surfaceflinger", 14) ||
+			!strncmp(t->group_leader->comm, "servicemanager", 14) ||
+			!strncmp(t->group_leader->comm, "ndroid.systemui", 15)))
+				return true;
+	}
+	return false;
+}
+
+bool is_critial_process(struct task_struct *t)
+{
+	if( is_zygote_process(t) || is_system_process(t))
+		return true;
+
+	return false;
+}
+
+bool is_filter_process(struct task_struct *t)
+{
+	if(!strncmp(t->comm,"logcat", TASK_COMM_LEN) )
+		 return true;
+
+	return false;
+}
+static bool high_prio_for_task(struct task_struct *t)
+{
+	int cur_uid;
+
+	if (!sysctl_fg_io_opt)
+		return false;
+
+	cur_uid = task_uid(t).val;
+	if((is_fg(cur_uid) && !is_system_uid(t) && !is_filter_process(t)) || is_critial_process(t))
+		return true;
+
+	return false;
+}
+#endif /*VENDOR_EDIT*/
+
+
 /**
  * submit_bio - submit a bio to the block device layer for I/O
  * @bio: The &struct bio which describes the I/O
@@ -2575,6 +2677,11 @@ blk_qc_t submit_bio(struct bio *bio)
 				bio_devname(bio, b), count);
 		}
 	}
+#ifdef VENDOR_EDIT
+/*Huacai.Zhou@PSW.BSP.Kernel.Performance, 2018-04-28, add foreground task io opt*/
+	if (high_prio_for_task(current))
+		bio->bi_opf |= REQ_FG;
+#endif
 
 	return generic_make_request(bio);
 }
@@ -2823,6 +2930,33 @@ void blk_account_io_start(struct request *rq, bool new_io)
 	part_stat_unlock();
 }
 
+#ifdef VENDOR_EDIT
+/*Huacai.Zhou@PSW.BSP.Kernel.Performance, 2019-09-16, add foreground task io opt*/
+static struct request *take_turns_get_fg_bg_req(struct request_queue *q)
+{
+	struct request *rq = NULL;
+
+	if (!list_empty(&q->queue_head)) {
+		if (!list_empty(&q->fg_head) && q->fg_count > 0) {
+			rq = list_entry(q->fg_head.next, struct request, fg_list);
+			q->fg_count--;
+			//printk("take_turns_get_fg_bg_req: q->fg_count = %d\n",q->fg_count);
+		}
+		else if (q->both_count > 0) {
+			rq = list_entry_rq(q->queue_head.next);
+			q->both_count--;
+			//printk("take_turns_get_fg_bg_req: q->both_count = %d\n",q->both_count);
+		}
+	else {
+		q->fg_count = q->fg_count_max;
+		q->both_count = q->both_count_max;
+		rq = list_entry_rq(q->queue_head.next);
+		}
+	}
+	return rq;
+}
+#endif /*VENDOR_EDIT*/
+
 static struct request *elv_next_request(struct request_queue *q)
 {
 	struct request *rq;
@@ -2831,6 +2965,35 @@ static struct request *elv_next_request(struct request_queue *q)
 	WARN_ON_ONCE(q->mq_ops);
 
 	while (1) {
+#ifdef VENDOR_EDIT
+/*Huacai.Zhou@PSW.BSP.Kernel.Performance, 2019-09-16, add foreground task io opt*/
+		if (unlikely(!sysctl_fg_io_opt)) {
+			list_for_each_entry(rq, &q->queue_head, queuelist) {
+				if (blk_pm_allow_request(rq))
+					return rq;
+
+				if (rq->rq_flags & RQF_SOFTBARRIER)
+					break;
+			}
+		}
+		else {
+			  /*look for an active PM request until the next softbarrier during PM*/
+			if (q->rpm_status != RPM_ACTIVE) {
+				   list_for_each_entry(rq, &q->queue_head, queuelist) {
+					   if (blk_pm_allow_request(rq))
+						   return rq;
+				
+					   if (rq->rq_flags & RQF_SOFTBARRIER)
+						   break;
+				   }
+			}
+			else {
+				rq = take_turns_get_fg_bg_req(q);
+				if (rq)
+					return rq;
+			}
+		}
+#else
 		list_for_each_entry(rq, &q->queue_head, queuelist) {
 			if (blk_pm_allow_request(rq))
 				return rq;
@@ -2838,7 +3001,7 @@ static struct request *elv_next_request(struct request_queue *q)
 			if (rq->rq_flags & RQF_SOFTBARRIER)
 				break;
 		}
-
+#endif /*VENDOR_EDIT*/
 		/*
 		 * Flush request is running and flush request isn't queueable
 		 * in the drive, we can hold the queue till flush request is
@@ -2902,6 +3065,10 @@ struct request *blk_peek_request(struct request_queue *q)
 			 * not be passed by new incoming requests
 			 */
 			rq->rq_flags |= RQF_STARTED;
+/*Hank.liu@PSW.BSP Kernel IO Latency  2019-03-19,request start ktime */
+#if defined(VENDOR_EDIT)
+			rq-> block_io_start = ktime_get();
+#endif
 			trace_block_rq_issue(q, rq);
 		}
 
@@ -2974,6 +3141,11 @@ static void blk_dequeue_request(struct request *rq)
 	BUG_ON(ELV_ON_HASH(rq));
 
 	list_del_init(&rq->queuelist);
+#ifdef VENDOR_EDIT
+/*Huacai.Zhou@PSW.BSP.Kernel.Performance, 2018-04-28, add foreground task io opt*/
+	if (sysctl_fg_io_opt && (rq->cmd_flags & REQ_FG))
+		list_del_init(&rq->fg_list);
+#endif /*VENDOR_EDIT*/
 
 	/*
 	 * the time frame between a request being removed from the lists
@@ -2982,6 +3154,12 @@ static void blk_dequeue_request(struct request *rq)
 	 */
 	if (blk_account_rq(rq))
 		q->in_flight[rq_is_sync(rq)]++;
+#if defined(VENDOR_EDIT) && defined(CONFIG_OPPO_HEALTHINFO)
+// jiheng.xie@PSW.Tech.BSP.Performance, 2019/03/11
+// Add for ioqueue
+		ohm_ioqueue_add_inflight(q, rq);
+#endif /*VENDOR_EDIT*/
+
 }
 
 /**
@@ -3090,8 +3268,47 @@ bool blk_update_request(struct request *req, blk_status_t error,
 		unsigned int nr_bytes)
 {
 	int total_bytes;
+#if defined(VENDOR_EDIT) && defined(CONFIG_OPPO_HEALTHINFO)
+/*Hank.liu@TECH.BSP Kernel IO Latency	2019-03-19,request complete ktime*/
+	ktime_t now;
+	u64 delta_us;
+	char rwbs[RWBS_LEN];
+#endif
 
 	trace_block_rq_complete(req, blk_status_to_errno(error), nr_bytes);
+/*Hank.liu@TECH.BSP Kernel IO Latency	2019-03-19,request complete ktime*/
+#if defined(VENDOR_EDIT) && defined(CONFIG_OPPO_HEALTHINFO)
+			if(req->tag >= 0 && req->block_io_start > 0)
+			{
+				io_print_flag = false;
+				now = ktime_get();
+				delta_us = ktime_us_delta(now, req->block_io_start);
+				ohm_iolatency_record(req, nr_bytes, current_is_fg(), ktime_us_delta(now, req->block_io_start));
+				trace_block_time(req->q, req, delta_us, nr_bytes);
+
+				if(delta_us > PRINT_LATENCY) { 
+					if((ktime_to_ms(now)) < COUNT_TIME){
+						latency_count ++;
+					}else{
+						latency_count = 0;
+					}
+					io_print_flag = true;
+					blk_fill_rwbs(rwbs,req->cmd_flags, nr_bytes);
+
+					/*if log is continuous, printk the first log.*/
+					if(!io_print_count)
+					  pr_info("[IO Latency]UID:%u,slot:%d,outstanding=0x%lx,IO_Type:%s,Block IO/Flash Latency:(%llu/%llu)LBA:%llu,length:%d size:%d,count=%lld\n",
+							(from_kuid_munged(current_user_ns(),current_uid())),
+							req->tag,ufs_outstanding,rwbs,delta_us,req->flash_io_latency,
+							(unsigned long long)blk_rq_pos(req),
+							nr_bytes >> 9,blk_rq_bytes(req),latency_count);
+					io_print_count++;
+				}
+
+				if(!io_print_flag && io_print_count)
+					io_print_count = 0;
+			}
+#endif
 
 	if (!req->bio)
 		return false;
@@ -3987,3 +4204,72 @@ int __init blk_dev_init(void)
 
 	return 0;
 }
+
+#ifdef VENDOR_EDIT
+//hank.liu@Tech.Storage.UFS, 2019-10-17 add latency_hist node for ufs latency calculate in sysfs.
+/*
+ * Blk IO latency support. We want this to be as cheap as possible, so doing
+ * this lockless (and avoiding atomics), a few off by a few errors in this
+ * code is not harmful, and we don't want to do anything that is
+ * perf-impactful.
+ * TODO : If necessary, we can make the histograms per-cpu and aggregate
+ * them when printing them out.
+ */
+ssize_t
+blk_latency_hist_show(char* name, struct io_latency_state *s, char *buf,
+		int buf_size)
+{
+   int i;
+   int bytes_written = 0;
+   u_int64_t num_elem, elem;
+   int pct;
+   u_int64_t average;
+
+   num_elem = s->latency_elems;
+   if (num_elem > 0) {
+	   average = div64_u64(s->latency_sum, s->latency_elems);
+	   bytes_written += scnprintf(buf + bytes_written,
+	      buf_size - bytes_written,
+		   "IO %s(count = %llu,"
+		   " average = %lluus)\t0\t4k\t8k\t8-32k\t32-64k\t64-128k\t128-256k\t>256k:\n", name, num_elem, average);
+	   for (i = 0;i < ARRAY_SIZE(latency_x_axis_us);i++) {
+		   elem = s->latency_y_axis[i].latency_axis;
+		   pct = div64_u64(elem * 100, num_elem);
+		   bytes_written += scnprintf(buf + bytes_written,
+			   8192 - bytes_written,
+			   "\t< %6lluus\t%llu\t%d%%\t%llu\t%llu\t%llu\t%llu\t%llu\t%llu\t%llu\t\t%llu\n",
+			   latency_x_axis_us[i],
+			   elem, pct,
+			   s->latency_y_axis[i].chunk_0_count,
+			   s->latency_y_axis[i].chunk_4k_count,
+			   s->latency_y_axis[i].chunk_8k_count,
+			   s->latency_y_axis[i].chunk_8_32k_count,
+			   s->latency_y_axis[i].chunk_32_64k_count,
+			   s->latency_y_axis[i].chunk_64_128k_count,
+			   s->latency_y_axis[i].chunk_128_256k_count,
+			   s->latency_y_axis[i].chunk_above_256k_count
+			   );
+	   }
+	   /* Last element in y-axis table is overflow */
+      elem = s->latency_y_axis[i].latency_axis;
+	   pct = div64_u64(elem * 100, num_elem);
+	   bytes_written += scnprintf(buf + bytes_written,
+			   8192 - bytes_written,
+			   "\t>=%6lluus\t%llu\t%d%%\t%llu\t%llu\t%llu\t%llu\t%llu\t%llu\t%llu\t\t%llu\n",
+			   latency_x_axis_us[i - 1],
+			   elem, pct,
+			   s->latency_y_axis[i].chunk_0_count,
+			   s->latency_y_axis[i].chunk_4k_count,
+			   s->latency_y_axis[i].chunk_8k_count,
+			   s->latency_y_axis[i].chunk_8_32k_count,
+			   s->latency_y_axis[i].chunk_32_64k_count,
+			   s->latency_y_axis[i].chunk_64_128k_count,
+			   s->latency_y_axis[i].chunk_128_256k_count,
+			   s->latency_y_axis[i].chunk_above_256k_count
+			   );
+	}
+
+	return bytes_written;
+}
+EXPORT_SYMBOL(blk_latency_hist_show);
+#endif

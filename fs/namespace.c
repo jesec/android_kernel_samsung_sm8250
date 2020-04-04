@@ -31,6 +31,7 @@
 #include "pnode.h"
 #include "internal.h"
 
+
 /* Maximum number of mounts in a mount namespace */
 unsigned int sysctl_mount_max __read_mostly = 100000;
 
@@ -2780,6 +2781,7 @@ long do_mount(const char *dev_name, const char __user *dir_name,
 	struct path path;
 	unsigned int mnt_flags = 0, sb_flags;
 	int retval = 0;
+
 
 	/* Discard magic */
 	if ((flags & MS_MGC_MSK) == MS_MGC_VAL)

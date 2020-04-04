@@ -416,6 +416,25 @@ int proc_pid_status(struct seq_file *m, struct pid_namespace *ns,
 	task_context_switch_counts(m, task);
 	return 0;
 }
+#if defined(VENDOR_EDIT) && defined(CONFIG_VIRTUAL_RESERVE_MEMORY)
+/* Kui.Zhang@PSW.TEC.KERNEL.Performance, 2019/03/18,
+ * show the task's reserved area info
+ */
+int proc_pid_reserve_area(struct seq_file *m, struct pid_namespace *ns,
+			struct pid *pid, struct task_struct *task)
+{
+	struct mm_struct *mm = get_task_mm(task);
+
+	if (mm) {
+		seq_printf(m, "%#lx\t%#lx\t%d\n",
+			mm->backed_vm_base, mm->backed_vm_size,
+			mm->reserve_map_count);
+		mmput(mm);
+	}
+	return 0;
+
+}
+#endif /* defined(VENDOR_EDIT) && defined(CONFIG_VIRTUAL_RESERVE_MEMORY) */
 
 static int do_task_stat(struct seq_file *m, struct pid_namespace *ns,
 			struct pid *pid, struct task_struct *task, int whole)

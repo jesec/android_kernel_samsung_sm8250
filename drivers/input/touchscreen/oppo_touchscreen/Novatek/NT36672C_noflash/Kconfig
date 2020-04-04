@@ -1,0 +1,10 @@
+#ifdef VENDOR_EDIT
+#Added by Zhouwenping@Bsp.group.Tp for nova nt36672 ic driver
+
+config TOUCHPANEL_NOVA_NT36672C_NOFLASH
+#	default y
+	bool "TP nova nt36672C IC enable or not for OPPO"
+	---help---
+	say Y to enable driver for Touchpanel useing nova nt36672
+
+#endif

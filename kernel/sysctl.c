@@ -72,6 +72,11 @@
 #include <linux/uaccess.h>
 #include <asm/processor.h>
 
+#ifdef VENDOR_EDIT
+/* Hailong.Liu@TECH.Kernel.CPU, 2019/10/24, stat cpu usage on each tick. */
+#include <linux/kernel_stat.h>
+#endif /* VENDOR_EDIT */
+
 #ifdef CONFIG_X86
 #include <asm/nmi.h>
 #include <asm/stacktrace.h>
@@ -132,8 +137,19 @@ static int __maybe_unused four = 4;
 static unsigned long zero_ul;
 static unsigned long one_ul = 1;
 static unsigned long long_max = LONG_MAX;
+
+#ifdef VENDOR_EDIT //yixue.ge@PSW.BSP.Kernel.Driver 20170720 add for add direct_vm_swappiness
+extern int direct_vm_swappiness;
+static int two_hundred = 200;
+#endif
+
 static int one_hundred = 100;
 static int one_thousand = 1000;
+#ifdef VENDOR_EDIT
+/*Huacai.Zhou@PSW.BSP.Kernel.Performance, 2018-04-28, add foreground task io opt*/
+unsigned int sysctl_fg_io_opt = 1;
+#endif /*VENDOR_EDIT*/
+
 #ifdef CONFIG_PRINTK
 static int ten_thousand = 10000;
 #endif
@@ -163,6 +179,10 @@ static const int cap_last_cap = CAP_LAST_CAP;
  */
 #ifdef CONFIG_DETECT_HUNG_TASK
 static unsigned long hung_task_timeout_max = (LONG_MAX/HZ);
+#if defined(VENDOR_EDIT) && defined(CONFIG_DEATH_HEALER)
+/* Wen.Luo@BSP.Kernel.Stability, 2019/01/12, DeathHealer , Foreground background optimization,change max io count */
+static int five = 5;
+#endif
 #endif
 
 #ifdef CONFIG_INOTIFY_USER
@@ -321,6 +341,12 @@ static int min_sched_tunable_scaling = SCHED_TUNABLESCALING_NONE;
 static int max_sched_tunable_scaling = SCHED_TUNABLESCALING_END-1;
 #endif /* CONFIG_SMP */
 #endif /* CONFIG_SCHED_DEBUG */
+
+#ifdef VENDOR_EDIT
+// Liujie.Xie@TECH.Kernel.Sched, 2019/05/22, add for ui first
+int sysctl_uifirst_enabled = 1;
+int sysctl_launcher_boost_enabled = 0;
+#endif /* VENDOR_EDIT */
 
 #ifdef CONFIG_COMPACTION
 static int min_extfrag_threshold;
@@ -520,13 +546,8 @@ static struct ctl_table kern_table[] = {
 		.extra1		= &zero,
 		.extra2		= &one_hundred_thousand,
 	},
-	{
-		.procname	= "sched_ravg_window_nr_ticks",
-		.data		= &sysctl_sched_ravg_window_nr_ticks,
-		.maxlen		= sizeof(unsigned int),
-		.mode		= 0644,
-		.proc_handler	= sched_ravg_window_handler,
-	},
+#endif
+#ifdef CONFIG_SMP
 	{
 		.procname	= "sched_upmigrate",
 		.data		= &sysctl_sched_capacity_margin_up,
@@ -542,6 +563,17 @@ static struct ctl_table kern_table[] = {
 		.proc_handler	= sched_updown_migrate_handler,
 	},
 #endif
+#ifdef VENDOR_EDIT
+/*Huacai.Zhou@PSW.BSP.Kernel.Performance, 2018-04-28, add foreground task io opt*/
+{
+		.procname	= "fg_io_opt",
+		.data		= &sysctl_fg_io_opt,
+		.maxlen		= sizeof(int),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec,
+},
+#endif
+
 #ifdef CONFIG_SCHED_DEBUG
 	{
 		.procname       = "sched_cstate_aware",
@@ -1372,6 +1404,27 @@ static struct ctl_table kern_table[] = {
 		.extra2		= &one,
 	},
 
+#if defined(VENDOR_EDIT) && defined(CONFIG_DEATH_HEALER)
+/* fanhui@PhoneSW.BSP, 2016/02/02, DeathHealer, record the hung task killing */
+	{
+		.procname	= "hung_task_oppo_kill",
+		.data		= &sysctl_hung_task_oppo_kill,
+		.maxlen		= 128,
+		.mode		= 0666,
+		.proc_handler	= proc_dostring,
+	},
+#endif
+#if defined(VENDOR_EDIT) && defined(CONFIG_DEATH_HEALER)
+/* Wen.Luo@BSP.Kernel.Stability, 2019/01/12, DeathHealer , Foreground background optimization,change max io count */
+	{
+		.procname	= "hung_task_maxiowait_count",
+		.data		= &sysctl_hung_task_maxiowait_count,
+		.maxlen		= sizeof(int),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec_minmax,
+		.extra1		= &five,
+	},
+#endif
 #endif
 #ifdef CONFIG_RT_MUTEXES
 	{
@@ -1513,6 +1566,35 @@ static struct ctl_table kern_table[] = {
 		.proc_handler	= proc_dointvec,
 	},
 #endif
+#ifdef VENDOR_EDIT
+// Liujie.Xie@TECH.Kernel.Sched, 2019/05/22, add for ui first
+    {
+        .procname   = "uifirst_enabled",
+        .data       = &sysctl_uifirst_enabled,
+        .maxlen     = sizeof(int),
+        .mode       = 0666,
+        .proc_handler = proc_dointvec,
+    },
+    {
+        .procname   = "launcher_boost_enabled",
+        .data       = &sysctl_launcher_boost_enabled,
+        .maxlen     = sizeof(int),
+        .mode       = 0666,
+        .proc_handler = proc_dointvec,
+    },
+#endif /* VENDOR_EDIT */
+#ifdef VENDOR_EDIT
+/* Hailong.Liu@TECH.Kernel.CPU, 2019/10/24, stat cpu usage on each tick. */
+	{
+		.procname	= "task_cpustats_enable",
+		.data		= &sysctl_task_cpustats_enable,
+		.maxlen		= sizeof(unsigned int),
+		.mode		= 0666,
+		.proc_handler	= proc_dointvec_minmax,
+		.extra1		= &zero,
+		.extra2		= &one,
+	},
+#endif
 	{ }
 };
 
@@ -1571,7 +1653,7 @@ static struct ctl_table vm_table[] = {
 		.proc_handler	= overcommit_kbytes_handler,
 	},
 	{
-		.procname	= "page-cluster", 
+		.procname	= "page-cluster",
 		.data		= &page_cluster,
 		.maxlen		= sizeof(int),
 		.mode		= 0644,
@@ -1642,8 +1724,23 @@ static struct ctl_table vm_table[] = {
 		.mode		= 0644,
 		.proc_handler	= proc_dointvec_minmax,
 		.extra1		= &zero,
+#ifdef VENDOR_EDIT //yixue.ge@PSW.BSP.Kernel.Driver 20170720 add for add direct_vm_swappiness
+		.extra2		= &two_hundred,
+#else
 		.extra2		= &one_hundred,
+#endif
 	},
+#ifdef VENDOR_EDIT //yixue.ge@PSW.BSP.Kernel.Driver 20170720 add for add direct_vm_swappiness
+	{
+		.procname	= "direct_swappiness",
+		.data		= &direct_vm_swappiness,
+		.maxlen 	= sizeof(direct_vm_swappiness),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec_minmax,
+		.extra1 	= &zero,
+		.extra2 	= &two_hundred,
+	},
+#endif
 	{
 		.procname       = "want_old_faultaround_pte",
 		.data           = &want_old_faultaround_pte,
@@ -1715,7 +1812,12 @@ static struct ctl_table vm_table[] = {
 		.procname	= "compact_memory",
 		.data		= &sysctl_compact_memory,
 		.maxlen		= sizeof(int),
+#ifdef VENDOR_EDIT
+/*Huacai.Zhou@PSW.kernel.mm, 2018-08-20, modify permission for coloros.athena*/
+		.mode		= 0222,
+#else
 		.mode		= 0200,
+#endif /*VENDOR_EDIT*/
 		.proc_handler	= sysctl_compaction_handler,
 	},
 	{
@@ -2110,7 +2212,7 @@ static struct ctl_table fs_table[] = {
 		.mode		= 0555,
 		.child		= inotify_table,
 	},
-#endif	
+#endif
 #ifdef CONFIG_EPOLL
 	{
 		.procname	= "epoll",
@@ -2555,12 +2657,12 @@ static int __do_proc_dointvec(void *tbl_data, struct ctl_table *table,
 	int *i, vleft, first = 1, err = 0;
 	size_t left;
 	char *kbuf = NULL, *p;
-	
+
 	if (!tbl_data || !table->maxlen || !*lenp || (*ppos && !write)) {
 		*lenp = 0;
 		return 0;
 	}
-	
+
 	i = (int *) tbl_data;
 	vleft = table->maxlen / sizeof(*i);
 	left = *lenp;
@@ -2786,7 +2888,7 @@ static int do_proc_douintvec(struct ctl_table *table, int write,
  * @ppos: file position
  *
  * Reads/writes up to table->maxlen/sizeof(unsigned int) integer
- * values from/to the user buffer, treated as an ASCII string. 
+ * values from/to the user buffer, treated as an ASCII string.
  *
  * Returns 0 on success.
  */
@@ -3301,7 +3403,7 @@ static int do_proc_dointvec_ms_jiffies_conv(bool *negp, unsigned long *lvalp,
  * @ppos: file position
  *
  * Reads/writes up to table->maxlen/sizeof(unsigned int) integer
- * values from/to the user buffer, treated as an ASCII string. 
+ * values from/to the user buffer, treated as an ASCII string.
  * The values read are assumed to be in seconds, and are converted into
  * jiffies.
  *
@@ -3323,8 +3425,8 @@ int proc_dointvec_jiffies(struct ctl_table *table, int write,
  * @ppos: pointer to the file position
  *
  * Reads/writes up to table->maxlen/sizeof(unsigned int) integer
- * values from/to the user buffer, treated as an ASCII string. 
- * The values read are assumed to be in 1/USER_HZ seconds, and 
+ * values from/to the user buffer, treated as an ASCII string.
+ * The values read are assumed to be in 1/USER_HZ seconds, and
  * are converted into jiffies.
  *
  * Returns 0 on success.
@@ -3346,8 +3448,8 @@ int proc_dointvec_userhz_jiffies(struct ctl_table *table, int write,
  * @ppos: the current position in the file
  *
  * Reads/writes up to table->maxlen/sizeof(unsigned int) integer
- * values from/to the user buffer, treated as an ASCII string. 
- * The values read are assumed to be in 1/1000 seconds, and 
+ * values from/to the user buffer, treated as an ASCII string.
+ * The values read are assumed to be in 1/1000 seconds, and
  * are converted into jiffies.
  *
  * Returns 0 on success.
@@ -3558,29 +3660,6 @@ int proc_douintvec_capacity(struct ctl_table *table, int write,
 				do_proc_douintvec_capacity_conv, NULL);
 }
 
-static int do_proc_douintvec_rwin(bool *negp, unsigned long *lvalp,
-				  int *valp, int write, void *data)
-{
-	if (write) {
-		if (*lvalp == 0 || *lvalp == 2 || *lvalp == 5)
-			*valp = *lvalp;
-		else
-			return -EINVAL;
-	} else {
-		*negp = false;
-		*lvalp = *valp;
-	}
-
-	return 0;
-}
-
-int proc_douintvec_ravg_window(struct ctl_table *table, int write,
-			       void __user *buffer, size_t *lenp, loff_t *ppos)
-{
-	return do_proc_dointvec(table, write, buffer, lenp, ppos,
-				do_proc_douintvec_rwin, NULL);
-}
-
 #else /* CONFIG_PROC_SYSCTL */
 
 int proc_dostring(struct ctl_table *table, int write,
@@ -3646,12 +3725,6 @@ int proc_doulongvec_ms_jiffies_minmax(struct ctl_table *table, int write,
 
 int proc_douintvec_capacity(struct ctl_table *table, int write,
 			    void __user *buffer, size_t *lenp, loff_t *ppos)
-{
-	return -ENOSYS;
-}
-
-int proc_douintvec_ravg_window(struct ctl_table *table, int write,
-			       void __user *buffer, size_t *lenp, loff_t *ppos)
 {
 	return -ENOSYS;
 }

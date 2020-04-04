@@ -154,6 +154,12 @@ struct request {
 	int cpu;
 	unsigned int cmd_flags;		/* op and common flags */
 	req_flags_t rq_flags;
+#ifdef VENDOR_EDIT
+/*Hank.liu@PSW.BSP Kernel IO Latency  2019-03-19,Add some info in each request*/
+	ktime_t block_io_start;  //save block io start ktime
+	ktime_t ufs_io_start; //save ufs io start ktime
+	u64 flash_io_latency; //save mmc host command latency
+#endif /*VENDOR_EDIT*/
 
 	int internal_tag;
 
@@ -167,6 +173,10 @@ struct request {
 	struct bio *biotail;
 
 	struct list_head queuelist;
+#ifdef VENDOR_EDIT
+/*Huacai.Zhou@PSW.BSP.Kernel.Performance, 2018-04-28, add foreground task io opt*/
+	struct list_head fg_list;
+#endif /*VENDOR_EDIT*/
 
 	/*
 	 * The hash is used inside the scheduler, and killed once the
@@ -265,6 +275,11 @@ struct request {
 
 	/* for bidi */
 	struct request *next_rq;
+#ifdef VENDOR_EDIT
+//hank.liu@Tech.Storage.UFS, 2019-10-17 add latency_hist node for ufs latency calculate in sysfs.
+	ktime_t			lat_hist_io_start;
+	int			lat_hist_enabled;
+#endif
 
 #ifdef CONFIG_BLK_CGROUP
 	struct request_list *rl;		/* rl this rq is alloced from */
@@ -436,6 +451,14 @@ struct request_queue {
 	 * Together with queue_head for cacheline sharing
 	 */
 	struct list_head	queue_head;
+#ifdef VENDOR_EDIT
+/*Huacai.Zhou@PSW.BSP.Kernel.Performance, 2018-04-28, add foreground task io opt*/
+	struct list_head	fg_head;
+	int fg_count;
+	int both_count;
+	int fg_count_max;
+	int both_count_max;
+#endif /*VENDOR*/
 	struct request		*last_merge;
 	struct elevator_queue	*elevator;
 	int			nr_rqs[2];	/* # allocated [a]sync rqs */
@@ -567,7 +590,14 @@ struct request_queue {
 	struct blk_queue_tag	*queue_tags;
 
 	unsigned int		nr_sorted;
+#if defined(VENDOR_EDIT) && defined(CONFIG_OPPO_HEALTHINFO)
+// jiheng.xie@PSW.Tech.BSP.Performance, 2019/03/11
+// Modify for ioqueue
+	unsigned int		in_flight[4];
+#else
 	unsigned int		in_flight[2];
+#endif /*VENDOR_EDIT*/
+
 
 	/*
 	 * Number of active block driver functions for which blk_drain_queue()
@@ -674,7 +704,30 @@ struct request_queue {
 
 #define BLK_MAX_WRITE_HINTS	5
 	u64			write_hints[BLK_MAX_WRITE_HINTS];
+
+#if defined(VENDOR_EDIT) && defined(CONFIG_UFSTW)
+	/* Hank.liu@TECH.PLAT.Storage, 2019-10-31, add UFS+ hpb and tw driver*/
+	bool			turbo_write_dev;
+#endif
 };
+#ifdef VENDOR_EDIT
+/*Huacai.Zhou@PSW.BSP.Kernel.Performance, 2018-04-28, add foreground task io opt*/
+extern unsigned int sysctl_fg_io_opt;
+static inline void queue_throtl_add_request(struct request_queue *q,
+					    struct request *rq, bool front)
+{
+	struct list_head *head;
+	if (!sysctl_fg_io_opt)
+		return;
+	if (rq->cmd_flags & REQ_FG) {
+		head = &q->fg_head;
+		if (front)
+			list_add(&rq->fg_list, head);
+		else
+			list_add_tail(&rq->fg_list, head);
+	}
+}
+#endif /*VENDOR_EDIT*/
 
 #define QUEUE_FLAG_QUEUED	0	/* uses generic tag queueing */
 #define QUEUE_FLAG_STOPPED	1	/* queue is stopped */
@@ -719,6 +772,28 @@ void blk_queue_flag_set(unsigned int flag, struct request_queue *q);
 void blk_queue_flag_clear(unsigned int flag, struct request_queue *q);
 bool blk_queue_flag_test_and_set(unsigned int flag, struct request_queue *q);
 bool blk_queue_flag_test_and_clear(unsigned int flag, struct request_queue *q);
+
+#if defined(VENDOR_EDIT) && defined(CONFIG_OPPO_HEALTHINFO)
+// jiheng.xie@PSW.Tech.BSP.Performance, 2019/03/11
+// Add for ioqueue
+static inline void ohm_ioqueue_add_inflight(struct request_queue *q,
+					     struct request *rq)
+{
+	if (rq->cmd_flags & REQ_FG)
+		q->in_flight[BLK_RW_FG]++;
+	else
+		q->in_flight[BLK_RW_BG]++;
+}
+
+static inline void ohm_ioqueue_dec_inflight(struct request_queue *q,
+					     struct request *rq)
+{
+	if (rq->cmd_flags & REQ_FG)
+		q->in_flight[BLK_RW_FG]--;
+	else
+		q->in_flight[BLK_RW_BG]--;
+}
+#endif /*VENDOR_EDIT*/
 
 #define blk_queue_tagged(q)	test_bit(QUEUE_FLAG_QUEUED, &(q)->queue_flags)
 #define blk_queue_stopped(q)	test_bit(QUEUE_FLAG_STOPPED, &(q)->queue_flags)
@@ -2081,6 +2156,112 @@ static inline bool blk_req_can_dispatch_to_zone(struct request *rq)
 }
 #endif /* CONFIG_BLK_DEV_ZONED */
 
+#ifdef VENDOR_EDIT
+//hank.liu@Tech.Storage.UFS, 2019-10-17 add latency_hist node for ufs latency calculate in sysfs.
+/*
+ * X-axis for IO latency histogram support.
+ */
+static const u_int64_t latency_x_axis_us[] = {
+   100,
+   200,
+   300,
+   400,
+   500,
+   600,
+   700,
+   800,
+   900,
+   1000,
+   2000,
+   3000,
+   4000,
+   5000,
+   6000,
+   7000,
+   8000,
+   9000,
+   10000,
+   20000,
+   30000,
+   40000,
+   50000,
+   100000,
+   200000,
+   300000,
+   400000,
+   500000,
+   600000,
+   700000,
+   800000,
+   900000,
+   1000000,
+   1500000,
+   2000000
+};
+
+#define BLK_IO_LAT_HIST_DISABLE         0
+#define BLK_IO_LAT_HIST_ENABLE          1
+#define BLK_IO_LAT_HIST_ZERO            2
+#define CHUNCK_SIZE_4K                  8
+#define CHUNCK_SIZE_8K                  16
+#define CHUNCK_SIZE_32K                 64
+#define CHUNCK_SIZE_64K                 128
+#define CHUNCK_SIZE_128K                256
+#define CHUNCK_SIZE_256K                512
+
+struct io_latency_chunck_size {
+   u_int64_t   chunk_0_count;
+	u_int64_t	chunk_4k_count;
+	u_int64_t   chunk_8k_count;
+	u_int64_t   chunk_8_32k_count;
+	u_int64_t   chunk_32_64k_count;
+	u_int64_t   chunk_64_128k_count;
+	u_int64_t   chunk_128_256k_count;
+	u_int64_t   chunk_above_256k_count;
+	u_int64_t   latency_axis;
+};
+
+struct io_latency_state {
+	//u_int64_t	latency_y_axis[ARRAY_SIZE(latency_x_axis_us) + 1];
+	struct io_latency_chunck_size latency_y_axis[ARRAY_SIZE(latency_x_axis_us) + 1];
+	u_int64_t	latency_elems;
+	u_int64_t	latency_sum;
+};
+
+static inline void
+blk_update_latency_hist(struct io_latency_state *s, u_int64_t delta_us, unsigned int length)
+{
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(latency_x_axis_us); i++)
+		if (delta_us < (u_int64_t)latency_x_axis_us[i])
+			break;
+	s->latency_y_axis[i].latency_axis++;
+	if(!length){
+      s->latency_y_axis[i].chunk_0_count++;
+	}else if( length == CHUNCK_SIZE_4K ){
+      s->latency_y_axis[i].chunk_4k_count++;
+	}else if( length == CHUNCK_SIZE_8K){
+      s->latency_y_axis[i].chunk_8k_count++;
+	}else if( length > CHUNCK_SIZE_8K && length <= CHUNCK_SIZE_32K){
+      s->latency_y_axis[i].chunk_8_32k_count++;
+	}else if( length > CHUNCK_SIZE_32K && length <= CHUNCK_SIZE_64K){
+      s->latency_y_axis[i].chunk_32_64k_count++;
+	}else if( length > CHUNCK_SIZE_64K && length <= CHUNCK_SIZE_128K){
+      s->latency_y_axis[i].chunk_64_128k_count++;
+	}else if( length > CHUNCK_SIZE_128K && length <= CHUNCK_SIZE_256K){
+      s->latency_y_axis[i].chunk_128_256k_count++;
+	}else if( length > CHUNCK_SIZE_256K){
+	   s->latency_y_axis[i].chunk_above_256k_count++;
+	}
+	s->latency_elems++;
+	s->latency_sum += delta_us;
+}
+
+ssize_t blk_latency_hist_show(char* name, struct io_latency_state *s,
+		char *buf, int buf_size);
+
+#endif
 #else /* CONFIG_BLOCK */
 
 struct block_device;

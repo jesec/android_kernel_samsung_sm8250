@@ -125,6 +125,10 @@ obj-$(CONFIG_REGULATOR_TPS65910) += tps65910-regulator.o
 obj-$(CONFIG_REGULATOR_TPS65912) += tps65912-regulator.o
 obj-$(CONFIG_REGULATOR_TPS80031) += tps80031-regulator.o
 obj-$(CONFIG_REGULATOR_TPS65132) += tps65132-regulator.o
+#ifdef VENDOR_EDIT
+# Yuwei.Zhang@RM.MM.Display.LCD.Machine 2019.10.29 add for lcd power driver
+obj-$(CONFIG_REGULATOR_TPS65132_FOR_19751) += tps65132-regulator-for-19751.o
+#endif /* VENDOR_EDIT */
 obj-$(CONFIG_REGULATOR_TWL4030) += twl-regulator.o twl6030-regulator.o
 obj-$(CONFIG_REGULATOR_UNIPHIER) += uniphier-regulator.o
 obj-$(CONFIG_REGULATOR_VCTRL) += vctrl-regulator.o

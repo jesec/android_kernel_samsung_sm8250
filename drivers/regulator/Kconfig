@@ -945,6 +945,14 @@ config REGULATOR_TPS65132
 	  This driver supports TPS65132 single inductor - dual output
 	  power supply specifcally designed for display panels.
 
+config REGULATOR_TPS65132_FOR_19751
+	tristate "TI TPS65132 Dual Output Power regulators for 19751"
+	depends on I2C && GPIOLIB
+	select REGMAP_I2C
+	help
+	  This driver supports TPS65132 single inductor - dual output
+	  power supply specifcally designed for display panels.
+
 config REGULATOR_TPS65217
 	tristate "TI TPS65217 Power regulators"
 	depends on MFD_TPS65217

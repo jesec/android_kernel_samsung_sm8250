@@ -596,16 +596,17 @@ static void socket_read_work_fn(struct work_struct *work)
 	struct diag_socket_info *info = container_of(work,
 						     struct diag_socket_info,
 						     read_work);
+#ifdef VENDOR_EDIT
+/*Cong.Dai@PSW.BSP.TP, 2019-12-14, add for CR 2574500 Read and drop incoming data when channels are not opened*/
 	struct diagfwd_info *fwd_info;
+#endif /*VENDOR_EDIT*/
 
-	if (!info) {
-		diag_ws_release();
+	if (!info)
 		return;
-	}
+
 	mutex_lock(&info->socket_info_mutex);
 	if (!info->hdl || !info->hdl->sk) {
 		mutex_unlock(&info->socket_info_mutex);
-		diag_ws_release();
 		return;
 	}
 	err = sock_error(info->hdl->sk);
@@ -614,12 +615,16 @@ static void socket_read_work_fn(struct work_struct *work)
 		socket_close_channel(info);
 		if (info->port_type == PORT_TYPE_SERVER)
 			socket_init_work_fn(&info->init_work);
-		diag_ws_release();
 		return;
 	}
+
+#ifdef VENDOR_EDIT
+/*Cong.Dai@PSW.BSP.TP, 2019-12-14, add for CR 2574500 Read and drop incoming data when channels are not opened*/
 	fwd_info = info->fwd_ctxt;
-	if (info->port_type == PORT_TYPE_SERVER &&
-		(!fwd_info || !atomic_read(&fwd_info->opened)))
+	if (info->port_type == PORT_TYPE_SERVER && (!fwd_info || !atomic_read(&fwd_info->opened)))
+#else
+	if (!info->fwd_ctxt && info->port_type == PORT_TYPE_SERVER)
+#endif /*VENDOR_EDIT*/
 		diag_socket_drop_data(info);
 
 	if (!atomic_read(&info->opened) && info->port_type == PORT_TYPE_SERVER)

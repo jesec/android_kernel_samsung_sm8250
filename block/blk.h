@@ -204,6 +204,13 @@ static inline bool blk_rq_is_complete(struct request *rq)
 #define ELV_ON_HASH(rq) ((rq)->rq_flags & RQF_HASHED)
 
 void blk_insert_flush(struct request *rq);
+#ifdef VENDOR_EDIT
+/*Huacai.Zhou@PSW.BSP.Kernel.Performance, 2018-04-28, add foreground task io opt*/
+extern int fg_count;
+extern int both_count;
+extern bool fg_debug;
+extern unsigned int sysctl_fg_io_opt;
+#endif /*VENDOR_EDIT*/
 
 static inline void elv_activate_rq(struct request_queue *q, struct request *rq)
 {

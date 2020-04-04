@@ -260,6 +260,12 @@ config ZONE_DMA32
 config HAVE_GENERIC_GUP
 	def_bool y
 
+#ifdef VENDOR_EDIT
+#Ke.Li@ROM.Security, 2019/10/1, Add for kevent upload
+config OPPO_KEVENT_UPLOAD
+	def_bool y
+#endif/* VENDOR_EDIT */
+
 config SMP
 	def_bool y
 

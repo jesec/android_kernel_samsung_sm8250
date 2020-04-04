@@ -63,6 +63,10 @@ struct mutex {
 #ifdef CONFIG_DEBUG_LOCK_ALLOC
 	struct lockdep_map	dep_map;
 #endif
+#ifdef VENDOR_EDIT
+// Liujie.Xie@TECH.Kernel.Sched, 2019/05/22, add for ui first
+    struct task_struct *ux_dep_task;
+#endif
 };
 
 /*
@@ -87,6 +91,11 @@ struct mutex_waiter {
 	void			*magic;
 #endif
 };
+
+#ifdef VENDOR_EDIT
+// Liujie.Xie@TECH.Kernel.Sched, 2019/05/22, add for ui first
+#include <linux/oppocfs/oppo_cfs_mutex.h>
+#endif
 
 #ifdef CONFIG_DEBUG_MUTEXES
 
@@ -125,13 +134,23 @@ do {									\
 # define __DEP_MAP_MUTEX_INITIALIZER(lockname)
 #endif
 
+#ifdef VENDOR_EDIT
+// Liujie.Xie@TECH.Kernel.Sched, 2019/05/22, add for ui first
+#define __MUTEX_INITIALIZER(lockname) \
+        { .owner = ATOMIC_LONG_INIT(0) \
+        , .wait_lock = __SPIN_LOCK_UNLOCKED(lockname.wait_lock) \
+        , .wait_list = LIST_HEAD_INIT(lockname.wait_list) \
+        , .ux_dep_task = NULL \
+        __DEBUG_MUTEX_INITIALIZER(lockname) \
+        __DEP_MAP_MUTEX_INITIALIZER(lockname) }
+#else
 #define __MUTEX_INITIALIZER(lockname) \
 		{ .owner = ATOMIC_LONG_INIT(0) \
 		, .wait_lock = __SPIN_LOCK_UNLOCKED(lockname.wait_lock) \
 		, .wait_list = LIST_HEAD_INIT(lockname.wait_list) \
 		__DEBUG_MUTEX_INITIALIZER(lockname) \
 		__DEP_MAP_MUTEX_INITIALIZER(lockname) }
-
+#endif
 #define DEFINE_MUTEX(mutexname) \
 	struct mutex mutexname = __MUTEX_INITIALIZER(mutexname)
 

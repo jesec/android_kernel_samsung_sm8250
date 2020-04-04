@@ -39,6 +39,10 @@
 
 #include "sdhci.h"
 
+#ifdef VENDOR_EDIT //Cong.Dai@BSP.TP.Function, 2019/07/03, modified for replace daily build macro
+#include <soc/oppo/oppo_project.h>
+#endif /* VENDOR_EDIT */
+
 #define DRIVER_NAME "sdhci"
 
 #define DBG(f, x...) \
@@ -80,8 +84,22 @@ static void sdhci_dump_state(struct sdhci_host *host)
 		mmc->parent->power.disable_depth);
 }
 
+#ifdef VENDOR_EDIT
+//yixue.ge@BSP.drv 2014-06-04 modify for disable sdcard log
+extern int get_eng_version(void);
+static int sdhci_dump_flag = 0;
+#endif
+
 void sdhci_dumpregs(struct sdhci_host *host)
 {
+
+#ifdef VENDOR_EDIT
+//yixue.ge@BSP.drv 2014-06-04 modify for disable sdcard log
+	if(get_eng_version() != RELEASE)
+		sdhci_dump_flag ++;
+	else
+		return;
+#endif
 	mmc_log_string(host->mmc,
 		"BLOCK_SIZE=0x%08x BLOCK_COUNT=0x%08x COMMAND=0x%08x INT_STATUS=0x%08x INT_ENABLE=0x%08x SIGNAL_ENABLE=0x%08x\n",
 		sdhci_readw(host, SDHCI_BLOCK_SIZE),

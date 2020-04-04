@@ -19,6 +19,11 @@
 #define RPM_STATS_NUM_REC	2
 #define MSM_ARCH_TIMER_FREQ	19200000
 
+#ifdef VENDOR_EDIT
+//Nanwei.Deng@BSP.Power.Basic 2018/06/11 add for get rpm_stats
+void __iomem *rpm_phys_addr = NULL;
+#endif
+
 #define GET_PDATA_OF_ATTR(attr) \
 	(container_of(attr, struct msm_rpmstats_kobj_attr, ka)->pd)
 
@@ -68,7 +73,7 @@ static inline u64 get_time_in_sec(u64 counter)
 
 	return counter;
 }
-
+#ifndef VENDOR_EDIT //yunqing.zeng@bsp.power.basic 20190702 Modify for log info more accurate
 static inline u64 get_time_in_msec(u64 counter)
 {
 	do_div(counter, MSM_ARCH_TIMER_FREQ);
@@ -76,6 +81,13 @@ static inline u64 get_time_in_msec(u64 counter)
 
 	return counter;
 }
+#else
+static inline u64 get_time_in_msec(u64 counter)
+{
+	do_div(counter, (MSM_ARCH_TIMER_FREQ/MSEC_PER_SEC));
+	return counter;
+}
+#endif
 
 static inline int msm_rpmstats_append_data_to_buf(char *buf,
 		struct msm_rpm_stats_data *data, int buflength)
@@ -110,6 +122,26 @@ static inline int msm_rpmstats_append_data_to_buf(char *buf,
 		time_since_last_mode, actual_last_sleep);
 #endif
 }
+
+#ifdef VENDOR_EDIT
+//Nanwei.Deng@BSP.Power.Basic 2018/06/11 add for get rpm_stats
+static inline int oppo_rpmstats_append_data_to_buf(char *buf,
+		struct msm_rpm_stats_data *data, int buflength,int i)
+{
+	u64 actual_last_sleep;
+
+	actual_last_sleep = get_time_in_msec(data->accumulated);
+	if(i == 0) {
+		return snprintf(buf, buflength,
+			"vlow:%x:%llx\n",
+			data->count, actual_last_sleep);
+	} else {
+	    return snprintf(buf, buflength,
+			"vmin:%x:%llx\r\n",
+			data->count, actual_last_sleep);
+	}
+}
+#endif /*VENDOR_EDIT*/
 
 static inline u32 msm_rpmstats_read_long_register(void __iomem *regbase,
 		int index, int offset)
@@ -167,6 +199,33 @@ static inline int msm_rpmstats_copy_stats(
 	return length;
 }
 
+#ifdef VENDOR_EDIT
+//Nanwei.Deng@BSP.Power.Basic 2018/06/11 add for get rpm_stats
+static inline int oppo_rpmstats_copy_stats(
+			struct msm_rpmstats_private_data *prvdata)
+{
+	void __iomem *reg;
+	struct msm_rpm_stats_data data;
+	int i, length;
+
+	reg = prvdata->reg_base;
+
+	for (i = 0, length = 0; i < prvdata->num_records; i++) {
+		data.count = msm_rpmstats_read_long_register(reg, i,
+				offsetof(struct msm_rpm_stats_data, count));
+		data.accumulated = msm_rpmstats_read_quad_register(reg,
+				i, offsetof(struct msm_rpm_stats_data,
+					accumulated));
+
+		length += oppo_rpmstats_append_data_to_buf(prvdata->buf + length,
+				&data, sizeof(prvdata->buf) - length,i);
+		prvdata->read_idx++;
+	}
+
+	return length;
+}
+#endif /*VENDOR_EDIT*/
+
 static ssize_t rpmstats_show(struct kobject *kobj,
 			struct kobj_attribute *attr, char *buf)
 {
@@ -195,6 +254,33 @@ static ssize_t rpmstats_show(struct kobject *kobj,
 	iounmap(prvdata.reg_base);
 	return length;
 }
+#ifdef VENDOR_EDIT
+//Nanwei.Deng@BSP.Power.Basic 2018/06/11 add for get rpm_stats
+static ssize_t oppo_rpmstats_show(struct kobject *kobj,
+			struct kobj_attribute *attr, char *buf)
+{
+	struct msm_rpmstats_private_data prvdata;
+	struct msm_rpmstats_platform_data *pdata = NULL;
+
+	if (rpm_phys_addr == NULL)
+	{
+		return 0;
+	}
+	pdata = GET_PDATA_OF_ATTR(attr);
+    prvdata.reg_base =rpm_phys_addr; 
+
+
+	prvdata.read_idx = prvdata.len = 0;
+	prvdata.platform_data = pdata;
+	prvdata.num_records = RPM_STATS_NUM_REC;
+
+	if (prvdata.read_idx < prvdata.num_records)
+		prvdata.len = oppo_rpmstats_copy_stats(&prvdata);
+
+	return snprintf(buf, prvdata.len, "%s", prvdata.buf);
+}
+
+#endif /*VENDOR_EDIT*/
 
 static int msm_rpmstats_create_sysfs(struct platform_device *pdev,
 				struct msm_rpmstats_platform_data *pd)
@@ -202,6 +288,10 @@ static int msm_rpmstats_create_sysfs(struct platform_device *pdev,
 	struct kobject *rpmstats_kobj = NULL;
 	struct msm_rpmstats_kobj_attr *rpms_ka = NULL;
 	int ret = 0;
+#ifdef VENDOR_EDIT
+//Nanwei.Deng@BSP.Power.Basic 2018/05/23 add for get /sys/power/system_sleep/oppo_rpmh_stats
+    struct msm_rpmstats_kobj_attr *oppo_rpms_ka = NULL;
+#endif
 
 	rpmstats_kobj = kobject_create_and_add("system_sleep", power_kobj);
 	if (!rpmstats_kobj) {
@@ -228,6 +318,24 @@ static int msm_rpmstats_create_sysfs(struct platform_device *pdev,
 
 	ret = sysfs_create_file(rpmstats_kobj, &rpms_ka->ka.attr);
 	platform_set_drvdata(pdev, rpms_ka);
+#ifdef VENDOR_EDIT
+//Nanwei.Deng@BSP.Power.Basic 2018/05/23 add for get /sys/power/system_sleep/oppo_rpmh_stats
+    oppo_rpms_ka = kzalloc(sizeof(*oppo_rpms_ka), GFP_KERNEL);
+	if (!oppo_rpms_ka) {
+		kobject_put(rpmstats_kobj);
+		ret = -ENOMEM;
+		goto fail;
+	}
+
+    sysfs_attr_init(&oppo_rpms_ka->ka.attr);
+	oppo_rpms_ka->pd = pd;
+	oppo_rpms_ka->ka.attr.mode = 0444;
+	oppo_rpms_ka->ka.attr.name = "oppo_rpmh_stats";
+	oppo_rpms_ka->ka.show = oppo_rpmstats_show;
+	oppo_rpms_ka->ka.store = NULL;
+
+	ret = sysfs_create_file(rpmstats_kobj, &oppo_rpms_ka->ka.attr);
+#endif /*VENDOR_EDIT*/
 
 fail:
 	return ret;
@@ -272,7 +380,19 @@ static int msm_rpmstats_probe(struct platform_device *pdev)
 
 	msm_rpmstats_create_sysfs(pdev, pdata);
 
-	return 0;
+#ifdef VENDOR_EDIT
+	//Nanwei.Deng@BSP.Power.Basic 2018/05/23 add for get /sys/power/system_sleep/oppo_rpmh_stats
+	rpm_phys_addr= ioremap_nocache(pdata->phys_addr_base,
+							pdata->phys_size);
+	if (!rpm_phys_addr) {
+			pr_err("%s: ERROR could not ioremap start=%pa, len=%u\n",
+			__func__, &pdata->phys_addr_base,
+			pdata->phys_size);
+		return -ENODEV;
+	}
+#endif
+	return 0; 
+
 }
 
 static int msm_rpmstats_remove(struct platform_device *pdev)

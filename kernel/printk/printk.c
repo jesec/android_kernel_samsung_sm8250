@@ -58,6 +58,16 @@
 #include "braille.h"
 #include "internal.h"
 
+#ifdef VENDOR_EDIT
+/*xing.xiong@BSP.Kernel.Driver, 2019/06/14, Add for uart control via cmdline*/ 
+#include <soc/oppo/boot_mode.h>
+#endif
+
+#ifdef VENDOR_EDIT
+//Weizhong.Wu@BSP.POWER.Basic 2019/11/5,Add for close uart log in user version
+extern int oppo_uart_disable;
+#endif /*VENDOR_EDIT*/
+
 int console_printk[4] = {
 	CONSOLE_LOGLEVEL_DEFAULT,	/* console_loglevel */
 	MESSAGE_LOGLEVEL_DEFAULT,	/* default_message_loglevel */
@@ -591,6 +601,21 @@ static int log_store(int facility, int level,
 	u32 size, pad_len;
 	u16 trunc_msg_len = 0;
 
+	#ifdef VENDOR_EDIT
+	//part 1/2: yixue.ge 2015-04-22 add for add cpu number and current id and current comm to kmsg
+	int this_cpu = smp_processor_id();
+	char tbuf[64];
+	unsigned tlen;
+
+	if (console_suspended == 0) {
+		tlen = snprintf(tbuf, sizeof(tbuf), " (%x)[%d:%s]",
+			this_cpu, current->pid, current->comm);
+	} else {
+		tlen = snprintf(tbuf, sizeof(tbuf), " %x)", this_cpu);
+	}
+	text_len += tlen;
+	#endif //add end part 1/3
+
 	/* number of '\0' padding bytes to next message */
 	size = msg_used_size(text_len, dict_len, &pad_len);
 
@@ -615,7 +640,13 @@ static int log_store(int facility, int level,
 
 	/* fill message */
 	msg = (struct printk_log *)(log_buf + log_next_idx);
+	#ifndef VENDOR_EDIT
+	//part 2/2: yixue.ge 2015-04-22 add for add cpu number and current id and current comm to kmsg
 	memcpy(log_text(msg), text, text_len);
+	#else
+	memcpy(log_text(msg), tbuf, tlen);
+	memcpy(log_text(msg) + tlen, text, text_len-tlen);
+	#endif //add end part 3/3
 	msg->text_len = text_len;
 	if (trunc_msg_len) {
 		memcpy(log_text(msg) + text_len, trunc_msg, trunc_msg_len);
@@ -1714,6 +1745,15 @@ static void call_console_drivers(const char *ext_text, size_t ext_len,
 		return;
 
 	for_each_console(con) {
+#ifdef VENDOR_EDIT
+/*xing.xiong@BSP.Kernel.Driver, 2019/06/14, Add for uart control via cmdline*/
+		if ((con->flags & CON_CONSDEV) &&
+			(oppo_uart_disable ||
+			get_boot_mode() == MSM_BOOT_MODE__FACTORY ||
+			get_boot_mode() == MSM_BOOT_MODE__RF ||
+			get_boot_mode() == MSM_BOOT_MODE__WLAN))
+			continue;
+#endif
 		if (exclusive_console && con != exclusive_console)
 			continue;
 		if (!(con->flags & CON_ENABLED))

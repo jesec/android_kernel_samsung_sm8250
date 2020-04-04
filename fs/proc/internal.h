@@ -151,6 +151,13 @@ extern int proc_pid_status(struct seq_file *, struct pid_namespace *,
 			   struct pid *, struct task_struct *);
 extern int proc_pid_statm(struct seq_file *, struct pid_namespace *,
 			  struct pid *, struct task_struct *);
+#if defined(VENDOR_EDIT) && defined(CONFIG_VIRTUAL_RESERVE_MEMORY)
+/* Kui.Zhang@PSW.TEC.KERNEL.Performance, 2019/03/18,
+ * show the task's reserved area info
+ */
+extern int proc_pid_reserve_area(struct seq_file *m, struct pid_namespace *ns,
+			struct pid *pid, struct task_struct *task);
+#endif
 
 /*
  * base.c
@@ -308,6 +315,12 @@ extern const struct file_operations proc_pid_smaps_operations;
 extern const struct file_operations proc_pid_smaps_rollup_operations;
 extern const struct file_operations proc_clear_refs_operations;
 extern const struct file_operations proc_pagemap_operations;
+#if defined(VENDOR_EDIT) && defined(CONFIG_VIRTUAL_RESERVE_MEMORY)
+/* Kui.Zhang@PSW.TEC.KERNEL.Performance, 2019/03/18,
+ * read the reserved mmaps
+ */
+extern const struct file_operations proc_pid_rmaps_operations;
+#endif
 
 extern unsigned long task_vsize(struct mm_struct *);
 extern unsigned long task_statm(struct mm_struct *,

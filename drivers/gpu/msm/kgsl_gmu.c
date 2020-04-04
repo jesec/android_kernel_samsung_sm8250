@@ -107,10 +107,15 @@ static int _gmu_iommu_fault_handler(struct device *dev,
 	return 0;
 }
 
+int gmu_smmu_fault;
+
 static int gmu_kernel_fault_handler(struct iommu_domain *domain,
 		struct device *dev, unsigned long addr, int flags, void *token)
 {
-	return _gmu_iommu_fault_handler(dev, addr, flags, "gmu_kernel");
+     _gmu_iommu_fault_handler(dev, addr, flags, "gmu_user");
+
+     gmu_smmu_fault = true;
+     return -EBUSY;
 }
 
 static int gmu_user_fault_handler(struct iommu_domain *domain,
@@ -239,7 +244,7 @@ static struct gmu_memdesc *allocate_gmu_kmem(struct gmu_device *gmu,
 
 	case GMU_NONCACHED_USER:
 		/* Set start address for first uncached user alloc */
-		if (next_uncached_user_alloc == 0)
+		if (next_uncached_kernel_alloc == 0)
 			next_uncached_user_alloc = gmu->vma[mem_type].start;
 
 		if (addr == 0)
@@ -537,7 +542,6 @@ static int gmu_dcvs_set(struct kgsl_device *device,
 		dev_err_ratelimited(&gmu->pdev->dev,
 			"Failed to set GPU perf idx %d, bw idx %d\n",
 			req.freq, req.bw);
-
 		/*
 		 * We can be here in two situations. First, we send a dcvs
 		 * hfi so gmu knows at what level it must bring up the gpu.
@@ -1551,6 +1555,9 @@ static void gmu_snapshot(struct kgsl_device *device)
 			~(gmu_dev_ops->gmu2host_intr_mask));
 
 	gmu->fault_count++;
+
+    if (gmu_smmu_fault)
+    BUG();
 }
 
 static int gmu_init(struct kgsl_device *device)

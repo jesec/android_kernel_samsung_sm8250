@@ -33,6 +33,9 @@ extern int msm_minidump_add_region(const struct md_region *entry);
 extern int msm_minidump_remove_region(const struct md_region *entry);
 extern bool msm_minidump_enabled(void);
 extern void dump_stack_minidump(u64 sp);
+#ifdef VENDOR_EDIT//Fanhong.Kong@ProDrv.CHG,add 2018/11/29 for minidump 4.19
+extern void dumpcpuregs(struct pt_regs *pt_regs);
+#endif/*VENDOR_EDIT*/
 #else
 static inline int msm_minidump_add_region(const struct md_region *entry)
 {
@@ -45,5 +48,8 @@ static inline int msm_minidump_remove_region(const struct md_region *entry)
 }
 static inline bool msm_minidump_enabled(void) { return false; }
 static inline void dump_stack_minidump(u64 sp) {}
+#ifdef VENDOR_EDIT//Fanhong.Kong@ProDrv.CHG,add 2018/11/29 for minidump 4.19
+static inline void dumpcpuregs(struct pt_regs *pt_regs){}
+#endif/*VENDOR_EDIT*/
 #endif
 #endif

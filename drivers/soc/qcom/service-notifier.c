@@ -272,7 +272,20 @@ static int send_notif_listener_msg_req(struct service_notif_info *service_notif,
 		return rc;
 	}
 
+	#ifndef VENDOR_EDIT
+	/*Jianfeng.Qiu@PSW.MM.AudioDriver.Machine.1416166, 2018/07/20,
+	 * Modify for qmi timeout issue for audio_pd.
+	 */
 	rc = qmi_txn_wait(&txn, msecs_to_jiffies(SERVER_TIMEOUT));
+	#else /* VENDOR_EDIT */
+	if (service_notif && (!strcmp(service_notif->service_path, "msm/adsp/audio_pd"))) {
+		pr_info("change timeout to %d ms for %s\n",
+			(SERVER_TIMEOUT+1500), service_notif->service_path);
+		rc = qmi_txn_wait(&txn, msecs_to_jiffies(SERVER_TIMEOUT+1500));
+	} else {
+		rc = qmi_txn_wait(&txn, msecs_to_jiffies(SERVER_TIMEOUT));
+	}
+	#endif /* VENDOR_EDIT */
 	if (rc < 0) {
 		pr_err("%s: QMI qmi txn wait failed, ret - %d\n",
 			service_notif->service_path, rc);

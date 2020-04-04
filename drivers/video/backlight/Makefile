@@ -60,3 +60,7 @@ obj-$(CONFIG_BACKLIGHT_TPS65217)	+= tps65217_bl.o
 obj-$(CONFIG_BACKLIGHT_WM831X)		+= wm831x_bl.o
 obj-$(CONFIG_BACKLIGHT_ARCXCNN) 	+= arcxcnn_bl.o
 obj-$(CONFIG_BACKLIGHT_RAVE_SP)		+= rave-sp-backlight.o
+#ifdef VENDOR_EDIT
+# Yuwei.Zhang@RM.MM.Display.LCD.Machine 2019.10.29 add for backlight driver
+obj-$(CONFIG_BACKLIGHT_LM3697)		+= lm3697_bl.o
+#endif /* VENDOR_EDIT */

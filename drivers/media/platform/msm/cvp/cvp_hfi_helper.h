@@ -479,9 +479,13 @@ struct cvp_hfi_msg_sys_debug_packet {
 	u8 rg_msg_data[1];
 };
 
-struct cvp_hfi_packet_header {
+struct cvp_hfi_msg_sys_coverage_packet {
 	u32 size;
 	u32 packet_type;
+	u32 msg_size;
+	u32 time_stamp_hi;
+	u32 time_stamp_lo;
+	u8 rg_msg_data[1];
 };
 
 struct cvp_hfi_sfr_struct {

@@ -14,6 +14,11 @@
 #include <linux/soc/qcom/qmi.h>
 #include <linux/net.h>
 
+#ifdef VENDOR_EDIT
+#include <linux/proc_fs.h>
+#include <linux/uaccess.h>
+#endif
+
 #include "thermal_mitigation_device_service_v01.h"
 
 #define QMI_CDEV_DRIVER		"qmi-cooling-device"
@@ -226,11 +231,41 @@ qmi_send_exit:
 	return ret;
 }
 
+#ifdef VENDOR_EDIT
+#define BUF_LEN		256
+#define NAME_LEN	128
+#define HORAE_QMI_NUM	3
+
+typedef struct horae_qmi_info {
+	char name[NAME_LEN];
+	unsigned int id;
+	bool ctrl_flag;
+	struct thermal_cooling_device *cdev;
+} horae_qmi_info_t;
+
+static horae_qmi_info_t horae_qmi_cdev[HORAE_QMI_NUM] = {
+	{"modem_skin", 0, false, NULL},
+	{"modem_pa", 0, false, NULL},
+	{"modem_tj", 0, false, NULL},
+};
+#endif
+
 static int qmi_set_cur_or_min_state(struct qmi_cooling_device *qmi_cdev,
 				 unsigned long state)
 {
 	int ret = 0;
 	struct qmi_tmd_instance *tmd = qmi_cdev->tmd;
+#ifdef VENDOR_EDIT
+	int i;
+	for (i = 0; i < HORAE_QMI_NUM; i++) {
+		if (!strcmp(qmi_cdev->cdev_name, horae_qmi_cdev[i].name)) {
+			if (horae_qmi_cdev[i].ctrl_flag) {
+				pr_err("horae_qmi is taking ctrl\n");
+				return 0;
+			}
+		}
+	}
+#endif
 
 	if (!tmd)
 		return -EINVAL;
@@ -266,10 +301,86 @@ static int qmi_set_cur_state(struct thermal_cooling_device *cdev,
 		return 0;
 
 	if (state > qmi_cdev->max_level)
-		return -EINVAL;
+		state = qmi_cdev->max_level;
 
 	return qmi_set_cur_or_min_state(qmi_cdev, state);
 }
+
+#ifdef VENDOR_EDIT
+static int horae_qmi_set_state(char *name, unsigned long state)
+{
+	int ret, i;
+
+	for (i = 0; i < HORAE_QMI_NUM; i++) {
+		if (!strcmp(horae_qmi_cdev[i].name, name))
+			break;
+	}
+
+	if (i == HORAE_QMI_NUM) {
+		pr_err("the cdev isn't supported");
+		return -ENODEV;
+	}
+
+	if (IS_ERR_OR_NULL(horae_qmi_cdev[i].cdev)) {
+		pr_err("the cdev is invalid!\n");
+		return -EINVAL;
+	}
+
+	pr_err("name=%s, state=%lu\n", horae_qmi_cdev[i].name, state);
+
+	mutex_lock(&horae_qmi_cdev[i].cdev->lock);
+
+	if (!state)
+		horae_qmi_cdev[i].ctrl_flag = false;
+
+	ret = qmi_set_cur_state(horae_qmi_cdev[i].cdev, state);
+	if (ret >= 0)
+		horae_qmi_cdev[i].ctrl_flag = state ? true : false;
+
+	mutex_unlock(&horae_qmi_cdev[i].cdev->lock);
+
+	return ret;
+}
+
+static ssize_t horae_qmi_write(struct file *filp, const char __user *buf,
+				size_t count, loff_t *pos)
+{
+	int ret, len;
+	unsigned long state = 0;
+	char tmp[BUF_LEN + 1];
+	char name[NAME_LEN];
+
+	if (count == 0)
+		return 0;
+
+	len = count > BUF_LEN ? BUF_LEN : count;
+
+	ret = copy_from_user(tmp, buf, len);
+	if (ret) {
+		pr_err("copy_from_user failed, ret=%d\n", ret);
+		return count;
+	}
+
+	if (tmp[len - 1] == '\n')
+		tmp[len - 1] = '\0';
+	else
+		tmp[len] = '\0';
+
+	ret = sscanf(tmp, "%s %lu", &name, &state);
+	if (ret < 2) {
+		pr_err("horae_qmi write failed, ret=%d\n", ret);
+		return count;
+	}
+
+	horae_qmi_set_state(name, state);
+
+	return count;
+}
+
+static const struct file_operations proc_horae_qmi_fops = {
+	.write = horae_qmi_write,
+};
+#endif
 
 static int qmi_set_min_state(struct thermal_cooling_device *cdev,
 				 unsigned long state)
@@ -283,7 +394,7 @@ static int qmi_set_min_state(struct thermal_cooling_device *cdev,
 		return 0;
 
 	if (state > qmi_cdev->max_level)
-		return -EINVAL;
+		state = qmi_cdev->max_level;
 
 	/* Convert state into QMI client expects for min state */
 	state = qmi_cdev->max_level - state;
@@ -318,6 +429,9 @@ static struct thermal_cooling_device_ops qmi_device_ops = {
 
 static int qmi_register_cooling_device(struct qmi_cooling_device *qmi_cdev)
 {
+#ifdef VENDOR_EDIT
+	int i;
+#endif
 	qmi_cdev->cdev = thermal_of_cooling_device_register(
 					qmi_cdev->np,
 					qmi_cdev->cdev_name,
@@ -330,6 +444,15 @@ static int qmi_register_cooling_device(struct qmi_cooling_device *qmi_cdev)
 	}
 	pr_debug("Cooling register success for %s\n", qmi_cdev->cdev_name);
 
+#ifdef VENDOR_EDIT
+	for (i = 0; i < HORAE_QMI_NUM; i++) {
+		if (!strcmp(qmi_cdev->cdev_name, horae_qmi_cdev[i].name)
+			&& (qmi_cdev->tmd->inst_id == horae_qmi_cdev[i].id)) {
+			horae_qmi_cdev[i].cdev = qmi_cdev->cdev;
+			pr_err("horae qmi_cdev %s register successful!\n", horae_qmi_cdev[i].name);
+		}
+	}
+#endif
 	return 0;
 }
 
@@ -585,6 +708,9 @@ static int qmi_device_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 	int ret = 0, idx = 0;
+#ifdef VENDOR_EDIT
+	struct proc_dir_entry *horae_qmi_entry;
+#endif
 
 	ret = of_get_qmi_tmd_platform_data(dev);
 	if (ret)
@@ -618,6 +744,12 @@ static int qmi_device_probe(struct platform_device *pdev)
 			goto probe_err;
 		}
 	}
+
+#ifdef VENDOR_EDIT
+	horae_qmi_entry = proc_create("horae_qmi", 0666, NULL, &proc_horae_qmi_fops);
+	if (!horae_qmi_entry)
+		pr_err("horae_qmi proc create failed!\n");
+#endif
 
 	return 0;
 

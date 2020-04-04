@@ -282,6 +282,10 @@ static const struct clk_rpmh_desc clk_rpmh_kona = {
 };
 
 DEFINE_CLK_RPMH_ARC(lito, bi_tcxo, bi_tcxo_ao, "xo.lvl", 0x3, 2);
+#ifdef VENDOR_EDIT
+/*Mark.Yao@PSW.MM.Display.LCD.Feature,2019-10-10 add for iris chips */
+DEFINE_CLK_RPMH_VRM(lito, ln_bb_clk2, ln_bb_clk2_ao, "lnbclka2", 2);
+#endif
 DEFINE_CLK_RPMH_VRM(lito, ln_bb_clk3, ln_bb_clk3_ao, "lnbclka3", 2);
 DEFINE_CLK_RPMH_VRM(lito, rf_clk1, rf_clk1_ao, "rfclkd1", 1);
 DEFINE_CLK_RPMH_VRM(lito, rf_clk2, rf_clk2_ao, "rfclkd2", 1);
@@ -291,6 +295,11 @@ DEFINE_CLK_RPMH_VRM(lito, rf_clk4, rf_clk4_ao, "rfclkd4", 1);
 static struct clk_hw *lito_rpmh_clocks[] = {
 	[RPMH_CXO_CLK]		= &lito_bi_tcxo.hw,
 	[RPMH_CXO_CLK_A]	= &lito_bi_tcxo_ao.hw,
+#ifdef VENDOR_EDIT
+/*Mark.Yao@PSW.MM.Display.LCD.Feature,2019-10-10 add for iris chips */
+	[RPMH_LN_BB_CLK2]	= &lito_ln_bb_clk2.hw,
+	[RPMH_LN_BB_CLK2_A]	= &lito_ln_bb_clk2_ao.hw,
+#endif /* VENDOR_EDIT */
 	[RPMH_LN_BB_CLK3]	= &lito_ln_bb_clk3.hw,
 	[RPMH_LN_BB_CLK3_A]	= &lito_ln_bb_clk3_ao.hw,
 	[RPMH_RF_CLK1]		= &lito_rf_clk1.hw,

@@ -699,6 +699,17 @@ static inline int qdisc_enqueue(struct sk_buff *skb, struct Qdisc *sch,
 	return sch->enqueue(skb, sch, to_free);
 }
 
+#ifdef VENDOR_EDIT
+//Junyuan.Huang@PSW.CN.WiFi.Network.1471780, 2018/06/26,
+//Add for limit speed function
+static inline int qdisc_enqueue_root(struct sk_buff *skb, struct Qdisc *sch,
+				      struct sk_buff **to_free)
+{
+    qdisc_skb_cb(skb)->pkt_len = skb->len;
+    return qdisc_enqueue(skb, sch, to_free) & NET_XMIT_MASK;
+}
+#endif /* VENDOR_EDIT */
+
 static inline bool qdisc_is_percpu_stats(const struct Qdisc *q)
 {
 	return q->flags & TCQ_F_CPUSTATS;

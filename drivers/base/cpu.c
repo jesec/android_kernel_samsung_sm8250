@@ -198,7 +198,38 @@ static ssize_t isolate_show(struct device *dev,
 	return rc;
 }
 
+#ifdef VENDOR_EDIT
+/* Hui.Fan@SWDP.BSP.OPPOFeature.Hypnus, 2017-03-13
+ * Provide interface to isolate/unisolate cpu after stop core_ctl
+ */
+static ssize_t __ref isolate_store(struct device *dev,
+				struct device_attribute *attr,
+				const char *buf, size_t count)
+{
+	struct cpu *cpu = container_of(dev, struct cpu, dev);
+	int err;
+	int cpuid = cpu->dev.id;
+	unsigned int isolated;
+
+	err = kstrtouint(strstrip((char *)buf), 0, &isolated);
+	if (err)
+		return err;
+
+	if (isolated > 1)
+		return -EINVAL;
+
+	if (isolated)
+		sched_isolate_cpu(cpuid);
+	else
+		sched_unisolate_cpu(cpuid);
+
+	return count;
+}
+
+static DEVICE_ATTR(isolate, 0644, isolate_show, isolate_store);
+#else
 static DEVICE_ATTR_RO(isolate);
+#endif /* VENDOR_EDIT */
 
 static struct attribute *cpu_isolated_attrs[] = {
 	&dev_attr_isolate.attr,
@@ -368,8 +399,14 @@ static ssize_t print_cpus_isolated(struct device *dev,
 	if (!alloc_cpumask_var(&isolated, GFP_KERNEL))
 		return -ENOMEM;
 
+#ifdef VENDOR_EDIT
+/* cuixiaogang@SH.OPPOFeature.Hypnus, 2019-10-09, fix print error */
+	cpumask_and(isolated, cpu_possible_mask,
+		       cpu_isolated_mask);
+#else
 	cpumask_andnot(isolated, cpu_possible_mask,
 		       housekeeping_cpumask(HK_FLAG_DOMAIN));
+#endif /* VENDOR_EDIT */
 	n = scnprintf(buf, len, "%*pbl\n", cpumask_pr_args(isolated));
 
 	free_cpumask_var(isolated);
@@ -377,6 +414,22 @@ static ssize_t print_cpus_isolated(struct device *dev,
 	return n;
 }
 static DEVICE_ATTR(isolated, 0444, print_cpus_isolated, NULL);
+
+#ifdef VENDOR_EDIT
+/* Hui.Fan@SWDP.BSP.OPPOFeature.Hypnus, 2017-03-11, print available cpus */
+static ssize_t print_cpus_available(struct device *dev,
+				  struct device_attribute *attr, char *buf)
+{
+	int n = 0, len = PAGE_SIZE-2;
+	struct cpumask avail_mask;
+
+	cpumask_andnot(&avail_mask, cpu_online_mask, cpu_isolated_mask);
+	n = scnprintf(buf, len, "%*pbl\n", cpumask_pr_args(&avail_mask));
+
+	return n;
+}
+static DEVICE_ATTR(avail, 0444, print_cpus_available, NULL);
+#endif /* VENDOR_EDIT */
 
 #ifdef CONFIG_NO_HZ_FULL
 static ssize_t print_cpus_nohz_full(struct device *dev,
@@ -564,6 +617,10 @@ static struct attribute *cpu_root_attrs[] = {
 	&dev_attr_kernel_max.attr,
 	&dev_attr_offline.attr,
 	&dev_attr_isolated.attr,
+#ifdef VENDOR_EDIT
+/* Hui.Fan@SWDP.BSP.OPPOFeature.Hypnus, 2017-03-11, print available cpus */
+	&dev_attr_avail.attr,
+#endif
 #ifdef CONFIG_NO_HZ_FULL
 	&dev_attr_nohz_full.attr,
 #endif

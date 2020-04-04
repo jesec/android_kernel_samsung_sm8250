@@ -145,7 +145,6 @@ struct rmnet_priv_stats {
 	u64 csum_sw;
 	u64 csum_hw;
 	struct rmnet_coal_stats coal;
-	u64 ul_prio;
 };
 
 struct rmnet_priv {

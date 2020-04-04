@@ -205,6 +205,26 @@ struct subsys_device {
 	struct list_head list;
 };
 
+#ifdef VENDOR_EDIT
+/*Jianfeng.Qiu@PSW.MM.AudioDriver.ADSP.2434874, 2019/11/26, Add for workaround fix adsp stuck issue*/
+static bool oppo_adsp_ssr = false;
+
+void oppo_set_ssr_state(bool ssr_state)
+{
+	oppo_adsp_ssr = ssr_state;
+	pr_err("%s():oppo_adsp_ssr=%d\n", __func__, oppo_adsp_ssr);
+
+}
+EXPORT_SYMBOL(oppo_set_ssr_state);
+
+bool oppo_get_ssr_state(void)
+{
+	pr_err("%s():oppo_adsp_ssr=%d\n", __func__, oppo_adsp_ssr);
+	return oppo_adsp_ssr;
+}
+EXPORT_SYMBOL(oppo_get_ssr_state);
+#endif /* VENDOR_EDIT */
+
 static struct subsys_device *to_subsys(struct device *d)
 {
 	return container_of(d, struct subsys_device, dev);
@@ -831,6 +851,62 @@ struct subsys_device *find_subsys_device(const char *str)
 }
 EXPORT_SYMBOL(find_subsys_device);
 
+#ifdef VENDOR_EDIT
+/* Fuchun.Liao@BSP.CHG.Basic 2018/11/27 modify for rf cable detect */
+int op_restart_modem(void)
+{
+	struct subsys_device *subsys = find_subsys_device("modem");
+	int restart_level;
+
+	if (!subsys)
+		return -ENODEV;
+	pr_err("%s\n", __func__);
+	restart_level = subsys->restart_level;
+	subsys->restart_level = RESET_SUBSYS_COUPLED;
+	if (subsystem_restart("modem") == -ENODEV)
+		pr_err("%s: SSR call modem failed\n", __func__);
+	subsys->restart_level = restart_level;
+	return 0;
+}
+EXPORT_SYMBOL(op_restart_modem);
+#endif /* VENDOR_EDIT */
+
+#ifdef VENDOR_EDIT
+/*Murphy@BSP.sensor, 2019/09/10, Add for sensor subsys restart*/
+int restart_sensor_subsys(void)
+{
+	struct subsys_device *subsys_adsp = (struct subsys_device *)subsystem_get("adsp");
+	struct subsys_device *subsys_slpi = (struct subsys_device *)subsystem_get("slpi");
+	struct subsys_device *subsys = NULL;
+	char * name_adsp = "adsp";
+	char * name_slpi = "slpi";
+	char * name = NULL;
+	int restart_level = 0;
+
+	pr_info("%s call\n", __func__);
+
+	if (subsys_slpi) {
+		subsys = subsys_slpi;
+		name = name_slpi;
+	} else if (subsys_adsp) {
+		subsys = subsys_adsp;
+		name = name_adsp;
+	} else {
+		return -ENODEV;
+	}
+
+	restart_level = subsys->restart_level;
+	subsys->restart_level = RESET_SUBSYS_COUPLED;
+
+	if (subsystem_restart(name) == -ENODEV)
+		pr_err("%s: call %s failed\n", __func__,name);
+
+	subsys->restart_level = restart_level;
+	return 0;
+}
+EXPORT_SYMBOL(restart_sensor_subsys);
+#endif
+
 static int subsys_start(struct subsys_device *subsys)
 {
 	int ret;
@@ -1222,6 +1298,18 @@ int subsystem_restart_dev(struct subsys_device *dev)
 	}
 
 	name = dev->desc->name;
+
+	#ifdef VENDOR_EDIT
+	/*Jianfeng.Qiu@PSW.MM.AudioDriver.ADSP.2434874, 2019/11/26, Add for workaround fix adsp stuck issue*/
+	if (name && !strcmp(name, "adsp")) {
+		if (oppo_get_ssr_state()) {
+			pr_err("%s: adsp restarting, Ignoring request\n", __func__);
+			return 0;
+		} else {
+			oppo_set_ssr_state(true);
+		}
+	}
+	#endif /* VENDOR_EDIT */
 
 	send_early_notifications(dev->early_notify);
 
@@ -1804,7 +1892,9 @@ static void init_all_completions(struct subsys_device *subsys_dev)
 	init_completion(&subsys_dev->err_ready);
 	init_completion(&subsys_dev->shutdown_ack);
 }
-
+#ifdef VENDOR_EDIT//tongfeng.huang@PSW.BSP.CHG,add 2019/10/24  
+extern int get_eng_version(void);
+#endif
 struct subsys_device *subsys_register(struct subsys_desc *desc)
 {
 	struct subsys_device *subsys;
@@ -1825,6 +1915,11 @@ struct subsys_device *subsys_register(struct subsys_desc *desc)
 	subsys->desc->state = NULL;
 	strlcpy(subsys->desc->fw_name, desc->name,
 			sizeof(subsys->desc->fw_name));
+#if defined(VENDOR_EDIT) && defined(CONFIG_OPPO_USER_BUILD)
+/*xing.xiong@BSP.Kernel.Driver, 2019/03/28, Add for disable dump for subsys crash*/
+	if(get_eng_version() != 1)
+		subsys->restart_level = RESET_SUBSYS_COUPLED;
+#endif
 
 	subsys->notify = subsys_notif_add_subsys(desc->name);
 	subsys->early_notify = subsys_get_early_notif_info(desc->name);

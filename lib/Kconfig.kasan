@@ -6,6 +6,11 @@ if HAVE_ARCH_KASAN
 config KASAN
 	bool "KASan: runtime memory debugger"
 	depends on (SLUB && SYSFS) || (SLAB && !DEBUG_SLAB)
+	#ifdef VENDOR_EDIT
+	#Wen.Luo@Bsp.Kernel.Stability, 2018/12/05, OPPO_KASAN_CONFIG
+	default y if OPPO_KASAN_TEST = "true"
+	default n
+	#endif
 	select SLUB_DEBUG if SLUB
 	select CONSTRUCTORS
 	select STACKDEPOT
@@ -24,6 +29,11 @@ config KASAN
 config KASAN_EXTRA
 	bool "KAsan: extra checks"
 	depends on KASAN && DEBUG_KERNEL && !COMPILE_TEST
+	#ifdef VENDOR_EDIT
+	#Wen.Luo@Bsp.Kernel.Stability, 2018/12/05, OPPO_KASAN_CONFIG
+	default y if OPPO_KASAN_TEST = "true"
+	default n
+	#endif
 	help
 	  This enables further checks in the kernel address sanitizer, for now
 	  it only includes the address-use-after-scope check that can lead
@@ -35,7 +45,12 @@ config KASAN_EXTRA
 choice
 	prompt "Instrumentation type"
 	depends on KASAN
-	default KASAN_OUTLINE
+	#ifdef VENDOR_EDIT
+	#Wen.Luo@Bsp.Kernel.Stability, 2018/12/05, OPPO_KASAN_CONFIG
+	default KASAN_INLINE
+	#else
+	#default KASAN_OUTLINE
+	#endif
 
 config KASAN_OUTLINE
 	bool "Outline instrumentation"

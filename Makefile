@@ -436,6 +436,76 @@ KBUILD_LDFLAGS :=
 GCC_PLUGINS_CFLAGS :=
 CLANG_FLAGS :=
 
+# ifdef VENDOR_EDIT
+# jiangyg@OnlineRd.PM, 2013/10/15, add enviroment variant
+KBUILD_CFLAGS +=   -DVENDOR_EDIT
+KBUILD_CPPFLAGS += -DVENDOR_EDIT
+CFLAGS_KERNEL +=   -DVENDOR_EDIT
+CFLAGS_MODULE +=   -DVENDOR_EDIT
+
+#ifdef VENDOR_EDIT
+#Weizhong.Wu@BSP.POWER.BASIC , 2019/10/13, add for close console in user version
+ifeq ($(TARGET_BUILD_VARIANT), user)
+KBUILD_CFLAGS += -DCONFIG_OPPO_USER_BUILD
+else
+KBUILD_CFLAGS += -DCONFIG_OPPO_DEBUG_BUILD
+endif
+#endif
+
+#ifdef VENDOR_EDIT//Fanhong.Kong@PSW.BSP.CHG,add 2019/04/28  for 806 high/low temp aging
+ifeq ($(OPPO_HIGH_TEMP_VERSION),true)
+KBUILD_CFLAGS += -DCONFIG_HIGH_TEMP_VERSION
+endif
+#endif /* VENDOR_EDIT */
+
+ifneq ($(CONFIDENTIAL_EUCLID_VERSION),0)
+KBUILD_CFLAGS += -DCONFIG_CONFIDENTIAL_EUCLID_VERSION
+endif
+
+#endif /*VENDOR_EDIT*/
+
+#ifdef VENDOR_EDIT
+#Wen.Luo@Bsp.Kernel.Stability, 2018/12/05, Add for Debug Config, slub/kmemleak/kasan config
+ifeq ($(AGING_DEBUG_MASK),1)
+#Agingtest enable rtb
+OPPO_AGING_TEST := true
+endif
+
+ifeq ($(AGING_DEBUG_MASK),2)
+#enable rtb
+OPPO_AGING_TEST := true
+#enable kasan
+OPPO_KASAN_TEST := true
+endif
+
+ifeq ($(AGING_DEBUG_MASK),3)
+#enable rtb
+OPPO_AGING_TEST := true
+#enable kasan
+OPPO_KMEMLEAK_TEST := true
+OPPO_SLUB_TEST := true
+endif
+
+ifeq ($(AGING_DEBUG_MASK),4)
+#enable rtb
+OPPO_AGING_TEST := true
+#enable kasan
+OPPO_SLUB_TEST := true
+endif
+
+ifeq ($(AGING_DEBUG_MASK),5)
+#enable rtb
+OPPO_AGING_TEST := true
+#enable kasan
+OPPO_PAGEOWNER_TEST := true
+endif
+#endif
+
+#ifdef VENDOR_EDIT
+#Wen.Luo@Bsp.Kernel.Stability, 2018/12/05, Add for aging test, slub debug config
+export OPPO_SLUB_TEST OPPO_KASAN_TEST OPPO_KMEMLEAK_TEST OPPO_AGING_TEST OPPO_PAGEOWNER_TEST
+#endif
+
 export ARCH SRCARCH CONFIG_SHELL HOSTCC KBUILD_HOSTCFLAGS CROSS_COMPILE AS LD CC
 export CPP AR NM STRIP OBJCOPY OBJDUMP KBUILD_HOSTLDFLAGS KBUILD_HOSTLDLIBS
 export MAKE LEX YACC AWK GENKSYMS INSTALLKERNEL PERL PYTHON PYTHON2 PYTHON3 UTS_MACHINE

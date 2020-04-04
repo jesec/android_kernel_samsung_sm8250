@@ -87,7 +87,10 @@ obj-y			+= tilcdc/
 obj-$(CONFIG_DRM_QXL) += qxl/
 obj-$(CONFIG_DRM_BOCHS) += bochs/
 obj-$(CONFIG_DRM_VIRTIO_GPU) += virtio/
-obj-$(CONFIG_DRM_MSM) += msm/
+#ifdef VENDOR_EDIT
+#Mark.Yao@PSW.MM.Display.LCD.Feature,2019-09-13 remove old DRM_MSM driver
+#obj-$(CONFIG_DRM_MSM) += msm/
+#endif
 obj-$(CONFIG_DRM_TEGRA) += tegra/
 obj-$(CONFIG_DRM_STM) += stm/
 obj-$(CONFIG_DRM_STI) += sti/

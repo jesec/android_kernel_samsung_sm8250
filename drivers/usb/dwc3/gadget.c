@@ -199,7 +199,12 @@ void dwc3_ep_inc_deq(struct dwc3_ep *dep)
 int dwc3_gadget_resize_tx_fifos(struct dwc3 *dwc, struct dwc3_ep *dep)
 {
 	int		fifo_size, mdwidth, max_packet = 1024;
+#ifndef VENDOR_EDIT
+	//Kun.Zhang@BSP.CHG.Basic  2019/11/22  Modify for mtp/otg speed 
 	int		tmp, mult = 1, fifo_0_start;
+#else
+	int 		tmp, mult = 1, size;
+#endif
 
 	if (!dwc->needs_fifo_resize || !dwc->tx_fifo_size)
 		return 0;
@@ -235,10 +240,21 @@ int dwc3_gadget_resize_tx_fifos(struct dwc3 *dwc, struct dwc3_ep *dep)
 	dep->fifo_depth = fifo_size;
 
 	/* Check if TXFIFOs start at non-zero addr */
+#ifndef VENDOR_EDIT
+	//Kun.Zhang@BSP.CHG.Basic  2019/11/22  Modify for mtp/otg speed 
 	tmp = dwc3_readl(dwc->regs, DWC3_GTXFIFOSIZ(0));
 	fifo_0_start = DWC3_GTXFIFOSIZ_TXFSTADDR(tmp);
-
 	fifo_size |= (fifo_0_start + (dwc->last_fifo_depth << 16));
+#else
+	size = dwc3_readl(dwc->regs, DWC3_GTXFIFOSIZ(0));
+	if (dwc3_is_usb31(dwc))
+		size = DWC31_GTXFIFOSIZ_TXFDEF(size);
+	else
+		size = DWC3_GTXFIFOSIZ_TXFDEF(size);
+
+	fifo_size |= (size + (dwc->last_fifo_depth << 16));
+#endif
+
 	if (dwc3_is_usb31(dwc))
 		dwc->last_fifo_depth += DWC31_GTXFIFOSIZ_TXFDEF(fifo_size);
 	else
@@ -2067,6 +2083,12 @@ static int dwc3_gadget_set_selfpowered(struct usb_gadget *g,
 	return 0;
 }
 
+
+#ifdef VENDOR_EDIT
+/*LiYue@BSP.CHG.Basic, 2019/08/14, add for support cdp charging*/
+#define DWC3_SOFT_RESET_TIMEOUT 10
+#endif
+
 /**
  * dwc3_device_core_soft_reset - Issues device core soft reset
  * @dwc: pointer to our context structure
@@ -2104,6 +2126,11 @@ static int dwc3_gadget_run_stop(struct dwc3 *dwc, int is_on, int suspend)
 	u32			reg, reg1;
 	u32			timeout = 1500;
 
+#ifdef VENDOR_EDIT
+	/*LiYue@BSP.CHG.Basic, 2019/08/14, add for support cdp charging*/
+	ktime_t 		start, diff;
+#endif
+
 	dbg_event(0xFF, "run_stop", is_on);
 	reg = dwc3_readl(dwc->regs, DWC3_DCTL);
 	if (is_on) {
@@ -2114,6 +2141,27 @@ static int dwc3_gadget_run_stop(struct dwc3 *dwc, int is_on, int suspend)
 
 		if (dwc->revision >= DWC3_REVISION_194A)
 			reg &= ~DWC3_DCTL_KEEP_CONNECT;
+
+#ifdef VENDOR_EDIT
+		/*LiYue@BSP.CHG.Basic, 2019/08/14, add for support cdp charging*/
+		start = ktime_get();
+		/* issue device SoftReset */
+		dwc3_writel(dwc->regs, DWC3_DCTL, reg | DWC3_DCTL_CSFTRST);
+		do {
+			reg = dwc3_readl(dwc->regs, DWC3_DCTL);
+			if (!(reg & DWC3_DCTL_CSFTRST))
+				break;
+
+			diff = ktime_sub(ktime_get(), start);
+			/* poll for max. 10ms */
+			if (ktime_to_ms(diff) > DWC3_SOFT_RESET_TIMEOUT) {
+				printk_ratelimited(KERN_ERR
+					"%s:core Reset Timed Out\n", __func__);
+				break;
+			}
+			cpu_relax();
+		} while (true);
+#endif
 
 		dwc3_event_buffers_setup(dwc);
 		__dwc3_gadget_start(dwc);
@@ -2133,7 +2181,10 @@ static int dwc3_gadget_run_stop(struct dwc3 *dwc, int is_on, int suspend)
 
 		if (dwc->has_hibernation)
 			reg |= DWC3_DCTL_KEEP_CONNECT;
-
+#ifdef VENDOR_EDIT
+		/*ZhangKun@BSP.CHG.Basic, 2019/11/09, add for CHG*/
+		dwc->err_evt_seen = false;
+#endif
 		dwc->pullups_connected = true;
 	} else {
 		dwc3_gadget_disable_irq(dwc);
@@ -2158,7 +2209,6 @@ static int dwc3_gadget_run_stop(struct dwc3 *dwc, int is_on, int suspend)
 	}
 
 	dwc3_writel(dwc->regs, DWC3_DCTL, reg);
-
 	/* Controller is not halted until the events are acknowledged */
 	if (!is_on) {
 		/*
@@ -2235,8 +2285,14 @@ static int dwc3_gadget_pullup(struct usb_gadget *g, int is_on)
 
 		ret = wait_for_completion_timeout(&dwc->ep0_in_setup,
 				msecs_to_jiffies(DWC3_PULL_UP_TIMEOUT));
-		if (ret == 0)
+		if (ret == 0){
 			dev_err(dwc->dev, "timed out waiting for SETUP phase\n");
+#ifdef VENDOR_EDIT
+			/* tongfeng.Huang@BSP.CHG.Basic, 2019/03/13,  Add for usb2.1 LPM disable*/
+			pm_runtime_put_autosuspend(dwc->dev);
+			dbg_event(0xFF, "Pullup timeout put", atomic_read(&dwc->dev->power.usage_count));
+#endif
+		}
 	}
 
 	/* pull-up disable: clear pending events without queueing bh */
@@ -3830,16 +3886,23 @@ static irqreturn_t dwc3_thread_interrupt(int irq, void *_evt)
 
 static irqreturn_t dwc3_check_event_buf(struct dwc3_event_buffer *evt)
 {
+#ifdef VENDOR_EDIT
+	/*LiYue@BSP.CHG.Basic, 2019/08/14, add for support cdp charging*/
 	struct dwc3 *dwc;
+#endif
 	u32 amount;
 	u32 count;
 	u32 reg;
 	ktime_t start_time;
 
+#ifdef VENDOR_EDIT
+	/*LiYue@BSP.CHG.Basic, 2019/08/14, add for support cdp charging*/
 	if (!evt)
 		return IRQ_NONE;
 
 	dwc = evt->dwc;
+#endif
+
 	start_time = ktime_get();
 	dwc->irq_cnt++;
 

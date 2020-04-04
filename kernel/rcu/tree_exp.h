@@ -596,9 +596,9 @@ static void rcu_exp_wait_wake(struct rcu_state *rsp, unsigned long s)
 
 	synchronize_sched_expedited_wait(rsp);
 
-	/* Switch over to wakeup mode, allowing the next GP to proceed.
-	 * End the previous grace period only after acquiring the mutex
-	 * to ensure that only one GP runs concurrently with wakeups.
+	/*
+	 * Switch over to wakeup mode, allowing the next GP, but -only- the
+	 * next GP, to proceed.
 	 */
 	mutex_lock(&rsp->exp_wake_mutex);
 	rcu_exp_gp_seq_end(rsp);

@@ -186,6 +186,7 @@ $(TARGET_PREBUILT_INT_KERNEL): $(KERNEL_OUT) $(KERNEL_HEADERS_INSTALL)
 	$(MAKE) -C $(TARGET_KERNEL_SOURCE) O=$(BUILD_ROOT_LOC)$(KERNEL_OUT) INSTALL_MOD_PATH=$(BUILD_ROOT_LOC)../$(KERNEL_MODULES_INSTALL) INSTALL_MOD_STRIP=1 $(KERNEL_MAKE_ENV) ARCH=$(KERNEL_ARCH) CROSS_COMPILE=$(KERNEL_CROSS_COMPILE) $(real_cc) modules_install
 	$(mv-modules)
 	$(clean-module-folder)
+
 endif
 
 $(KERNEL_HEADERS_INSTALL): $(KERNEL_OUT)
@@ -208,7 +209,7 @@ $(KERNEL_HEADERS_INSTALL): $(KERNEL_OUT)
 
 # Creating a dtb.img once the kernel is compiled if TARGET_KERNEL_APPEND_DTB is set to be false
 $(INSTALLED_DTBIMAGE_TARGET): $(TARGET_PREBUILT_INT_KERNEL)
-	cat $(KERNEL_OUT)/arch/$(KERNEL_ARCH)/boot/dts/vendor/qcom/*.dtb > $@
+	cat $(KERNEL_OUT)/arch/$(KERNEL_ARCH)/boot/dts/vendor/*/*.dtb > $@
 
 .PHONY: kerneltags
 kerneltags: $(KERNEL_OUT) $(KERNEL_CONFIG)

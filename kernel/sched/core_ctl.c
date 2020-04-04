@@ -123,6 +123,25 @@ static ssize_t show_max_cpus(const struct cluster_data *state, char *buf)
 	return snprintf(buf, PAGE_SIZE, "%u\n", state->max_cpus);
 }
 
+#ifdef VENDOR_EDIT
+//cuixiaogang@SRC.hypnus, 2019.05.20 add for hypnus-daemon
+int hypnus_set_min_max_cpus(unsigned int index, unsigned int min, unsigned int max)
+{
+        struct cluster_data *state;
+
+        if (index >= num_clusters)
+                return -EINVAL;
+
+        state = &cluster_state[index];
+
+        state->max_cpus = min(max, state->num_cpus);
+        state->min_cpus = min(min, state->max_cpus);
+        cpuset_next(state);
+        wake_up_core_ctl_thread(state);
+        return 0;
+}
+#endif /* VENDOR_EDIT */
+
 static ssize_t store_offline_delay_ms(struct cluster_data *state,
 					const char *buf, size_t count)
 {

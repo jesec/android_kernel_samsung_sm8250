@@ -20,6 +20,8 @@
 #include <linux/usb/phy.h>
 #include <linux/reset.h>
 
+
+
 #define QUSB2PHY_PLL_STATUS	0x38
 #define QUSB2PHY_PLL_LOCK	BIT(5)
 
@@ -48,6 +50,8 @@
 #define CORE_READY_STATUS		BIT(0)
 
 #define QUSB2PHY_PORT_UTMI_CTRL1	0xC0
+
+
 #define TERM_SELECT			BIT(4)
 #define XCVR_SELECT_FS			BIT(2)
 #define OP_MODE_NON_DRIVE		BIT(0)
@@ -1120,6 +1124,7 @@ static int qusb_phy_probe(struct platform_device *pdev)
 	qphy->phy.notify_connect        = qusb_phy_notify_connect;
 	qphy->phy.notify_disconnect     = qusb_phy_notify_disconnect;
 
+	
 	/*
 	 * On some platforms multiple QUSB PHYs are available. If QUSB PHY is
 	 * not used, there is leakage current seen with QUSB PHY related voltage

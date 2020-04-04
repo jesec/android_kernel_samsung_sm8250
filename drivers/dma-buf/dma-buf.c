@@ -691,10 +691,14 @@ struct sg_table *dma_buf_map_attachment(struct dma_buf_attachment *attach,
 	struct sg_table *sg_table;
 
 	might_sleep();
-
+#ifndef VENDOR_EDIT
+/*Fei.Mo@BSP.Kernel.stability, 2019/10/16, Modify for warn on print*/
 	if (WARN_ON(!attach || !attach->dmabuf))
 		return ERR_PTR(-EINVAL);
-
+#else
+	if (!attach || !attach->dmabuf)
+		return ERR_PTR(-EINVAL);
+#endif
 	sg_table = attach->dmabuf->ops->map_dma_buf(attach, direction);
 	if (!sg_table)
 		sg_table = ERR_PTR(-ENOMEM);
@@ -718,10 +722,14 @@ void dma_buf_unmap_attachment(struct dma_buf_attachment *attach,
 				enum dma_data_direction direction)
 {
 	might_sleep();
-
+#ifndef VENDOR_EDIT
+/*Fei.Mo@BSP.Kernel.stability, 2019/10/16, Modify for warn on print*/
 	if (WARN_ON(!attach || !attach->dmabuf || !sg_table))
 		return;
-
+#else
+	if (!attach || !attach->dmabuf || !sg_table)
+		return;
+#endif
 	attach->dmabuf->ops->unmap_dma_buf(attach, sg_table,
 						direction);
 }

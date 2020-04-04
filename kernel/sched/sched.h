@@ -991,7 +991,6 @@ struct rq {
 	struct walt_sched_stats walt_stats;
 
 	u64			window_start;
-	u32			prev_window_size;
 	unsigned long		walt_flags;
 
 	u64			cur_irqload;
@@ -1068,6 +1067,12 @@ struct rq {
 	struct cpuidle_state	*idle_state;
 	int			idle_state_idx;
 #endif
+#ifdef VENDOR_EDIT
+// Liujie.Xie@TECH.Kernel.Sched, 2019/05/22, add for ui first
+    struct list_head ux_thread_list;
+    int active_ux_balance;
+    struct cpu_stop_work ux_balance_work;
+#endif /* VENDOR_EDIT */
 };
 
 #ifdef CONFIG_FAIR_GROUP_SCHED
@@ -2814,10 +2819,15 @@ static inline enum sched_boost_policy sched_boost_policy(void)
 }
 
 extern unsigned int sched_boost_type;
+#ifdef VENDOR_EDIT
+//cuixiaogang@SRC.hypnus. remove this inline function for hypnus feature
+extern int sched_boost(void);
+#else
 static inline int sched_boost(void)
 {
 	return sched_boost_type;
 }
+#endif /* VENDOR_EDIT */
 
 static inline bool rt_boost_on_big(void)
 {
@@ -2860,6 +2870,8 @@ static inline void restore_cgroup_boost_settings(void) { }
 #endif
 
 extern int alloc_related_thread_groups(void);
+
+extern unsigned long all_cluster_ids[];
 
 extern void check_for_migration(struct rq *rq, struct task_struct *p);
 
@@ -2942,7 +2954,11 @@ static inline enum sched_boost_policy task_boost_policy(struct task_struct *p)
 
 static inline bool is_min_capacity_cluster(struct sched_cluster *cluster)
 {
-	return is_min_capacity_cpu(cluster_first_cpu(cluster));
+	int cpu = cluster_first_cpu(cluster);
+
+	if (cpu >= num_possible_cpus())
+		return false;
+	return is_min_capacity_cpu(cpu);
 }
 
 #else	/* CONFIG_SCHED_WALT */

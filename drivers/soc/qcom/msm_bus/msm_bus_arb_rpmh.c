@@ -1896,7 +1896,12 @@ static void unregister_adhoc(struct msm_bus_client_handle *cl)
 				cl->first_hop, cl->active_only);
 	commit_data();
 	msm_bus_dbg_remove_client(cl);
+#ifdef VENDOR_EDIT
+//wen.luo@bsp.kernel.stability , mem bus client handle memleak,  cl->name not free
+	free_cl_mem(cl);
+#else
 	kfree(cl);
+#endif
 	MSM_BUS_DBG("%s: Unregistered client", __func__);
 exit_unregister_client:
 	rt_mutex_unlock(&msm_bus_adhoc_lock);

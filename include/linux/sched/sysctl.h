@@ -16,6 +16,14 @@ extern int sysctl_hung_task_selective_monitoring;
 extern int proc_dohung_task_timeout_secs(struct ctl_table *table, int write,
 					 void __user *buffer,
 					 size_t *lenp, loff_t *ppos);
+#ifdef VENDOR_EDIT
+/* fanhui@PhoneSW.BSP, 2016/02/02, DeathHealer, record the hung task killing */
+extern char sysctl_hung_task_oppo_kill[];
+#endif
+#if defined(VENDOR_EDIT) && defined(CONFIG_DEATH_HEALER)
+/* Wen.Luo@BSP.Kernel.Stability, 2019/01/12, DeathHealer , Foreground background optimization,change max io count */
+extern int sysctl_hung_task_maxiowait_count;
+#endif
 #else
 /* Avoid need for ifdefs elsewhere in the code */
 enum { sysctl_hung_task_timeout_secs = 0 };
@@ -31,9 +39,9 @@ extern unsigned int sysctl_sched_sync_hint_enable;
 extern unsigned int sysctl_sched_cstate_aware;
 extern unsigned int sysctl_sched_wakeup_granularity;
 extern unsigned int sysctl_sched_child_runs_first;
-#ifdef CONFIG_SCHED_WALT
 extern unsigned int sysctl_sched_capacity_margin_up[MAX_MARGIN_LEVELS];
 extern unsigned int sysctl_sched_capacity_margin_down[MAX_MARGIN_LEVELS];
+#ifdef CONFIG_SCHED_WALT
 extern unsigned int sysctl_sched_user_hint;
 extern const int sched_user_hint_max;
 extern unsigned int sysctl_sched_cpu_high_irqload;
@@ -54,7 +62,6 @@ extern unsigned int sysctl_sched_coloc_busy_hyst_enable_cpus;
 extern unsigned int sysctl_sched_coloc_busy_hyst;
 extern unsigned int sysctl_sched_coloc_busy_hyst_max_ms;
 extern unsigned int sysctl_sched_window_stats_policy;
-extern unsigned int sysctl_sched_ravg_window_nr_ticks;
 
 extern int
 walt_proc_group_thresholds_handler(struct ctl_table *table, int write,
@@ -65,14 +72,6 @@ walt_proc_user_hint_handler(struct ctl_table *table, int write,
 			 void __user *buffer, size_t *lenp,
 			 loff_t *ppos);
 
-extern int
-sched_ravg_window_handler(struct ctl_table *table, int write,
-			 void __user *buffer, size_t *lenp,
-			 loff_t *ppos);
-
-extern int sched_updown_migrate_handler(struct ctl_table *table,
-					int write, void __user *buffer,
-					size_t *lenp, loff_t *ppos);
 #endif
 
 #if defined(CONFIG_PREEMPT_TRACER) || defined(CONFIG_DEBUG_PREEMPT)
@@ -133,6 +132,10 @@ extern int sched_rr_handler(struct ctl_table *table, int write,
 extern int sched_rt_handler(struct ctl_table *table, int write,
 		void __user *buffer, size_t *lenp,
 		loff_t *ppos);
+
+extern int sched_updown_migrate_handler(struct ctl_table *table,
+					int write, void __user *buffer,
+					size_t *lenp, loff_t *ppos);
 
 extern int sysctl_numa_balancing(struct ctl_table *table, int write,
 				 void __user *buffer, size_t *lenp,

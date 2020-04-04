@@ -12,6 +12,11 @@ obj-y     = fork.o exec_domain.o panic.o \
 	    notifier.o ksysfs.o cred.o reboot.o \
 	    async.o range.o smpboot.o ucount.o
 
+#ifdef VENDOR_EDIT
+#yawnu@TECH.Storage.FS.oF2FS, 2019/09/13, flush device cache in panic if necessary
+obj-y += panic_flush.o
+#endif
+
 obj-$(CONFIG_MODULES) += kmod.o
 obj-$(CONFIG_MULTIUSER) += groups.o
 
@@ -52,6 +57,14 @@ obj-y += rcu/
 obj-y += livepatch/
 obj-y += dma/
 
+#ifdef VENDOR_EDIT
+#Liujie.Xie@TECH.Kernel.Sched, 2019/05/22, add for ui first
+obj-y += oppocfs/
+
+#ifdef VENDOR_EDIT
+#Ke.Li@ROM.Security, 2019-9-30, add for kevent action upload,root action upload to user layer
+obj-$(CONFIG_OPPO_KEVENT_UPLOAD) += oppo_kevent_upload.o
+#endif /* VENDOR_EDIT */
 obj-$(CONFIG_CHECKPOINT_RESTORE) += kcmp.o
 obj-$(CONFIG_FREEZER) += freezer.o
 obj-$(CONFIG_PROFILING) += profile.o

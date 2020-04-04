@@ -691,11 +691,48 @@ static struct avc_node *avc_insert(struct selinux_avc *avc,
 	struct avc_node *pos, *node = NULL;
 	int hvalue;
 	unsigned long flag;
+	/* yanghao@PSW.Kernel.Stability for CR2532525 */
+#ifdef VENDOR_EDIT
+	spinlock_t *lock;
+	struct hlist_head *head;
+#endif
 
 	if (avc_latest_notif_update(avc, avd->seqno, 1))
+#ifdef VENDOR_EDIT
+		return NULL;
+#else
 		goto out;
+#endif
 
 	node = avc_alloc_node(avc);
+	/* yanghao@PSW.Kernel.Stability for CR2532525 */
+#ifdef VENDOR_EDIT
+	if (!node)
+		return NULL;
+	avc_node_populate(node, ssid, tsid, tclass, avd);
+	if (avc_xperms_populate(node, xp_node)) {
+		avc_node_kill(avc, node);
+		return NULL;
+	}
+
+	hvalue = avc_hash(ssid, tsid, tclass);
+	head = &avc->avc_cache.slots[hvalue];
+	lock = &avc->avc_cache.slots_lock[hvalue];
+	spin_lock_irqsave(lock, flag);
+	hlist_for_each_entry(pos, head, list) {
+		if (pos->ae.ssid == ssid &&
+				pos->ae.tsid == tsid &&
+				pos->ae.tclass == tclass) {
+			avc_node_replace(avc, node, pos);
+			goto found;
+		}
+	}
+
+	hlist_add_head_rcu(&node->list, head);
+found:
+	spin_unlock_irqrestore(lock, flag);
+	return node;
+#else
 	if (node) {
 		struct hlist_head *head;
 		spinlock_t *lock;
@@ -726,6 +763,7 @@ found:
 	}
 out:
 	return node;
+#endif
 }
 
 /**
@@ -915,7 +953,12 @@ static int avc_update_node(struct selinux_avc *avc,
 	if (orig->ae.xp_node) {
 		rc = avc_xperms_populate(node, orig->ae.xp_node);
 		if (rc) {
+			/* yanghao@PSW.Kernel.Stability for CR2532525 */
+			#ifdef VENDOR_EDIT
+			avc_node_kill(avc, node);
+			#else
 			kmem_cache_free(avc_node_cachep, node);
+			#endif
 			goto out_unlock;
 		}
 	}

@@ -35,6 +35,10 @@
 
 #include <trace/events/power.h>
 
+#ifdef VENDOR_EDIT//Cong.Dai@bsp.tp.function, 2019.11.29, add for aging version log
+#include <soc/oppo/oppo_project.h>
+#endif /*VENDOR_EDIT*/
+
 static LIST_HEAD(cpufreq_policy_list);
 
 static inline bool policy_is_inactive(struct cpufreq_policy *policy)
@@ -199,6 +203,14 @@ struct cpufreq_policy *cpufreq_cpu_get_raw(unsigned int cpu)
 	return policy && cpumask_test_cpu(cpu, policy->cpus) ? policy : NULL;
 }
 EXPORT_SYMBOL_GPL(cpufreq_cpu_get_raw);
+
+#ifdef VENDOR_EDIT
+struct list_head *get_cpufreq_policy_list(void)
+{
+    return &cpufreq_policy_list;
+}
+EXPORT_SYMBOL(get_cpufreq_policy_list);
+#endif /* VENDOR_EDIT */
 
 unsigned int cpufreq_generic_get(unsigned int cpu)
 {
@@ -2238,6 +2250,13 @@ static int cpufreq_set_policy(struct cpufreq_policy *policy,
 {
 	struct cpufreq_governor *old_gov;
 	int ret;
+
+#ifdef VENDOR_EDIT//Cong.Dai@bsp.tp.function, 2019.11.29, add for aging version log
+	if((get_eng_version() == AGING) && (new_policy->max <= new_policy->cpuinfo.max_freq / 2)) {
+		pr_err("setting new policy for CPU %u: %u - %u kHz\n",
+			 new_policy->cpu, new_policy->min, new_policy->max);
+	}
+#endif /*VENDOR_EDIT*/
 
 	pr_debug("setting new policy for CPU %u: %u - %u kHz\n",
 		 new_policy->cpu, new_policy->min, new_policy->max);

@@ -310,7 +310,10 @@ int qmi_txn_init(struct qmi_handle *qmi, struct qmi_txn *txn,
 	int ret;
 
 	memset(txn, 0, sizeof(*txn));
-
+#ifndef VENDOR_EDIT
+/* tongfeng,Huang@BSP.CHG.Basic, 2019/12/24, CR:2422984 2463072 2470638 */
+	mutex_init(&txn->lock);
+#endif
 	init_completion(&txn->completion);
 	txn->qmi = qmi;
 	txn->ei = ei;
@@ -345,14 +348,31 @@ int qmi_txn_wait(struct qmi_txn *txn, unsigned long timeout)
 	int ret;
 
 	ret = wait_for_completion_timeout(&txn->completion, timeout);
-
+#ifndef VENDOR_EDIT
+/* tongfeng,Huang@BSP.CHG.Basic, 2019/12/24, CR:2422984 2463072 2470638 */
+	mutex_lock(&txn->lock);
+#endif
 	if (txn->result == -ENETRESET) {
+#ifndef VENDOR_EDIT
+/* tongfeng,Huang@BSP.CHG.Basic, 2019/12/24, CR:2422984 2463072 2470638 */
+		mutex_unlock(&txn->lock);
+#endif
 		return txn->result;
 	}
+#ifndef VENDOR_EDIT
+/* tongfeng,Huang@BSP.CHG.Basic, 2019/12/24, CR:2422984 2463072 2470638 */
+	mutex_unlock(&txn->lock);
 
+	mutex_lock(&qmi->txn_lock);
+	mutex_lock(&txn->lock);
+	idr_remove(&qmi->txns, txn->id);
+	mutex_unlock(&txn->lock);
+	mutex_unlock(&qmi->txn_lock);
+#else	
 	mutex_lock(&qmi->txn_lock);
 	idr_remove(&qmi->txns, txn->id);
 	mutex_unlock(&qmi->txn_lock);
+#endif
 
 	if (ret == 0)
 		return -ETIMEDOUT;
@@ -368,10 +388,18 @@ EXPORT_SYMBOL(qmi_txn_wait);
 void qmi_txn_cancel(struct qmi_txn *txn)
 {
 	struct qmi_handle *qmi = txn->qmi;
-
+#ifndef VENDOR_EDIT
+/* tongfeng,Huang@BSP.CHG.Basic, 2019/12/24, CR:2422984 2463072 2470638 */
+	mutex_lock(&qmi->txn_lock);
+	mutex_lock(&txn->lock);
+	idr_remove(&qmi->txns, txn->id);
+	mutex_unlock(&txn->lock);
+	mutex_unlock(&qmi->txn_lock);
+#else
 	mutex_lock(&qmi->txn_lock);
 	idr_remove(&qmi->txns, txn->id);
 	mutex_unlock(&qmi->txn_lock);
+#endif
 }
 EXPORT_SYMBOL(qmi_txn_cancel);
 
@@ -440,8 +468,10 @@ static void qmi_handle_net_reset(struct qmi_handle *qmi)
 	struct sockaddr_qrtr sq;
 	struct qmi_service *svc;
 	struct socket *sock;
+#ifdef VENDOR_EDIT
+/* tongfeng,Huang@BSP.CHG.Basic, 2019/12/24, CR:2422984 2463072 2470638 */
 	long timeo = qmi->sock->sk->sk_sndtimeo;
-
+#endif
 	sock = qmi_sock_create(qmi, &sq);
 	if (IS_ERR(sock))
 		return;
@@ -455,13 +485,19 @@ static void qmi_handle_net_reset(struct qmi_handle *qmi)
 	/* Already qmi_handle_release() started */
 	if (!qmi->sock) {
 		sock_release(sock);
+#ifdef VENDOR_EDIT
+/* tongfeng,Huang@BSP.CHG.Basic, 2019/12/24, CR:2422984 2463072 2470638 */
 		mutex_unlock(&qmi->sock_lock);
+#endif
 		return;
 	}
 	sock_release(qmi->sock);
 	qmi->sock = sock;
 	qmi->sq = sq;
+#ifdef VENDOR_EDIT
+/* tongfeng,Huang@BSP.CHG.Basic, 2019/12/24, CR:2422984 2463072 2470638 */
 	qmi->sock->sk->sk_sndtimeo = timeo;
+#endif
 	mutex_unlock(&qmi->sock_lock);
 
 	list_for_each_entry(svc, &qmi->lookups, list_node)
@@ -500,6 +536,12 @@ static void qmi_handle_message(struct qmi_handle *qmi,
 			mutex_unlock(&qmi->txn_lock);
 			return;
 		}
+#ifndef VENDOR_EDIT
+/* tongfeng,Huang@BSP.CHG.Basic, 2019/12/24, CR:2422984 2463072 2470638 */
+		mutex_lock(&txn->lock);
+		mutex_unlock(&qmi->txn_lock);
+#endif
+
 		if (txn->dest && txn->ei) {
 			ret = qmi_decode_message(buf, len, txn->ei, txn->dest);
 			if (ret < 0)
@@ -507,10 +549,15 @@ static void qmi_handle_message(struct qmi_handle *qmi,
 
 			txn->result = ret;
 			complete(&txn->completion);
-		} else {
+		} else  {
 			qmi_invoke_handler(qmi, sq, txn, buf, len);
 		}
+#ifndef VENDOR_EDIT
+/* tongfeng,Huang@BSP.CHG.Basic, 2019/12/24, CR:2422984 2463072 2470638 */
+		mutex_unlock(&txn->lock);
+#else
 		mutex_unlock(&qmi->txn_lock);
+#endif
 	} else {
 		/* Create a txn based on the txn_id of the incoming message */
 		memset(&tmp_txn, 0, sizeof(tmp_txn));
@@ -609,11 +656,12 @@ static struct socket *qmi_sock_create(struct qmi_handle *qmi,
 
 	return sock;
 }
-
-/**
+#ifdef VENDOR_EDIT
+/* tongfeng,Huang@BSP.CHG.Basic, 2019/12/24, CR:2422984 2463072 2470638 */
+	/**
  * qmi_set_sndtimeo() - set the sk_sndtimeo of the qmi handle
- * @qmi:	QMI client handle
- * @timeo:	timeout in jiffies.
+ * @qmi: QMI client handle
+ * @timeo: timeout in jiffies.
  *
  * This sets the timeout for the blocking socket send in qmi send.
  */
@@ -624,7 +672,7 @@ void qmi_set_sndtimeo(struct qmi_handle *qmi, long timeo)
 	mutex_unlock(&qmi->sock_lock);
 }
 EXPORT_SYMBOL(qmi_set_sndtimeo);
-
+#endif
 /**
  * qmi_handle_init() - initialize a QMI client handle
  * @qmi:	QMI handle to initialize
@@ -723,9 +771,17 @@ void qmi_handle_release(struct qmi_handle *qmi)
 
 	mutex_lock(&qmi->txn_lock);
 	idr_for_each_entry(&qmi->txns, txn, txn_id) {
+#ifndef VENDOR_EDIT
+/* tongfeng,Huang@BSP.CHG.Basic, 2019/12/24, CR:2422984 2463072 2470638 */
+		mutex_lock(&txn->lock);
+#endif
 		idr_remove(&qmi->txns, txn->id);
 		txn->result = -ENETRESET;
 		complete(&txn->completion);
+#ifndef VENDOR_EDIT
+/* tongfeng,Huang@BSP.CHG.Basic, 2019/12/24, CR:2422984 2463072 2470638 */
+		mutex_unlock(&txn->lock);
+#endif
 	}
 	mutex_unlock(&qmi->txn_lock);
 	idr_destroy(&qmi->txns);

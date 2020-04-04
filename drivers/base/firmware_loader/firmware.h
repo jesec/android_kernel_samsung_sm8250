@@ -37,6 +37,10 @@ enum fw_opt {
 	FW_OPT_NO_WARN =        BIT(3),
 	FW_OPT_NOCACHE =        BIT(4),
 	FW_OPT_NOFALLBACK =     BIT(5),
+#ifdef VENDOR_EDIT
+//Qicai.Gu@PSW.BSP.Tp, 2019-10-19, Add interface to get proper fw
+	FW_OPT_COMPARE =        BIT(6),
+#endif/*VENDOR_EDIT*/
 };
 
 enum fw_status {

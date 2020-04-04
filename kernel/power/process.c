@@ -27,7 +27,12 @@
 /*
  * Timeout for stopping processes
  */
+#ifndef VENDOR_EDIT
+//PengNan@BSP.Power.Basic, add for debugging freezing failed, 2019/12/05
 unsigned int __read_mostly freeze_timeout_msecs = 20 * MSEC_PER_SEC;
+#else
+unsigned int __read_mostly freeze_timeout_msecs = 3 * MSEC_PER_SEC;
+#endif /*VENDOR_EDIT*/
 
 static int try_to_freeze_tasks(bool user_only)
 {
@@ -69,13 +74,13 @@ static int try_to_freeze_tasks(bool user_only)
 
 		if (!todo || time_after(jiffies, end_time))
 			break;
-
 		if (pm_wakeup_pending()) {
 #ifdef CONFIG_PM_SLEEP
 			pm_get_active_wakeup_sources(suspend_abort,
 				MAX_SUSPEND_ABORT_LEN);
 			log_suspend_abort_reason(suspend_abort);
 #endif
+			pr_err("%s for debug\n",__func__);
 			wakeup = true;
 			break;
 		}

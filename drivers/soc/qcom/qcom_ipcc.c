@@ -89,12 +89,10 @@ static irqreturn_t qcom_ipcc_irq_fn(int irq, void *data)
 			break;
 
 		virq = irq_find_mapping(proto_data->irq_domain, packed_id);
-
 		dev_dbg(proto_data->dev,
 			"IRQ for client_id: %u; signal_id: %u; virq: %d\n",
 			qcom_ipcc_get_client_id(packed_id),
 			qcom_ipcc_get_signal_id(packed_id), virq);
-
 		writel_no_log(packed_id,
 				proto_data->base + IPCC_REG_RECV_SIGNAL_CLEAR);
 

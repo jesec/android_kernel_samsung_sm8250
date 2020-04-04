@@ -61,7 +61,7 @@ ifdef CONFIG_MSM_SUBSYSTEM_RESTART
 endif
 obj-$(CONFIG_QCOM_EUD) += eud.o
 obj-$(CONFIG_SOC_BUS) += socinfo.o
-obj-$(CONFIG_QCOM_WATCHDOG_V2) += watchdog_v2.o
+obj-$(CONFIG_QCOM_WATCHDOG_V2) += watchdog_v2.o oppo_watchdog_util.o
 obj-$(CONFIG_QCOM_SDM845_LLCC) += llcc-sdm845.o
 CFLAGS_rpmh-rsc.o := -I$(src)
 obj-$(CONFIG_QCOM_BUS_SCALING) += msm_bus/
@@ -96,4 +96,3 @@ obj-$(CONFIG_QCOM_CDSP_RM) += cdsprm.o
 obj-$(CONFIG_ICNSS) += icnss.o
 obj-$(CONFIG_ICNSS_QMI) += icnss_qmi.o wlan_firmware_service_v01.o
 obj-$(CONFIG_RMNET_CTL) += rmnet_ctl/
-obj-$(CONFIG_QCOM_CX_IPEAK) += cx_ipeak.o

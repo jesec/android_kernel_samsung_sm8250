@@ -217,6 +217,13 @@ extern unsigned int kobjsize(const void *objp);
 #define VM_HUGEPAGE	0x20000000	/* MADV_HUGEPAGE marked this vma */
 #define VM_NOHUGEPAGE	0x40000000	/* MADV_NOHUGEPAGE marked this vma */
 #define VM_MERGEABLE	0x80000000	/* KSM may merge identical pages */
+#if defined(VENDOR_EDIT) && defined(CONFIG_VIRTUAL_RESERVE_MEMORY)
+/* Kui.Zhang@PSW.TEC.KERNEL.Performance, 2019/03/18,
+ * new vm flags of vma in reserved area
+ */
+#define VM_BACKUP_CREATE 0x100000000UL	/* Created backup vma for emergency */
+#define VM_BACKUP_ALLOC  0x200000000UL	/* Alloced memory from backup vma */
+#endif
 
 #ifdef CONFIG_ARCH_USES_HIGH_VMA_FLAGS
 #define VM_HIGH_ARCH_BIT_0	32	/* bit only usable on 64-bit architectures */
@@ -2468,6 +2475,12 @@ extern unsigned long __must_check vm_mmap(struct file *, unsigned long,
 
 struct vm_unmapped_area_info {
 #define VM_UNMAPPED_AREA_TOPDOWN 1
+#if defined(VENDOR_EDIT) && defined(CONFIG_VIRTUAL_RESERVE_MEMORY)
+	/* Kui.Zhang@PSW.TEC.KERNEL.Performance, 2019/03/18,
+	 * new flags for get unmapped area from the reserved vma
+	 */
+#define VM_UNMAPPED_AREA_RESERVED 0x2
+#endif
 	unsigned long flags;
 	unsigned long length;
 	unsigned long low_limit;
@@ -2514,7 +2527,12 @@ int __must_check write_one_page(struct page *page);
 void task_dirty_inc(struct task_struct *tsk);
 
 /* readahead.c */
+#ifndef VENDOR_EDIT
+/* Jianchao.Shi@BSP.CHG.Basic, 2017/05/19, sjc Modify for increasing the default max readahead to speed-up reading */
+#define VM_MAX_READAHEAD	128	/* kbytes */
+#else
 #define VM_MAX_READAHEAD	512	/* kbytes */
+#endif
 #define VM_MIN_READAHEAD	16	/* kbytes (includes current page) */
 
 int force_page_cache_readahead(struct address_space *mapping, struct file *filp,
@@ -2550,6 +2568,84 @@ extern int expand_upwards(struct vm_area_struct *vma, unsigned long address);
 extern struct vm_area_struct * find_vma(struct mm_struct * mm, unsigned long addr);
 extern struct vm_area_struct * find_vma_prev(struct mm_struct * mm, unsigned long addr,
 					     struct vm_area_struct **pprev);
+#if defined(VENDOR_EDIT) && defined(CONFIG_VIRTUAL_RESERVE_MEMORY)
+/* Kui.Zhang@PSW.TEC.KERNEL.Performance, 2019/03/18,
+ * reserved area control flag
+ */
+extern int reserved_area_enable;
+extern unsigned long gpu_compat_high_limit_addr;
+
+#define RESERVE_VMAP_AREA_SIZE (SZ_32M + SZ_64M)
+#define RESERVE_AREA_ALIGN_SIZE SZ_2M
+#define BACKUP_ALLOC_FLAG(vm_flags) ((vm_flags) & VM_BACKUP_ALLOC)
+#define BACKUP_CREATE_FLAG(vm_flags) ((vm_flags) & VM_BACKUP_CREATE)
+
+/* Kui.Zhang@PSW.TEC.KERNEL.Performance, 2019/03/18,
+ * maybe somebody use MAP_BACKUP_CREATE, that is a mistake of create a
+ * reserved area in this case; to avoid it check flags andd addr same time.
+ * Todo will optimize it soon.
+ */
+#define RESERVE_VMAP_ADDR 0xDEADDEAD
+
+/* Kui.Zhang@TEC.Kernel.Performance, 2019/03/13
+ * check the address is in reserved area or not
+ */
+static inline int is_backed_addr(struct mm_struct *mm,
+				unsigned long start, unsigned long end)
+{
+	return (mm && mm->reserve_vma &&
+			start >= mm->reserve_vma->vm_start &&
+			end <= mm->reserve_vma->vm_end);
+}
+
+static inline int start_is_backed_addr(struct mm_struct *mm,
+				unsigned long start)
+{
+	return (mm && mm->reserve_vma &&
+			start >= mm->reserve_vma->vm_start &&
+			start < mm->reserve_vma->vm_end);
+}
+
+static inline int check_general_addr(struct mm_struct *mm,
+				unsigned long start, unsigned long end)
+{
+	unsigned long range_start, range_end;
+
+	if (mm && mm->reserve_vma) {
+		range_start = mm->reserve_vma->vm_start;
+		range_end = mm->reserve_vma->vm_end;
+
+		if ((start < range_start) && (end <= range_start))
+			return 1;
+		if ((start >= range_end) && (end > range_end))
+			return 1;
+		return 0;
+	}
+
+	return 1;
+}
+
+static inline int check_valid_reserve_addr(struct mm_struct *mm,
+				unsigned long start, unsigned long end)
+{
+	unsigned long range_start, range_end;
+
+	if (mm && mm->reserve_vma) {
+		range_start = mm->reserve_vma->vm_start;
+		range_end = mm->reserve_vma->vm_end;
+
+		if ((start < range_start) && (end <= range_start))
+			return 1;
+		if ((start >= range_end) && (end > range_end))
+			return 1;
+		if (start >= range_start && end <= range_end)
+			return 1;
+		return 0;
+	}
+
+	return 1;
+}
+#endif
 
 /* Look up the first VMA which intersects the interval start_addr..end_addr-1,
    NULL if none.  Assume start_addr < end_addr. */
@@ -2565,6 +2661,13 @@ static inline struct vm_area_struct * find_vma_intersection(struct mm_struct * m
 static inline unsigned long vm_start_gap(struct vm_area_struct *vma)
 {
 	unsigned long vm_start = vma->vm_start;
+#if defined(VENDOR_EDIT) && defined(CONFIG_VIRTUAL_RESERVE_MEMORY)
+	/* Kui.Zhang@PSW.TEC.KERNEL.Performance, 2019/03/18,
+	 * reserved vma check
+	 */
+	if (BACKUP_ALLOC_FLAG(vma->vm_flags))
+		return vm_start;
+#endif
 
 	if (vma->vm_flags & VM_GROWSDOWN) {
 		vm_start -= stack_guard_gap;
@@ -2577,6 +2680,13 @@ static inline unsigned long vm_start_gap(struct vm_area_struct *vma)
 static inline unsigned long vm_end_gap(struct vm_area_struct *vma)
 {
 	unsigned long vm_end = vma->vm_end;
+#if defined(VENDOR_EDIT) && defined(CONFIG_VIRTUAL_RESERVE_MEMORY)
+	/* Kui.Zhang@PSW.TEC.KERNEL.Performance, 2019/03/18,
+	 * reserved vma check
+	 */
+	if (BACKUP_ALLOC_FLAG(vma->vm_flags))
+		return vm_end;
+#endif
 
 	if (vma->vm_flags & VM_GROWSUP) {
 		vm_end += stack_guard_gap;
@@ -2955,10 +3065,37 @@ struct reclaim_param {
 	int nr_to_reclaim;
 	/* pages reclaimed */
 	int nr_reclaimed;
+#ifdef VENDOR_EDIT
+#ifdef CONFIG_PROCESS_RECLAIM_ENHANCE
+	/* Kui.Zhang@PSW.BSP.Kernel.Performance, 2018-11-07,
+	 * flag that relcaim inactive pages only */
+	bool inactive_lru;
+#endif
+	/* robin.ren@PSW.BSP.Kernel.Performance, 2019-03-13,
+	 * the target reclaimed process
+	 */
+	struct task_struct *reclaimed_task;
+#endif
 };
 extern struct reclaim_param reclaim_task_anon(struct task_struct *task,
 		int nr_to_reclaim);
-#endif
+
+#ifdef VENDOR_EDIT
+/* Kui.Zhang@PSW.BSP.Kernel.Performance, 2019-01-01,
+ * Extract the reclaim core code from task_mmu.c for /proc/process_reclaim*/
+extern ssize_t reclaim_task_write(struct task_struct* task,
+		char *buffer);
+
+#define PR_PASS		0
+#define PR_SEM_OUT	1
+#define PR_TASK_FG	2
+#define PR_TIME_OUT	3
+#define PR_ADDR_OVER	4
+#define PR_FULL		5
+#define PR_TASK_RUN	6
+#define PR_TASK_DIE	7
+#endif /* VENDOR_EDIT */
+#endif /* CONFIG_PROCESS_RECLAIM */
 
 #endif /* __KERNEL__ */
 #endif /* _LINUX_MM_H */

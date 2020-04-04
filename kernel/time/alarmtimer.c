@@ -35,6 +35,17 @@
 #define CREATE_TRACE_POINTS
 #include <trace/events/alarmtimer.h>
 
+#ifdef VENDOR_EDIT
+//Fanhong.Kong@ProDrv.CHG,modified 2016.08.13 for 2 minutes may not power up
+#define ALARM_MINIMUM 120
+#define ALARM_DELTA 60
+
+static atomic_t alarm_atomic = ATOMIC_INIT(0);
+static atomic_t alarm_sleep_busy_atomic = ATOMIC_INIT(0);
+extern u64 alarm_count;
+extern u64 wakeup_source_count_rtc;
+extern enum alarmtimer_restart	(*net_alarm_func)(struct alarm *, ktime_t now);
+#endif /*VENDOR_EDIT*/
 /**
  * struct alarm_base - Alarm timer bases
  * @lock:		Lock for syncrhonized access to the base
@@ -209,9 +220,33 @@ static enum hrtimer_restart alarmtimer_fired(struct hrtimer *timer)
 	alarmtimer_dequeue(base, alarm);
 	spin_unlock_irqrestore(&base->lock, flags);
 
-	if (alarm->function)
-		restart = alarm->function(alarm, base->gettime());
 
+	if (alarm->function) {
+		restart = alarm->function(alarm, base->gettime());
+	}
+#ifdef VENDOR_EDIT
+	//Nanwei.Deng@BSP.Power.Basic 2018/04/28 add for count alarm times
+	if (alarm->type == ALARM_REALTIME || alarm->type == ALARM_BOOTTIME) {
+		if(!((alarm->function) && (alarm->function == net_alarm_func)))    //Yunqing.Zeng@BSP.Power.Basic 2017/12/12 add for filter net alarm
+			alarm_count++;
+
+		if(atomic_read(&alarm_atomic) || atomic_read(&alarm_sleep_busy_atomic)) {
+			if(!((alarm->function) && (alarm->function == net_alarm_func))) //Yunqing.Zeng@BSP.Power.Basic 2017/12/12 add for filter net alarm
+				wakeup_source_count_rtc++;
+
+			if(atomic_read(&alarm_sleep_busy_atomic)) {
+				atomic_set(&alarm_sleep_busy_atomic, 0);
+			}
+			if (alarm->function) {
+				pr_info("%s.: type=%d, count=%lld, wakeup count=%lld, func=%pf\n", __func__, alarm->type, alarm_count, wakeup_source_count_rtc, alarm->function); //log diff, better for log filter
+			}
+		} else {
+			if (alarm->function) {
+				//pr_info("%s : type=%d, count=%lld, wakeup count=%lld, func=%pf\n", __func__, alarm->type, alarm_count, wakeup_source_count_rtc, alarm->function);
+			}
+		}
+	}
+#endif /*VENDOR_EDIT*/
 	spin_lock_irqsave(&base->lock, flags);
 	if (restart != ALARMTIMER_NORESTART) {
 		hrtimer_set_expires(&alarm->timer, alarm->node.expires);
@@ -257,6 +292,10 @@ static int alarmtimer_suspend(struct device *dev)
 	type = freezer_alarmtype;
 	freezer_delta = 0;
 	spin_unlock_irqrestore(&freezer_delta_lock, flags);
+    #ifdef VENDOR_EDIT
+	//Nanwei.Deng@Kernel.Driver, 2018/11/19, add for analysis power coumption. count alarm times
+	atomic_set(&alarm_atomic, 1);
+	#endif /*VENDOR_EDIT*/
 
 	rtc = alarmtimer_get_rtcdev();
 	/* If we have no rtcdev, just return */
@@ -286,6 +325,11 @@ static int alarmtimer_suspend(struct device *dev)
 
 	if (ktime_to_ns(min) < 2 * NSEC_PER_SEC) {
 		__pm_wakeup_event(ws, 2 * MSEC_PER_SEC);
+        #ifdef VENDOR_EDIT
+		//Nanwei.Deng@BSP.Power.Basic 2018/11/19, add for analysis power coumption. count alarm times
+		atomic_set(&alarm_atomic, 0);
+		atomic_set(&alarm_sleep_busy_atomic, 1);
+		#endif /* VENDOR_EDIT */
 		return -EBUSY;
 	}
 
@@ -307,6 +351,10 @@ static int alarmtimer_suspend(struct device *dev)
 static int alarmtimer_resume(struct device *dev)
 {
 	struct rtc_device *rtc;
+    #ifdef VENDOR_EDIT
+	//Nanwei.Deng@Kernel.Driver, 2018/11/19, add for analysis power coumption. count alarm times
+	atomic_set(&alarm_atomic, 0);
+	#endif /*VENDOR_EDIT*/
 
 	rtc = alarmtimer_get_rtcdev();
 	if (rtc)

@@ -137,6 +137,7 @@ struct bug_entry *find_bug(unsigned long bugaddr)
 		if (bugaddr == bug_addr(bug))
 			return bug;
 
+
 	return module_find_bug(bugaddr);
 }
 

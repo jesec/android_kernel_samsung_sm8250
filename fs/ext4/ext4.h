@@ -41,7 +41,6 @@
 #endif
 
 #include <linux/fscrypt.h>
-
 #include <linux/compiler.h>
 
 /* Until this gets included into linux/compiler-gcc.h */
@@ -1524,6 +1523,7 @@ struct ext4_sb_info {
 
 	/* Barrier between changing inodes' journal flags and writepages ops. */
 	struct percpu_rw_semaphore s_journal_flag_rwsem;
+	/* for discard command control */
 	struct dax_device *s_daxdev;
 };
 

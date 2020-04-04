@@ -9,6 +9,11 @@
 #include "adreno_trace.h"
 #include "kgsl_gmu_core.h"
 
+#ifdef VENDOR_EDIT
+//Wenhua.Leng@PSW.MM.Display.GPU, 2019/03/06, Add for record gpu snapshot
+#include <soc/oppo/oppo_kevent_feedback.h>
+#endif /* VENDOR_EDIT */
+
 #define DRAWQUEUE_NEXT(_i, _s) (((_i) + 1) % (_s))
 
 /* Number of commands that can be queued in a context before it sleeps */
@@ -2054,9 +2059,48 @@ replay:
 	kfree(replay);
 }
 
+
+#ifdef VENDOR_EDIT
+/*Wenhua.Leng@PSW.MM.Display.LCD.Machine, 2019/02/11,add for mm kevent gpu.*/
+static pid_t snapshotpid = -1;
+static int snapshotfault = -1;
+static void setfaulttype(int fault)
+{
+    snapshotfault = fault;
+}
+
+uint32_t GPUBKDRHash(char* str, uint32_t len)
+{
+    uint32_t seed = 131313; /* 31 131 1313 13131 131313 etc.. */
+    uint32_t hash = 0;
+    uint32_t i    = 0;
+
+    if (str == NULL) {
+        return 0;
+    }
+
+    for(i = 0; i < len; str++, i++) {
+        hash = (hash * seed) + (*str);
+    }
+
+    return hash;
+}
+#endif /*VENDOR_EDIT*/
+
 static void do_header_and_snapshot(struct kgsl_device *device, int fault,
 		struct adreno_ringbuffer *rb, struct kgsl_drawobj_cmd *cmdobj)
 {
+#ifdef VENDOR_EDIT
+/*Wenhua.Leng@PSW.MM.Display.LCD.Machine, 2019/02/11,add for mm kevent gpu.*/
+	uint8_t uuidsrc[100] = "";
+	uint32_t uuidsrcLength = 0;
+	uint32_t uuid          = 0;
+
+	uint8_t payload[100] = "";
+	pid_t pid = -1;
+	char processname[32]={'\0'};
+#endif /*VENDOR_EDIT*/
+
 	struct kgsl_drawobj *drawobj = DRAWOBJ(cmdobj);
 
 	/* Always dump the snapshot on a non-drawobj failure */
@@ -2073,9 +2117,33 @@ static void do_header_and_snapshot(struct kgsl_device *device, int fault,
 	/* Print the fault header */
 	adreno_fault_header(device, rb, cmdobj, fault);
 
+#ifndef VENDOR_EDIT
+/*Wenhua.Leng@PSW.MM.Display.LCD.Machine, 2019/02/11,add for mm kevent gpu.*/
 	if (!(drawobj->context->flags & KGSL_CONTEXT_NO_SNAPSHOT))
 		kgsl_device_snapshot(device, drawobj->context,
 					fault & ADRENO_GMU_FAULT);
+#else
+	if (!(drawobj->context->flags & KGSL_CONTEXT_NO_SNAPSHOT)){
+		kgsl_device_snapshot(device, drawobj->context,
+					fault & ADRENO_GMU_FAULT);
+        if (drawobj->context != NULL) {
+            pid = drawobj->context->proc_priv->pid;
+            strlcpy(processname, drawobj->context->proc_priv->comm, TASK_COMM_LEN);
+        }
+
+        if (snapshotpid != pid) {
+            uuidsrcLength = scnprintf(uuidsrc, sizeof(uuidsrc), "%s%d%d", processname, pid, snapshotfault);
+            uuid = GPUBKDRHash(uuidsrc, uuidsrcLength);
+            device->snapshot->snapshot_hashid = uuid;
+            //dev_err(device->dev,"uuidsrc=%u, %s, line=%d, process=%s, pid=%d", uuid, __FUNCTION__, __LINE__, processname, pid);
+
+            scnprintf(payload, sizeof(payload), "NULL$$EventID@@%d$$EventData@@FaultType=%x,pid=%d$$PackageName@@%s$$fid@@%u",
+                                        OPPO_MM_DIRVER_FB_EVENT_ID_GPU_FAULT, snapshotfault, pid, processname, uuid);
+            upload_mm_kevent_feedback_data(OPPO_MM_DIRVER_FB_EVENT_MODULE_DISPLAY,payload);//gpu hang
+            snapshotpid = pid;
+        }
+    }
+#endif /*VENDOR_EDIT*/
 }
 
 static int dispatcher_do_fault(struct adreno_device *adreno_dev)
@@ -2199,6 +2267,10 @@ static int dispatcher_do_fault(struct adreno_device *adreno_dev)
 		adreno_readreg64(adreno_dev, ADRENO_REG_CP_IB1_BASE,
 			ADRENO_REG_CP_IB1_BASE_HI, &base);
 
+#ifdef VENDOR_EDIT
+/*Wenhua.Leng@PSW.MM.Display.LCD.Machine, 2019/02/11,add for mm kevent gpu.*/
+    setfaulttype(fault);
+#endif
 	if (!test_bit(KGSL_FT_PAGEFAULT_GPUHALT_ENABLE,
 		&adreno_dev->ft_pf_policy) && adreno_dev->cooperative_reset)
 		gmu_core_dev_cooperative_reset(device);

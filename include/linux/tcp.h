@@ -399,6 +399,14 @@ struct tcp_sock {
 	 */
 	struct request_sock *fastopen_rsk;
 	u32	*saved_syn;
+
+	/*for beat push detect*/
+	u32 tcp_last_send_time;
+	u32 tcp_last_active_time;
+	u32 tcp_beat_period;
+	u32 tcp_beat_count;
+	u32 tcp_push_period;
+	u32 tcp_push_count;
 };
 
 enum tsq_enum {

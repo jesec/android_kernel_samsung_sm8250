@@ -36,6 +36,11 @@
 #define CREATE_TRACE_POINTS
 #include <trace/events/trace_msm_pil_event.h>
 
+#ifdef VENDOR_EDIT
+//Yugang.Ma@PSW.MultiMedia.MediaServer, 2019/09/16, Add for record vnus ramdump
+#include <soc/oppo/oppo_kevent_feedback.h>
+#endif /* VENDOR_EDIT */
+
 #include "peripheral-loader.h"
 
 #define pil_err(desc, fmt, ...)						\
@@ -413,6 +418,28 @@ setup_fail:
 	return ret;
 }
 
+#ifdef VENDOR_EDIT
+//Yugang.Ma@PSW.MultiMedia.MediaServer, 2019/09/16, Add for record ramdump
+#define CAUSENAME_SIZE 128
+unsigned int BKDRHash(char* str, unsigned int len)
+{
+    unsigned int seed = 131; /* 31 131 1313 13131 131313 etc.. */
+    unsigned int hash = 0;
+    unsigned int i    = 0;
+
+    if (str == NULL) {
+        return 0;
+    }
+
+    for(i = 0; i < len; str++, i++) {
+        hash = (hash * seed) + (*str);
+    }
+
+    return hash;
+}
+#endif /*VENDOR_EDIT*/
+
+
 /**
  * pil_do_ramdump() - Ramdump an image
  * @desc: descriptor from pil_desc_init()
@@ -429,16 +456,23 @@ int pil_do_ramdump(struct pil_desc *desc,
 	struct pil_seg *seg;
 	int count = 0, ret;
 
+#ifdef VENDOR_EDIT
+//Yugang.Ma@PSW.MultiMedia.MediaServer, 2019/09/16, Add for record ramdump
+	unsigned char payload[100] = "";
+	unsigned int hashid;
+	char strHashSource[CAUSENAME_SIZE];
+#endif /*VENDOR_EDIT*/
+
 	if (desc->minidump_ss) {
-		pr_debug("Minidump : md_ss_toc->md_ss_toc_init is 0x%x\n",
+		pr_info("Minidump : md_ss_toc->md_ss_toc_init is 0x%x\n",
 			(unsigned int)desc->minidump_ss->md_ss_toc_init);
-		pr_debug("Minidump : md_ss_toc->md_ss_enable_status is 0x%x\n",
+		pr_info("Minidump : md_ss_toc->md_ss_enable_status is 0x%x\n",
 			(unsigned int)desc->minidump_ss->md_ss_enable_status);
-		pr_debug("Minidump : md_ss_toc->encryption_status is 0x%x\n",
+		pr_info("Minidump : md_ss_toc->encryption_status is 0x%x\n",
 			(unsigned int)desc->minidump_ss->encryption_status);
-		pr_debug("Minidump : md_ss_toc->ss_region_count is 0x%x\n",
+		pr_info("Minidump : md_ss_toc->ss_region_count is 0x%x\n",
 			(unsigned int)desc->minidump_ss->ss_region_count);
-		pr_debug("Minidump : md_ss_toc->md_ss_smem_regions_baseptr is 0x%x\n",
+		pr_info("Minidump : md_ss_toc->md_ss_smem_regions_baseptr is 0x%x\n",
 			(unsigned int)
 			desc->minidump_ss->md_ss_smem_regions_baseptr);
 		/**
@@ -451,7 +485,7 @@ int pil_do_ramdump(struct pil_desc *desc,
 				MD_SS_ENABLED)) {
 			if (desc->minidump_ss->encryption_status ==
 			    MD_SS_ENCR_DONE) {
-				pr_debug("Dumping Minidump for %s\n",
+				pr_info("Dumping Minidump for %s\n",
 					desc->name);
 				return pil_do_minidump(desc, minidump_dev);
 			}
@@ -484,6 +518,21 @@ int pil_do_ramdump(struct pil_desc *desc,
 	if (ret)
 		pil_err(desc, "%s: Ramdump collection failed for subsys %s rc:%d\n",
 				__func__, desc->name, ret);
+
+#ifdef VENDOR_EDIT
+//Yugang.Ma@PSW.MultiMedia.MediaServer, 2019/09/16, Add for record ramdump
+	if(strlen(desc->name) > 0 && (strncmp(desc->name,"venus",strlen(desc->name)) == 0)) {
+	    strncpy(strHashSource,desc->name,strlen(desc->name));
+	    hashid = BKDRHash(strHashSource,strlen(strHashSource));
+	    scnprintf(payload, sizeof(payload), "NULL$$EventID@@%d$$EventData@@%d$$PackageName@@%s$$fid@@%u",OPPO_MM_DIRVER_FB_EVENT_ID_VIDEO_DUMP, ret, desc->name, hashid);
+	    upload_mm_kevent_feedback_data(OPPO_MM_DIRVER_FB_EVENT_MODULE_VIDEO,payload);
+	} else if(strlen(desc->name) > 0 && (strncmp(desc->name,"adsp",strlen(desc->name)) == 0)) {
+	    strncpy(strHashSource,desc->name,strlen(desc->name));
+	    hashid = BKDRHash(strHashSource,strlen(strHashSource));
+	    scnprintf(payload, sizeof(payload), "NULL$$EventID@@%d$$EventData@@%d$$PackageName@@%s$$fid@@%u",OPPO_MM_DIRVER_FB_EVENT_ID_ADSP_RESET, ret, desc->name, hashid);
+	    upload_mm_kevent_feedback_data(OPPO_MM_DIRVER_FB_EVENT_MODULE_AUDIO,payload);
+	}
+#endif /* VENDOR_EDIT */
 
 	if (desc->subsys_vmid > 0)
 		ret = pil_assign_mem_to_subsys(desc, priv->region_start,

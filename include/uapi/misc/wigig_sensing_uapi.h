@@ -27,10 +27,8 @@ struct wigig_sensing_change_mode {
 };
 
 enum wigig_sensing_event {
-	WIGIG_SENSING_EVENT_MIN,
 	WIGIG_SENSING_EVENT_FW_READY,
 	WIGIG_SENSING_EVENT_RESET,
-	WIGIG_SENSING_EVENT_MAX,
 };
 
 #define WIGIG_SENSING_IOC_MAGIC	'r'
@@ -86,7 +84,7 @@ enum wigig_sensing_event {
 	     WIGIG_SENSING_IOCTL_GET_NUM_DROPPED_BURSTS, sizeof(uint32_t))
 
 /**
- * Get asynchronous event (FW_READY, RESET)
+ * Get number of bursts that where dropped due to data buffer overflow
  */
 #define WIGIG_SENSING_IOC_GET_EVENT \
 	_IOR(WIGIG_SENSING_IOC_MAGIC, WIGIG_SENSING_IOCTL_GET_EVENT, \

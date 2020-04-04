@@ -499,7 +499,12 @@ EXPORT_SYMBOL_GPL(regcache_drop_region);
 void regcache_cache_only(struct regmap *map, bool enable)
 {
 	map->lock(map->lock_arg);
+	#ifndef VENDOR_EDIT
+	/*Jianfeng.Qiu@PSW.MM.AudioDriver.Platform.1234162, 2018/03/30,
+	 *Delete for uart issue due to warning log.
+	 */
 	WARN_ON(map->cache_bypass && enable);
+	#endif /* VENDOR_EDIT */
 	map->cache_only = enable;
 	trace_regmap_cache_only(map, enable);
 	map->unlock(map->lock_arg);

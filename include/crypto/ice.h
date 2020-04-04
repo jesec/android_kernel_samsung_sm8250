@@ -8,8 +8,6 @@
 
 #include <linux/platform_device.h>
 #include <linux/cdev.h>
-#include <linux/atomic.h>
-#include <linux/wait.h>
 
 struct request;
 
@@ -69,10 +67,7 @@ struct ice_device {
 	struct qcom_ice_bus_vote bus_vote;
 	ktime_t			ice_reset_start_time;
 	ktime_t			ice_reset_complete_time;
-	void                    *key_table;
-	atomic_t		is_ice_suspended;
-	atomic_t		is_ice_busy;
-	wait_queue_head_t       block_suspend_ice_queue;
+	void             *key_table;
 };
 
 struct ice_crypto_setting {

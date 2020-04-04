@@ -35,6 +35,11 @@
 #include <trace/events/ion.h>
 #include <soc/qcom/secure_buffer.h>
 
+#if defined(VENDOR_EDIT) && defined(CONFIG_OPPO_HEALTHINFO) && defined (CONFIG_OPPO_MEM_MONITOR)
+//Jiheng.Xie@TECH.BSP.Performance, 2019/07/11, add for ion wait monitor
+#include <linux/memory_monitor.h>
+#endif /*VENDOR_EDIT*/
+
 #include "ion.h"
 #include "ion_secure_util.h"
 
@@ -93,6 +98,18 @@ static void ion_buffer_add(struct ion_device *dev,
 	rb_link_node(&buffer->node, parent, p);
 	rb_insert_color(&buffer->node, &dev->buffers);
 }
+
+#ifdef VENDOR_EDIT
+/* Huacai.Zhou@PSW.BSP.Kernel.MM, 2018-06-26, add ion total used account*/
+static atomic_long_t ion_total_size;
+static bool ion_cnt_enable = true;
+unsigned long ion_total(void)
+{
+	if (!ion_cnt_enable)
+		return 0;
+	return (unsigned long)atomic_long_read(&ion_total_size);
+}
+#endif /*VENDOR_EDIT*/
 
 /* this function should only be called while dev->lock is held */
 static struct ion_buffer *ion_buffer_create(struct ion_heap *heap,
@@ -160,6 +177,11 @@ static struct ion_buffer *ion_buffer_create(struct ion_heap *heap,
 	ion_buffer_add(dev, buffer);
 	mutex_unlock(&dev->buffer_lock);
 	atomic_long_add(len, &heap->total_allocated);
+#ifdef VENDOR_EDIT
+/* Huacai.Zhou@PSW.BSP.Kernel.MM, 2018-06-26, add ion total used account*/
+	if (ion_cnt_enable)
+		atomic_long_add(buffer->size, &ion_total_size);
+#endif
 	return buffer;
 
 err1:
@@ -175,6 +197,11 @@ void ion_buffer_destroy(struct ion_buffer *buffer)
 		pr_warn_ratelimited("ION client likely missing a call to dma_buf_kunmap or dma_buf_vunmap\n");
 		buffer->heap->ops->unmap_kernel(buffer->heap, buffer);
 	}
+#ifdef VENDOR_EDIT
+/* Huacai.Zhou@PSW.BSP.Kernel.MM, 2018-06-26, add ion total used account*/
+	if (ion_cnt_enable)
+		atomic_long_sub(buffer->size, &ion_total_size);
+#endif /*VENDOR_EDIT*/
 	buffer->heap->ops->free(buffer);
 	kfree(buffer);
 }
@@ -1028,6 +1055,10 @@ struct dma_buf *ion_alloc_dmabuf(size_t len, unsigned int heap_id_mask,
 	DEFINE_DMA_BUF_EXPORT_INFO(exp_info);
 	struct dma_buf *dmabuf;
 	char task_comm[TASK_COMM_LEN];
+#if defined(VENDOR_EDIT) && defined(CONFIG_OPPO_HEALTHINFO) && defined (CONFIG_OPPO_MEM_MONITOR)
+//Jiheng.Xie@TECH.BSP.Performance, 2019/07/11, add for ion wait monitor
+	unsigned long oppo_ionwait_start = jiffies;
+#endif /*VENDOR_EDIT*/
 
 	pr_debug("%s: len %zu heap_id_mask %u flags %x\n", __func__,
 		 len, heap_id_mask, flags);
@@ -1073,6 +1104,10 @@ struct dma_buf *ion_alloc_dmabuf(size_t len, unsigned int heap_id_mask,
 		_ion_buffer_destroy(buffer);
 		kfree(exp_info.exp_name);
 	}
+#if defined(VENDOR_EDIT) && defined(CONFIG_OPPO_HEALTHINFO) && defined (CONFIG_OPPO_MEM_MONITOR)
+//Jiheng.Xie@TECH.BSP.Performance, 2019/07/11, add for ion wait monitor
+	oppo_ionwait_monitor(jiffies_to_msecs(jiffies - oppo_ionwait_start));
+#endif /*VENDOR_EDIT*/
 
 	return dmabuf;
 }

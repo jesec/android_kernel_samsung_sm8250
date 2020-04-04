@@ -17,11 +17,77 @@
 #include <linux/pm_wakeirq.h>
 #include <linux/types.h>
 #include <trace/events/power.h>
+#ifdef VENDOR_EDIT
+//Yanzhen.Feng@PSW.AD.OppoDebug.702252, 2016/06/21, Add for Sync App and Kernel time
+#include <linux/rtc.h>
+#endif /* VENDOR_EDIT */
 #include <linux/irq.h>
 #include <linux/interrupt.h>
 #include <linux/irqdesc.h>
 
 #include "power.h"
+
+#ifdef VENDOR_EDIT
+//Nanwei.Deng@BSP.Power.Basic, 2018/11/19, add for analysis power coumption.
+#include <linux/wakeup_reason.h>
+#endif
+
+#ifdef VENDOR_EDIT
+//Nanwei.Deng@BSP.Power.Basic, 2018/11/19, add for analysis power coumption.
+#include <linux/kobject.h>
+#include <linux/sysfs.h>
+#ifdef CONFIG_FB
+#include <linux/fb.h>
+#include <linux/notifier.h>
+#endif
+#ifdef CONFIG_DRM_MSM
+#include <linux/msm_drm_notify.h>
+#endif
+
+//#define WAKEUP_SOURCE_MODEM 					60	//qcom,glink-smem-native-xprt-modem
+//#define WAKEUP_SOURCE_MODEM_IPA					119 //ipa
+//#define WAKEUP_SOURCE_ADSP						61  //qcom,glink-smem-native-xprt-adsp
+//#define WAKEUP_SOURCE_CDSP						62	//qcom,glink-smem-native-xprt-cdsp
+
+#define WAKEUP_SOURCE_KPDPWR 					491	//qpnp_kpdpwr_status
+#define WAKEUP_SOURCE_PMIC_ALARM				555 //qpnp_rtc_alarm
+
+u64 wakeup_source_count_kpdpwr = 0;
+u64 wakeup_source_count_cdsp= 0;
+u64 wakeup_source_count_adsp= 0;
+u64 wakeup_source_count_slpi= 0;
+
+u64 alarm_count = 0;
+u64	wakeup_source_count_rtc = 0;
+u64	wakeup_source_count_pmic_rtc= 0;
+u64 wakeup_source_count_wifi = 0;
+u64 wakeup_source_count_glink= 0;
+
+
+#define MODEM_WAKEUP_SRC_NUM 3
+#define MODEM_DIAG_WS_INDEX 0
+#define MODEM_IPA_WS_INDEX 1
+#define MODEM_QMI_WS_INDEX 2
+
+u64	wakeup_source_count_modem= 0;
+
+int modem_wakeup_src_count[MODEM_WAKEUP_SRC_NUM] = { 0 };
+char modem_wakeup_src_string[MODEM_WAKEUP_SRC_NUM][10] =
+		{"DIAG_WS",
+		"IPA_WS",
+		"QMI_WS"};
+#endif /* VENDOR_EDIT */
+
+
+#ifdef VENDOR_EDIT
+//Yunqing.Zeng@BSP.Power.Basic 2017/11/28 add for kernel wakelock time statistics
+static atomic_t ws_all_release_flag = ATOMIC_INIT(1);
+static ktime_t ws_start_node;
+static ktime_t ws_end_node;
+static ktime_t ws_hold_all_time;
+static ktime_t reset_time;
+static spinlock_t statistics_lock;
+#endif /* VENDOR_EDIT */
 
 #ifndef CONFIG_SUSPEND
 suspend_state_t pm_suspend_target_state;
@@ -537,6 +603,15 @@ static void wakeup_source_activate(struct wakeup_source *ws)
 			"unregistered wakeup source\n"))
 		return;
 
+	#ifdef VENDOR_EDIT
+	//Yunqing.Zeng@BSP.Power.Basic 2017/11/28 add for kernel wakelock time statistics
+	if(atomic_read(&ws_all_release_flag)) {
+		atomic_set(&ws_all_release_flag, 0);
+		spin_lock(&statistics_lock);
+		ws_start_node = ktime_get();
+		spin_unlock(&statistics_lock);
+	}
+	#endif /* VENDOR_EDIT */
 	ws->active = true;
 	ws->active_count++;
 	ws->last_time = ktime_get();
@@ -678,8 +753,19 @@ static void wakeup_source_deactivate(struct wakeup_source *ws)
 	trace_wakeup_source_deactivate(ws->name, cec);
 
 	split_counters(&cnt, &inpr);
-	if (!inpr && waitqueue_active(&wakeup_count_wait_queue))
+	if (!inpr && waitqueue_active(&wakeup_count_wait_queue)) {
+		#ifdef VENDOR_EDIT
+		//Yunqing.Zeng@BSP.Power.Basic 2017/11/28 add for kernel wakelock time statistics
+		ktime_t ws_hold_delta = ktime_set(0, 0);
+		atomic_set(&ws_all_release_flag, 1);
+		spin_lock(&statistics_lock);
+		ws_end_node = ktime_get();
+		ws_hold_delta = ktime_sub(ws_end_node, ws_start_node);
+		ws_hold_all_time = ktime_add(ws_hold_all_time, ws_hold_delta);
+		spin_unlock(&statistics_lock);
+		#endif /* VENDOR_EDIT */
 		wake_up(&wakeup_count_wait_queue);
+	}
 }
 
 /**
@@ -826,7 +912,7 @@ void pm_get_active_wakeup_sources(char *pending_wakeup_source, size_t max)
 				len += scnprintf(pending_wakeup_source, max,
 						"Pending Wakeup Sources: ");
 			len += scnprintf(pending_wakeup_source + len, max - len,
-				"%s ", ws->name);
+				"%s,%ld,%ld", ws->name, ws->active_count, ktime_to_ms(ws->total_time));
 			active = true;
 		} else if (!active &&
 			   (!last_active_ws ||
@@ -837,10 +923,11 @@ void pm_get_active_wakeup_sources(char *pending_wakeup_source, size_t max)
 	}
 	if (!active && last_active_ws) {
 		scnprintf(pending_wakeup_source, max,
-				"Last active Wakeup Source: %s",
-				last_active_ws->name);
+				"Last active Wakeup Source: %s,%ld,%ld",
+				last_active_ws->name,last_active_ws->active_count,ktime_to_ms(last_active_ws->total_time));
 	}
 	rcu_read_unlock();
+	pr_err("%s,active:%d,pending :%s for debug\n",__func__,active,pending_wakeup_source);
 }
 EXPORT_SYMBOL_GPL(pm_get_active_wakeup_sources);
 
@@ -855,6 +942,7 @@ void pm_print_active_wakeup_sources(void)
 		if (ws->active) {
 			pr_debug("active wakeup source: %s\n", ws->name);
 			active = 1;
+
 		} else if (!active &&
 			   (!last_activity_ws ||
 			    ktime_to_ns(ws->last_time) >
@@ -862,10 +950,9 @@ void pm_print_active_wakeup_sources(void)
 			last_activity_ws = ws;
 		}
 	}
-
 	if (!active && last_activity_ws)
-		pr_debug("last active wakeup source: %s\n",
-			last_activity_ws->name);
+		pr_err("last active wakeup source: %s,%ld,%ld\n",
+			last_activity_ws->name, last_activity_ws->active_count,ktime_to_ms(last_activity_ws->total_time));
 	srcu_read_unlock(&wakeup_srcu, srcuidx);
 }
 EXPORT_SYMBOL_GPL(pm_print_active_wakeup_sources);
@@ -894,10 +981,12 @@ bool pm_wakeup_pending(void)
 	raw_spin_unlock_irqrestore(&events_lock, flags);
 
 	if (ret) {
-		pr_debug("PM: Wakeup pending, aborting suspend\n");
+		pr_err("PM: Wakeup pending, aborting suspend for debug,ret:%d\n",ret);
 		pm_print_active_wakeup_sources();
 	}
-
+	if(atomic_read(&pm_abort_suspend) > 0) {
+		pr_err("%s,aborting suspend:%d\n",__func__,atomic_read(&pm_abort_suspend));
+	}
 	return ret || atomic_read(&pm_abort_suspend) > 0;
 }
 
@@ -935,7 +1024,19 @@ void pm_system_irq_wakeup(unsigned int irq_number)
 
 			pr_warn("%s: %d triggered %s\n", __func__,
 					irq_number, name);
-
+			#ifdef VENDOR_EDIT		
+			//Nanwei.Deng@BSP.Power.Basic, 2018/04/28, add for analysis power coumption.
+			log_wakeup_reason(irq_number);			
+			#endif	
+            #ifdef VENDOR_EDIT
+            //Nanwei.Deng@BSP.Power.Basic, 2018/04/28, add for analysis power coumption.
+			if(irq_number == WAKEUP_SOURCE_KPDPWR) {
+                wakeup_source_count_kpdpwr++;
+            }
+			if(irq_number == WAKEUP_SOURCE_PMIC_ALARM) {
+                wakeup_source_count_pmic_rtc++;
+            }
+			#endif
 		}
 		pm_wakeup_irq = irq_number;
 		pm_system_wakeup();
@@ -1154,19 +1255,364 @@ static int wakeup_sources_stats_open(struct inode *inode, struct file *file)
 	return seq_open_private(file, &wakeup_sources_stats_seq_ops, sizeof(int));
 }
 
+#ifdef VENDOR_EDIT
+//Yanzhen.Feng@PSW.AD.OppoDebug.702252, 2015/08/14, Add for Sync App and Kernel time
+static ssize_t watchdog_write(struct file *file, const char __user *buf, size_t count, loff_t *ppos)
+{
+	s32 value;
+	struct timespec ts;
+	struct rtc_time tm;
+
+	if (count == sizeof(s32)) {
+		if (copy_from_user(&value, buf, sizeof(s32)))
+			return -EFAULT;
+	} else if (count <= 11) { /* ASCII perhaps? */
+		char ascii_value[11];
+		unsigned long int ulval;
+		int ret;
+
+		if (copy_from_user(ascii_value, buf, count))
+			return -EFAULT;
+
+		if (count > 10) {
+			if (ascii_value[10] == '\n')
+				ascii_value[10] = '\0';
+			else
+				return -EINVAL;
+		} else {
+			ascii_value[count] = '\0';
+		}
+		ret = kstrtoul(ascii_value, 16, &ulval);
+		if (ret) {
+			pr_debug("%s, 0x%lx, 0x%x\n", ascii_value, ulval, ret);
+			return -EINVAL;
+		}
+		value = (s32)lower_32_bits(ulval);
+	} else {
+		return -EINVAL;
+	}
+
+	getnstimeofday(&ts);
+	rtc_time_to_tm(ts.tv_sec, &tm);
+	pr_warn("!@WatchDog_%d; %d-%02d-%02d %02d:%02d:%02d.%09lu UTC\n",
+		value, tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
+		tm.tm_hour, tm.tm_min, tm.tm_sec, ts.tv_nsec);
+
+	return count;
+}
+#endif /* VENDOR_EDIT */
+
 static const struct file_operations wakeup_sources_stats_fops = {
 	.owner = THIS_MODULE,
 	.open = wakeup_sources_stats_open,
 	.read = seq_read,
 	.llseek = seq_lseek,
 	.release = seq_release_private,
+#ifdef VENDOR_EDIT
+//Yanzhen.Feng@PSW.AD.OppoDebug.702252, 2016/06/21, Add for Sync App and Kernel time
+	.write          = watchdog_write,
+#endif /* VENDOR_EDIT */
 };
 
 static int __init wakeup_sources_debugfs_init(void)
 {
+#ifndef VENDOR_EDIT
+//Yanzhen.Feng@PSW.AD.OppoDebug.702252, 2016/06/21,  Modify for Sync App and Kernel time
 	wakeup_sources_stats_dentry = debugfs_create_file("wakeup_sources",
 			S_IRUGO, NULL, NULL, &wakeup_sources_stats_fops);
+#else /* VENDOR_EDIT */
+	wakeup_sources_stats_dentry = debugfs_create_file("wakeup_sources",
+			S_IRUGO| S_IWUGO, NULL, NULL, &wakeup_sources_stats_fops);
+#endif /* VENDOR_EDIT */
 	return 0;
 }
 
+#ifdef VENDOR_EDIT
+//Yunqing.Zeng@BSP.Power.Basic 2017/11/09 add for wakelock profiler
+ktime_t active_max_reset_time;
+static ssize_t active_max_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
+{
+	int srcuidx;
+	int max_ws_rate;
+	ktime_t cur_ws_total;
+	ktime_t max_ws_time;
+	ktime_t wall_delta;
+	char max_ws_name[40];
+	int buf_offset = 0;
+	unsigned long flags;
+	struct wakeup_source *ws;
+
+	max_ws_time = ktime_set(0, 0);
+	srcuidx = srcu_read_lock(&wakeup_srcu);
+	list_for_each_entry_rcu(ws, &wakeup_sources, entry) {
+		spin_lock_irqsave(&ws->lock, flags);
+		cur_ws_total = ws->total_time;
+		if(ws->active) {
+			ktime_t active_time;
+			ktime_t now = ktime_get();
+			active_time = ktime_sub(now, ws->last_time);
+			cur_ws_total = ktime_add(ws->total_time, active_time);
+		}
+		if(ktime_compare(cur_ws_total, ws->total_time_backup) >= 0) {
+			if(ktime_compare(ktime_sub(cur_ws_total, ws->total_time_backup), max_ws_time) > 0) {
+				strncpy(max_ws_name, ws->name, sizeof(max_ws_name)-1);
+				max_ws_time = ktime_sub(cur_ws_total, ws->total_time_backup);
+			}
+		}
+		spin_unlock_irqrestore(&ws->lock, flags);
+	}
+	srcu_read_unlock(&wakeup_srcu, srcuidx);
+
+	wall_delta = ktime_sub(ktime_get(), active_max_reset_time);
+	max_ws_rate = ktime_compare(wall_delta, max_ws_time) >= 0 ? ktime_to_ms(max_ws_time)*100/ktime_to_ms(wall_delta) : 0;
+
+	buf_offset += sprintf(buf + buf_offset, "Name\tTime(mS)\tRate(%%)\n");
+	buf_offset += sprintf(buf + buf_offset, "%s\t%lld\t%d\n", max_ws_name, ktime_to_ms(max_ws_time), max_ws_rate);
+	return buf_offset;
+}
+
+static void active_max_reset(void)
+{
+	int srcuidx;
+	unsigned long flags;
+	ktime_t total_time;
+	struct wakeup_source *ws;
+
+	printk("%s\n", __func__);
+	active_max_reset_time = ktime_get();
+	srcuidx = srcu_read_lock(&wakeup_srcu);
+	list_for_each_entry_rcu(ws, &wakeup_sources, entry) {
+		spin_lock_irqsave(&ws->lock, flags);
+		total_time = ws->total_time;
+		if(ws->active) {
+			ktime_t active_time;
+			ktime_t now = ktime_get();
+			active_time = ktime_sub(now, ws->last_time);
+			total_time = ktime_add(ws->total_time, active_time);
+		}
+		ws->total_time_backup = total_time;
+		spin_unlock_irqrestore(&ws->lock, flags);
+	}
+	srcu_read_unlock(&wakeup_srcu, srcuidx);
+}
+
+static ssize_t active_max_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count)
+{
+	char reset_string[]="reset";
+	if(!((count == strlen(reset_string)) || ((count == strlen(reset_string) + 1) && (buf[count-1] == '\n')))) {
+		return count;
+      }
+
+	if (strncmp(buf, reset_string, strlen(reset_string)) != 0) {
+		return count;
+    }
+
+	active_max_reset();
+	return count;
+}
+
+static inline bool ws_all_release(void)
+{
+	unsigned int cnt, inpr;
+	split_counters(&cnt, &inpr);
+	if(!inpr && waitqueue_active(&wakeup_count_wait_queue)) {
+		return true;
+	} else {
+		return false;
+	}
+}
+
+static void kernel_time_reset(void)
+{
+	ktime_t newest_hold_time;
+
+	printk("%s\n", __func__);
+	if(!ws_all_release()) {
+		ktime_t offset_hold_time;
+		ktime_t now = ktime_get();
+#ifdef VENDOR_EDIT
+//wen.luo@BSP.Power.Basic 2017/11/09 add for wakelock profiler, protect for timer and process content deadlock
+		spin_lock_bh(&statistics_lock);
+#else
+		spin_lock(&statistics_lock);
+#endif
+		offset_hold_time = ktime_sub(now, ws_start_node);
+		newest_hold_time = ktime_add(ws_hold_all_time, offset_hold_time);
+#ifdef VENDOR_EDIT
+//wen.luo@BSP.Power.Basic 2017/11/09 add for wakelock profiler, protect for timer and process content deadlock
+		spin_unlock_bh(&statistics_lock);
+#else
+		spin_unlock(&statistics_lock);
+#endif
+	}
+	else {
+#ifdef VENDOR_EDIT
+//wen.luo@BSP.Power.Basic 2017/11/09 add for wakelock profiler, protect for timer and process content deadlock
+		spin_lock_bh(&statistics_lock);
+#else
+		spin_lock(&statistics_lock);
+#endif
+		newest_hold_time = ws_hold_all_time;
+#ifdef VENDOR_EDIT
+//wen.luo@BSP.Power.Basic 2017/11/09 add for wakelock profiler, protect for timer and process content deadlock
+		spin_unlock_bh(&statistics_lock);
+#else
+		spin_unlock(&statistics_lock);
+#endif
+	}
+
+	reset_time = newest_hold_time;
+}
+
+static ssize_t kernel_time_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count)
+{
+	char reset_string[]="reset";
+	if(!((count == strlen(reset_string)) || ((count == strlen(reset_string) + 1) && (buf[count-1] == '\n')))) {
+		return count;
+     }
+
+	if (strncmp(buf, reset_string, strlen(reset_string)) != 0) {
+		return count;
+      }
+
+	kernel_time_reset();
+	return count;
+}
+
+static ssize_t kernel_time_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
+{
+	int buf_offset = 0;
+	ktime_t newest_hold_time;
+
+	if(!ws_all_release()) {
+		ktime_t offset_hold_time;
+		ktime_t now = ktime_get();
+#ifdef VENDOR_EDIT
+//wen.luo@BSP.Power.Basic 2017/11/09 add for wakelock profiler, protect for timer and process content deadlock
+		spin_lock_bh(&statistics_lock);
+#else
+		spin_lock(&statistics_lock);
+#endif
+		offset_hold_time = ktime_sub(now, ws_start_node);
+		newest_hold_time = ktime_add(ws_hold_all_time, offset_hold_time);
+	}
+	else {
+#ifdef VENDOR_EDIT
+//wen.luo@BSP.Power.Basic 2017/11/09 add for wakelock profiler, protect for timer and process content deadlock
+		spin_lock_bh(&statistics_lock);
+#else
+		spin_lock(&statistics_lock);
+#endif
+		newest_hold_time = ws_hold_all_time;
+	}
+	newest_hold_time = ktime_sub(newest_hold_time, reset_time);
+#ifdef VENDOR_EDIT
+//wen.luo@BSP.Power.Basic 2017/11/09 add for wakelock profiler, protect for timer and process content deadlock
+	spin_unlock_bh(&statistics_lock);
+#else
+	spin_unlock(&statistics_lock);
+#endif
+	buf_offset += sprintf(buf + buf_offset, "%lld\n", ktime_to_ms(newest_hold_time));
+	return buf_offset;
+}
+
+static int ws_fb_notify_callback(struct notifier_block *nb, unsigned long val, void *data)
+{
+	struct fb_event *evdata = data;
+	int *blank;
+#ifdef CONFIG_DRM_MSM
+	if(val != MSM_DRM_EARLY_EVENT_BLANK && val != MSM_DRM_EVENT_BLANK)
+#else
+    if (val != FB_EVENT_BLANK && val != FB_EARLY_EVENT_BLANK)
+#endif
+	return 0;
+
+    if(evdata && evdata->data) {
+        blank = evdata->data;
+        printk(KERN_INFO  "%s, val=%ld, blank=%d\n", __func__,val,*blank);
+        #ifdef CONFIG_DRM_MSM
+        if (*blank == MSM_DRM_BLANK_POWERDOWN) { //suspend
+             if (val == MSM_DRM_EARLY_EVENT_BLANK) {    //early event
+        #else
+        if (*blank == FB_BLANK_POWERDOWN) { //suspend
+            if (val == FB_EARLY_EVENT_BLANK) {    //early event
+        #endif
+				#ifdef VENDOR_EDIT
+				//Nanwei.Deng@BSP.Power.Basic, , 2016/07/19, add for analysis power consumption,clear wakeup source stastatics action according to framework
+                //kernel_time_reset();
+			    //active_max_reset();
+				#endif
+                printk(KERN_INFO  "%s, POWERDOWN\n", __func__);
+             }
+        }
+        #ifdef CONFIG_DRM_MSM
+        else if (*blank == MSM_DRM_BLANK_UNBLANK) { //resume
+             if (val == MSM_DRM_EVENT_BLANK) {    //event
+        #else
+        else if (*blank == FB_BLANK_UNBLANK) { //resume
+            if (val == FB_EVENT_BLANK) {    //event
+        #endif
+            printk(KERN_INFO  "%s, UNBLANK\n", __func__);
+            }
+        }
+    }
+	return NOTIFY_OK;
+}
+
+static struct notifier_block ws_fb_notify_block = {
+	.notifier_call =  ws_fb_notify_callback,
+};
+
+static struct kobj_attribute active_max = __ATTR_RW(active_max);
+static struct kobj_attribute kernel_time = __ATTR_RW(kernel_time);
+
+static struct attribute *attrs[] = {
+	&active_max.attr,
+	&kernel_time.attr,
+	NULL,
+};
+static struct attribute_group attr_group = {
+	.attrs = attrs,
+};
+
+static struct kobject *wakelock_profiler;
+
+static int __init wakelock_profiler_init(void)
+{
+	int retval;
+
+	spin_lock_init(&statistics_lock);
+	active_max_reset_time = ktime_set(0, 0);
+	wakelock_profiler = kobject_create_and_add("wakelock_profiler", kernel_kobj);
+	if (!wakelock_profiler) {
+		printk(KERN_WARNING "[%s] failed to create a sysfs kobject\n",
+				__func__);
+		return 1;
+	}
+	retval = sysfs_create_group(wakelock_profiler, &attr_group);
+	if (retval) {
+		kobject_put(wakelock_profiler);
+		printk(KERN_WARNING "[%s] failed to create a sysfs group %d\n",
+				__func__, retval);
+	}
+#if defined(CONFIG_DRM_MSM)
+	retval = msm_drm_register_client(&ws_fb_notify_block);
+	if (retval) {
+		printk("%s error: register notifier failed,drm!\n", __func__);
+	}
+#elif defined(CONFIG_FB)
+    retval = fb_register_client(&ws_fb_notify_block);
+	if (retval) {
+		printk("%s error: register notifier failed!\n", __func__);
+	}
+#endif
+
+	return 0;
+}
+#endif /* VENDOR_EDIT */
+
 postcore_initcall(wakeup_sources_debugfs_init);
+#ifdef VENDOR_EDIT
+//Yunqing.Zeng@BSP.Power.Basic 2017/11/09 add for wakelock profiler
+postcore_initcall(wakelock_profiler_init);
+#endif /* VENDOR_EDIT */

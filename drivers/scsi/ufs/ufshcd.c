@@ -51,6 +51,12 @@
 #include "ufs-debugfs.h"
 #include "ufs-qcom.h"
 
+#ifdef VENDOR_EDIT
+//zhenjian Jiang@PSW.BSP.Storage.UFS, 2018-05-04 add for ufs device in /proc/devinfo
+#include <soc/oppo/device_info.h>
+/*Hank.liu@PSW.BSP Kernel IO Latency  2019-03-19,ufs slot status */
+unsigned long ufs_outstanding;
+#endif
 static bool ufshcd_wb_sup(struct ufs_hba *hba);
 static int ufshcd_wb_ctrl(struct ufs_hba *hba, bool enable);
 static int ufshcd_wb_buf_flush_enable(struct ufs_hba *hba);
@@ -59,6 +65,14 @@ static bool ufshcd_wb_is_buf_flush_needed(struct ufs_hba *hba);
 static int ufshcd_wb_toggle_flush_during_h8(struct ufs_hba *hba, bool set);
 
 #ifdef CONFIG_DEBUG_FS
+
+#ifdef VENDOR_EDIT
+//hank.liu@Tech.Storage.UFS, 2019-10-11 add for ufsplus status node in /proc/devinfo
+int ufsplus_tw_status = 0;
+EXPORT_SYMBOL(ufsplus_tw_status);
+int ufsplus_hpb_status = 0;
+EXPORT_SYMBOL(ufsplus_hpb_status);
+#endif
 
 static int ufshcd_tag_req_type(struct request *rq)
 {
@@ -364,6 +378,26 @@ ufs_get_pm_lvl_to_link_pwr_state(enum ufs_pm_level lvl)
 	return ufs_pm_lvl_states[lvl].link_state;
 }
 
+static inline void ufshcd_set_card_online(struct ufs_hba *hba)
+{
+	atomic_set(&hba->card_state, UFS_CARD_STATE_ONLINE);
+}
+
+static inline void ufshcd_set_card_offline(struct ufs_hba *hba)
+{
+	atomic_set(&hba->card_state, UFS_CARD_STATE_OFFLINE);
+}
+
+static inline bool ufshcd_is_card_online(struct ufs_hba *hba)
+{
+	return (atomic_read(&hba->card_state) == UFS_CARD_STATE_ONLINE);
+}
+
+static inline bool ufshcd_is_card_offline(struct ufs_hba *hba)
+{
+	return (atomic_read(&hba->card_state) == UFS_CARD_STATE_OFFLINE);
+}
+
 static inline void ufshcd_wb_toggle_flush(struct ufs_hba *hba)
 {
 	/*
@@ -394,6 +428,28 @@ static inline void ufshcd_wb_config(struct ufs_hba *hba)
 	if (ret)
 		dev_err(hba->dev, "%s: En WB flush during H8: failed: %d\n",
 			__func__, ret);
+}
+
+static inline bool ufshcd_is_device_offline(struct ufs_hba *hba)
+{
+	if (hba->extcon && ufshcd_is_card_offline(hba))
+		return true;
+	else
+		return false;
+}
+
+static int ufshcd_card_get_extcon_state(struct ufs_hba *hba)
+{
+	int ret;
+
+	if (!hba->extcon)
+		return -EINVAL;
+
+	ret = extcon_get_state(hba->extcon, EXTCON_MECHANICAL);
+	if (ret < 0)
+		dev_err(hba->dev, "%s: Failed to check card Extcon state, ret=%d\n",
+				 __func__, ret);
+	return ret;
 }
 
 static inline enum ufs_pm_level
@@ -458,6 +514,8 @@ static struct ufs_dev_fix ufs_fixups[] = {
 		UFS_DEVICE_QUIRK_HS_G1_TO_HS_G3_SWITCH),
 	UFS_FIX(UFS_VENDOR_SKHYNIX, "hC8HL1",
 		UFS_DEVICE_QUIRK_HS_G1_TO_HS_G3_SWITCH),
+	UFS_FIX(UFS_VENDOR_SKHYNIX, "H9HQ16",
+		UFS_DEVICE_QUIRK_RECOVERY_FROM_DL_NAC_ERRORS),
 
 	END_FIX
 };
@@ -475,8 +533,18 @@ static int ufshcd_disable_clocks(struct ufs_hba *hba,
 				 bool is_gating_context);
 static int ufshcd_disable_clocks_keep_link_active(struct ufs_hba *hba,
 					      bool is_gating_context);
+#if defined(VENDOR_EDIT) && defined(CONFIG_UFSFEATURE)
+/* Hank.liu@TECH.PLAT.Storage, 2019-10-31, add UFS+ hpb and tw driver*/
+void ufshcd_hold_all(struct ufs_hba *hba);
+#else
 static void ufshcd_hold_all(struct ufs_hba *hba);
+#endif
+#if defined(VENDOR_EDIT) && defined(CONFIG_UFSFEATURE)
+/* Hank.liu@TECH.PLAT.Storage, 2019-10-31, add UFS+ hpb and tw driver*/
+void ufshcd_release_all(struct ufs_hba *hba);
+#else
 static void ufshcd_release_all(struct ufs_hba *hba);
+#endif
 static int ufshcd_set_vccq_rail_unused(struct ufs_hba *hba, bool unused);
 static inline void ufshcd_add_delay_before_dme_cmd(struct ufs_hba *hba);
 static inline void ufshcd_save_tstamp_of_last_dme_cmd(struct ufs_hba *hba);
@@ -484,8 +552,6 @@ static int ufshcd_host_reset_and_restore(struct ufs_hba *hba);
 static void ufshcd_resume_clkscaling(struct ufs_hba *hba);
 static void ufshcd_suspend_clkscaling(struct ufs_hba *hba);
 static void __ufshcd_suspend_clkscaling(struct ufs_hba *hba);
-static void ufshcd_hold_all(struct ufs_hba *hba);
-static void ufshcd_release_all(struct ufs_hba *hba);
 static void ufshcd_hba_vreg_set_lpm(struct ufs_hba *hba);
 static void ufshcd_hba_vreg_set_hpm(struct ufs_hba *hba);
 static int ufshcd_devfreq_target(struct device *dev,
@@ -499,6 +565,11 @@ static int ufshcd_config_vreg(struct device *dev,
 				struct ufs_vreg *vreg, bool on);
 static int ufshcd_enable_vreg(struct device *dev, struct ufs_vreg *vreg);
 static int ufshcd_disable_vreg(struct device *dev, struct ufs_vreg *vreg);
+static void ufshcd_register_pm_notifier(struct ufs_hba *hba);
+static void ufshcd_unregister_pm_notifier(struct ufs_hba *hba);
+static int ufshcd_setup_hba_vreg(struct ufs_hba *hba, bool on);
+static void ufshcd_remove_scsi_devices(struct ufs_hba *hba);
+static void ufshcd_detect_card(struct ufs_hba *hba, unsigned long delay);
 
 #if IS_ENABLED(CONFIG_DEVFREQ_GOV_SIMPLE_ONDEMAND)
 static struct devfreq_simple_ondemand_data ufshcd_ondemand_data = {
@@ -1727,7 +1798,12 @@ out:
 
 static int ufshcd_clock_scaling_prepare(struct ufs_hba *hba)
 {
+#if defined(VENDOR_EDIT) && defined(CONFIG_UFSFEATURE)
+	/* Hank.liu@TECH.PLAT.Storage, 2019-10-31, add UFS+ hpb and tw driver*/
+	#define DOORBELL_CLR_TOUT_US		(1500 * 1000) /* 1.5 sec */
+#else
 	#define DOORBELL_CLR_TOUT_US		(1000 * 1000) /* 1 sec */
+#endif
 	int ret = 0;
 	/*
 	 * make sure that there are no outstanding requests when
@@ -1762,6 +1838,9 @@ static void ufshcd_clock_scaling_unprepare(struct ufs_hba *hba)
 static int ufshcd_devfreq_scale(struct ufs_hba *hba, bool scale_up)
 {
 	int ret = 0;
+
+	if (ufshcd_is_device_offline(hba))
+		return 0;
 
 	/* let's not get into low power until clock scaling is completed */
 	hba->ufs_stats.clk_hold.ctx = CLK_SCALE_WORK;
@@ -2076,6 +2155,11 @@ static ssize_t ufshcd_clkscale_enable_show(struct device *dev,
 	return snprintf(buf, PAGE_SIZE, "%d\n", hba->clk_scaling.is_allowed);
 }
 
+#ifdef VENDOR_EDIT
+//cuixiaogang@SRC.hypnus.2018.05.09. add mutex lock here for race condition
+static DEFINE_MUTEX(ufshcd_clkscale_lock);
+#endif /* VENDOR_EDIT */
+
 static ssize_t ufshcd_clkscale_enable_store(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t count)
 {
@@ -2087,6 +2171,10 @@ static ssize_t ufshcd_clkscale_enable_store(struct device *dev,
 		return -EINVAL;
 
 	value = !!value;
+#ifdef VENDOR_EDIT
+//cuixiaogang@SRC.hypnus.2018.05.09. add mutex lock here for race condition
+	mutex_lock(&ufshcd_clkscale_lock);
+#endif /* VENDOR_EDIT */
 	if (value == hba->clk_scaling.is_allowed)
 		goto out;
 
@@ -2111,8 +2199,49 @@ static ssize_t ufshcd_clkscale_enable_store(struct device *dev,
 	ufshcd_release(hba, false);
 	pm_runtime_put_sync(hba->dev);
 out:
+#ifdef VENDOR_EDIT
+//cuixiaogang@SRC.hypnus.2018.05.09. add mutex lock here for race condition
+	mutex_unlock(&ufshcd_clkscale_lock);
+#endif /* VENDOR_EDIT */
 	return count;
 }
+
+#ifdef VENDOR_EDIT
+//cuixiaogang@SRC.hypnus.2018.04.02. add support for ufs clk scale
+int ufshcd_clk_scaling_enable(struct ufs_hba *hba, int value)
+{
+	int err;
+
+	value = !!value;
+	mutex_lock(&ufshcd_clkscale_lock);
+	if (value == hba->clk_scaling.is_allowed)
+		goto out;
+
+	pm_runtime_get_sync(hba->dev);
+	ufshcd_hold(hba, false);
+
+	cancel_work_sync(&hba->clk_scaling.suspend_work);
+	cancel_work_sync(&hba->clk_scaling.resume_work);
+
+	hba->clk_scaling.is_allowed = value;
+
+	if (value) {
+		ufshcd_resume_clkscaling(hba);
+	} else {
+		ufshcd_suspend_clkscaling(hba);
+		err = ufshcd_devfreq_scale(hba, true);
+		if (err)
+			dev_err(hba->dev, "%s: failed to scale clocks up %d\n",
+					__func__, err);
+	}
+
+	ufshcd_release(hba, false);
+	pm_runtime_put_sync(hba->dev);
+out:
+	mutex_unlock(&ufshcd_clkscale_lock);
+	return 0;
+}
+#endif
 
 static void ufshcd_clkscaling_init_sysfs(struct ufs_hba *hba)
 {
@@ -2143,6 +2272,9 @@ static void ufshcd_ungate_work(struct work_struct *work)
 	spin_unlock_irqrestore(hba->host->host_lock, flags);
 	ufshcd_hba_vreg_set_hpm(hba);
 	ufshcd_enable_clocks(hba);
+
+	if (ufshcd_is_device_offline(hba))
+		goto unblock_reqs;
 
 	/* Exit from hibern8 */
 	if (ufshcd_can_hibern8_during_gating(hba)) {
@@ -2186,6 +2318,8 @@ int ufshcd_hold(struct ufs_hba *hba, bool async)
 start:
 	switch (hba->clk_gating.state) {
 	case CLKS_ON:
+		if (ufshcd_is_device_offline(hba))
+			break;
 		/*
 		 * Wait for the ungate work to complete if in progress.
 		 * Though the clocks may be in ON state, the link could
@@ -2289,6 +2423,9 @@ static void ufshcd_gate_work(struct work_struct *work)
 
 	spin_unlock_irqrestore(hba->host->host_lock, flags);
 
+	if (ufshcd_is_device_offline(hba))
+		goto disable_clocks;
+
 	if (ufshcd_is_hibern8_on_idle_allowed(hba) &&
 	    hba->hibern8_on_idle.is_enabled)
 		/*
@@ -2308,6 +2445,7 @@ static void ufshcd_gate_work(struct work_struct *work)
 		ufshcd_set_link_hibern8(hba);
 	}
 
+disable_clocks:
 	/*
 	 * If auto hibern8 is enabled then the link will already
 	 * be in hibern8 state and the ref clock can be gated.
@@ -2609,7 +2747,12 @@ static void ufshcd_exit_clk_gating(struct ufs_hba *hba)
  *
  * Return 0 on success, non-zero on failure.
  */
+#if defined(VENDOR_EDIT) && defined(CONFIG_UFSFEATURE)
+/* Hank.liu@TECH.PLAT.Storage, 2019-10-31, add UFS+ hpb and tw driver*/
+int ufshcd_hibern8_hold(struct ufs_hba *hba, bool async)
+#else
 static int ufshcd_hibern8_hold(struct ufs_hba *hba, bool async)
+#endif
 {
 	int rc = 0;
 	unsigned long flags;
@@ -2945,13 +3088,23 @@ static void ufshcd_exit_hibern8_on_idle(struct ufs_hba *hba)
 	device_remove_file(hba->dev, &hba->hibern8_on_idle.enable_attr);
 }
 
+#if defined(VENDOR_EDIT) && defined (CONFIG_UFSFEATURE)
+/* Hank.liu@TECH.PLAT.Storage, 2019-10-31, add UFS+ hpb and tw driver*/
+void ufshcd_hold_all(struct ufs_hba *hba)
+#else
 static void ufshcd_hold_all(struct ufs_hba *hba)
+#endif
 {
 	ufshcd_hold(hba, false);
 	ufshcd_hibern8_hold(hba, false);
 }
 
+#if defined(VENDOR_EDIT) && defined (CONFIG_UFSFEATURE)
+/* Hank.liu@TECH.PLAT.Storage, 2019-10-31, add UFS+ hpb and tw driver*/
+void ufshcd_release_all(struct ufs_hba *hba)
+#else
 static void ufshcd_release_all(struct ufs_hba *hba)
+#endif
 {
 	ufshcd_hibern8_release(hba, false);
 	ufshcd_release(hba, false);
@@ -3011,6 +3164,8 @@ int ufshcd_send_command(struct ufs_hba *hba, unsigned int task_tag)
 {
 	hba->lrb[task_tag].issue_time_stamp = ktime_get();
 	hba->lrb[task_tag].compl_time_stamp = ktime_set(0, 0);
+	if (ufshcd_is_device_offline(hba))
+		return -ENOLINK;
 	ufshcd_clk_scaling_start_busy(hba);
 	__set_bit(task_tag, &hba->outstanding_reqs);
 	ufshcd_writel(hba, 1 << task_tag, REG_UTP_TRANSFER_REQ_DOOR_BELL);
@@ -3200,6 +3355,9 @@ __ufshcd_send_uic_cmd(struct ufs_hba *hba, struct uic_command *uic_cmd,
 		return -EIO;
 	}
 
+	if (ufshcd_is_device_offline(hba))
+		return -ENOLINK;
+
 	if (completion)
 		init_completion(&uic_cmd->done);
 
@@ -3250,7 +3408,12 @@ ufshcd_send_uic_cmd(struct ufs_hba *hba, struct uic_command *uic_cmd)
  *
  * Returns 0 in case of success, non-zero value in case of failure
  */
+#if defined(VENDOR_EDIT) && defined(CONFIG_UFSFEATURE)
+/* Hank.liu@TECH.PLAT.Storage, 2019-10-31, add UFS+ hpb and tw driver*/
+int ufshcd_map_sg(struct ufs_hba *hba, struct ufshcd_lrb *lrbp)
+#else
 static int ufshcd_map_sg(struct ufs_hba *hba, struct ufshcd_lrb *lrbp)
+#endif
 {
 	struct ufshcd_sg_entry *prd_table;
 	struct scatterlist *sg;
@@ -3546,7 +3709,12 @@ static int ufshcd_comp_devman_upiu(struct ufs_hba *hba, struct ufshcd_lrb *lrbp)
  * @hba: per adapter instance
  * @lrbp: pointer to local reference block
  */
+#if defined(VENDOR_EDIT) && defined(CONFIG_UFSFEATURE)
+/* Hank.liu@TECH.PLAT.Storage, 2019-10-31, add UFS+ hpb and tw driver*/
+int ufshcd_comp_scsi_upiu(struct ufs_hba *hba, struct ufshcd_lrb *lrbp)
+#else
 static int ufshcd_comp_scsi_upiu(struct ufs_hba *hba, struct ufshcd_lrb *lrbp)
+#endif
 {
 	u32 upiu_flags;
 	int ret = 0;
@@ -3558,6 +3726,12 @@ static int ufshcd_comp_scsi_upiu(struct ufs_hba *hba, struct ufshcd_lrb *lrbp)
 		lrbp->command_type = UTP_CMD_TYPE_UFS_STORAGE;
 
 	if (likely(lrbp->cmd)) {
+#if defined(VENDOR_EDIT) && defined(CONFIG_UFSFEATURE)
+/* Hank.liu@TECH.PLAT.Storage, 2019-10-31, add UFS+ hpb and tw driver*/
+		ufsf_hpb_change_lun(&hba->ufsf, lrbp);
+		ufsf_tw_prep_fn(&hba->ufsf, lrbp);
+		ufsf_hpb_prep_fn(&hba->ufsf, lrbp);
+#endif
 		ret = ufshcd_prepare_req_desc_hdr(hba, lrbp,
 				&upiu_flags, lrbp->cmd->sc_data_direction);
 		ufshcd_prepare_utp_scsi_cmd_upiu(lrbp, upiu_flags);
@@ -3649,6 +3823,16 @@ static int ufshcd_queuecommand(struct Scsi_Host *host, struct scsi_cmnd *cmd)
 	int tag;
 	int err = 0;
 	bool has_read_lock = false;
+#ifdef VENDOR_EDIT
+/* Hank.liu@TECH.PLAT.Storage, 2019-10-31, add UFS+ hpb and tw driver*/
+#if defined(CONFIG_UFSFEATURE) && defined(CONFIG_UFSHPB)
+	struct scsi_cmnd *pre_cmd;
+	struct ufshcd_lrb *add_lrbp;
+	int add_tag;
+	int pre_req_err = -EBUSY;
+	int lun = ufshcd_scsi_to_upiu_lun(cmd->device->lun);
+#endif
+#endif
 
 	hba = shost_priv(host);
 
@@ -3687,6 +3871,12 @@ static int ufshcd_queuecommand(struct Scsi_Host *host, struct scsi_cmnd *cmd)
 	/* if error handling is in progress, return host busy */
 	if (ufshcd_eh_in_progress(hba)) {
 		err = SCSI_MLQUEUE_HOST_BUSY;
+		goto out_unlock;
+	}
+
+	if (ufshcd_is_device_offline(hba)) {
+		set_host_byte(cmd, DID_BAD_TARGET);
+		cmd->scsi_done(cmd);
 		goto out_unlock;
 	}
 
@@ -3744,9 +3934,41 @@ static int ufshcd_queuecommand(struct Scsi_Host *host, struct scsi_cmnd *cmd)
 	}
 	if (ufshcd_is_hibern8_on_idle_allowed(hba))
 		WARN_ON(hba->hibern8_on_idle.state != HIBERN8_EXITED);
+#ifdef VENDOR_EDIT
+/* Hank.liu@TECH.PLAT.Storage, 2019-10-31, add UFS+ hpb and tw driver*/
+#if defined(CONFIG_UFSFEATURE) && defined(CONFIG_UFSHPB)
+		add_tag = ufsf_hpb_prepare_pre_req(&hba->ufsf, cmd, lun);
+		if (add_tag == -EAGAIN) {
+			clear_bit_unlock(tag, &hba->lrb_in_use);
+			err = SCSI_MLQUEUE_HOST_BUSY;
+			ufshcd_release_all(hba);
+			goto out;
+		}
+		if (add_tag < 0) {
+			hba->lrb[tag].hpb_ctx_id = MAX_HPB_CONTEXT_ID;
+			goto send_orig_cmd;
+		}
 
+		add_lrbp = &hba->lrb[add_tag];
+
+		pre_req_err = ufsf_hpb_prepare_add_lrbp(&hba->ufsf, add_tag);
+		if (pre_req_err)
+			hba->lrb[tag].hpb_ctx_id = MAX_HPB_CONTEXT_ID;
+send_orig_cmd:
+#endif
+#endif
 	/* Vote PM QoS for the request */
 	ufshcd_vops_pm_qos_req_start(hba, cmd->request);
+#ifdef VENDOR_EDIT
+//hank.liu@Tech.Storage.UFS, 2019-10-17 add latency_hist node for ufs latency calculate in sysfs.
+	/* IO svc time latency histogram */
+	if (hba->latency_hist_enabled &&(!blk_rq_is_passthrough(cmd->request))) {
+			 cmd->request->lat_hist_io_start = ktime_get();
+			 cmd->request->lat_hist_enabled = 1;
+	} else {
+			 cmd->request->lat_hist_enabled = 0;
+	}
+#endif
 
 	WARN_ON(hba->clk_gating.state != CLKS_ON);
 
@@ -3805,9 +4027,26 @@ static int ufshcd_queuecommand(struct Scsi_Host *host, struct scsi_cmnd *cmd)
 
 	/* issue command to the controller */
 	spin_lock_irqsave(hba->host->host_lock, flags);
+#ifdef VENDOR_EDIT
+/* Hank.liu@TECH.PLAT.Storage, 2019-10-31, add UFS+ hpb and tw driver*/
+#if defined(CONFIG_UFSFEATURE) && defined(CONFIG_UFSHPB)
+	if (!pre_req_err) {
+		ufshcd_vops_setup_xfer_req(hba, add_tag, (add_lrbp->cmd ? true : false));
+		ufshcd_send_command(hba, add_tag);
+		pre_req_err = -EBUSY;
+		atomic64_inc(&hba->ufsf.ufshpb_lup[add_lrbp->lun]->pre_req_cnt);
+		ufsf_para.pre_req++;
+	}
+#endif
+#endif
 	ufshcd_vops_setup_xfer_req(hba, tag, (lrbp->cmd ? true : false));
 
 	err = ufshcd_send_command(hba, tag);
+#ifdef  VENDOR_EDIT
+		 //hank.liu@TECH.BSP.Storage.UFS, 2019-04-26, Add for monitor ufs driver io time
+		ufs_outstanding=hba->outstanding_reqs;
+		cmd->request->ufs_io_start = ktime_get();
+#endif
 	if (err) {
 		spin_unlock_irqrestore(hba->host->host_lock, flags);
 		scsi_dma_unmap(lrbp->cmd);
@@ -3825,6 +4064,21 @@ static int ufshcd_queuecommand(struct Scsi_Host *host, struct scsi_cmnd *cmd)
 out_unlock:
 	spin_unlock_irqrestore(hba->host->host_lock, flags);
 out:
+#ifdef VENDOR_EDIT
+/* Hank.liu@TECH.PLAT.Storage, 2019-10-31, add UFS+ hpb and tw driver*/
+#if defined(CONFIG_UFSFEATURE) && defined(CONFIG_UFSHPB)
+	if (!pre_req_err) {
+		pre_cmd = add_lrbp->cmd;
+		scsi_dma_unmap(pre_cmd);
+		add_lrbp->cmd = NULL;
+		clear_bit_unlock(add_tag, &hba->lrb_in_use);
+		ufshcd_release_all(hba);
+		ufshcd_vops_pm_qos_req_end(hba, pre_cmd->request, true);
+		ufshcd_vops_crypto_engine_cfg_end(hba, lrbp, pre_cmd->request);
+		ufsf_hpb_end_pre_req(&hba->ufsf, pre_cmd->request);
+	}
+#endif
+#endif
 	if (has_read_lock)
 		ufshcd_put_read_lock(hba);
 	return err;
@@ -4010,15 +4264,29 @@ static inline void ufshcd_put_dev_cmd_tag(struct ufs_hba *hba, int tag)
  * NOTE: Since there is only one available tag for device management commands,
  * it is expected you hold the hba->dev_cmd.lock mutex.
  */
+#if defined(VENDOR_EDIT) && defined(CONFIG_UFSFEATURE)
+/* Hank.liu@TECH.PLAT.Storage, 2019-10-31, add UFS+ hpb and tw driver*/
+int ufshcd_exec_dev_cmd(struct ufs_hba *hba,
+			enum dev_cmd_type cmd_type, int timeout)
+#else
 static int ufshcd_exec_dev_cmd(struct ufs_hba *hba,
 		enum dev_cmd_type cmd_type, int timeout)
+#endif
 {
 	struct ufshcd_lrb *lrbp;
 	int err;
+#ifdef VENDOR_EDIT
+	//Tong.Han@Bsp.Group.Tp,2018-6-4,Added for Dealth_healer
+	int tag = 0;
+#else
 	int tag;
+#endif
 	struct completion wait;
 	unsigned long flags;
 	bool has_read_lock = false;
+
+	if (ufshcd_is_device_offline(hba))
+		return -ENOLINK;
 
 	/*
 	 * May get invoked from shutdown and IOCTL contexts.
@@ -5175,7 +5443,7 @@ more_wait:
 	ufshcd_dme_cmd_log(hba, "dme_cmpl_2", hba->active_uic_cmd->command);
 
 out:
-	if (ret) {
+	if (ret && !ufshcd_is_device_offline(hba)) {
 		ufsdbg_set_err_state(hba);
 		ufshcd_print_host_state(hba);
 		ufshcd_print_pwr_info(hba);
@@ -5235,6 +5503,9 @@ static int ufshcd_link_recovery(struct ufs_hba *hba)
 	int ret = 0;
 	unsigned long flags;
 
+	if (ufshcd_is_device_offline(hba))
+		return -ENOLINK;
+
 	/*
 	 * Check if there is any race with fatal error handling.
 	 * If so, wait for it to complete. Even though fatal error
@@ -5279,6 +5550,28 @@ static int ufshcd_link_recovery(struct ufs_hba *hba)
 
 	return ret;
 }
+
+#if defined(VENDOR_EDIT) && defined(CONFIG_UFSFEATURE)
+/* Hank.liu@TECH.PLAT.Storage, 2019-10-31, add ufs+ node to oppohealthinfo*/
+static void oppo_ufs_update_h8_info(struct ufs_hba *hba, bool hibern8_enter){
+	u64 calc_h8_time_ms = 0;
+	if (hibern8_enter) {
+		ufsf_para.hibern8_enter_ts = ktime_get();
+	}
+	else {
+		calc_h8_time_ms = (u64)ktime_ms_delta(ktime_get(), ufsf_para.hibern8_enter_ts);
+		if (calc_h8_time_ms > 99) {
+			ufsf_para.hibern8_enter_count_100ms++;
+			ufsf_para.hibern8_amount_ms_100ms += calc_h8_time_ms;
+			}
+		if (ufsf_para.hibern8_max_ms < calc_h8_time_ms)
+			ufsf_para.hibern8_max_ms = calc_h8_time_ms;
+		ufsf_para.hibern8_amount_ms += calc_h8_time_ms;
+		ufsf_para.hibern8_enter_count++;
+	}
+}
+#endif
+
 
 static int __ufshcd_uic_hibern8_enter(struct ufs_hba *hba)
 {
@@ -5327,6 +5620,10 @@ static int __ufshcd_uic_hibern8_enter(struct ufs_hba *hba)
 								POST_CHANGE);
 		dev_dbg(hba->dev, "%s: Hibern8 Enter at %lld us\n", __func__,
 			ktime_to_us(ktime_get()));
+#if defined(VENDOR_EDIT) && defined(CONFIG_UFSFEATURE)
+/* Hank.liu@TECH.PLAT.Storage, 2019-10-31, add ufs+ node to oppohealthinfo*/
+		oppo_ufs_update_h8_info(hba, true);
+#endif
 	}
 
 	return ret;
@@ -5338,7 +5635,7 @@ int ufshcd_uic_hibern8_enter(struct ufs_hba *hba)
 
 	for (retries = UIC_HIBERN8_ENTER_RETRIES; retries > 0; retries--) {
 		ret = __ufshcd_uic_hibern8_enter(hba);
-		if (!ret)
+		if (!ret || ufshcd_is_device_offline(hba))
 			goto out;
 		else if (ret != -EAGAIN)
 			/* Unable to recover the link, so no point proceeding */
@@ -5370,7 +5667,7 @@ int ufshcd_uic_hibern8_exit(struct ufs_hba *hba)
 			__func__, ret);
 		ret = ufshcd_link_recovery(hba);
 		/* Unable to recover the link, so no point proceeding */
-		if (ret)
+		if (ret && !ufshcd_is_device_offline(hba))
 			BUG_ON(1);
 	} else {
 		ufshcd_vops_hibern8_notify(hba, UIC_CMD_DME_HIBER_EXIT,
@@ -5379,6 +5676,10 @@ int ufshcd_uic_hibern8_exit(struct ufs_hba *hba)
 			ktime_to_us(ktime_get()));
 		hba->ufs_stats.last_hibern8_exit_tstamp = ktime_get();
 		hba->ufs_stats.hibern8_exit_cnt++;
+#if defined(VENDOR_EDIT) && defined(CONFIG_UFSFEATURE)
+/* Hank.liu@TECH.PLAT.Storage, 2019-10-31, add ufs+ node to oppohealthinfo*/
+		oppo_ufs_update_h8_info(hba, false);
+#endif
 	}
 
 	return ret;
@@ -5655,9 +5956,19 @@ static int ufshcd_complete_dev_init(struct ufs_hba *hba)
 	}
 
 	/* poll for max. 1000 iterations for fDeviceInit flag to clear */
+#ifndef VENDOR_EDIT
+//yh@BSP.Storage.UFS, 2019-12-27 add for ufs device can't complete init
 	for (i = 0; i < 1000 && !err && flag_res; i++)
+#else
+	for (i = 0; i < 1500 && !err && flag_res; i++) {
+#endif
 		err = ufshcd_query_flag_retry(hba, UPIU_QUERY_OPCODE_READ_FLAG,
 			QUERY_FLAG_IDN_FDEVICEINIT, &flag_res);
+#ifdef VENDOR_EDIT
+//yh@BSP.Storage.UFS, 2019-12-27 add for ufs device can't complete init
+		usleep_range(1000, 1000); // 1ms sleep
+	}
+#endif
 
 	if (err)
 		dev_err(hba->dev,
@@ -5943,6 +6254,14 @@ static int ufshcd_link_startup(struct ufs_hba *hba)
 out:
 	if (ret)
 		dev_err(hba->dev, "link startup failed %d\n", ret);
+	/*
+	 * For some external cards, link startup succeeds only after few link
+	 * startup attempts and err_state may get set in this case.
+	 * But as the link startup has finally succeded, we are clearing the
+	 * error state.
+	 */
+	else if (hba->extcon)
+		ufsdbg_clr_err_state(hba);
 
 	return ret;
 }
@@ -6133,7 +6452,17 @@ static int ufshcd_slave_configure(struct scsi_device *sdev)
 {
 	struct request_queue *q = sdev->request_queue;
 	struct ufs_hba *hba = shost_priv(sdev->host);
+#if defined(VENDOR_EDIT) && defined(CONFIG_UFSFEATURE)
+	/* Hank.liu@TECH.PLAT.Storage, 2019-10-31, add UFS+ hpb and tw driver*/
+	struct ufsf_feature *ufsf = &hba->ufsf;
 
+	if (ufsf_is_valid_lun(sdev->lun)) {
+		ufsf->sdev_ufs_lu[sdev->lun] = sdev;
+		ufsf->slave_conf_cnt++;
+		printk(KERN_ERR "%s: ufsfeature set lun %d sdev %p q %p\n",
+		       __func__, (int)sdev->lun, sdev, sdev->request_queue);
+	}
+#endif
 	blk_queue_update_dma_pad(q, PRDT_DATA_BYTE_COUNT_PAD - 1);
 	blk_queue_max_segment_size(q, PRDT_DATA_BYTE_COUNT_MAX);
 
@@ -6301,6 +6630,11 @@ ufshcd_transfer_rsp_status(struct ufs_hba *hba, struct ufshcd_lrb *lrbp)
 							&hba->eeh_work))
 					pm_runtime_get_noresume(hba->dev);
 			}
+#if defined(VENDOR_EDIT) && defined(CONFIG_UFSFEATURE)
+/* Hank.liu@TECH.PLAT.Storage, 2019-10-31, add UFS+ hpb and tw driver*/
+			if (scsi_status == SAM_STAT_GOOD)
+				ufsf_hpb_noti_rb(&hba->ufsf, lrbp);
+#endif
 			break;
 		case UPIU_TRANSACTION_REJECT_UPIU:
 			/* TODO: handle Reject UPIU Response */
@@ -6455,7 +6789,44 @@ static void __ufshcd_transfer_req_compl(struct ufs_hba *hba,
 				ufshcd_vops_crypto_engine_cfg_end(hba,
 					lrbp, cmd->request);
 			}
+#ifdef VENDOR_EDIT
+//hank.liu@Tech.Storage.UFS, 2019-10-17 add latency_hist node for ufs latency calculate in sysfs.
+			if (cmd->request) {
+				cmd->request->flash_io_latency = ktime_us_delta(ktime_get(), cmd->request->ufs_io_start);
+				/* Update IO svc time latency histogram */
+				if (cmd->request->lat_hist_enabled) {
+					ktime_t completion;
+					u_int64_t delta_us;
+					unsigned int length = blk_rq_sectors(cmd->request);
 
+					completion = ktime_get();
+					delta_us = ktime_us_delta(completion,cmd->request->lat_hist_io_start);
+					if(req_op(cmd->request) == REQ_OP_WRITE || req_op(cmd->request) == REQ_OP_WRITE_SAME){
+						blk_update_latency_hist(&hba->io_lat_write, delta_us, length);
+					}else if(req_op(cmd->request) == REQ_OP_READ){
+						blk_update_latency_hist(&hba->io_lat_read, delta_us, length);
+					}else{
+						blk_update_latency_hist(&hba->io_lat_other, delta_us, length);
+					}
+				}
+			}
+#endif
+#if defined(VENDOR_EDIT) && defined(CONFIG_TRACEPOINTS)
+//yh@BSP.Storage.UFS, 2019-09-13 add for ufs io latency info calculate
+			if (trace_ufshcd_command_enabled())
+			{
+				struct request *req = cmd->request;
+				u_int64_t delta_us = ktime_us_delta(lrbp->compl_time_stamp, lrbp->issue_time_stamp);
+
+				if (req && bio_has_data(req->bio) && (delta_us > 5000))
+				{
+					trace_printk("ufs_io_latency:%06lld us, io_type:%s, LBA:%08x, size:%d\n",
+							delta_us, (rq_data_dir(req) == READ) ? "R" : "W",
+							(unsigned int)req->bio->bi_iter.bi_sector,
+							cmd->sdb.length);
+				}
+			}
+#endif
 			/* Do not touch lrbp after scsi done */
 			cmd->scsi_done(cmd);
 		} else if (lrbp->command_type == UTP_CMD_TYPE_DEV_MANAGE ||
@@ -6843,8 +7214,14 @@ out:
 
 static bool ufshcd_wb_sup(struct ufs_hba *hba)
 {
+
+#ifdef VENDOR_EDIT
+/* Hank.liu@TECH.PLAT.Storage, 2019-11-18, Disable Qualcomm WritebBooster Code*/ 
+	return false;
+#else
 	return !!(hba->dev_info.d_ext_ufs_feature_sup &
 		  UFS_DEV_WRITE_BOOSTER_SUP);
+#endif
 }
 
 static int ufshcd_wb_ctrl(struct ufs_hba *hba, bool enable)
@@ -7025,7 +7402,10 @@ static void ufshcd_exception_event_handler(struct work_struct *work)
 
 	if (status & MASK_EE_URGENT_BKOPS)
 		ufshcd_bkops_exception_event_handler(hba);
-
+#if defined(VENDOR_EDIT) && defined(CONFIG_UFSFEATURE)
+/* Hank.liu@TECH.PLAT.Storage, 2019-10-31, add UFS+ hpb and tw driver*/
+	ufsf_tw_ee_handler(&hba->ufsf);
+#endif
 out:
 	ufshcd_scsi_unblock_requests(hba);
 	/*
@@ -7155,6 +7535,17 @@ static void ufshcd_err_handler(struct work_struct *work)
 	bool clks_enabled = false;
 
 	hba = container_of(work, struct ufs_hba, eh_work);
+
+	if (ufshcd_is_device_offline(hba)) {
+		spin_lock_irqsave(hba->host->host_lock, flags);
+		hba->saved_err = 0;
+		hba->saved_uic_err = 0;
+		hba->saved_ce_err = 0;
+		hba->auto_h8_err = false;
+		hba->force_host_reset = false;
+		hba->ufshcd_state = UFSHCD_STATE_OPERATIONAL;
+		goto out;
+	}
 
 	spin_lock_irqsave(hba->host->host_lock, flags);
 	ufsdbg_set_err_state(hba);
@@ -7345,11 +7736,16 @@ static void ufshcd_rls_handler(struct work_struct *work)
 
 	hba = container_of(work, struct ufs_hba, rls_work);
 
+	if (ufshcd_is_device_offline(hba))
+		return;
+
 	pm_runtime_get_sync(hba->dev);
+
 	down_write(&hba->lock);
 	ufshcd_scsi_block_requests(hba);
 	if (ufshcd_is_shutdown_ongoing(hba))
 		goto out;
+
 	ret = ufshcd_wait_for_doorbell_clr(hba, U64_MAX);
 	if (ret) {
 		dev_err(hba->dev,
@@ -7516,7 +7912,10 @@ static irqreturn_t ufshcd_check_errors(struct ufs_hba *hba)
 			queue_eh_work = true;
 	}
 
-	if (queue_eh_work) {
+	if (ufshcd_is_device_offline(hba)) {
+		/* ignore UIC errors if card is offline */
+		retval |= IRQ_HANDLED;
+	} else if (queue_eh_work) {
 		/*
 		 * update the transfer error masks to sticky bits, let's do this
 		 * irrespective of current ufshcd_state.
@@ -7643,7 +8042,7 @@ static irqreturn_t ufshcd_intr(int irq, void *__hba)
 		intr_status = ufshcd_readl(hba, REG_INTERRUPT_STATUS);
 	} while (intr_status && --retries);
 
-	if (retval == IRQ_NONE) {
+	if (retval == IRQ_NONE && !ufshcd_is_device_offline(hba)) {
 		dev_err(hba->dev, "%s: Unhandled interrupt 0x%08x\n",
 					__func__, intr_status);
 		ufshcd_hex_dump(hba, "host regs: ", hba->mmio_base,
@@ -7692,7 +8091,12 @@ static int ufshcd_issue_tm_cmd(struct ufs_hba *hba, int lun_id, int task_id,
 	struct utp_upiu_task_req *task_req_upiup;
 	struct Scsi_Host *host;
 	unsigned long flags;
+#ifdef VENDOR_EDIT
+//Tong.Han@Bsp.Group.Tp,2018-6-4,Added for Dealth_healer
+	int free_slot = 0;
+#else
 	int free_slot;
+#endif
 	int err;
 	int task_tag;
 
@@ -7819,6 +8223,11 @@ static int ufshcd_eh_device_reset_handler(struct scsi_cmnd *cmd)
 out:
 	hba->req_abort_count = 0;
 	if (!err) {
+#if defined(VENDOR_EDIT) && defined(CONFIG_UFSFEATURE)
+/* Hank.liu@TECH.PLAT.Storage, 2019-10-31, add UFS+ hpb and tw driver*/
+		ufsf_hpb_reset_lu(&hba->ufsf);
+		ufsf_tw_reset_lu(&hba->ufsf);
+#endif
 		err = SUCCESS;
 	} else {
 		dev_err(hba->dev, "%s: failed with err %d\n", __func__, err);
@@ -8045,6 +8454,11 @@ static int ufshcd_host_reset_and_restore(struct ufs_hba *hba)
 	 */
 	spin_lock_irqsave(hba->host->host_lock, flags);
 	ufshcd_hba_stop(hba, false);
+#if defined(VENDOR_EDIT) && defined(CONFIG_UFSFEATURE)
+/* Hank.liu@TECH.PLAT.Storage, 2019-10-31, add UFS+ hpb and tw driver*/
+	ufsf_hpb_reset_host(&hba->ufsf);
+	ufsf_tw_reset_host(&hba->ufsf);
+#endif
 	hba->silence_err_logs = true;
 	ufshcd_complete_requests(hba);
 	hba->silence_err_logs = false;
@@ -8114,8 +8528,6 @@ static int ufshcd_reset_and_restore(struct ufs_hba *hba)
 	unsigned long flags;
 	int retries = MAX_HOST_RESET_RETRIES;
 
-	ufshcd_enable_irq(hba);
-
 	do {
 		err = ufshcd_detect_device(hba);
 	} while (err && --retries);
@@ -8124,7 +8536,7 @@ static int ufshcd_reset_and_restore(struct ufs_hba *hba)
 	 * There is no point proceeding even after failing
 	 * to recover after multiple retries.
 	 */
-	BUG_ON(err && ufshcd_is_embedded_dev(hba));
+	BUG_ON(err && ufshcd_is_embedded_dev(hba) && !hba->extcon);
 
 	/*
 	 * After reset the door-bell might be cleared, complete
@@ -8393,6 +8805,12 @@ static int ufshcd_scsi_add_wlus(struct ufs_hba *hba)
 	int ret = 0;
 	struct scsi_device *sdev_rpmb = NULL;
 	struct scsi_device *sdev_boot = NULL;
+#ifdef VENDOR_EDIT
+//yh@PSW.BSP.Storage.UFS, 2018-05-31 add for ufs device in /proc/devinfo
+	static char temp_version[5] = {0};
+	static char vendor[9] = {0};
+	static char model[17] = {0};
+#endif
 
 	hba->sdev_ufs_device = __scsi_add_device(hba->host, 0, 0,
 		ufshcd_upiu_wlun_to_scsi_wlun(UFS_UPIU_UFS_DEVICE_WLUN), NULL);
@@ -8402,6 +8820,16 @@ static int ufshcd_scsi_add_wlus(struct ufs_hba *hba)
 		goto out;
 	}
 	scsi_device_put(hba->sdev_ufs_device);
+#ifdef VENDOR_EDIT
+//yh@PSW.BSP.Storage.UFS, 2018-05-31 add for ufs device in /proc/devinfo
+	strncpy(temp_version, hba->sdev_ufs_device->rev, 4);
+	strncpy(vendor, hba->sdev_ufs_device->vendor, 8);
+	strncpy(model, hba->sdev_ufs_device->model, 16);
+	register_device_proc("ufs_version", temp_version, vendor);
+	register_device_proc("ufs", model, vendor);
+//hank.liu@Tech.Storage.UFS, 2019-10-11 add for ufsplus status node in /proc/devinfo
+	register_device_proc_for_ufsplus("ufsplus_status", &ufsplus_hpb_status,&ufsplus_tw_status);
+#endif
 
 	sdev_rpmb = __scsi_add_device(hba->host, 0, 0,
 		ufshcd_upiu_wlun_to_scsi_wlun(UFS_UPIU_RPMB_WLUN), NULL);
@@ -8932,8 +9360,14 @@ reinit:
 		goto out;
 
 	ret = ufshcd_complete_dev_init(hba);
+/* yanghao@PSW.Kernel.Stability for ufs init failed cause the block device register failed phone black screen problem */
+#ifdef VENDOR_EDIT
+	if(ret)
+		panic("oppo ufs timeout trigger crash!\n");
+#else
 	if (ret)
 		goto out;
+#endif
 
 	/* clear any previous UFS device information */
 	memset(&hba->dev_info, 0, sizeof(hba->dev_info));
@@ -9079,7 +9513,23 @@ reinit:
 		}
 
 		scsi_scan_host(hba->host);
+#if defined(VENDOR_EDIT) && defined(CONFIG_UFSFEATURE)
+/* Hank.liu@TECH.PLAT.Storage, 2019-10-31, add UFS+ hpb and tw driver*/
+                if(strncmp(hba->sdev_ufs_device->vendor,"SKhynix",7))
+               {
+		ufsf_device_check(hba);
+               }
+		ufsf_hpb_init(&hba->ufsf);
+		ufsf_tw_init(&hba->ufsf);
+#endif
+
+#if defined(VENDOR_EDIT) && defined(CONFIG_UFSTW_DEBUGDRV)
+/* Hank.liu@TECH.PLAT.Storage, 2019-10-31, add UFS+ hpb and tw driver*/
+		ufstwd_dev_init(hba);
+#endif
 		pm_runtime_put_sync(hba->dev);
+		if (hba->extcon)
+			hba->card_rpm_paired = true;
 	}
 
 	/*
@@ -9098,12 +9548,212 @@ out:
 	 * If we failed to initialize the device or the device is not
 	 * present, turn off the power/clocks etc.
 	 */
-	if (ret && !ufshcd_eh_in_progress(hba) && !hba->pm_op_in_progress)
+	if (ret && !ufshcd_eh_in_progress(hba) && !hba->pm_op_in_progress) {
 		pm_runtime_put_sync(hba->dev);
+		if (hba->extcon)
+			hba->card_rpm_paired = true;
+	}
+
+#if defined(VENDOR_EDIT) && defined(CONFIG_UFSFEATURE)
+/* Hank.liu@TECH.PLAT.Storage, 2019-10-31, add UFS+ hpb and tw driver*/
+	ufsf_hpb_reset(&hba->ufsf);
+	ufsf_tw_reset(&hba->ufsf);
+#endif
 
 	trace_ufshcd_init(dev_name(hba->dev), ret,
 		ktime_to_us(ktime_sub(ktime_get(), start)),
 		hba->curr_dev_pwr_mode, hba->uic_link_state);
+	return ret;
+}
+
+static void ufshcd_remove_scsi_devices(struct ufs_hba *hba)
+{
+	struct Scsi_Host *shost = hba->host;
+	struct scsi_device *sdev;
+	unsigned long flags;
+
+	spin_lock_irqsave(shost->host_lock, flags);
+restart:
+	list_for_each_entry(sdev, &shost->__devices, siblings) {
+		if (sdev->sdev_state == SDEV_DEL ||
+		    sdev->sdev_state == SDEV_CANCEL ||
+		    !get_device(&sdev->sdev_gendev))
+			continue;
+		spin_unlock_irqrestore(shost->host_lock, flags);
+		scsi_remove_device(sdev);
+		put_device(&sdev->sdev_gendev);
+		spin_lock_irqsave(shost->host_lock, flags);
+		goto restart;
+	}
+	spin_unlock_irqrestore(shost->host_lock, flags);
+}
+
+static void ufshcd_remove_card(struct ufs_hba *hba)
+{
+	unsigned long flags;
+
+	spin_lock_irqsave(hba->host->host_lock, flags);
+	ufshcd_set_card_removal_ongoing(hba);
+	ufshcd_set_card_offline(hba);
+	spin_unlock_irqrestore(hba->host->host_lock, flags);
+	/* Turn on host vreg and clocks */
+	ufshcd_setup_hba_vreg(hba, true);
+	ufshcd_enable_clocks(hba);
+	/* Make sure clocks are stable */
+	usleep_range(50, 60);
+	spin_lock_irqsave(hba->host->host_lock, flags);
+	ufshcd_hba_stop(hba, false);
+	/* Clear interrupt status and disable interrupts */
+	ufshcd_writel(hba, ufshcd_readl(hba, REG_INTERRUPT_STATUS),
+		      REG_INTERRUPT_STATUS);
+	ufshcd_writel(hba, 0, REG_INTERRUPT_ENABLE);
+	/*
+	 * Make sure that UFS interrupts are disabled and
+	 * any pending interrupt status is cleared.
+	 */
+	mb();
+	hba->silence_err_logs = true;
+	/* Complete requests that have door-bell cleared by h/w */
+	ufshcd_complete_requests(hba);
+	/* Complete the sync/async UIC command if there is one */
+	if (hba->uic_async_done)
+		complete(hba->uic_async_done);
+	else if (hba->active_uic_cmd)
+		complete(&hba->active_uic_cmd->done);
+	spin_unlock_irqrestore(hba->host->host_lock, flags);
+	cancel_delayed_work_sync(&hba->card_detect_work);
+	/* Flush runtime PM events */
+	pm_runtime_get_sync(hba->dev);
+	/* Clear runtime PM errors if any */
+	pm_runtime_set_active(hba->dev);
+	cancel_work_sync(&hba->rls_work);
+	cancel_work_sync(&hba->eh_work);
+	cancel_work_sync(&hba->eeh_work);
+	hba->auto_bkops_enabled = false;
+	__ufshcd_shutdown_clkscaling(hba);
+	spin_lock_irqsave(hba->host->host_lock, flags);
+	ufshcd_clear_eh_in_progress(hba);
+	hba->saved_err = 0;
+	hba->saved_uic_err = 0;
+	hba->saved_ce_err = 0;
+	hba->auto_h8_err = false;
+	hba->force_host_reset = false;
+	hba->ufshcd_state = UFSHCD_STATE_RESET;
+	hba->silence_err_logs = false;
+	ufsdbg_clr_err_state(hba);
+	ufshcd_set_ufs_dev_poweroff(hba);
+	ufshcd_set_link_off(hba);
+	spin_unlock_irqrestore(hba->host->host_lock, flags);
+	/*
+	 * Remove scsi devices only when we are not in middle
+	 * of system resume events.
+	 */
+	if (!down_trylock(&hba->sdev_sema)) {
+		ufshcd_remove_scsi_devices(hba);
+		up(&hba->sdev_sema);
+	}
+	ufshcd_clear_card_removal_ongoing(hba);
+	pm_runtime_put_sync(hba->dev);
+}
+
+static void ufshcd_card_detect_handler(struct work_struct *work)
+{
+	struct ufs_hba *hba;
+	unsigned long flags;
+	int ret;
+
+	hba = container_of(to_delayed_work(work), struct ufs_hba,
+			   card_detect_work);
+
+	spin_lock_irqsave(hba->host->host_lock, flags);
+	if (!ufshcd_is_card_removal_ongoing(hba))
+		ufshcd_set_card_online(hba);
+	spin_unlock_irqrestore(hba->host->host_lock, flags);
+
+	if (ufshcd_is_card_online(hba) && !hba->sdev_ufs_device) {
+		pm_runtime_get_sync(hba->dev);
+		if (ufshcd_is_clkgating_allowed(hba)) {
+			spin_lock_irqsave(hba->host->host_lock, flags);
+			hba->clk_gating.active_reqs = 0;
+			spin_unlock_irqrestore(hba->host->host_lock, flags);
+		}
+		hba->card_rpm_paired = false;
+		ret = ufshcd_detect_device(hba);
+		if (ret) {
+			ufshcd_set_card_offline(hba);
+			ufsdbg_clr_err_state(hba);
+			dev_err(hba->dev, "%s: device detect failed: %d\n",
+				__func__, ret);
+		}
+
+		/*
+		 * pm_runtime_put_sync() may not be called if
+		 * failure happens before or inside ufshcd_probe_hba()
+		 */
+		if (!hba->card_rpm_paired) {
+			cancel_work_sync(&hba->eh_work);
+			pm_runtime_put_sync(hba->dev);
+		}
+	}
+}
+
+static void ufshcd_detect_card(struct ufs_hba *hba, unsigned long delay)
+{
+	if (hba->extcon && !hba->card_detect_disabled)
+		schedule_delayed_work(&hba->card_detect_work, delay);
+}
+
+static int ufshcd_card_detect_notifier(struct notifier_block *nb,
+				       unsigned long event, void *ptr)
+{
+	struct ufs_hba *hba = container_of(nb, struct ufs_hba, card_detect_nb);
+
+	/*
+	 * card insertion/removal are not frequent events and having this
+	 * message helps if there is some issue with card detection/removal.
+	 */
+	dev_info(hba->dev, "%s: card %s notification rcvd\n",
+		__func__, event ? "inserted" : "removed");
+
+	if (event)
+		ufshcd_detect_card(hba, msecs_to_jiffies(200));
+	else
+		ufshcd_remove_card(hba);
+
+	return NOTIFY_DONE;
+}
+
+static int ufshcd_extcon_register(struct ufs_hba *hba)
+{
+	int ret;
+
+	if (!hba->extcon)
+		return 0;
+
+	hba->card_detect_nb.notifier_call = ufshcd_card_detect_notifier;
+	ret = extcon_register_notifier(hba->extcon,
+				       EXTCON_MECHANICAL,
+				       &hba->card_detect_nb);
+	if (ret)
+		dev_err(hba->dev, "%s: extcon_register_notifier() failed, ret %d\n",
+			__func__, ret);
+
+	return ret;
+}
+
+static int ufshcd_extcon_unregister(struct ufs_hba *hba)
+{
+	int ret;
+
+	if (!hba->extcon)
+		return 0;
+
+	ret = extcon_unregister_notifier(hba->extcon, EXTCON_MECHANICAL,
+					 &hba->card_detect_nb);
+	if (ret)
+		dev_err(hba->dev, "%s: extcon_unregister_notifier() failed, ret %d\n",
+			__func__, ret);
+
 	return ret;
 }
 
@@ -9116,13 +9766,24 @@ static void ufshcd_async_scan(void *data, async_cookie_t cookie)
 {
 	struct ufs_hba *hba = (struct ufs_hba *)data;
 
-	/*
-	 * Don't allow clock gating and hibern8 enter for faster device
-	 * detection.
-	 */
-	ufshcd_hold_all(hba);
-	ufshcd_probe_hba(hba);
-	ufshcd_release_all(hba);
+	if (hba->extcon) {
+		ufshcd_hba_stop(hba, true);
+		ufshcd_set_ufs_dev_poweroff(hba);
+		ufshcd_set_link_off(hba);
+		ufshcd_set_card_offline(hba);
+		pm_runtime_put_sync(hba->dev);
+		ufshcd_extcon_register(hba);
+		if (ufshcd_card_get_extcon_state(hba) > 0)
+			ufshcd_detect_card(hba, 0);
+	} else {
+		/*
+		 * Don't allow clock gating and hibern8 enter for faster device
+		 * detection.
+		 */
+		ufshcd_hold_all(hba);
+		ufshcd_probe_hba(hba);
+		ufshcd_release_all(hba);
+	}
 }
 
 static enum blk_eh_timer_return ufshcd_eh_timed_out(struct scsi_cmnd *scmd)
@@ -9197,6 +9858,15 @@ static int ufshcd_query_ioctl(struct ufs_hba *hba, u8 lun, void __user *buffer)
 			__func__, err);
 		goto out_release_mem;
 	}
+
+#if defined(VENDOR_EDIT) && defined(CONFIG_UFSFEATURE)
+/* Hank.liu@TECH.PLAT.Storage, 2019-10-31, add UFS+ hpb and tw driver*/
+	if (ufsf_check_query(ioctl_data->opcode)) {
+		err = ufsf_query_ioctl(&hba->ufsf, lun, buffer, ioctl_data,
+				       UFSFEATURE_SELECTOR);
+		goto out_release_mem;
+	}
+#endif
 
 	/* verify legal parameters & send query */
 	switch (ioctl_data->opcode) {
@@ -9604,6 +10274,12 @@ static int ufshcd_setup_hba_vreg(struct ufs_hba *hba, bool on)
 	struct ufs_vreg_info *info = &hba->vreg_info;
 	int ret = 0;
 
+	if (hba->extcon)
+		mutex_lock(&hba->card_mutex);
+
+	if (!on && ufshcd_is_card_removal_ongoing(hba))
+		goto out;
+
 	if (info->vdd_hba) {
 		ret = ufshcd_toggle_vreg(hba->dev, info->vdd_hba, on);
 
@@ -9611,6 +10287,9 @@ static int ufshcd_setup_hba_vreg(struct ufs_hba *hba, bool on)
 			ufshcd_vops_update_sec_cfg(hba, on);
 	}
 
+out:
+	if (hba->extcon)
+		mutex_unlock(&hba->card_mutex);
 	return ret;
 }
 
@@ -9704,13 +10383,19 @@ static int ufshcd_setup_clocks(struct ufs_hba *hba, bool on,
 	bool clk_state_changed = false;
 
 	if (list_empty(head))
-		goto out;
+		return ret;
+
+	if (hba->extcon)
+		mutex_lock(&hba->card_mutex);
+
+	if (!on && ufshcd_is_card_removal_ongoing(hba))
+		goto out_unlock;
 
 	/* call vendor specific bus vote before enabling the clocks */
 	if (on) {
 		ret = ufshcd_vops_set_bus_vote(hba, on);
 		if (ret)
-			return ret;
+			goto out_unlock;
 	}
 
 	/*
@@ -9721,7 +10406,7 @@ static int ufshcd_setup_clocks(struct ufs_hba *hba, bool on,
 	if (!on) {
 		ret = ufshcd_vops_setup_clocks(hba, on, PRE_CHANGE);
 		if (ret)
-			return ret;
+			goto out_unlock;
 	}
 
 	list_for_each_entry(clki, head, list) {
@@ -9760,7 +10445,7 @@ static int ufshcd_setup_clocks(struct ufs_hba *hba, bool on,
 	if (on) {
 		ret = ufshcd_vops_setup_clocks(hba, on, POST_CHANGE);
 		if (ret)
-			return ret;
+			goto out;
 	}
 
 	/*
@@ -9793,6 +10478,9 @@ out:
 		trace_ufshcd_profile_clk_gating(dev_name(hba->dev),
 			(on ? "on" : "off"),
 			ktime_to_us(ktime_sub(ktime_get(), start)), ret);
+out_unlock:
+	if (hba->extcon)
+		mutex_unlock(&hba->card_mutex);
 	return ret;
 }
 
@@ -9930,6 +10618,7 @@ out:
 static void ufshcd_hba_exit(struct ufs_hba *hba)
 {
 	if (hba->is_powered) {
+		ufshcd_extcon_unregister(hba);
 		ufshcd_variant_hba_exit(hba);
 		ufshcd_setup_vreg(hba, false);
 		if (ufshcd_is_clkscaling_supported(hba)) {
@@ -10143,13 +10832,24 @@ static void ufshcd_vreg_set_lpm(struct ufs_hba *hba)
 				hba->vreg_info.vccq2, false);
 		else
 			ufshcd_config_vreg_lpm(hba, hba->vreg_info.vccq2);
-	} else if (!ufshcd_is_ufs_dev_active(hba)) {
+	} else if (!ufshcd_is_ufs_dev_active(hba)){
+#if defined(VENDOR_EDIT) && defined(CONFIG_UFSFEATURE)
+/* Hank.liu@TECH.PLAT.Storage, 2019-10-31, add UFS+ hpb and tw driver*/
+		dev_info(hba->dev, "enter LPM\n");
+		/*
+		 * Because the Turbo Write feature need flush the data from SLC buffer
+		 * to TLC, When the device enter Hibern8. SO We keep the VCC votage alive,
+		 * and VCCQ VCCQ2 not enter LPM.
+		 */
+#else
 		if (!hba->dev_info.keep_vcc_on)
 			ufshcd_toggle_vreg(hba->dev, hba->vreg_info.vcc, false);
 		if (!ufshcd_is_link_active(hba)) {
 			ufshcd_config_vreg_lpm(hba, hba->vreg_info.vccq);
 			ufshcd_config_vreg_lpm(hba, hba->vreg_info.vccq2);
 		}
+#endif
+
 	}
 }
 
@@ -10215,6 +10915,55 @@ static void ufshcd_hba_vreg_set_hpm(struct ufs_hba *hba)
 		ufshcd_setup_hba_vreg(hba, true);
 }
 
+#ifdef CONFIG_PM_SLEEP
+static int ufshcd_pm_notify(struct notifier_block *notify_block,
+			 unsigned long mode, void *unused)
+{
+	struct ufs_hba *hba = container_of(
+		notify_block, struct ufs_hba, pm_notify);
+
+	if (!hba->extcon)
+		return 0;
+
+	switch (mode) {
+	case PM_SUSPEND_PREPARE:
+		hba->card_detect_disabled = true;
+		cancel_delayed_work_sync(&hba->card_detect_work);
+		down(&hba->sdev_sema);
+		break;
+	case PM_POST_SUSPEND:
+		if (ufshcd_is_card_offline(hba) && hba->sdev_ufs_device)
+			ufshcd_remove_scsi_devices(hba);
+		up(&hba->sdev_sema);
+		hba->card_detect_disabled = false;
+		if (ufshcd_card_get_extcon_state(hba) > 0 &&
+		    !hba->sdev_ufs_device)
+			ufshcd_detect_card(hba, 0);
+	}
+
+	return 0;
+}
+
+static void ufshcd_register_pm_notifier(struct ufs_hba *hba)
+{
+	hba->pm_notify.notifier_call = ufshcd_pm_notify;
+	register_pm_notifier(&hba->pm_notify);
+}
+
+static void ufshcd_unregister_pm_notifier(struct ufs_hba *hba)
+{
+	unregister_pm_notifier(&hba->pm_notify);
+}
+#else
+static void ufshcd_register_pm_notifier(struct ufs_hba *hba)
+{
+}
+
+static void ufshcd_unregister_pm_notifier(struct ufs_hba *hba)
+{
+}
+#endif /* CONFIG_PM_SLEEP */
+
 /**
  * ufshcd_suspend - helper function for suspend operations
  * @hba: per adapter instance
@@ -10248,6 +10997,12 @@ static int ufshcd_suspend(struct ufs_hba *hba, enum ufs_pm_op pm_op)
 		req_dev_pwr_mode = UFS_POWERDOWN_PWR_MODE;
 		req_link_state = UIC_LINK_OFF_STATE;
 	}
+
+#if defined(VENDOR_EDIT) && defined(CONFIG_UFSFEATURE)
+/* Hank.liu@TECH.PLAT.Storage, 2019-10-31, add UFS+ hpb and tw driver*/
+	ufsf_hpb_suspend(&hba->ufsf);
+	ufsf_tw_suspend(&hba->ufsf);
+#endif
 
 	/*
 	 * If we can't transition into any of the low power modes
@@ -10377,6 +11132,11 @@ enable_gating:
 	hba->hibern8_on_idle.is_suspended = false;
 	hba->clk_gating.is_suspended = false;
 	ufshcd_release_all(hba);
+#if defined(VENDOR_EDIT) && defined(CONFIG_UFSFEATURE)
+/* Hank.liu@TECH.PLAT.Storage, 2019-10-31, add UFS+ hpb and tw driver*/
+	ufsf_hpb_resume(&hba->ufsf);
+	ufsf_tw_resume(&hba->ufsf);
+#endif
 out:
 	hba->pm_op_in_progress = 0;
 
@@ -10426,6 +11186,11 @@ static int ufshcd_resume(struct ufs_hba *hba, enum ufs_pm_op pm_op)
 	if (ret)
 		goto disable_vreg;
 
+	if (hba->extcon &&
+	    (ufshcd_is_card_offline(hba) ||
+	     (ufshcd_is_card_online(hba) && !hba->sdev_ufs_device)))
+		goto skip_dev_ops;
+
 	if (ufshcd_is_link_hibern8(hba)) {
 		ret = ufshcd_uic_hibern8_exit(hba);
 		if (!ret) {
@@ -10474,6 +11239,13 @@ static int ufshcd_resume(struct ufs_hba *hba, enum ufs_pm_op pm_op)
 	if (hba->clk_scaling.is_allowed)
 		ufshcd_resume_clkscaling(hba);
 
+#if defined(VENDOR_EDIT) && defined(CONFIG_UFSFEATURE)
+	/* Hank.liu@TECH.PLAT.Storage, 2019-10-31, add UFS+ hpb and tw driver*/
+	ufsf_hpb_resume(&hba->ufsf);
+	ufsf_tw_resume(&hba->ufsf);
+#endif
+
+skip_dev_ops:
 	/* Set Auto-Hibernate timer if supported */
 	ufshcd_set_auto_hibern8_timer(hba);
 
@@ -10549,6 +11321,10 @@ out:
 		hba->curr_dev_pwr_mode, hba->uic_link_state);
 	if (!ret)
 		hba->is_sys_suspended = true;
+#ifdef VENDOR_EDIT
+//cuixiaogang@SRC.hypnus. 2018.09.13. add for ufs debug
+	dev_info(hba->dev, "%s:suspend done\n", __func__);
+#endif /* VENDOR_EDIT */
 	return ret;
 }
 EXPORT_SYMBOL(ufshcd_system_suspend);
@@ -10582,6 +11358,10 @@ out:
 		hba->curr_dev_pwr_mode, hba->uic_link_state);
 	if (!ret)
 		hba->is_sys_suspended = false;
+#ifdef VENDOR_EDIT
+//cuixiaogang@SRC.hypnus. 2018.09.13. add for ufs debug
+	dev_info(hba->dev, "%s:resume done\n", __func__);
+#endif /* VENDOR_EDIT */
 	return ret;
 }
 EXPORT_SYMBOL(ufshcd_system_resume);
@@ -10715,6 +11495,11 @@ int ufshcd_shutdown(struct ufs_hba *hba)
 	if (ufshcd_is_ufs_dev_poweroff(hba) && ufshcd_is_link_off(hba))
 		goto out;
 
+	if (hba->extcon) {
+		hba->card_detect_disabled = true;
+		cancel_delayed_work_sync(&hba->card_detect_work);
+	}
+
 	pm_runtime_get_sync(hba->dev);
 	ufshcd_hold_all(hba);
 	ufshcd_mark_shutdown_ongoing(hba);
@@ -10750,6 +11535,11 @@ EXPORT_SYMBOL(ufshcd_shutdown);
  */
 void ufshcd_remove(struct ufs_hba *hba)
 {
+#if defined(VENDOR_EDIT) && defined(CONFIG_UFSFEATURE)
+	/* Hank.liu@TECH.PLAT.Storage, 2019-10-31, add UFS+ hpb and tw driver*/
+	ufsf_hpb_release(&hba->ufsf);
+	ufsf_tw_release(&hba->ufsf);
+#endif
 	ufs_sysfs_remove_nodes(hba->dev);
 	scsi_remove_host(hba->host);
 	/* disable interrupts */
@@ -10765,6 +11555,7 @@ void ufshcd_remove(struct ufs_hba *hba)
 	}
 	ufshcd_hba_exit(hba);
 	ufsdbg_remove_debugfs(hba);
+	ufshcd_unregister_pm_notifier(hba);
 }
 EXPORT_SYMBOL_GPL(ufshcd_remove);
 
@@ -10935,7 +11726,11 @@ int ufshcd_init(struct ufs_hba *hba, void __iomem *mmio_base, unsigned int irq)
 
 	INIT_WORK(&hba->eh_work, ufshcd_err_handler);
 	INIT_WORK(&hba->eeh_work, ufshcd_exception_event_handler);
+	INIT_DELAYED_WORK(&hba->card_detect_work, ufshcd_card_detect_handler);
 	INIT_WORK(&hba->rls_work, ufshcd_rls_handler);
+
+	sema_init(&hba->sdev_sema, 1);
+	mutex_init(&hba->card_mutex);
 
 	/* Initialize UIC command mutex */
 	mutex_init(&hba->uic_cmd_mutex);
@@ -11046,12 +11841,18 @@ int ufshcd_init(struct ufs_hba *hba, void __iomem *mmio_base, unsigned int irq)
 
 	ufshcd_cmd_log_init(hba);
 
+#if defined(VENDOR_EDIT) && defined(CONFIG_UFSFEATURE)
+	/* Hank.liu@TECH.PLAT.Storage, 2019-10-31, add UFS+ hpb and tw driver*/
+	ufsf_hpb_set_init_state(&hba->ufsf);
+	ufsf_tw_set_init_state(&hba->ufsf);
+#endif
 	async_schedule(ufshcd_async_scan, hba);
 
 	ufsdbg_add_debugfs(hba);
 
 	ufs_sysfs_add_nodes(hba->dev);
 
+	ufshcd_register_pm_notifier(hba);
 	return 0;
 
 out_remove_scsi_host:

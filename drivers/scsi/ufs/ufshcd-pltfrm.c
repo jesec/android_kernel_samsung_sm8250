@@ -304,6 +304,20 @@ static int ufshcd_parse_pinctrl_info(struct ufs_hba *hba)
 	return ret;
 }
 
+static int ufshcd_parse_extcon_info(struct ufs_hba *hba)
+{
+	struct extcon_dev *extcon;
+
+	extcon = extcon_get_edev_by_phandle(hba->dev, 0);
+	if (IS_ERR(extcon) && PTR_ERR(extcon) != -ENODEV)
+		return PTR_ERR(extcon);
+
+	if (!IS_ERR(extcon))
+		hba->extcon = extcon;
+
+	return 0;
+}
+
 static void ufshcd_parse_gear_limits(struct ufs_hba *hba)
 {
 	struct device *dev = hba->dev;
@@ -443,6 +457,13 @@ static void ufshcd_init_lanes_per_dir(struct ufs_hba *hba)
 	}
 }
 
+#ifdef VENDOR_EDIT
+//cuixiaogang@src.hypnus.2018.04.02. add support for ufs clk scale
+#include <linux/ufshcd-platform.h>
+struct ufs_hba *ufs_store_hba[MAX_UFS_STORE_HBA] = {0 };
+static int index = 0;
+#endif /* VENDOR_EDIT */
+
 /**
  * ufshcd_pltfrm_init - probe routine of the driver
  * @pdev: pointer to Platform device handle
@@ -513,6 +534,9 @@ int ufshcd_pltfrm_init(struct platform_device *pdev,
 	ufshcd_parse_gear_limits(hba);
 	ufshcd_parse_cmd_timeout(hba);
 	ufshcd_parse_force_g4_flag(hba);
+	err = ufshcd_parse_extcon_info(hba);
+	if (err)
+		goto dealloc_host;
 
 	if (!dev->dma_mask)
 		dev->dma_mask = &dev->coherent_dma_mask;
@@ -529,6 +553,13 @@ int ufshcd_pltfrm_init(struct platform_device *pdev,
 
 	pm_runtime_set_active(&pdev->dev);
 	pm_runtime_enable(&pdev->dev);
+
+#ifdef VENDOR_EDIT
+//cuixiaogang@src.hypnus.2018.04.02. add support for ufs clk scale
+	if (index < MAX_UFS_STORE_HBA) {
+		ufs_store_hba[index++] = hba;
+	}
+#endif /* VENDOR_EDIT */
 
 	return 0;
 

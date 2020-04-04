@@ -58,6 +58,7 @@ source "drivers/nfc/st-nci/Kconfig"
 source "drivers/nfc/nxp-nci/Kconfig"
 source "drivers/nfc/s3fwrn5/Kconfig"
 source "drivers/nfc/st95hf/Kconfig"
+source "drivers/nfc/cxd224x/Kconfig"
 endmenu
 
 config NFC_NQ
@@ -67,3 +68,15 @@ config NFC_NQ
           This enables the NFC driver for NQx based devices.
           This is for i2c connected version. NCI protocol logic
           resides in the usermode and it has no other NFC dependencies.
+
+config NFC_CXD224X
+        tristate "CXD224X NFC driver"
+        depends on I2C
+        select CRC_CCITT
+        default y
+        ---help---
+          Say yes if you want Sony cxd224x Near Field Communication driver.
+          This is for i2c connected version. If unsure, say N here.
+
+          To compile this driver as a module, choose m here. The module will
+          be called cxd224x-i2c.

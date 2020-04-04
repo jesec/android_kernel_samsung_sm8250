@@ -2102,6 +2102,12 @@ void a6xx_crashdump_init(struct adreno_device *adreno_dev)
 	/* Calculate the script and data size for MVC registers */
 	for (i = 0; i < ARRAY_SIZE(a6xx_clusters); i++) {
 		struct a6xx_cluster_registers *cluster = &a6xx_clusters[i];
+#ifdef VENDOER_EDIT
+//wenhua.Leng@PSW.MM.DisplayServer.GPU.Stability @20191115
+		/* 16 bytes if cluster sel exists */
+		if (cluster->sel)
+			script_size += 16;
+#endif
 
 		/* 16 bytes if cluster sel exists */
 		if (cluster->sel)

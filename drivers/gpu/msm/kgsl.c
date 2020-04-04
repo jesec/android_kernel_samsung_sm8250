@@ -25,6 +25,12 @@
 #include "kgsl_mmu.h"
 #include "kgsl_sync.h"
 #include "kgsl_trace.h"
+#if defined(VENDOR_EDIT) && defined(CONFIG_VIRTUAL_RESERVE_MEMORY)
+/* Kui.Zhang@PSW.TEC.KERNEL.Performance, 2019/01/22,
+ * collect reserve vma use count
+ */
+#include <linux/resmap_account.h>
+#endif
 
 #ifndef arch_mmap_check
 #define arch_mmap_check(addr, len, flags)	(0)
@@ -478,6 +484,8 @@ static int kgsl_mem_entry_attach_process(struct kgsl_device *device,
 /* Detach a memory entry from a process and unmap it from the MMU */
 static void kgsl_mem_entry_detach_process(struct kgsl_mem_entry *entry)
 {
+	unsigned int type;
+
 	if (entry == NULL)
 		return;
 
@@ -490,7 +498,10 @@ static void kgsl_mem_entry_detach_process(struct kgsl_mem_entry *entry)
 		idr_remove(&entry->priv->mem_idr, entry->id);
 	entry->id = 0;
 
-	entry->priv->gpumem_mapped -= entry->memdesc.mapsize;
+	type = kgsl_memdesc_usermem_type(&entry->memdesc);
+
+	if (type != KGSL_MEM_ENTRY_ION)
+		entry->priv->gpumem_mapped -= entry->memdesc.mapsize;
 
 	spin_unlock(&entry->priv->mem_lock);
 
@@ -4591,13 +4602,28 @@ static unsigned long _gpu_find_svm(struct kgsl_process_private *private,
 }
 
 /* Search top down in the CPU VM region for a free address */
+#if defined(VENDOR_EDIT) && defined(CONFIG_VIRTUAL_RESERVE_MEMORY)
+/* Kui.Zhang@PSW.TEC.KERNEL.Performance, 2019/03/18,
+ * get the unmap area from resrved area
+ */
+static unsigned long _cpu_get_unmapped_area(unsigned long bottom,
+		unsigned long top, unsigned long len, unsigned long align,
+		unsigned long mmap_flags)
+#else
 static unsigned long _cpu_get_unmapped_area(unsigned long bottom,
 		unsigned long top, unsigned long len, unsigned long align)
+#endif
 {
 	struct vm_unmapped_area_info info;
 	unsigned long addr, err;
-
+#if defined(VENDOR_EDIT) && defined(CONFIG_VIRTUAL_RESERVE_MEMORY)
+	/* Kui.Zhang@PSW.TEC.KERNEL.Performance, 2019/03/18,
+	 * get the unmap area from resrved area
+	 */
+	info.flags = VM_UNMAPPED_AREA_TOPDOWN|mmap_flags;
+#else
 	info.flags = VM_UNMAPPED_AREA_TOPDOWN;
+#endif
 	info.low_limit = bottom;
 	info.high_limit = top;
 	info.length = len;
@@ -4612,18 +4638,35 @@ static unsigned long _cpu_get_unmapped_area(unsigned long bottom,
 	err = security_mmap_addr(addr);
 	return err ? err : addr;
 }
-
+#if defined(VENDOR_EDIT) && defined(CONFIG_VIRTUAL_RESERVE_MEMORY)
+/* Kui.Zhang@PSW.TEC.KERNEL.Performance, 2019/03/18,
+ * get unmaped area from normal or reserved vma, decide by mmap_flags
+ */
+static unsigned long _search_range(struct kgsl_process_private *private,
+		struct kgsl_mem_entry *entry,
+		unsigned long start, unsigned long end,
+		unsigned long len, uint64_t align, unsigned long mmap_flags)
+#else
 static unsigned long _search_range(struct kgsl_process_private *private,
 		struct kgsl_mem_entry *entry,
 		unsigned long start, unsigned long end,
 		unsigned long len, uint64_t align)
+#endif
 {
 	unsigned long cpu, gpu = end, result = -ENOMEM;
 
 	while (gpu > start) {
 		/* find a new empty spot on the CPU below the last one */
+#if defined(VENDOR_EDIT) && defined(CONFIG_VIRTUAL_RESERVE_MEMORY)
+		/* Kui.Zhang@PSW.TEC.KERNEL.Performance, 2019/03/18,
+		 * use reserved area
+		 */
+		cpu = _cpu_get_unmapped_area(start, gpu, len,
+				(unsigned long) align, mmap_flags);
+#else
 		cpu = _cpu_get_unmapped_area(start, gpu, len,
 			(unsigned long) align);
+#endif
 		if (IS_ERR_VALUE(cpu)) {
 			result = cpu;
 			break;
@@ -4667,6 +4710,80 @@ static unsigned long _search_range(struct kgsl_process_private *private,
 	}
 	return result;
 }
+#if defined(VENDOR_EDIT) && defined(CONFIG_VIRTUAL_RESERVE_MEMORY)
+/* Kui.Zhang@PSW.TEC.KERNEL.Performance, 2019/03/18,
+ * try to get unmap area from reserved area
+ */
+static unsigned long try_reserved_area(struct mm_struct *mm,
+		struct kgsl_process_private *private,
+		struct kgsl_mem_entry *entry,
+		unsigned long len, uint64_t align)
+{
+	struct vm_area_struct *reserve_vma;
+	unsigned long start, end;
+	unsigned long result = -ENOMEM;
+	struct vm_area_struct *vma;
+
+	reserve_vma = mm->reserve_vma;
+	if (reserve_vma) {
+		count_resmap_event(RESMAP_ACTION);
+
+		start = reserve_vma->vm_start;
+		end = reserve_vma->vm_end;
+
+		if (len > (end - start)) {
+			count_resmap_event(RESMAP_FAIL);
+			return result;
+		}
+
+		result = _search_range(private, entry, start, end, len, align,
+				VM_UNMAPPED_AREA_RESERVED);
+
+		if (IS_ERR_VALUE(result)) {
+			static DEFINE_RATELIMIT_STATE(try_reserve_fail_rs,
+					5*HZ, 8);
+			unsigned long chunk, chunk_start;
+			unsigned long used_size, vma_size, lastend;
+
+			count_resmap_event(RESMAP_FAIL);
+			if (__ratelimit(&try_reserve_fail_rs)) {
+				used_size = 0;
+				lastend = start;
+				chunk = 0;
+				chunk_start = 0;
+
+				for (vma = mm->reserve_mmap; vma;
+						vma = vma->vm_next) {
+					vma_size = vma->vm_end - vma->vm_start;
+					if ((vma->vm_start - lastend) >	chunk) {
+						chunk = vma->vm_start - lastend;
+						chunk_start = lastend;
+					}
+					lastend = vma->vm_end;
+					used_size += vma_size;
+				}
+
+				if ((end - lastend) >	chunk) {
+					chunk = end - lastend;
+					chunk_start = lastend;
+				}
+
+				pr_err("emergency! current:%s pid:%d leader:%s result:%lx reserve_vma:%p(%lu) alloc len:%luKB start:0x%lx end:0x%lx reserve_map_count:%d used_size:%luKB chunk:%luKB chunk_start:%#lx align:%#lx reserve_highest_vm_end:%#lx\n",
+					current->comm, current->pid,
+					current->group_leader->comm,
+					result, reserve_vma, mm->backed_vm_size,
+					len>>10, start, end,
+					mm->reserve_map_count, used_size>>10,
+					chunk>>10, chunk_start, align,
+					mm->reserve_highest_vm_end);
+			}
+		} else
+			count_resmap_event(RESMAP_SUCCESS);
+	}
+
+	return result;
+}
+#endif
 
 static unsigned long _get_svm_area(struct kgsl_process_private *private,
 		struct kgsl_mem_entry *entry, unsigned long hint,
@@ -4718,7 +4835,20 @@ static unsigned long _get_svm_area(struct kgsl_process_private *private,
 				start, (end - len) & ~(align - 1));
 
 		vma = find_vma(current->mm, addr);
+#if defined(VENDOR_EDIT) && defined(CONFIG_VIRTUAL_RESERVE_MEMORY)
+/* Kui.Zhang@PSW.TEC.KERNEL.Performance, 2019/03/18,
+ * while vma is NULL, check whether the addr is valid in
+ * reserve area or not.
+ */
+		if ((!vma && check_valid_reserve_addr(current->mm, addr, addr+len)) ||
+				(vma && ((addr + len) <= vma->vm_start))) {
+			result = _gpu_set_svm_region(private, entry, addr, len);
 
+			/* On failure drop down to keep searching */
+			if (!IS_ERR_VALUE(result))
+				return result;
+		}
+#else
 		if (vma == NULL || ((addr + len) <= vma->vm_start)) {
 			result = _gpu_set_svm_region(private, entry, addr, len);
 
@@ -4726,6 +4856,7 @@ static unsigned long _get_svm_area(struct kgsl_process_private *private,
 			if (!IS_ERR_VALUE(result))
 				return result;
 		}
+#endif
 	} else {
 		/* no hint, start search at the top and work down */
 		addr = end & ~(align - 1);
@@ -4735,10 +4866,25 @@ static unsigned long _get_svm_area(struct kgsl_process_private *private,
 	 * Search downwards from the hint first. If that fails we
 	 * must try to search above it.
 	 */
+#if defined(VENDOR_EDIT) && defined(CONFIG_VIRTUAL_RESERVE_MEMORY)
+/* Kui.Zhang@PSW.TEC.KERNEL.Performance, 2019/03/18,
+ * try to get unmap area from reserved area
+ */
+	result = _search_range(private, entry, start, addr, len, align, 0);
+	if (IS_ERR_VALUE(result)) {
+		if (hint != 0)
+			result = _search_range(private, entry, addr, end, len,
+					align, 0);
+
+		if (IS_ERR_VALUE(result))
+			result = try_reserved_area(current->mm, private,
+					entry, len, align);
+	}
+#else
 	result = _search_range(private, entry, start, addr, len, align);
 	if (IS_ERR_VALUE(result) && hint != 0)
 		result = _search_range(private, entry, addr, end, len, align);
-
+#endif
 	return result;
 }
 
@@ -4853,8 +4999,6 @@ static int kgsl_mmap(struct file *file, struct vm_area_struct *vma)
 			vm_insert_page(vma, addr, page);
 			addr += PAGE_SIZE;
 		}
-		m->mapsize = m->size;
-		entry->priv->gpumem_mapped += m->mapsize;
 	}
 
 	vma->vm_file = file;

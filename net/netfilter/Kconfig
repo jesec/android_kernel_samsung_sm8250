@@ -934,6 +934,22 @@ config NETFILTER_XT_TARGET_LOG
 
 	  To compile it as a module, choose M here.  If unsure, say N.
 
+#ifdef VENDOR_EDIT
+#Junyuan.Huang@PSW.CN.WiFi.Network.1471780, 2018/06/26,
+#Add for limit speed function
+config NETFILTER_XT_TARGET_IMQ
+    tristate '"IMQ" target support'
+	depends on NETFILTER_XTABLES
+	depends on IP_NF_MANGLE || IP6_NF_MANGLE
+	select IMQ
+	default y
+        help
+          This option adds a `IMQ' target which is used to specify if and
+          to which imq device packets should get enqueued/dequeued.
+
+          To compile it as a module, choose M here.  If unsure, say N.
+#endif /* VENDOR_EDIT */
+
 config NETFILTER_XT_TARGET_MARK
 	tristate '"MARK" target support'
 	depends on NETFILTER_ADVANCED
@@ -1481,6 +1497,15 @@ config NETFILTER_XT_MATCH_QTAGUID
 	  It replaces owner as it takes the same arguments, but should
 	  really be recognized by the iptables tool.
 
+	  If unsure, say `N'.
+
+config XT_QTAGUID_OPPO_STATS
+	bool 'netstat backup support'
+	depends on NETFILTER_XT_MATCH_QTAGUID=y
+	default y if NETFILTER_XT_MATCH_QTAGUID=y
+	help
+	  This option enables support for backup of netstat before sleep,
+	  it is better for analysing net wakeup issue.
 	  If unsure, say `N'.
 
 config NETFILTER_XT_MATCH_QUOTA

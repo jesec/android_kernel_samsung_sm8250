@@ -73,3 +73,23 @@ obj-$(CONFIG_OKL4_GUEST)        += okl4-panic.o
 obj-$(CONFIG_OKL4_LINK_SHBUF)    += okl4-link-shbuf.o
 obj-$(CONFIG_WIGIG_SENSING_SPI)	+= wigig_sensing.o
 
+#ifdef VENDOR_EDIT
+# Mengmeng.Wang@SRC.System, 2018/08/28, Add for oiface
+obj-y				+= schedx.o
+#endif
+#ifdef VENDOR_EDIT
+#Zengpeng.Chen@BSP.TP.Function, 2018/07/10, Add for motor
+obj-y				+= motor.o
+obj-y				+= oppo_motor/
+#endif
+#ifdef VENDOR_EDIT
+
+#ping.wu@BSP.Fingerprint.Basic, 2019/11/01, Add for oppo rf cable monitor
+obj-$(CONFIG_OPPO_RF_CABLE_MONITOR)	+= oppo_rf_cable_monitor.o
+
+#obj-y                           += oppo_rf_cable_monitor.o
+#endif
+
+
+
+

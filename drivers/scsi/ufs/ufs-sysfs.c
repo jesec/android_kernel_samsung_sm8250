@@ -208,6 +208,55 @@ static ssize_t auto_hibern8_store(struct device *dev,
 	return count;
 }
 
+#ifdef VENDOR_EDIT
+//hank.liu@Tech.Storage.UFS, 2019-10-17 add latency_hist node for ufs latency calculate in sysfs.
+/*
+* Values permitted 0, 1, 2.
+* 0 -> Disable IO latency histograms (default)
+* 1 -> Enable IO latency histograms
+* 2 -> Zero out IO latency histograms
+*/
+static ssize_t
+latency_hist_store(struct device *dev, struct device_attribute *attr,
+		   const char *buf, size_t count)
+{
+	struct ufs_hba *hba = dev_get_drvdata(dev);
+	long value;
+	int old_status;
+
+	if (kstrtol(buf, 0, &value))
+		return -EINVAL;
+	if (value == BLK_IO_LAT_HIST_ZERO) {
+		old_status = hba->latency_hist_enabled;
+		hba->latency_hist_enabled = 0;
+		memset(&hba->io_lat_read, 0, sizeof(hba->io_lat_read));
+		memset(&hba->io_lat_write, 0, sizeof(hba->io_lat_write));
+		memset(&hba->io_lat_other, 0, sizeof(hba->io_lat_other));
+		hba->latency_hist_enabled = old_status;
+	} else if (value == BLK_IO_LAT_HIST_ENABLE ||
+		 value == BLK_IO_LAT_HIST_DISABLE)
+		hba->latency_hist_enabled = value;
+	return count;
+}
+
+ssize_t
+latency_hist_show(struct device *dev, struct device_attribute *attr,
+		  char *buf)
+{
+	struct ufs_hba *hba = dev_get_drvdata(dev);
+	size_t written_bytes = 0;
+
+	written_bytes += blk_latency_hist_show("Read", &hba->io_lat_read,
+			buf + written_bytes, 8192 - written_bytes);
+	written_bytes += blk_latency_hist_show("Write", &hba->io_lat_write,
+			buf + written_bytes, 8192 - written_bytes);
+	written_bytes += blk_latency_hist_show("Other", &hba->io_lat_other,
+			buf + written_bytes, 8192 - written_bytes);
+
+	return written_bytes;
+}
+#endif
+
 static DEVICE_ATTR_RW(rpm_lvl);
 static DEVICE_ATTR_RO(rpm_target_dev_state);
 static DEVICE_ATTR_RO(rpm_target_link_state);
@@ -215,6 +264,11 @@ static DEVICE_ATTR_RW(spm_lvl);
 static DEVICE_ATTR_RO(spm_target_dev_state);
 static DEVICE_ATTR_RO(spm_target_link_state);
 static DEVICE_ATTR_RW(auto_hibern8);
+#ifdef VENDOR_EDIT
+//hank.liu@Tech.Storage.UFS, 2019-10-17 add latency_hist node for ufs latency calculate in sysfs.
+static DEVICE_ATTR_RW(latency_hist);
+#endif
+
 
 static struct attribute *ufs_sysfs_ufshcd_attrs[] = {
 	&dev_attr_rpm_lvl.attr,
@@ -224,6 +278,10 @@ static struct attribute *ufs_sysfs_ufshcd_attrs[] = {
 	&dev_attr_spm_target_dev_state.attr,
 	&dev_attr_spm_target_link_state.attr,
 	&dev_attr_auto_hibern8.attr,
+#ifdef VENDOR_EDIT
+//hank.liu@Tech.Storage.UFS, 2019-10-17 add latency_hist node for ufs latency calculate in sysfs.
+	&dev_attr_latency_hist.attr,
+#endif
 	NULL
 };
 

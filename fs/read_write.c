@@ -24,7 +24,9 @@
 
 #include <linux/uaccess.h>
 #include <asm/unistd.h>
-
+#ifdef VENDOR_EDIT//tongfeng.huang@ProDrv.CHG,add 2019/12/20 for debug logs
+#include <soc/oppo/oppo_project.h>
+#endif /*VENDOR_EDIT*/
 const struct file_operations generic_ro_fops = {
 	.llseek		= generic_file_llseek,
 	.read_iter	= generic_file_read_iter,
@@ -532,6 +534,9 @@ ssize_t kernel_write(struct file *file, const void *buf, size_t count,
 }
 EXPORT_SYMBOL(kernel_write);
 
+#ifdef VENDOR_EDIT//tongfeng.huang@ProDrv.CHG,add 2019/12/20 for debug logs
+extern int get_eng_version(void);
+#endif /*VENDOR_EDIT*/
 ssize_t vfs_write(struct file *file, const char __user *buf, size_t count, loff_t *pos)
 {
 	ssize_t ret;
@@ -542,7 +547,12 @@ ssize_t vfs_write(struct file *file, const char __user *buf, size_t count, loff_
 		return -EINVAL;
 	if (unlikely(!access_ok(VERIFY_READ, buf, count)))
 		return -EFAULT;
-
+	#ifdef VENDOR_EDIT
+	/* tongfeng.Huang@BSP.CHG.Basic, 2019/12/20,  add debug log */
+	if(get_eng_version() == AGING) {
+		trace_printk("vfs_write: task %s:%d will write file:%s", current->comm, current->pid, file->f_path.dentry->d_iname);
+	}
+	#endif
 	ret = rw_verify_area(WRITE, file, pos, count);
 	if (!ret) {
 		if (count > MAX_RW_COUNT)

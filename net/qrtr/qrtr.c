@@ -28,6 +28,9 @@
 #include "qrtr.h"
 
 #define QRTR_LOG_PAGE_CNT 4
+//Yuanfei.Liu@PSW.NW.DATA.2120730, 2019/07/11
+//Modify for: print qrtr debug msg and fix QMI wakeup statistics for QCOM platforms using glink.
+//Add for: ipcc_x print
 #define QRTR_INFO(ctx, x, ...)				\
 	ipc_log_string(ctx, x, ##__VA_ARGS__)
 
@@ -346,8 +349,8 @@ static void __qrtr_node_release(struct kref *kref)
 			sock_put(waiter->sk);
 			kfree(waiter);
 		}
-		radix_tree_delete(&node->qrtr_tx_flow, iter.index);
 		kfree(flow);
+		radix_tree_delete(&node->qrtr_tx_flow, iter.index);
 	}
 	mutex_unlock(&node->qrtr_tx_lock);
 

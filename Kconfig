@@ -7,6 +7,29 @@ mainmenu "Linux/$(ARCH) $(KERNELVERSION) Kernel Configuration"
 
 comment "Compiler: $(CC_VERSION_TEXT)"
 
+#ifdef VENDOR_EDIT
+#Wen.Luo@Bsp.Kernel.Stability, 2018/12/05, Add for aging test, slub debug config
+config OPPO_SLUB_TEST
+	string
+	default "$(OPPO_SLUB_TEST)"
+
+config OPPO_KASAN_TEST
+	string
+	default "$(OPPO_KASAN_TEST)"
+
+config OPPO_KMEMLEAK_TEST
+	string
+	default "$(OPPO_KMEMLEAK_TEST)"
+
+config OPPO_AGING_TEST
+	string
+	default "$(OPPO_AGING_TEST)"
+
+config OPPO_PAGEOWNER_TEST
+	string
+	default "$(OPPO_PAGEOWNER_TEST)"
+#endif
+
 source "scripts/Kconfig.include"
 
 source "init/Kconfig"
@@ -30,3 +53,15 @@ source "crypto/Kconfig"
 source "lib/Kconfig"
 
 source "lib/Kconfig.debug"
+
+config OPPO_AGING_DEBUG_CONFIG
+	bool "oppo aging config"
+	select DEBUG_SPINLOCK
+	select DEBUG_MUTEXES
+	select IPC_LOGGING
+	select QCOM_RTB
+	select QCOM_RTB_SEPARATE_CPUS
+	select DEBUG_LIST
+	default y if OPPO_AGING_TEST = "true"
+	default n
+

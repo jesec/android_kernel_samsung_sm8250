@@ -1,6 +1,10 @@
 # SPDX-License-Identifier: GPL-2.0-only
 
-obj-$(CONFIG_QPNP_SMB5)			+= step-chg-jeita.o battery.o qpnp-smb5.o smb5-lib.o pmic-voter.o storm-watch.o schgm-flash.o
+#ifdef VENDOR_EDIT /* Zhangkun@BSP.CHG.Basic, 2019/03/21,  Modify for charging */
+obj-$(CONFIG_QPNP_SMB5)			+= step-chg-jeita.o battery.o pmic-voter.o storm-watch.o schgm-flash.o
+#else
+#obj-$(CONFIG_QPNP_SMB5)			+= step-chg-jeita.o battery.o qpnp-smb5.o smb5-lib.o pmic-voter.o storm-watch.o schgm-flash.o
+#endif
 obj-$(CONFIG_SMB1390_CHARGE_PUMP_PSY)	+= smb1390-charger-psy.o pmic-voter.o
 obj-$(CONFIG_SMB1355_SLAVE_CHARGER)	+= smb1355-charger.o pmic-voter.o
 obj-$(CONFIG_QPNP_QNOVO5)		+= qpnp-qnovo5.o battery.o pmic-voter.o

@@ -46,16 +46,6 @@
 /* Fastrpc attribute for no mapping of fd  */
 #define FASTRPC_ATTR_NOMAP (16)
 
-/*
- * Fastrpc attribute to skip flush by fastrpc
- */
-#define FASTRPC_ATTR_FORCE_NOFLUSH  (32)
-
-/*
- * Fastrpc attribute to skip invalidate by fastrpc
- */
-#define FASTRPC_ATTR_FORCE_NOINVALIDATE (64)
-
 /* Driver should operate in parallel with the co-processor */
 #define FASTRPC_MODE_PARALLEL    0
 
@@ -249,7 +239,6 @@ enum fastrpc_control_type {
 	FASTRPC_CONTROL_SMMU		=	2,
 	FASTRPC_CONTROL_KALLOC		=	3,
 	FASTRPC_CONTROL_WAKELOCK	=	4,
-	FASTRPC_CONTROL_PM		=	5,
 };
 
 struct fastrpc_ctrl_latency {
@@ -265,17 +254,12 @@ struct fastrpc_ctrl_wakelock {
 	uint32_t enable;	/* wakelock control enable */
 };
 
-struct fastrpc_ctrl_pm {
-	uint32_t timeout;	/* timeout(in ms) for PM to keep system awake*/
-};
-
 struct fastrpc_ioctl_control {
 	uint32_t req;
 	union {
 		struct fastrpc_ctrl_latency lp;
 		struct fastrpc_ctrl_kalloc kalloc;
 		struct fastrpc_ctrl_wakelock wp;
-		struct fastrpc_ctrl_pm pm;
 	};
 };
 

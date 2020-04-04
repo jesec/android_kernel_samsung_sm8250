@@ -1721,8 +1721,27 @@ config VM_EVENT_COUNTERS
 	  on EXPERT systems.  /proc/vmstat will only show page counts
 	  if VM event counters are disabled.
 
+#ifndef VENDOR_EDIT
+# /* Kui.Zhang@PSW.BSP.Kernel.Performance, 2018-11-12, Support slab objects
+#  * statistics whlie not open SLUB_DEBUG*/
+#config SLUB_DEBUG
+#	default y
+#	bool "Enable SLUB debugging support" if EXPERT
+#	depends on SLUB && SYSFS
+#	help
+#	  SLUB has extensive debug support features. Disabling these can
+#	  result in significant savings in code size. This also disables
+#	  SLUB sysfs support. /sys/slab will not exist and there will be
+#	  no support for cache validation etc.
+#else
 config SLUB_DEBUG
-	default y
+	#ifdef VENDOR_EDIT
+	#Wen.Luo@Bsp.Kernel.Stability, 2018/12/05, Add for aging test, slub debug config
+	default y if OPPO_SLUB_TEST = "true"
+	default n
+	#else
+	#default y
+	#endif
 	bool "Enable SLUB debugging support" if EXPERT
 	depends on SLUB && SYSFS
 	help
@@ -1730,6 +1749,15 @@ config SLUB_DEBUG
 	  result in significant savings in code size. This also disables
 	  SLUB sysfs support. /sys/slab will not exist and there will be
 	  no support for cache validation etc.
+config SLAB_STAT_DEBUG
+	default n
+	bool "Enable Collect SLUB debug information statisticst" if EXPERT
+	depends on !SLUB_DEBUG
+	help
+	  If open SLUB_DEBUG, there are more code and will degradte perforance.
+	  To get more slab details, such as the total objects, this option is
+	  to collect slab info on SLUB_DEBUG is closed.
+#endif /* VENDOR_EDIT */
 
 config SLUB_MEMCG_SYSFS_ON
 	default n

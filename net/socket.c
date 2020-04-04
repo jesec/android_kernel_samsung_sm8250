@@ -2146,8 +2146,9 @@ static int ___sys_sendmsg(struct socket *sock, struct user_msghdr __user *msg,
 	}
 
 out_freectl:
-	if (ctl_buf != ctl)
+	if (ctl_buf != ctl) 
 		sock_kfree_s(sock->sk, ctl_buf, ctl_len);
+
 out_freeiov:
 	kfree(iov);
 	return err;

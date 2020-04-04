@@ -37,6 +37,7 @@
  */
 DEFINE_MUTEX(text_mutex);
 
+
 extern struct exception_table_entry __start___ex_table[];
 extern struct exception_table_entry __stop___ex_table[];
 
@@ -61,6 +62,7 @@ const struct exception_table_entry *search_exception_tables(unsigned long addr)
 			   __stop___ex_table - __start___ex_table, addr);
 	if (!e)
 		e = search_module_extables(addr);
+
 	return e;
 }
 

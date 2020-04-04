@@ -10,6 +10,10 @@
 
 #include <asm/current.h>
 #include <uapi/linux/wait.h>
+#ifdef VENDOR_EDIT//Fanhong.Kong@ProDrv.CHG,add 2018/12/19 for DeathHealer kernel 4.14
+#include <linux/signal.h>
+#include <linux/sched.h>
+#endif /*VENDOR_EDIT*/
 
 typedef struct wait_queue_entry wait_queue_entry_t;
 
@@ -231,6 +235,56 @@ void __wake_up_sync(struct wait_queue_head *wq_head, unsigned int mode, int nr);
 
 extern void init_wait_entry(struct wait_queue_entry *wq_entry, int flags);
 
+#ifdef VENDOR_EDIT//Fanhong.Kong@ProDrv.CHG,add 2018/12/19 for DeathHealer kernel 4.14
+/*signal.h include wait.h,copy from signal.h and renamed,other wise it would redefined*/
+/*
+static inline int signal_pending(struct task_struct *p)
+{
+	return unlikely(test_tsk_thread_flag(p,TIF_SIGPENDING));
+}
+
+static inline int __fatal_signal_pending(struct task_struct *p)
+{
+	return unlikely(sigismember(&p->pending.signal, SIGKILL));
+}
+
+static inline int fatal_signal_pending(struct task_struct *p)
+{
+	return signal_pending(p) && __fatal_signal_pending(p);
+}
+*/
+
+static inline int hung_long_signal_pending(struct task_struct *p)
+{
+	return unlikely(test_tsk_thread_flag(p,TIF_SIGPENDING));
+}
+
+static inline int __hung_long_fatal_signal_pending(struct task_struct *p)
+{
+	return unlikely(sigismember(&p->pending.signal, SIGKILL));
+}
+
+static inline int hung_long_fatal_signal_pending(struct task_struct *p)
+{
+	return hung_long_signal_pending(p) && __hung_long_fatal_signal_pending(p);
+}
+
+#ifdef VENDOR_EDIT
+/* fanhui@PhoneSW.BSP, 2016/02/02, DeathHealer, set the task to be killed */
+#define PF_OPPO_KILLING	0x00000001
+#endif
+
+//#ifdef VENDOR_EDIT //fangpan@Swdp.shanghai,2015/11/12
+static inline int hung_long_and_fatal_signal_pending(struct task_struct *p)
+{
+#ifdef CONFIG_DETECT_HUNG_TASK
+	return hung_long_fatal_signal_pending(p) && (p->flags & PF_OPPO_KILLING);
+#else
+	return 0;
+#endif
+}
+//#endif
+#endif /*VENDOR_EDIT*/
 /*
  * The below macro ___wait_event() has an explicit shadow of the __ret
  * variable when used from the wait_event_*() macros.
@@ -242,7 +296,7 @@ extern void init_wait_entry(struct wait_queue_entry *wq_entry, int flags);
  * on purpose; we use long where we can return timeout values and int
  * otherwise.
  */
-
+//#ifdef VENDOR_EDIT //fangpan@Swdp.shanghai,2015/11/12
 #define ___wait_event(wq_head, condition, state, exclusive, ret, cmd)		\
 ({										\
 	__label__ __out;							\
@@ -261,11 +315,15 @@ extern void init_wait_entry(struct wait_queue_entry *wq_entry, int flags);
 			goto __out;						\
 		}								\
 										\
+		if(hung_long_and_fatal_signal_pending(current)) { 	\
+			break;						\
+		}							\
 		cmd;								\
 	}									\
 	finish_wait(&wq_head, &__wq_entry);					\
 __out:	__ret;									\
 })
+//#endif
 
 #define __wait_event(wq_head, condition)					\
 	(void)___wait_event(wq_head, condition, TASK_UNINTERRUPTIBLE, 0, 0,	\

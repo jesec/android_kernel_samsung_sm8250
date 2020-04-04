@@ -100,6 +100,11 @@ config IPC_LOGGING
 
 config QCOM_RTB
 	bool "Register tracing"
+	#ifdef VENDOR_EDIT
+	#Wen.Luo@Bsp.Kernel.Stability, 2018/12/05, OPPO_AGING_TEST
+	default y if OPPO_AGING_TEST = "true"
+	default n
+	#endif
 	help
 	  Enable the kernel to trace every kernel function. This is done
 	  Add support for logging different events to a small uncached
@@ -108,6 +113,11 @@ config QCOM_RTB
 
 config QCOM_RTB_SEPARATE_CPUS
 	bool "Separate entries for each cpu"
+	#ifdef VENDOR_EDIT
+	#Wen.Luo@Bsp.Kernel.Stability, 2018/12/05, OPPO_AGING_TEST
+	default y if OPPO_AGING_TEST = "true"
+	default n
+	#endif
 	depends on QCOM_RTB
 	depends on SMP
 	help

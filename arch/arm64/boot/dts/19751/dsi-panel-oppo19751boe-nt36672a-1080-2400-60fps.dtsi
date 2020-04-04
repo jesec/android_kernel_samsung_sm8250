@@ -1,0 +1,366 @@
+&mdss_mdp {
+	dsi_oppo19751boe_nt36672a_1080_2400_60fps_vid: qcom,mdss_dsi_oppo19751boe_nt36672a_1080_2400_60fps_vid {
+		qcom,mdss-dsi-panel-name =
+		  "boe nt36672a tft lcd panel";
+		qcom,mdss-dsi-panel-type = "dsi_video_mode";
+		qcom,mdss-dsi-virtual-channel-id = <0>;
+		qcom,mdss-dsi-stream = <0>;
+		qcom,mdss-dsi-bpp = <24>;
+		qcom,mdss-dsi-color-order = "rgb_swap_rgb";
+		qcom,mdss-dsi-underflow-color = <0xff>;
+		qcom,mdss-dsi-border-color = <0>;
+
+		qcom,dsi-ctrl-num = <0>;
+		qcom,dsi-phy-num = <0>;
+		qcom,dsi-select-clocks = "src_byte_clk0", "src_pixel_clk0";
+
+		qcom,mdss-dsi-traffic-mode = "burst_mode";
+		qcom,mdss-dsi-lane-map = "lane_map_0123";
+		qcom,mdss-dsi-bllp-eof-power-mode;
+		qcom,mdss-dsi-bllp-power-mode;
+		qcom,mdss-dsi-lane-0-state;
+		qcom,mdss-dsi-lane-1-state;
+		qcom,mdss-dsi-lane-2-state;
+		qcom,mdss-dsi-lane-3-state;
+		qcom,mdss-pan-physical-width-dimension = <68>;
+		qcom,mdss-pan-physical-height-dimension = <152>;
+		qcom,mdss-dsi-dma-trigger = "trigger_sw";
+		qcom,mdss-dsi-mdp-trigger = "none";
+		qcom,mdss-dsi-reset-sequence = <1 10>, <0 5>, <1 10>;
+		qcom,mdss-dsi-te-pin-select = <1>;
+		qcom,mdss-dsi-wr-mem-start = <0x2c>;
+		qcom,mdss-dsi-wr-mem-continue = <0x3c>;
+		qcom,mdss-dsi-te-dcs-command = <1>;
+		qcom,mdss-dsi-te-check-enable;
+		qcom,mdss-dsi-te-using-te-pin;
+		qcom,mdss-dsi-lp11-init;
+		qcom,mdss-dsi-panel-hdr-enabled;
+		qcom,mdss-dsi-panel-hdr-color-primaries = <15000 15500 34000
+			16000 13250 34500 7500 3000>;
+		qcom,mdss-dsi-panel-peak-brightness = <4300000>;
+		qcom,mdss-dsi-panel-blackness-level = <1023>;
+		qcom,mdss-brightness-max-level = <1023>;
+
+		qcom,mdss-dsi-display-timings {
+			timing@0{
+			qcom,mdss-dsi-panel-width = <1080>;
+			qcom,mdss-dsi-panel-height = <2400>;
+			qcom,mdss-dsi-h-front-porch = <30>;
+			qcom,mdss-dsi-h-back-porch = <38>;
+			qcom,mdss-dsi-h-pulse-width = <4>;
+			qcom,mdss-dsi-h-sync-skew = <0>;
+			qcom,mdss-dsi-h-sync-pulse = <0>;
+			qcom,mdss-dsi-v-back-porch = <15>;
+			qcom,mdss-dsi-v-front-porch = <18>;
+			qcom,mdss-dsi-v-pulse-width = <2>;
+						qcom,mdss-dsi-panel-framerate = <60>;
+				qcom,mdss-dsi-h-left-border = <0>;
+				qcom,mdss-dsi-h-right-border = <0>;
+				qcom,mdss-dsi-v-top-border = <0>;
+				qcom,mdss-dsi-v-bottom-border = <0>;
+				qcom,mdss-dsi-panel-jitter = <0x4 0x1>;
+
+	                qcom,mdss-dsi-on-command = [
+	39 01 00 00 00 00 02 FF 10
+	39 01 00 00 00 00 02 FB 01
+
+	39 01 00 00 00 00 02 FF 20
+	39 01 00 00 00 00 02 FB 01
+	39 01 00 00 00 00 02 06 99
+	39 01 00 00 00 00 02 07 A3
+	39 01 00 00 00 00 02 0E AB
+	39 01 00 00 00 00 02 0F AE
+	39 01 00 00 00 00 02 62 A4
+	39 01 00 00 00 00 02 6D 44
+	39 01 00 00 00 00 02 78 01
+	39 01 00 00 00 00 02 95 E1
+	39 01 00 00 00 00 02 96 E1
+
+	39 01 00 00 00 00 02 FF 24
+	39 01 00 00 00 00 02 FB 01
+	39 01 00 00 00 00 02 00 1C
+	39 01 00 00 00 00 02 01 1C
+	39 01 00 00 00 00 02 02 1C
+	39 01 00 00 00 00 02 03 1C
+	39 01 00 00 00 00 02 04 1C
+	39 01 00 00 00 00 02 05 1C
+	39 01 00 00 00 00 02 06 1C
+	39 01 00 00 00 00 02 07 9F
+	39 01 00 00 00 00 02 08 9F
+	39 01 00 00 00 00 02 09 00
+	39 01 00 00 00 00 02 0A 1E
+	39 01 00 00 00 00 02 0B 0D
+	39 01 00 00 00 00 02 0C 0D
+	39 01 00 00 00 00 02 0D 14
+	39 01 00 00 00 00 02 0E 12
+	39 01 00 00 00 00 02 0F 10
+	39 01 00 00 00 00 02 10 03
+	39 01 00 00 00 00 02 11 04
+	39 01 00 00 00 00 02 12 24
+	39 01 00 00 00 00 02 13 20
+	39 01 00 00 00 00 02 14 20
+	39 01 00 00 00 00 02 15 09
+	39 01 00 00 00 00 02 16 0A
+	39 01 00 00 00 00 02 17 1C
+	39 01 00 00 00 00 02 18 1C
+	39 01 00 00 00 00 02 19 1C
+	39 01 00 00 00 00 02 1A 1C
+	39 01 00 00 00 00 02 1B 1C
+	39 01 00 00 00 00 02 1C 1C
+	39 01 00 00 00 00 02 1D 1C
+	39 01 00 00 00 00 02 1E 9F
+	39 01 00 00 00 00 02 1F 9F
+	39 01 00 00 00 00 02 20 00
+	39 01 00 00 00 00 02 21 1E
+	39 01 00 00 00 00 02 22 0D
+	39 01 00 00 00 00 02 23 0D
+	39 01 00 00 00 00 02 24 14
+	39 01 00 00 00 00 02 25 12
+	39 01 00 00 00 00 02 26 10
+	39 01 00 00 00 00 02 27 03
+	39 01 00 00 00 00 02 28 04
+	39 01 00 00 00 00 02 29 24
+	39 01 00 00 00 00 02 2A 20
+	39 01 00 00 00 00 02 2B 20
+	39 01 00 00 00 00 02 2D 09
+	39 01 00 00 00 00 02 2F 0A
+	39 01 00 00 00 00 02 31 02
+	39 01 00 00 00 00 02 32 03
+	39 01 00 00 00 00 02 33 0A
+	39 01 00 00 00 00 02 34 05
+	39 01 00 00 00 00 02 35 49
+	39 01 00 00 00 00 02 37 00
+	39 01 00 00 00 00 02 38 66
+	39 01 00 00 00 00 02 39 66
+	39 01 00 00 00 00 02 3F 66
+	39 01 00 00 00 00 02 41 02
+	39 01 00 00 00 00 02 42 03
+	39 01 00 00 00 00 02 4C 01
+	39 01 00 00 00 00 02 4D 01
+	39 01 00 00 00 00 02 60 90
+	39 01 00 00 00 00 02 61 60
+	39 01 00 00 00 00 02 72 00
+	39 01 00 00 00 00 02 73 00
+	39 01 00 00 00 00 02 74 00
+	39 01 00 00 00 00 02 75 00
+	39 01 00 00 00 00 02 79 00
+	39 01 00 00 00 00 02 7A 05
+	39 01 00 00 00 00 02 7B 1B
+	39 01 00 00 00 00 02 7D 05
+	39 01 00 00 00 00 02 80 42
+	39 01 00 00 00 00 02 82 13
+	39 01 00 00 00 00 02 83 22
+	39 01 00 00 00 00 02 84 31
+	39 01 00 00 00 00 02 85 00
+	39 01 00 00 00 00 02 86 00
+	39 01 00 00 00 00 02 87 00
+	39 01 00 00 00 00 02 88 13
+	39 01 00 00 00 00 02 89 22
+	39 01 00 00 00 00 02 8A 31
+	39 01 00 00 00 00 02 8B 00
+	39 01 00 00 00 00 02 8C 00
+	39 01 00 00 00 00 02 8D 00
+	39 01 00 00 00 00 02 8E F4
+	39 01 00 00 00 00 02 8F 01
+	39 01 00 00 00 00 02 90 80
+	39 01 00 00 00 00 02 92 6E
+	39 01 00 00 00 00 02 93 12
+	39 01 00 00 00 00 02 94 11
+	39 01 00 00 00 00 02 B3 02
+	39 01 00 00 00 00 02 B4 00
+	39 01 00 00 00 00 02 DC 29
+	39 01 00 00 00 00 02 DD 02
+	39 01 00 00 00 00 02 DE 00
+	39 01 00 00 00 00 02 DF 01
+	39 01 00 00 00 00 02 E0 01
+	39 01 00 00 00 00 02 E1 0C
+	39 01 00 00 00 00 02 E2 0A
+	39 01 00 00 00 00 02 EB 05
+
+	39 01 00 00 00 00 02 FF 25
+	39 01 00 00 00 00 02 FB 01
+	39 01 00 00 00 00 02 21 1B
+	39 01 00 00 00 00 02 22 1B
+	39 01 00 00 00 00 02 24 6E
+	39 01 00 00 00 00 02 25 6E
+	39 01 00 00 00 00 02 30 2E
+	39 01 00 00 00 00 02 31 2E
+	39 01 00 00 00 00 02 38 2E
+	39 01 00 00 00 00 02 3F 11
+	39 01 00 00 00 00 02 40 6F
+	39 01 00 00 00 00 02 41 6F
+	39 01 00 00 00 00 02 4B 21
+	39 01 00 00 00 00 02 4C 6F
+	39 01 00 00 00 00 02 66 D8
+	39 01 00 00 00 00 02 67 01
+	39 01 00 00 00 00 02 68 58
+	39 01 00 00 00 00 02 69 10
+	39 01 00 00 00 00 02 6B 00
+	39 01 00 00 00 00 02 6C 15
+	39 01 00 00 00 00 02 71 1D
+	39 01 00 00 00 00 02 77 62
+	39 01 00 00 00 00 02 7E 15
+	39 01 00 00 00 00 02 7F 00
+	39 01 00 00 00 00 02 84 6D
+	39 01 00 00 00 00 02 8D 00
+	39 01 00 00 00 00 02 BF 00
+	39 01 00 00 00 00 02 C0 D5
+	39 01 00 00 00 00 02 C1 11
+	39 01 00 00 00 00 02 C2 51
+	39 01 00 00 00 00 02 C3 00
+	39 01 00 00 00 00 02 D9 48
+	39 01 00 00 00 00 02 DB 22
+
+	39 01 00 00 00 00 02 FF 26
+	39 01 00 00 00 00 02 FB 01
+	39 01 00 00 00 00 02 06 FF
+	39 01 00 00 00 00 02 12 77
+	39 01 00 00 00 00 02 1A 7F
+	39 01 00 00 00 00 02 1C AF
+	39 01 00 00 00 00 02 1D 0B
+	39 01 00 00 00 00 02 1E 02
+	39 01 00 00 00 00 02 98 F1
+	39 01 00 00 00 00 02 A9 11
+	39 01 00 00 00 00 02 AA 11
+	39 01 00 00 00 00 02 AE 8A
+
+	39 01 00 00 00 00 02 FF 27
+	39 01 00 00 00 00 02 FB 01
+	39 01 00 00 00 00 02 13 00
+	39 01 00 00 00 00 02 1E 14
+	39 01 00 00 00 00 02 22 00
+	39 01 00 00 00 00 02 B3 01
+	39 01 00 00 00 00 02 B5 80
+
+	39 01 00 00 00 00 02 FF F0
+	39 01 00 00 00 00 02 FB 01
+	39 01 00 00 00 00 02 A2 00
+
+
+	39 01 00 00 00 00 02 FF 20
+	39 01 00 00 00 00 02 FB 01
+
+	39 01 00 00 00 00 02 FF 21
+	39 01 00 00 00 00 02 FB 01
+
+
+	39 01 00 00 00 00 02 FF 20
+	39 01 00 00 00 00 02 FB 01
+
+
+	39 01 00 00 00 00 02 FF 23
+	39 01 00 00 00 00 02 FB 01
+	39 01 00 00 00 00 02 00 68
+	39 01 00 00 00 00 02 07 00
+	39 01 00 00 00 00 02 08 01
+	39 01 00 00 00 00 02 09 00
+
+
+	39 01 00 00 00 00 02 11 01
+	39 01 00 00 00 00 02 12 95
+	39 01 00 00 00 00 02 15 68
+	39 01 00 00 00 00 02 16 0B
+	39 01 00 00 00 00 02 29 20
+	39 01 00 00 00 00 02 2A 20
+	39 01 00 00 00 00 02 2B 20
+	39 01 00 00 00 00 02 30 FF
+	39 01 00 00 00 00 02 31 FD
+	39 01 00 00 00 00 02 32 FA
+	39 01 00 00 00 00 02 33 F7
+	39 01 00 00 00 00 02 34 F4
+	39 01 00 00 00 00 02 35 F0
+	39 01 00 00 00 00 02 36 ED
+	39 01 00 00 00 00 02 37 EC
+	39 01 00 00 00 00 02 38 EB
+	39 01 00 00 00 00 02 39 EA
+	39 01 00 00 00 00 02 3A E9
+	39 01 00 00 00 00 02 3B E8
+	39 01 00 00 00 00 02 3D E7
+	39 01 00 00 00 00 02 3F E6
+	39 01 00 00 00 00 02 40 E5
+	39 01 00 00 00 00 02 41 E4
+	39 01 00 00 00 00 02 45 FF
+	39 01 00 00 00 00 02 46 FA
+	39 01 00 00 00 00 02 47 F2
+	39 01 00 00 00 00 02 48 E8
+	39 01 00 00 00 00 02 49 E4
+	39 01 00 00 00 00 02 4A DC
+	39 01 00 00 00 00 02 4B D7
+	39 01 00 00 00 00 02 4C D5
+	39 01 00 00 00 00 02 4D D3
+	39 01 00 00 00 00 02 4E D2
+	39 01 00 00 00 00 02 4F D0
+	39 01 00 00 00 00 02 50 CE
+	39 01 00 00 00 00 02 51 CD
+	39 01 00 00 00 00 02 52 CB
+	39 01 00 00 00 00 02 53 C6
+	39 01 00 00 00 00 02 54 C3
+
+
+	39 01 00 00 00 00 02 FF 10
+	39 01 00 00 00 00 02 FB 01
+	39 01 00 00 00 00 02 53 2C
+	39 01 00 00 00 00 03 51 07 FF
+	39 01 00 00 00 00 02 55 01
+
+					05 01 00 00 78 00 01 11
+					05 01 00 00 14 00 01 29];
+					qcom,mdss-dsi-off-command = [
+					05 01 00 00 14 00 02 28 00
+					05 01 00 00 78 00 02 10 00];
+					qcom,mdss-dsi-on-command-state = "dsi_lp_mode";
+					qcom,mdss-dsi-off-command-state = "dsi_lp_mode";
+							qcom,mdss-dsi-cabc-off-command = [
+					15 01 00 00 00 00 02 53 2C
+					15 01 00 00 00 00 02 55 00
+					05 01 00 00 10 00 02 29 00];
+			qcom,mdss-dsi-cabc-ui-command = [
+					15 01 00 00 00 00 02 53 2C
+					15 01 00 00 00 00 02 55 01
+					05 01 00 00 10 00 02 29 00];
+			qcom,mdss-dsi-cabc-still-image-command = [
+					15 01 00 00 00 00 02 53 2C
+					15 01 00 00 00 00 02 55 02
+					05 01 00 00 10 00 02 29 00];
+			qcom,mdss-dsi-cabc-video-command = [
+					15 01 00 00 00 00 02 53 2C
+					15 01 00 00 00 00 02 55 03
+					05 01 00 00 10 00 02 29 00];
+			qcom,mdss-dsi-cabc-off-command-state = "dsi_hs_mode";
+			qcom,mdss-dsi-cabc-ui-command-state = "dsi_hs_mode";
+			qcom,mdss-dsi-cabc-still-image-command-state = "dsi_hs_mode";
+			qcom,mdss-dsi-cabc-video-command-state = "dsi_hs_mode";
+			};
+		};
+	};
+};
+
+&dsi_oppo19751boe_nt36672a_1080_2400_60fps_vid {
+	qcom,panel-supply-entries = <&dsi_panel_pwr_supply>;
+	qcom,mdss-dsi-bl-pmic-control-type = "bl_ctrl_wled";
+	qcom,mdss-dsi-bl-min-level = <1>;
+	qcom,mdss-dsi-bl-max-level = <2047>;
+	qcom,mdss-brightness-max-level = <2047>;
+	qcom,platform-te-gpio = <&tlmm 10 0>;
+	qcom,platform-reset-gpio = <&pm8150l_gpios 3 0>;
+
+	oppo,mdss-dsi-vendor-name = "NT36672C";
+	oppo,mdss-dsi-manufacture = "boe vdo mode";
+
+	qcom,ulps-enabled;
+	qcom,dsi-select-clocks = "mux_byte_clk0", "mux_pixel_clk0",
+				"src_byte_clk0", "src_pixel_clk0",
+				"shadow_byte_clk0", "shadow_pixel_clk0";
+	qcom,dsi-select-clocks = "mux_byte_clk0", "mux_pixel_clk0";
+	qcom,mdss-dsi-t-clk-post = <0x0E>;
+	qcom,mdss-dsi-t-clk-pre = <0x35>;
+	qcom,mdss-dsi-display-timings {
+		timing@0{
+			qcom,mdss-dsi-panel-phy-timings = [00 22 08 09 25 23 09
+				09 06 02 04 00 1C 19];
+
+			qcom,display-topology = <1 0 1>;
+			qcom,default-topology-index = <0>;
+		};
+	};
+};

@@ -47,6 +47,13 @@
 #include "debug.h"
 #include "xhci.h"
 
+#ifdef VENDOR_EDIT
+	/* tongfeng.Huang@BSP.CHG.Basic, 2019/05/09,  Add for delay headset uevent */
+#include <linux/time.h>
+#include <linux/jiffies.h>
+#include <linux/sched/clock.h>
+#endif
+
 #define SDP_CONNETION_CHECK_TIME 10000 /* in ms */
 
 /* time out to wait for USB cable status notification (in ms)*/
@@ -113,7 +120,10 @@
 #define DWC3_GEVNTADRHI_EVNTADRHI_GSI_EN(n)	(n << 22)
 #define DWC3_GEVNTADRHI_EVNTADRHI_GSI_IDX(n)	(n << 16)
 #define DWC3_GEVENT_TYPE_GSI			0x3
-
+#ifdef VENDOR_EDIT
+/* OuYangBaiLi@BSP.CHG.Basic,charging_bsp 2019/11/26,Add for charging_bsp */
+extern void oppo_set_otg_status(int status);
+#endif /* VENDOR_EDIT */
 enum usb_gsi_reg {
 	GENERAL_CFG_REG,
 	DBL_ADDR_L,
@@ -2546,6 +2556,19 @@ static int dwc3_msm_suspend(struct dwc3_msm *mdwc, bool force_power_collapse)
 	clk_disable_unprepare(mdwc->xo_clk);
 
 	/* Perform controller power collapse */
+	#ifdef VENDOR_EDIT
+	/*YanGang@BSP.CHG.BASIC,2019/11/27,add for don't make host suspend ,CR2531867*/
+	if (!(mdwc->in_host_mode || mdwc->in_device_mode) ||
+	      mdwc->in_restart || force_power_collapse) {
+		mdwc->lpm_flags |= MDWC3_POWER_COLLAPSE;
+		dev_dbg(mdwc->dev, "%s: power collapse\n", __func__);
+		dwc3_msm_config_gdsc(mdwc, 0);
+		clk_disable_unprepare(mdwc->sleep_clk);
+	} else if (dwc->gdsc_collapse_in_host_suspend && mdwc->in_host_mode) {
+		dev_dbg(mdwc->dev, "Collapse GDSC in host mode bus suspend\n");
+		dwc3_msm_config_gdsc(mdwc, 0);
+	}
+	#else
 	if (!(mdwc->in_host_mode || mdwc->in_device_mode) ||
 	      mdwc->in_restart || force_power_collapse ||
 	      (dwc->gdsc_collapse_in_host_suspend && mdwc->in_host_mode)) {
@@ -2554,7 +2577,7 @@ static int dwc3_msm_suspend(struct dwc3_msm *mdwc, bool force_power_collapse)
 		dwc3_msm_config_gdsc(mdwc, 0);
 		clk_disable_unprepare(mdwc->sleep_clk);
 	}
-
+	#endif
 	dwc3_msm_update_bus_bw(mdwc, BUS_VOTE_NONE);
 
 	/*
@@ -2652,6 +2675,12 @@ static int dwc3_msm_resume(struct dwc3_msm *mdwc)
 			dev_err(mdwc->dev, "%s:core_reset deassert failed\n",
 					__func__);
 		clk_prepare_enable(mdwc->sleep_clk);
+	#ifdef VENDOR_EDIT
+	/*YanGang@BSP.CHG.BASIC,2019/12/17,add for don't make host suspend ,CR2575081*/
+	} else if (dwc->gdsc_collapse_in_host_suspend && mdwc->in_host_mode) {
+		dev_dbg(mdwc->dev, "Turn on GDSC in host mode bus resume\n");
+		dwc3_msm_config_gdsc(mdwc, 1);
+	#endif
 	}
 
 	/*
@@ -2777,6 +2806,10 @@ static int dwc3_msm_resume(struct dwc3_msm *mdwc)
  */
 static void dwc3_ext_event_notify(struct dwc3_msm *mdwc)
 {
+#ifdef VENDOR_EDIT
+	/* tongfeng.Huang@BSP.CHG.Basic, 2019/05/09,  Add for delay headset uevent */
+	static unsigned long long t = 0;
+#endif
 	/* Flush processing any pending events before handling new ones */
 	flush_delayed_work(&mdwc->sm_work);
 
@@ -2804,7 +2837,19 @@ static void dwc3_ext_event_notify(struct dwc3_msm *mdwc)
 		clear_bit(B_SUSPEND, &mdwc->inputs);
 	}
 
-	queue_delayed_work(mdwc->sm_usb_wq, &mdwc->sm_work, 0);
+#ifdef VENDOR_EDIT
+	/* tongfeng.Huang@BSP.CHG.Basic, 2019/05/09,  Add for delay headset uevent */
+	if(t <= 12)
+		t = cpu_clock(smp_processor_id())/1000000000;//convert to s
+
+	dev_dbg(mdwc->dev, "last_secs %lu\n",t);
+	if(t<=12)
+		queue_delayed_work(mdwc->sm_usb_wq, &mdwc->sm_work, msecs_to_jiffies(5000));
+	else
+		queue_delayed_work(mdwc->sm_usb_wq, &mdwc->sm_work, 0);
+#else
+		queue_delayed_work(mdwc->sm_usb_wq, &mdwc->sm_work, 0);
+#endif
 }
 
 static void dwc3_resume_work(struct work_struct *w)
@@ -4056,6 +4101,11 @@ static void msm_dwc3_perf_vote_work(struct work_struct *w)
  *
  * Returns 0 on success otherwise negative errno.
  */
+#ifdef VENDOR_EDIT
+/* OuYangBaiLi@BSP.CHG.Basic,charging_bsp 2019/11/26,Add for charging_bsp */
+#define OTG_STATUS_HIGH	1
+#define OTG_STATUS_LOW	0
+#endif /* VENDOR_EDIT */
 static int dwc3_otg_start_host(struct dwc3_msm *mdwc, int on)
 {
 	struct dwc3 *dwc = platform_get_drvdata(mdwc->dwc3);
@@ -4079,6 +4129,10 @@ static int dwc3_otg_start_host(struct dwc3_msm *mdwc, int on)
 	}
 
 	if (on) {
+		#ifdef VENDOR_EDIT
+		/* OuYangBaiLi@BSP.CHG.Basic,charging_bsp 2019/11/26,Add for charging_bsp */
+		oppo_set_otg_status(OTG_STATUS_HIGH);
+		#endif /* VENDOR_EDIT */
 		dev_dbg(mdwc->dev, "%s: turn on host\n", __func__);
 
 		pm_runtime_get_sync(mdwc->dev);
@@ -4103,6 +4157,10 @@ static int dwc3_otg_start_host(struct dwc3_msm *mdwc, int on)
 				atomic_read(&mdwc->dev->power.usage_count));
 			return ret;
 		}
+#ifdef VENDOR_EDIT
+/* Jianchao.Shi@BSP.CHG.Basic, 2017/02/18, sjc Add for OTG sw */
+		pr_err("[OPPO_CHG][%s]OTG regulator_enable\n",__func__);
+#endif
 
 
 		mdwc->host_nb.notifier_call = dwc3_msm_host_notifier;
@@ -4172,6 +4230,10 @@ static int dwc3_otg_start_host(struct dwc3_msm *mdwc, int on)
 			dev_err(mdwc->dev, "unable to disable vbus_reg\n");
 			return ret;
 		}
+#ifdef VENDOR_EDIT
+/* Jianchao.Shi@BSP.CHG.Basic, 2017/02/18, sjc Add for OTG sw */
+		pr_err("[OPPO_CHG][%s] OTG disable_regulator\n",__func__);
+#endif
 
 		cancel_delayed_work_sync(&mdwc->perf_vote_work);
 		msm_dwc3_perf_vote_update(mdwc, false);
@@ -4186,7 +4248,10 @@ static int dwc3_otg_start_host(struct dwc3_msm *mdwc, int on)
 					USB_SPEED_SUPER);
 			mdwc->ss_phy->flags &= ~PHY_HOST_MODE;
 		}
-
+		#ifdef VENDOR_EDIT
+		/* OuYangBaiLi@BSP.CHG.Basic,charging_bsp 2019/11/26,Add for charging_bsp */
+		oppo_set_otg_status(OTG_STATUS_LOW);
+		#endif /* VENDOR_EDIT */
 		mdwc->hs_phy->flags &= ~PHY_HOST_MODE;
 		dwc3_host_exit(dwc);
 		usb_unregister_notify(&mdwc->host_nb);
@@ -4395,6 +4460,16 @@ static int dwc3_msm_gadget_vbus_draw(struct dwc3_msm *mdwc, unsigned int mA)
 	if (mdwc->max_power == mA || psy_type != POWER_SUPPLY_TYPE_USB)
 		return 0;
 
+#ifdef VENDOR_EDIT
+	/* Jianchao.Shi@BSP.CHG.Basic, 2017/05/04, sjc Add for charging */
+	dev_info(mdwc->dev, "Avail curr from USB = %u, pre max_power = %u\n", mA, mdwc->max_power);
+	if (mA == 0 || mA == 2) {
+		return 0;
+	}
+#else
+	dev_info(mdwc->dev, "Avail curr from USB = %u\n", mA);
+#endif
+
 	/* Set max current limit in uA */
 	pval.intval = 1000 * mA;
 
@@ -4411,6 +4486,11 @@ set_prop:
 	return 0;
 }
 
+#ifdef VENDOR_EDIT
+/*LiYue@BSP.CHG.Basic, 2019/08/14, add for support cdp charging*/
+#define DWC3_DCTL 0xc704
+#define DWC3_DCTL_RUN_STOP BIT(31)
+#endif
 
 /**
  * dwc3_otg_sm_work - workqueue function.
@@ -4496,6 +4576,18 @@ static void dwc3_otg_sm_work(struct work_struct *w)
 				atomic_read(&mdwc->dev->power.usage_count));
 			dwc3_otg_start_peripheral(mdwc, 1);
 			mdwc->drd_state = DRD_STATE_PERIPHERAL;
+#ifdef VENDOR_EDIT
+			/*LiYue@BSP.CHG.Basic, 2019/08/14, add for support cdp charging*/
+			if(!dwc->softconnect && get_psy_type(mdwc) == POWER_SUPPLY_TYPE_USB_CDP) {
+				u32 reg;
+				dbg_event(0xFF, "cdp pullup dp", 0);
+
+				reg = dwc3_readl(dwc->regs, DWC3_DCTL);
+				reg |= DWC3_DCTL_RUN_STOP;
+				dwc3_writel(dwc->regs, DWC3_DCTL, reg);
+				break;
+			}
+#endif
 			work = 1;
 		} else {
 			dwc3_msm_gadget_vbus_draw(mdwc, 0);

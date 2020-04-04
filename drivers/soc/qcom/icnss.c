@@ -44,7 +44,6 @@
 #include <soc/qcom/service-notifier.h>
 #include <soc/qcom/socinfo.h>
 #include <soc/qcom/ramdump.h>
-#include <soc/qcom/scm.h>
 #include "icnss_private.h"
 #include "icnss_qmi.h"
 
@@ -95,7 +94,6 @@ static struct icnss_clk_info icnss_clk_info[] = {
 };
 
 #define ICNSS_CLK_INFO_SIZE		ARRAY_SIZE(icnss_clk_info)
-#define ICNSS_UTIL_GET_SEC_DUMP_STATE  0x10
 
 enum icnss_pdr_cause_index {
 	ICNSS_FW_CRASH,
@@ -1419,26 +1417,6 @@ static void icnss_update_state_send_modem_shutdown(struct icnss_priv *priv,
 	}
 }
 
-static bool icnss_is_mem_dump_allowed(void)
-{
-	struct scm_desc desc = {0};
-	int ret = 0;
-
-	desc.args[0] = 0;
-	desc.arginfo = 0;
-	ret = scm_call2(
-		SCM_SIP_FNID(SCM_SVC_UTIL, ICNSS_UTIL_GET_SEC_DUMP_STATE),
-		&desc);
-
-	if (ret) {
-		icnss_pr_err("SCM DUMP_STATE call failed\n");
-		return false;
-	}
-
-	icnss_pr_dbg("Dump State: %llu\n", desc.ret[0]);
-	return (desc.ret[0] == 1);
-}
-
 static int icnss_modem_notifier_nb(struct notifier_block *nb,
 				  unsigned long code,
 				  void *data)
@@ -1453,10 +1431,8 @@ static int icnss_modem_notifier_nb(struct notifier_block *nb,
 
 	if (code == SUBSYS_AFTER_SHUTDOWN &&
 	    notif->crashed == CRASH_STATUS_ERR_FATAL) {
-		if (icnss_is_mem_dump_allowed()) {
-			icnss_pr_info("Collecting msa0 segment dump\n");
-			icnss_msa0_ramdump(priv);
-		}
+		icnss_pr_info("Collecting msa0 segment dump\n");
+		icnss_msa0_ramdump(priv);
 		return NOTIFY_OK;
 	}
 
@@ -3253,6 +3229,29 @@ static int icnss_get_vbatt_info(struct icnss_priv *priv)
 	return 0;
 }
 
+
+#ifdef VENDOR_EDIT
+//Laixin@PSW.CN.WiFi.Basic.Switch.1069763, 2018/08/08
+//Add for: check fw status for switch issue
+static void icnss_create_fw_state_kobj(void);
+static ssize_t icnss_show_fw_ready(struct device_driver *driver, char *buf)
+{
+	bool firmware_ready = icnss_is_fw_ready();
+	return sprintf(buf, "%s", (firmware_ready ? "ready" : "not_ready"));
+}
+
+struct driver_attribute fw_ready_attr = {
+	.attr = {
+		.name = "firmware_ready",
+		.mode = S_IRUGO,
+	},
+	.show = icnss_show_fw_ready,
+	//read only so we don't need to impl store func
+};
+#endif /* VENDOR_EDIT */
+
+static int icnss_probe(struct platform_device *pdev);
+
 static int icnss_resource_parse(struct icnss_priv *priv)
 {
 	int ret = 0, i = 0;
@@ -3489,6 +3488,12 @@ static int icnss_probe(struct platform_device *pdev)
 
 	init_completion(&priv->unblock_shutdown);
 
+	#ifdef VENDOR_EDIT
+	//Laixin@PSW.CN.WiFi.Basic.Switch.1069763, 2018/08/08
+	//Add for: check fw status for switch issue
+	icnss_create_fw_state_kobj();
+	#endif /* VENDOR_EDIT */
+
 	icnss_pr_info("Platform driver probed successfully\n");
 
 	return 0;
@@ -3675,6 +3680,16 @@ static struct platform_driver icnss_driver = {
 		.of_match_table = icnss_dt_match,
 	},
 };
+
+#ifdef VENDOR_EDIT
+//Laixin@PSW.CN.WiFi.Basic.Switch.1069763, 2018/08/08
+//Add for: check fw status for switch issue
+static void icnss_create_fw_state_kobj(void) {
+	if (driver_create_file(&(icnss_driver.driver), &fw_ready_attr)) {
+		icnss_pr_info("failed to create %s", fw_ready_attr.attr.name);
+	}
+}
+#endif /* VENDOR_EDIT */
 
 static int __init icnss_initialize(void)
 {

@@ -585,6 +585,17 @@ config TEST_IRQ_REQUESTER
 
 	  If in doubt, say N.
 
+#ifdef VENDOR_EDIT
+#Fuchun.Liao@BSP.CHG.Basic 2018/11/26 modify for rf cable monitor
+config OPPO_RF_CABLE_MONITOR
+	bool "OPPO rf cable monitor system"
+	depends on OF
+	select PINMUX
+	default n
+	help
+	  Say Y here to enable OPPO rf cable monitor system support
+#endif /* VENDOR_EDIT */
+
 config WIGIG_SENSING_SPI
 	tristate "Sensing over 60GHz using wil6210 / SPI bus"
 	depends on SPI && WIL6210
@@ -595,6 +606,7 @@ config WIGIG_SENSING_SPI
 	  operates over 60GHz frequency band, using low power SPI interface.
 	  The output of the driver is CIRs (Channel Impulse Response) which
 	  must be processed in user space in order to get meaningful results.
+
 
 source "drivers/misc/c2port/Kconfig"
 source "drivers/misc/eeprom/Kconfig"
@@ -610,6 +622,11 @@ source "drivers/misc/echo/Kconfig"
 source "drivers/misc/cxl/Kconfig"
 source "drivers/misc/ocxl/Kconfig"
 source "drivers/misc/cardreader/Kconfig"
+
+#ifdef VENDOR_EDIT
+#//Zengpeng.Chen@PSW.BSP.TP, 2019/07/10, Add for motor
+source "drivers/misc/oppo_motor/Kconfig"
+#endif /* VENDOR_EDIT */
 endmenu
 
 config OKL4_USER_VIPC

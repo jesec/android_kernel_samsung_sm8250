@@ -17,6 +17,7 @@
 long compat_arm_syscall(struct pt_regs *regs, int scno);
 long sys_ni_syscall(void);
 
+
 static long do_ni_syscall(struct pt_regs *regs, int scno)
 {
 #ifdef CONFIG_COMPAT
@@ -41,7 +42,6 @@ static void invoke_syscall(struct pt_regs *regs, unsigned int scno,
 			   const syscall_fn_t syscall_table[])
 {
 	long ret;
-
 	if (scno < sc_nr) {
 		syscall_fn_t syscall_fn;
 		syscall_fn = syscall_table[array_index_nospec(scno, sc_nr)];

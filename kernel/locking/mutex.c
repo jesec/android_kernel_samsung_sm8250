@@ -45,7 +45,10 @@ __mutex_init(struct mutex *lock, const char *name, struct lock_class_key *key)
 #ifdef CONFIG_MUTEX_SPIN_ON_OWNER
 	osq_lock_init(&lock->osq);
 #endif
-
+#ifdef VENDOR_EDIT
+// Liujie.Xie@TECH.Kernel.Sched, 2019/05/22, add for ui first
+    lock->ux_dep_task = NULL;
+#endif
 	debug_mutex_init(lock, name, key);
 }
 EXPORT_SYMBOL(__mutex_init);
@@ -184,7 +187,17 @@ __mutex_add_waiter(struct mutex *lock, struct mutex_waiter *waiter,
 {
 	debug_mutex_add_waiter(lock, waiter, current);
 
-	list_add_tail(&waiter->list, list);
+#ifdef VENDOR_EDIT
+// Liujie.Xie@TECH.Kernel.Sched, 2019/05/22, add for ui first
+        if (sysctl_uifirst_enabled) {
+            mutex_list_add(current, &waiter->list, list, lock);
+        } else {
+            list_add_tail(&waiter->list, list);
+        }
+#else
+		list_add_tail(&waiter->list, list);
+#endif
+
 	if (__mutex_waiter_is_first(lock, waiter))
 		__mutex_set_flag(lock, MUTEX_FLAG_WAITERS);
 }
@@ -999,7 +1012,10 @@ __mutex_lock_common(struct mutex *lock, long state, unsigned int subclass,
 		 * wait_lock. This ensures the lock cancellation is ordered
 		 * against mutex_unlock() and wake-ups do not go missing.
 		 */
-		if (unlikely(signal_pending_state(state, current))) {
+		//#ifdef VENDOR_EDIT fangpan@Swdp.shanghai,2015/11/12
+		if (unlikely(signal_pending_state(state, current))
+			|| hung_long_and_fatal_signal_pending(current)) {
+		//#endif
 			ret = -EINTR;
 			goto err;
 		}
@@ -1009,10 +1025,26 @@ __mutex_lock_common(struct mutex *lock, long state, unsigned int subclass,
 			if (ret)
 				goto err;
 		}
-
+#ifdef VENDOR_EDIT
+// Liujie.Xie@TECH.Kernel.Sched, 2019/05/22, add for ui first
+        if (sysctl_uifirst_enabled) {
+            mutex_dynamic_ux_enqueue(lock, current);
+        }
+#endif
 		spin_unlock(&lock->wait_lock);
+#if defined(VENDOR_EDIT) && defined(CONFIG_OPPO_HEALTHINFO)
+// Liujie.Xie@TECH.Kernel.Sched, 2019/08/29, add for stuck monitor
+        if (state & TASK_UNINTERRUPTIBLE) {
+            current->in_mutex = 1;
+        }
+#endif
 		schedule_preempt_disabled();
-
+#if defined(VENDOR_EDIT) && defined(CONFIG_OPPO_HEALTHINFO)
+// Liujie.Xie@TECH.Kernel.Sched, 2019/08/29, add for stuck monitor
+        if (state & TASK_UNINTERRUPTIBLE) {
+            current->in_mutex = 0;
+        }
+#endif
 		/*
 		 * ww_mutex needs to always recheck its position since its waiter
 		 * list is not FIFO ordered.
@@ -1241,6 +1273,12 @@ static noinline void __sched __mutex_unlock_slowpath(struct mutex *lock, unsigne
 
 	spin_lock(&lock->wait_lock);
 	debug_mutex_unlock(lock);
+#ifdef VENDOR_EDIT
+// Liujie.Xie@TECH.Kernel.Sched, 2019/05/22, add for ui first
+    if (sysctl_uifirst_enabled) {
+        mutex_dynamic_ux_dequeue(lock, current);
+    }
+#endif
 	if (!list_empty(&lock->wait_list)) {
 		/* get the first entry from the wait-list: */
 		struct mutex_waiter *waiter =

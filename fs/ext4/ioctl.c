@@ -385,6 +385,7 @@ static int ext4_ioctl_setflags(struct inode *inode,
 	inode->i_ctime = current_time(inode);
 
 	err = ext4_mark_iloc_dirty(handle, inode, &iloc);
+
 flags_err:
 	ext4_journal_stop(handle);
 	if (err)

@@ -460,9 +460,6 @@ static int __qseecom_scm_call2_locked(uint32_t smc_id, struct scm_desc *desc)
 	int ret = 0;
 	int retry_count = 0;
 
-	if (qseecom.support_bus_scaling)
-		return scm_call2(smc_id, desc);
-
 	do {
 		ret = scm_call2_noretry(smc_id, desc);
 		if (ret == -EBUSY) {
@@ -1807,19 +1804,16 @@ static int __qseecom_decrease_clk_ref_count(enum qseecom_ce_hw_instance ce)
 	else
 		qclk = &qseecom.ce_drv;
 
-	if (qclk->clk_access_cnt > 2) {
+	if (qclk->clk_access_cnt > 0) {
+		qclk->clk_access_cnt--;
+	} else {
 		pr_err("Invalid clock ref count %d\n", qclk->clk_access_cnt);
 		ret = -EINVAL;
-		goto err_dec_ref_cnt;
 	}
-	if (qclk->clk_access_cnt == 2)
-		qclk->clk_access_cnt--;
 
-err_dec_ref_cnt:
 	mutex_unlock(&clk_access_lock);
 	return ret;
 }
-
 
 static int qseecom_scale_bus_bandwidth_timer(uint32_t mode)
 {
@@ -3877,6 +3871,11 @@ static int __qseecom_update_cmd_buf(void *msg, bool cleanup,
 		ret = qseecom_dmabuf_map(ion_fd, &sg_ptr, &attach, &dmabuf);
 		if (ret) {
 			pr_err("IOn client could not retrieve sg table\n");
+			#ifdef VENDOR_EDIT
+			//Murphy@BSP.Kernel.stability, 2019/10/05, Add for avoid double free cause crashed
+			dmabuf = NULL;
+			attach = NULL;
+			#endif
 			goto err;
 		}
 		if (sg_ptr->nents == 0) {

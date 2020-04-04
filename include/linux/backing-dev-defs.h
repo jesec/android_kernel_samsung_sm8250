@@ -210,6 +210,12 @@ struct backing_dev_info {
 enum {
 	BLK_RW_ASYNC	= 0,
 	BLK_RW_SYNC	= 1,
+#if defined(VENDOR_EDIT) && defined(CONFIG_OPPO_HEALTHINFO)
+// jiheng.xie@PSW.Tech.BSP.Performance, 2019/03/11
+// Add for ioqueue
+	BLK_RW_BG	= 2,
+	BLK_RW_FG	= 3,
+#endif /*VENDOR_EDIT*/
 };
 
 void clear_wb_congested(struct bdi_writeback_congested *congested, int sync);

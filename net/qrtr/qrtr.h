@@ -4,6 +4,34 @@
 
 #include <linux/types.h>
 
+//Yuanfei.Liu@PSW.NW.DATA.2120730, 2019/07/11
+//Add for: print qrtr debug msg and fix QMI wakeup statistics for QCOM platforms using glink.
+#ifdef VENDOR_EDIT
+#define MODEM_WAKEUP_SRC_NUM 3
+#define MODEM_QMI_WS_INDEX 2
+#define QRTR_FIRST_HEAD "QrtrFirst "
+#define QRTR_FIRST_HEAD_COUNT 10
+extern int modem_wakeup_src_count[MODEM_WAKEUP_SRC_NUM];
+extern int qrtr_first_msg;
+extern char qrtr_first_msg_details[256];
+extern char *sub_qrtr_first_msg_details;
+#endif /* VENDOR_EDIT */
+
+#ifdef VENDOR_EDIT
+//Yuanfei.Liu@PSW.NW.DATA.2579544, 2019/11/20
+//Add for: ipcc_x print
+extern int ipcc_first_msg;
+#endif
+
+#ifdef VENDOR_EDIT
+//weizhong.wu@bsp.power.basic 20191129 add for ipcc_1  count cal
+extern u64 wakeup_source_count_cdsp;
+extern u64 wakeup_source_count_adsp;
+extern u64 wakeup_source_count_modem;
+#endif
+
+
+
 struct sk_buff;
 
 /* endpoint node id auto assignment */

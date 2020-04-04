@@ -5,7 +5,6 @@
 
 #include <linux/err.h>
 #include <linux/module.h>
-#include <linux/delay.h>
 #include <net/netlink.h>
 #include <net/genetlink.h>
 
@@ -162,7 +161,6 @@ int cnss_genl_send_msg(void *buff, u8 type, char *file_name, u32 total_size)
 	u32 seg_id = 0;
 	u32 data_len = 0;
 	u8 end = 0;
-	u8 retry;
 
 	cnss_pr_dbg("type: %u, total_size: %x\n", type, total_size);
 
@@ -173,16 +171,8 @@ int cnss_genl_send_msg(void *buff, u8 type, char *file_name, u32 total_size)
 			data_len = remaining;
 			end = 1;
 		}
-
-		for (retry = 0; retry < 2; retry++) {
-			ret = cnss_genl_send_data(type, file_name, total_size,
-						  seg_id, end, data_len,
-						  msg_buff);
-			if (ret >= 0)
-				break;
-			msleep(100);
-		}
-
+		ret = cnss_genl_send_data(type, file_name, total_size,
+					  seg_id, end, data_len, msg_buff);
 		if (ret < 0) {
 			cnss_pr_err("fail to send genl data, ret %d\n", ret);
 			return ret;

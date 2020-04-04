@@ -32,6 +32,11 @@ static void inherit_derived_state(struct inode *parent, struct inode *child)
 	ci->data->under_android = pi->data->under_android;
 	ci->data->under_cache = pi->data->under_cache;
 	ci->data->under_obb = pi->data->under_obb;
+#ifdef VENDOR_EDIT
+//Jiemin.Zhu@PSW.Android.SdardFs, 2017/12/12, Add for sdcardfs delete dcim record
+//Jiemin.Zhu@PSW.Android.SdardFs, 2018/08/08, Modify for adding more protected directorys
+	ci->data->oppo_flags = pi->data->oppo_flags;
+#endif /* VENDOR_EDIT */
 }
 
 /* helper function for derived state */
@@ -46,6 +51,11 @@ void setup_derived_state(struct inode *inode, perm_t perm, userid_t userid,
 	info->data->under_android = false;
 	info->data->under_cache = false;
 	info->data->under_obb = false;
+#ifdef VENDOR_EDIT
+//Jiemin.Zhu@PSW.Android.SdardFs, 2017/12/12, Add for sdcardfs delete dcim record
+//Jiemin.Zhu@PSW.Android.SdardFs, 2018/08/08, Modify for adding more protected directorys
+	info->data->oppo_flags = 0;
+#endif /* VENDOR_EDIT */
 }
 
 /* While renaming, there is a point where we want the path from dentry,
@@ -66,6 +76,27 @@ void get_derived_permission_new(struct dentry *parent, struct dentry *dentry,
 	struct qstr q_obb = QSTR_LITERAL("obb");
 	struct qstr q_media = QSTR_LITERAL("media");
 	struct qstr q_cache = QSTR_LITERAL("cache");
+#ifdef VENDOR_EDIT
+//Jiemin.Zhu@PSW.Android.SdardFs, 2017/12/12, Add for sdcardfs delete dcim record
+	struct qstr q_dcim = QSTR_LITERAL("DCIM");
+	struct qstr q_camera = QSTR_LITERAL("Camera");
+	struct qstr q_screenshots = QSTR_LITERAL("Screenshots");
+	struct sdcardfs_sb_info *sbi = SDCARDFS_SB(dentry->d_sb);
+//Jiemin.Zhu@PSW.Android.SdardFs, 2017/12/12, Add for sdcardfs delete dcim record
+	/* This node is /.ColorOSGalleryRecycler */
+	struct qstr q_coloros_recycler = QSTR_LITERAL(".ColorOSGalleryRecycler");
+	/* This node is /DCIM/MyAlbums */
+	struct qstr q_myalbums = QSTR_LITERAL("MyAlbums");
+	/* This node is /Tencent */
+	struct qstr q_tencent = QSTR_LITERAL("Tencent");
+	/* This node is /Tencent/[QQ_Images|QQfile_recv] */
+	struct qstr q_tencent_qqimage = QSTR_LITERAL("QQ_Images");
+	struct qstr q_tencent_qqrecv = QSTR_LITERAL("QQfile_recv");
+	/* This node is /Tencent/MicroMsg */
+	struct qstr q_tencent_micromsg = QSTR_LITERAL("MicroMsg");
+	/* This node is /Tencent/MicroMsg/WeiXin */
+	struct qstr q_tencent_micromsg_wechat = QSTR_LITERAL("WeiXin");
+#endif /* VENDOR_EDIT */
 
 	/* By default, each inode inherits from its parent.
 	 * the properties are maintained on its private fields
@@ -103,6 +134,16 @@ void get_derived_permission_new(struct dentry *parent, struct dentry *dentry,
 			/* App-specific directories inside; let anyone traverse */
 			info->data->perm = PERM_ANDROID;
 			info->data->under_android = true;
+#ifdef VENDOR_EDIT
+//Jiemin.Zhu@PSW.Android.SdardFs, 2017/12/12, Add for sdcardfs delete dcim record
+		} else if (qstr_case_eq(name, &q_dcim)) {
+			info->data->perm = PERM_DCIM;
+//Jiemin.Zhu@PSW.Android.SdardFs, 2017/12/12, Add for sdcardfs delete dcim record
+		} else if (qstr_case_eq(name, &q_tencent)) {
+			info->data->perm = PERM_TENCENT;
+		} else if (qstr_case_eq(name, &q_coloros_recycler)) {
+			info->data->oppo_flags |= OPPO_PICTURE_RECYCLER;
+#endif /* VENDOR_EDIT */
 		} else {
 			set_top(info, parent_info);
 		}
@@ -142,6 +183,35 @@ void get_derived_permission_new(struct dentry *parent, struct dentry *dentry,
 		}
 		set_top(info, parent_info);
 		break;
+#ifdef VENDOR_EDIT
+//Jiemin.Zhu@PSW.Android.SdardFs, 2017/12/12, Add for sdcardfs delete dcim record
+	case PERM_DCIM:
+		if (sbi->options.multiuser && qstr_case_eq(name, &q_camera)) {
+			//info->data->perm = PERM_DCIM;
+			info->data->oppo_flags |= OPPO_PICTURE_BASE;
+		} else if (sbi->options.multiuser && qstr_case_eq(name, &q_screenshots)) {
+			//info->data->perm = PERM_DCIM;
+			info->data->oppo_flags |= OPPO_PICTURE_BASE;
+		} else if (sbi->options.multiuser && qstr_case_eq(name, &q_myalbums)) {
+			info->data->oppo_flags |= OPPO_PICTURE_ALBUMS;
+		}
+		break;
+//Jiemin.Zhu@PSW.Android.SdardFs, 2017/12/12, Add for sdcardfs delete dcim record
+	case PERM_TENCENT:
+		if (qstr_case_eq(name, &q_tencent_qqimage)) {
+			info->data->oppo_flags |= OPPO_PICTURE_TENCENT_QQ;
+		} else if (qstr_case_eq(name, &q_tencent_qqrecv)) {
+			info->data->oppo_flags |= OPPO_PICTURE_TENCENT_QQ;
+		} else if (qstr_case_eq(name, &q_tencent_micromsg)) {
+			info->data->perm = PERM_TENCENT_MICROMSG;
+		}
+		break;
+	case PERM_TENCENT_MICROMSG:
+		if (qstr_case_eq(name, &q_tencent_micromsg_wechat)) {
+			info->data->oppo_flags |= OPPO_PICTURE_TENCENT_MM;
+		}
+		break;
+#endif /* VENDOR_EDIT */
 	}
 }
 
@@ -195,6 +265,10 @@ void fixup_lower_ownership(struct dentry *dentry, const char *name)
 	}
 
 	switch (perm) {
+#ifdef VENDOR_EDIT
+//Xuefeng.Peng@PSW.AD.SdardFs.2203621, 2019/08/16, Add for sdcardfs DCIM dir must set right uid and gid as PERM_ROOT for multi user
+	case PERM_DCIM:
+#endif/*VENDOR_EDIT*/
 	case PERM_ROOT:
 	case PERM_ANDROID:
 	case PERM_ANDROID_DATA:
@@ -211,6 +285,10 @@ void fixup_lower_ownership(struct dentry *dentry, const char *name)
 		break;
 	}
 	switch (perm) {
+#ifdef VENDOR_EDIT
+//Xuefeng.Peng@PSW.AD.SdardFs.2203621, 2019/08/16, Add for sdcardfs DCIM dir must set right uid and gid as PERM_ROOT for multi user
+	case PERM_DCIM:
+#endif/*VENDOR_EDIT*/
 	case PERM_ROOT:
 	case PERM_ANDROID:
 	case PERM_ANDROID_DATA:

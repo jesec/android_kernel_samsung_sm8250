@@ -1184,6 +1184,14 @@ static inline long ksys_rmdir(const char __user *pathname)
 
 extern long do_mkdirat(int dfd, const char __user *pathname, umode_t mode);
 
+#ifdef VENDOR_EDIT
+/*guqicai@Bsp.Group.Tp 2019/10/30 add for tp*/
+static inline long sys_mkdir(const char __user *pathname, umode_t mode)
+{
+	return do_mkdirat(AT_FDCWD, pathname, mode);
+}
+#endif
+
 static inline long ksys_mkdir(const char __user *pathname, umode_t mode)
 {
 	return do_mkdirat(AT_FDCWD, pathname, mode);
@@ -1260,6 +1268,23 @@ extern int __close_fd(struct files_struct *files, unsigned int fd);
  * should or should not be restarted, but returns the raw error codes from
  * __close_fd().
  */
+
+#ifdef VENDOR_EDIT
+/*ZengpengChen@Bsp.Group.Tp 2019/11/01 add for tp syscall*/
+static inline int sys_close(unsigned int fd)
+{
+	return __close_fd(current->files, fd);
+}
+
+static inline long sys_open(const char __user *filename, int flags,
+			     umode_t mode)
+{
+	if (force_o_largefile())
+		flags |= O_LARGEFILE;
+	return do_sys_open(AT_FDCWD, filename, flags, mode);
+}
+#endif
+
 static inline int ksys_close(unsigned int fd)
 {
 	return __close_fd(current->files, fd);

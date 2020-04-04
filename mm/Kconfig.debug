@@ -34,6 +34,11 @@ config DEBUG_PAGEALLOC
 config SLUB_DEBUG_PANIC_ON
 	bool "Enable to Panic on SLUB corruption detection"
 	depends on SLUB_DEBUG
+	#ifdef VENDOR_EDIT
+	#Wen.Luo@Bsp.Kernel.Stability, 2018/12/05, Add for aging test, slub debug config
+	default y if OPPO_SLUB_TEST = "true"
+	default n
+	#endif
 	help
 	  SLUB has a resiliency feature enabled which restores bytes in
 	  order for production environments to continue to operate. IN

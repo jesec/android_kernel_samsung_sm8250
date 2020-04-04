@@ -840,6 +840,9 @@ static void ipi_cpu_stop(unsigned int cpu, struct pt_regs *regs)
 		pr_crit("CPU%u: stopping\n", cpu);
 		__show_regs(regs);
 		dump_stack();
+		#ifdef VENDOR_EDIT//Fanhong.Kong@ProDrv.CHG,add 2018/11/29 for minidump 4.19
+		dumpcpuregs(regs);
+		#endif
 		dump_stack_minidump(regs->sp);
 		raw_spin_unlock(&stop_lock);
 	}

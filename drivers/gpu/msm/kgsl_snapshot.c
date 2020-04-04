@@ -756,6 +756,10 @@ void kgsl_device_snapshot(struct kgsl_device *device,
 		BUG_ON(device->force_panic);
 
 	sysfs_notify(&device->snapshot_kobj, NULL, "timestamp");
+#ifdef VENDOR_EDIT
+/*Wenhua.Leng@PSW.MM.Display.LCD.Machine, 2019/02/11,add for mm kevent gpu.*/
+	sysfs_notify(&device->snapshot_kobj, NULL, "snapshot_hashid");
+#endif /*VENDOR_EDIT*/
 
 	/*
 	 * Queue a work item that will save the IB data in snapshot into
@@ -831,6 +835,11 @@ static int snapshot_release(struct kgsl_device *device,
 	return ret;
 }
 
+#ifdef VENDOR_EDIT
+//wenhua.Leng@PSW.MM.Display.GPU.minidump,2019-04-21
+static bool snapshot_ontrol_on = 0;
+#endif /*VENDOR_EDIT*/
+
 /* Dump the sysfs binary data to the user */
 static ssize_t snapshot_show(struct file *filep, struct kobject *kobj,
 	struct bin_attribute *attr, char *buf, loff_t off,
@@ -841,6 +850,14 @@ static ssize_t snapshot_show(struct file *filep, struct kobject *kobj,
 	struct kgsl_snapshot_section_header head;
 	struct snapshot_obj_itr itr;
 	int ret = 0;
+
+#ifdef VENDOR_EDIT
+//wenhua.Leng@PSW.MM.Display.GPU.minidump,2019-04-21
+    if (snapshot_ontrol_on) {
+        dev_err(device->dev, "snapshot: snapshot_ontrol_on is true, skip snapshot\n");
+        return 0;
+	}
+#endif /*VENDOR_EDIT*/
 
 	mutex_lock(&device->mutex);
 	snapshot = device->snapshot;
@@ -959,6 +976,33 @@ static ssize_t force_panic_store(struct kgsl_device *device, const char *buf,
 	return count;
 }
 
+#ifdef VENDOR_EDIT
+//wenhua.Leng@PSW.MM.Display.GPU.minidump,2019-04-21
+static ssize_t snapshot_control_show(struct kgsl_device *device, char *buf)
+{
+	return snprintf(buf, PAGE_SIZE, "%d\n", device->snapshot_control);
+}
+
+static ssize_t snapshot_control_store(struct kgsl_device *device, const char *buf,
+	size_t count)
+{
+	unsigned int val = 0;
+	int ret;
+
+	if (device && count > 0)
+		device->snapshot_control = 0;
+
+	ret = kgsl_sysfs_store(buf, &val);
+
+	if (!ret && device){
+		device->snapshot_control = (bool)val;
+		snapshot_ontrol_on = device->snapshot_control;
+	}
+
+	return (ssize_t) ret < 0 ? ret : count;
+}
+#endif /*VENDOR_EDIT*/
+
 /* Show the break_ib request status */
 static ssize_t skip_ib_capture_show(struct kgsl_device *device, char *buf)
 {
@@ -1060,6 +1104,19 @@ static SNAPSHOT_ATTR(snapshot_legacy, 0644, snapshot_legacy_show,
 static SNAPSHOT_ATTR(skip_ib_capture, 0644, skip_ib_capture_show,
 		skip_ib_capture_store);
 
+#ifdef VENDOR_EDIT
+//wenhua.Leng@PSW.MM.Display.GPU.minidump,2019-04-2
+static ssize_t snapshot_hashid_show(struct kgsl_device *device, char *buf)
+{
+	unsigned int uid =
+		device->snapshot ? device->snapshot->snapshot_hashid : 0;
+
+	return snprintf(buf, PAGE_SIZE, "%u\n", uid);
+}
+static SNAPSHOT_ATTR(snapshot_hashid, 0666, snapshot_hashid_show, NULL);
+static SNAPSHOT_ATTR(snapshot_control, 0666, snapshot_control_show, snapshot_control_store);
+#endif /*VENDOR_EDIT*/
+
 static ssize_t snapshot_sysfs_show(struct kobject *kobj,
 	struct attribute *attr, char *buf)
 {
@@ -1152,6 +1209,10 @@ int kgsl_device_snapshot_init(struct kgsl_device *device)
 	device->force_panic = false;
 	device->snapshot_crashdumper = true;
 	device->snapshot_legacy = false;
+#ifdef VENDOR_EDIT
+//wenhua.Leng@PSW.MM.Display.GPU.minidump,2019-04-21
+	device->snapshot_control = 0;
+#endif /*VENDOR_EDIT*/
 
 	/*
 	 * Set this to false so that we only ever keep the first snapshot around
@@ -1169,8 +1230,18 @@ int kgsl_device_snapshot_init(struct kgsl_device *device)
 	if (ret)
 		return ret;
 
-	ret = sysfs_create_files(&device->snapshot_kobj, snapshot_attrs);
+#ifdef VENDOR_EDIT
+//wenhua.Leng@PSW.MM.Display.GPU.minidump,2019-04-21
+	ret  = sysfs_create_file(&device->snapshot_kobj, &attr_snapshot_hashid.attr);
+	if (ret)
+		return ret;
 
+	ret  = sysfs_create_file(&device->snapshot_kobj, &attr_snapshot_control.attr);
+	if (ret)
+		return ret;
+#endif /*VENDOR_EDIT*/
+
+	ret = sysfs_create_files(&device->snapshot_kobj, snapshot_attrs);
 	return ret;
 }
 EXPORT_SYMBOL(kgsl_device_snapshot_init);
@@ -1196,6 +1267,10 @@ void kgsl_device_snapshot_close(struct kgsl_device *device)
 	device->snapshot_faultcount = 0;
 	device->force_panic = false;
 	device->snapshot_crashdumper = true;
+#ifdef VENDOR_EDIT
+//wenhua.Leng@PSW.MM.Display.GPU.minidump,2019-04-21
+	device->snapshot_control = 0;
+#endif /*VENDOR_EDIT*/
 }
 EXPORT_SYMBOL(kgsl_device_snapshot_close);
 

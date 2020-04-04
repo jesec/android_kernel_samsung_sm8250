@@ -958,6 +958,10 @@ static bool drm_mode_match_timings(const struct drm_display_mode *mode1,
 		mode1->vsync_start == mode2->vsync_start &&
 		mode1->vsync_end == mode2->vsync_end &&
 		mode1->vtotal == mode2->vtotal &&
+#ifdef VENDOR_EDIT
+/*Mark.Yao@PSW.MM.Display.LCD.Stable,2019-11-13 fix drm mode miss */
+		drm_mode_vrefresh(mode1) == drm_mode_vrefresh(mode2) &&
+#endif /* VENDOR_EDIT */
 		mode1->vscan == mode2->vscan;
 }
 

@@ -397,7 +397,7 @@ static struct msm_gpi_tre *setup_go_tre(int cmd, int cs, int rx_len, int flags,
 	if (cmd == SPI_RX_ONLY) {
 		eot = 0;
 		chain = 0;
-		eob = 0;
+		eob = 1;
 	} else {
 		eot = 0;
 		chain = 1;
@@ -751,11 +751,11 @@ static int spi_geni_unprepare_message(struct spi_master *spi_mas,
 
 static int spi_geni_prepare_transfer_hardware(struct spi_master *spi)
 {
+
 	struct spi_geni_master *mas = spi_master_get_devdata(spi);
 	int ret = 0, count = 0;
 	u32 max_speed = spi->cur_msg->spi->max_speed_hz;
 	struct se_geni_rsc *rsc = &mas->spi_rsc;
-
 	/* Adjust the IB based on the max speed of the slave.*/
 	rsc->ib = max_speed * DEFAULT_BUS_WIDTH;
 	if (mas->shared_se) {
