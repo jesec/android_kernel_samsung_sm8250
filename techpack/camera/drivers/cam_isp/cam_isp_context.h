@@ -33,7 +33,7 @@
 /*
  * Maximum entries in state monitoring array for error logging
  */
-#define CAM_ISP_CTX_STATE_MONITOR_MAX_ENTRIES   40
+#define CAM_ISP_CTX_STATE_MONITOR_MAX_ENTRIES   100
 
 /* forward declaration */
 struct cam_isp_context;
@@ -149,6 +149,7 @@ struct cam_isp_context_state_monitor {
 	uint64_t                             req_id;
 	int64_t                              frame_id;
 	unsigned int                         evt_time_stamp;
+	struct timespec64                    ts;
 };
 
 /**

@@ -18,7 +18,6 @@
 
 #define MST_DRV_DEV     "mst_drv"
 
-#if defined(CONFIG_MFC_LDO_COMMAND)
 #define MFC_MST_LDO_CONFIG_1				0x7400
 #define MFC_MST_LDO_CONFIG_2				0x7409
 #define MFC_MST_LDO_CONFIG_3				0x7418
@@ -28,6 +27,9 @@
 #define MFC_MST_LDO_TURN_ON				0x301c
 #define MFC_MST_LDO_CONFIG_8				0x343c
 #define MFC_MST_OVER_TEMP_INT				0x0024
-#endif
+
+#define MFC_CHIP_ID_L_REG				0x00
+#define MFC_CHIP_ID_P9320				0x20
+#define MFC_CHIP_ID_S2MIW04				0x04
 
 #endif /* MST_DRV_H */

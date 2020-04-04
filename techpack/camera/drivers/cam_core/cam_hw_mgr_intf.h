@@ -179,6 +179,7 @@ struct cam_buf_done_port_io_cfg {
 
 struct cam_buf_done_info {
 	uint32_t num_ports;
+	struct timespec64 ts;
 	struct cam_buf_done_port_io_cfg port_cfg[30];
 };
 

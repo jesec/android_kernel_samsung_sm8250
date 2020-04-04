@@ -50,7 +50,7 @@
 
 /* Version info*/
 #define UFSHPB_VER				0x0220
-#define UFSHPB_DD_VER				0x020304
+#define UFSHPB_DD_VER                           0x020306
 #define UFSHPB_DD_VER_POST			""
 
 /* Constant value*/

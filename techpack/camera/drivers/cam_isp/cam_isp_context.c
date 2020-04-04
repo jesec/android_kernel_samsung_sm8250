@@ -43,6 +43,8 @@ static void __cam_isp_ctx_update_state_monitor_array(
 
 	INC_STATE_MONITOR_HEAD(&ctx_isp->state_monitor_head, &iterator);
 
+	getnstimeofday64(&ctx_isp->cam_isp_ctx_state_monitor[iterator].ts);
+
 	ctx_isp->cam_isp_ctx_state_monitor[iterator].curr_state =
 		ctx_isp->substate_activated;
 	ctx_isp->cam_isp_ctx_state_monitor[iterator].frame_id =
@@ -109,6 +111,8 @@ static void __cam_isp_ctx_dump_state_monitor_array(
 	int i = 0;
 	int64_t state_head = 0;
 	uint32_t index, num_entries, oldest_entry;
+	uint64_t ms, tmp, hrs, min, sec;
+	struct timespec64 *ts = NULL;
 
 	state_head = atomic64_read(&ctx_isp->state_monitor_head);
 
@@ -129,8 +133,17 @@ static void __cam_isp_ctx_dump_state_monitor_array(
 	index = oldest_entry;
 
 	for (i = 0; i < num_entries; i++) {
+		ts = &ctx_isp->cam_isp_ctx_state_monitor[index].ts;
+		tmp = ts->tv_sec;
+		ms = (ts->tv_nsec) / 1000000;
+		sec = do_div(tmp, 60);
+		min = do_div(tmp, 60);
+		hrs = do_div(tmp, 24);
+
 		CAM_ERR(CAM_ISP,
+		"**** %llu:%llu:%llu.%llu : "
 		"Index[%d] time[%d] : Substate[%s] Frame[%lld] ReqId[%llu] evt_type[%s]",
+		hrs, min, sec, ms,
 		index,
 		ctx_isp->cam_isp_ctx_state_monitor[index].evt_time_stamp,
 		__cam_isp_ctx_substate_val_to_type(
@@ -555,7 +568,7 @@ static int __cam_isp_ctx_handle_buf_done_for_request(
 	struct cam_context *ctx = ctx_isp->base;
 	uint64_t buf_done_req_id;
 	uint32_t * time32 = NULL;
-	uint64_t timestamp = 0;
+	uint64_t timestamp;
 
 	trace_cam_buf_done("ISP", ctx, req);
 
@@ -738,6 +751,7 @@ static int __cam_isp_ctx_handle_buf_done_for_request(
 		req_isp->reapply = false;
 
 		ctx_isp->info = req->pf_data.info;
+		getnstimeofday64(&ctx_isp->info.ts);
 		memset(&req->pf_data, 0, sizeof(req->pf_data));
 
 		CAM_DBG(CAM_REQ,
@@ -4150,6 +4164,8 @@ static int __cam_isp_ctx_handle_sof_freeze_evt(
 	struct cam_isp_context      *ctx_isp =
 		(struct cam_isp_context *) ctx->ctx_priv;
 
+	__cam_isp_ctx_dump_state_monitor_array(ctx_isp);
+
 	hw_cmd_args.ctxt_to_hw_map = ctx_isp->hw_ctx;
 	hw_cmd_args.cmd_type = CAM_HW_MGR_CMD_INTERNAL;
 	isp_hw_cmd_args.cmd_type = CAM_ISP_HW_MGR_CMD_SOF_DEBUG;
@@ -4375,17 +4391,30 @@ static int cam_isp_context_dump_active_request(void *data, unsigned long iova,
 	int rc = 0, i = 0, j = 0;
 	struct cam_buf_done_port_io_cfg *port_cfg = NULL;
 	struct cam_buf_done_plane_io_cfg *plane_cfg = NULL;
+	uint64_t ms, tmp, hrs, min, sec;
+	struct timespec64 ts;
 
 	struct cam_isp_context *isp_ctx =
 		(struct cam_isp_context *)ctx->ctx_priv;
+
+	memset(&ts, 0, sizeof(ts));
 
 	if (!isp_ctx) {
 		CAM_ERR(CAM_ISP, "Invalid isp ctx");
 		return -EINVAL;
 	}
 
-	CAM_INFO(CAM_ISP, "ISP ctx:%d last_buf_done_req: %lld io cfg:",
-		ctx->ctx_id, isp_ctx->last_buf_done_req_id);
+	__cam_isp_ctx_dump_state_monitor_array(isp_ctx);
+
+	ts = isp_ctx->info.ts;
+	tmp = ts.tv_sec;
+	ms = (ts.tv_nsec) / 1000000;
+	sec = do_div(tmp, 60);
+	min = do_div(tmp, 60);
+	hrs = do_div(tmp, 24);
+
+	CAM_INFO(CAM_ISP, "ISP ctx:%d last_buf_done_req: %lld ts: %llu:%llu:%llu.%llu io cfg:",
+		ctx->ctx_id, isp_ctx->last_buf_done_req_id, hrs, min, sec, ms);
 	for (i = 0; i < isp_ctx->info.num_ports; i++) {
 
 		port_cfg = &isp_ctx->info.port_cfg[i];
@@ -4407,7 +4436,7 @@ static int cam_isp_context_dump_active_request(void *data, unsigned long iova,
 		}
 	}
 
-	CAM_INFO(CAM_ISP, "iommu fault handler for isp ctx %d state %d",
+	CAM_INFO(CAM_ISP, "Iterating over active list of isp ctx %d state %d",
 		ctx->ctx_id, ctx->state);
 
 	list_for_each_entry_safe(req, req_temp,

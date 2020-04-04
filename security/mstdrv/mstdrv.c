@@ -212,6 +212,7 @@ struct workqueue_struct *cluster_freq_ctrl_wq;
 struct delayed_work dwork;
 
 static uint32_t mode_set_wait = 40;
+static uint32_t idt_i2c_command = 0;
 
 DEFINE_MUTEX(mst_mutex);
 DEFINE_MUTEX(transmit_mutex);
@@ -757,6 +758,36 @@ static ssize_t store_mst_drv(struct device *dev,
         return count;
 }
 
+static int mfc_get_chip_id()
+{
+	u8 chip_id = 0;
+	int ret = 0;
+	struct power_supply *psy;
+        struct mfc_charger_data *charger;
+        
+	psy = get_power_supply_by_name("mfc-charger");
+	charger = power_supply_get_drvdata(psy);
+
+	if (charger == NULL) {
+		pr_err("%s cannot get charger drvdata!\n", __func__);
+		return -1;
+	}
+
+	ret = mfc_reg_read(charger->client, MFC_CHIP_ID_L_REG, &chip_id);
+	if (ret >= 0) {
+		if (chip_id == MFC_CHIP_ID_S2MIW04) {
+			charger->chip_id = MFC_CHIP_LSI;
+			pr_info("%s: MFC IC chip vendor is LSI(0x%x)\n", __func__, chip_id);
+		} else { /* 0x20 */
+			charger->chip_id = MFC_CHIP_IDT;
+			pr_info("%s: MFC IC chip vendor is IDT(0x%x)\n", __func__, chip_id);
+		}
+		charger->chip_id_now = chip_id;
+	} else
+		return -1;
+	return charger->chip_id;
+}
+
 /**
  * sec_mst_gpio_init - Initialize GPIO pins used by driver
  * @dev: driver handle
@@ -766,32 +797,9 @@ static int sec_mst_gpio_init(struct device *dev)
 #if defined(CONFIG_MFC_CHARGER)
         struct device_node *np;
         enum of_gpio_flags irq_gpio_flags;
-	char *chip_vendor = NULL;
 	int ret = 0;
-
-        /* get wireless chraging check gpio */
-        np = of_find_node_by_name(NULL, "battery");
-        if (!np) {
-                pr_err("%s np NULL\n", __func__);
-        } else {
-                /* wpc_det */
-                wpc_det = of_get_named_gpio_flags(np, "battery,wpc_det", 0, &irq_gpio_flags);
-                if (wpc_det < 0) {
-                        dev_err(dev, "%s : can't get wpc_det = %d\n", __FUNCTION__, wpc_det);
-                }
-        }
-
-	ret = of_property_read_string(dev->of_node, "sec-mst,mfc-ic-chip-vendor", (char const **)&chip_vendor);
-	if (ret < 0) {
-		pr_err("%s : failed to read sec-mst,mfc-ic-chip-vendor. set wait time to default\n", __func__);
-	} else {
-		pr_info("%s : MFC IC chip vendor is %s\n", __func__, chip_vendor);
-		if (strncmp(chip_vendor, "LSI", strlen("LSI")) == 0) {
-			mode_set_wait = 100;
-		}
-		pr_info("%s : set wait time after mst-pwr-en HIGH to %u\n", __func__, mode_set_wait);
-	}
 #endif
+
         mst_pwr_en =
                 of_get_named_gpio(dev->of_node, "sec-mst,mst-pwr-gpio", OFF);
 
@@ -811,6 +819,35 @@ static int sec_mst_gpio_init(struct device *dev)
                 gpio_direction_output(mst_pwr_en, OFF);
                 printk("%s : Send Output\n", __func__);
         }
+
+#if defined(CONFIG_MFC_CHARGER)
+        /* get wireless chraging check gpio */
+        np = of_find_node_by_name(NULL, "battery");
+        if (!np) {
+                pr_err("%s np NULL\n", __func__);
+        } else {
+                /* wpc_det */
+                wpc_det = of_get_named_gpio_flags(np, "battery,wpc_det", 0, &irq_gpio_flags);
+                if (wpc_det < 0) {
+                        dev_err(dev, "%s : can't get wpc_det = %d\n", __FUNCTION__, wpc_det);
+                }
+        }
+
+	gpio_set_value(mst_pwr_en, 1);
+	msleep(200);
+	ret = mfc_get_chip_id();
+	if (ret == -1) {
+		pr_err("%s : failed to read sec-mst,mfc-ic-chip-vendor. set wait time to default\n", __func__);
+	} else {
+		if (ret == MFC_CHIP_ID_S2MIW04) {
+			mode_set_wait = 100;
+		} else if (ret == MFC_CHIP_IDT) {
+			idt_i2c_command = 1; // apply additional i2c command to IDT ic chip
+		}
+		pr_info("%s : set wait time after mst-pwr-en HIGH to %u, i2c command for IDT %d\n", __func__, mode_set_wait, idt_i2c_command);
+	}
+	gpio_set_value(mst_pwr_en, 0);
+#endif
 
         return 0;
 }
@@ -883,9 +920,7 @@ static ssize_t store_mst_switch_test(struct device *dev,
 static DEVICE_ATTR(mst_switch_test, 0664, show_mst_switch_test, store_mst_switch_test);
 
 int mfc_send_mst_cmd(int cmd, struct mfc_charger_data *charger, u8 irq_src_l, u8 irq_src_h) {
-#if defined(CONFIG_MFC_LDO_COMMAND)
         u8 sBuf[2] = {0, };
-#endif
         pr_info("%s: (called by %ps)\n", __func__,  __builtin_return_address(0));
 
         switch(cmd) {
@@ -894,26 +929,27 @@ int mfc_send_mst_cmd(int cmd, struct mfc_charger_data *charger, u8 irq_src_l, u8
                 mfc_reg_write(charger->client, MFC_INT_A_CLEAR_L_REG, irq_src_l); // clear int
                 mfc_reg_write(charger->client, MFC_INT_A_CLEAR_H_REG, irq_src_h); // clear int
                 mfc_set_cmd_l_reg(charger, 0x20, MFC_CMD_CLEAR_INT_MASK); // command
-#if defined(CONFIG_MFC_LDO_COMMAND)
-                pr_info("%s: Execute i2c command for LDO\n", __func__);
-                mfc_reg_write(charger->client, MFC_MST_LDO_CONFIG_1, 0xA5); /* MST LDO config 1 */
-                mfc_reg_write(charger->client, MFC_MST_LDO_CONFIG_2, 0x03); /* MST LDO config 2 */
-                mfc_reg_write(charger->client, MFC_MST_LDO_CONFIG_3, 0x14); /* MST LDO config 3 */
-                mfc_reg_write(charger->client, MFC_MST_LDO_CONFIG_4, 0x0A); /* MST LDO config 4 */
-                mfc_reg_write(charger->client, MFC_MST_LDO_CONFIG_5, 0x02); /* MST LDO config 5 */
-                /* MST LDO config 6 */
-                sBuf[0] = 0xFF;
-                sBuf[1] = 0x01;
-                mfc_reg_multi_write(charger->client, MFC_MST_LDO_CONFIG_6, sBuf, sizeof(sBuf));
-                mfc_reg_write(charger->client, MFC_MST_LDO_TURN_ON, 0x08); /* MST LDO config 7 */
-                mfc_reg_write(charger->client, MFC_MST_LDO_TURN_ON, 0x09); /* MST LDO turn on */
-                mdelay(10);
-                mfc_reg_write(charger->client, MFC_MST_MODE_SEL_REG, 0x02); /* set MST mode2 */
-                mfc_reg_write(charger->client, MFC_MST_LDO_CONFIG_8, 0x08); /* MST LDO config 8 */
-                mfc_reg_write(charger->client, MFC_MST_OVER_TEMP_INT, 0x04); /* Enable Over temperature INT */
-#else
-                mfc_reg_write(charger->client, MFC_MST_MODE_SEL_REG, 0x02); /* set MST mode2 */
-#endif
+
+                if (idt_i2c_command) {
+                    pr_info("%s: Execute i2c command for LDO\n", __func__);
+                    mfc_reg_write(charger->client, MFC_MST_LDO_CONFIG_1, 0xA5); /* MST LDO config 1 */
+                    mfc_reg_write(charger->client, MFC_MST_LDO_CONFIG_2, 0x03); /* MST LDO config 2 */
+                    mfc_reg_write(charger->client, MFC_MST_LDO_CONFIG_3, 0x14); /* MST LDO config 3 */
+                    mfc_reg_write(charger->client, MFC_MST_LDO_CONFIG_4, 0x0A); /* MST LDO config 4 */
+                    mfc_reg_write(charger->client, MFC_MST_LDO_CONFIG_5, 0x02); /* MST LDO config 5 */
+                    /* MST LDO config 6 */
+                    sBuf[0] = 0xFF;
+                    sBuf[1] = 0x01;
+                    mfc_reg_multi_write(charger->client, MFC_MST_LDO_CONFIG_6, sBuf, sizeof(sBuf));
+                    mfc_reg_write(charger->client, MFC_MST_LDO_TURN_ON, 0x08); /* MST LDO config 7 */
+                    mfc_reg_write(charger->client, MFC_MST_LDO_TURN_ON, 0x09); /* MST LDO turn on */
+                    mdelay(10);
+                    mfc_reg_write(charger->client, MFC_MST_MODE_SEL_REG, 0x02); /* set MST mode2 */
+                    mfc_reg_write(charger->client, MFC_MST_LDO_CONFIG_8, 0x08); /* MST LDO config 8 */
+                    mfc_reg_write(charger->client, MFC_MST_OVER_TEMP_INT, 0x04); /* Enable Over temperature INT */
+                } else {
+                    mfc_reg_write(charger->client, MFC_MST_MODE_SEL_REG, 0x02); /* set MST mode2 */
+                }
                 pr_info("%s 2AC Missing ! : MST on REV : %d\n", __func__, charger->pdata->wc_ic_rev);
     
                 /* clear intterupt */
@@ -924,10 +960,10 @@ int mfc_send_mst_cmd(int cmd, struct mfc_charger_data *charger, u8 irq_src_l, u8
                 mdelay(10);
                 break;
         case MST_MODE_OFF:
-#if defined(CONFIG_MFC_LDO_COMMAND)
-                mfc_reg_write(charger->client, MFC_MST_MODE_SEL_REG, 0x00); /* Exit MST mode */
-                mfc_reg_write(charger->client, MFC_MST_LDO_CONFIG_1, 0x00); /* MST LDO config 7 */
-#endif
+                if (idt_i2c_command) {
+                    mfc_reg_write(charger->client, MFC_MST_MODE_SEL_REG, 0x00); /* Exit MST mode */
+                    mfc_reg_write(charger->client, MFC_MST_LDO_CONFIG_1, 0x00); /* MST LDO config 7 */
+                }
                 pr_info("%s: set MST mode off\n", __func__);
                 break;
         default:

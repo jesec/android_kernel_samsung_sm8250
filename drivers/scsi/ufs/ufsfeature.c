@@ -386,8 +386,9 @@ inline void ufsf_hpb_init(struct ufsf_feature *ufsf)
 {
 	if (ufsf->hpb_dev_info.hpb_device &&
 	    ufsf->ufshpb_state == HPB_NEED_INIT) {
-		INIT_WORK(&ufsf->ufshpb_init_work, ufshpb_init_handler);
-		schedule_work(&ufsf->ufshpb_init_work);
+                INIT_DELAYED_WORK(&ufsf->ufshpb_init_work, ufshpb_init_handler);
+                schedule_delayed_work(&ufsf->ufshpb_init_work,
+                                      msecs_to_jiffies(10000));
 	}
 }
 
