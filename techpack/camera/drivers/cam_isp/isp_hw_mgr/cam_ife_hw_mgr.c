@@ -6468,6 +6468,57 @@ static int cam_ife_hw_mgr_handle_hw_epoch(
 	return 0;
 }
 
+static int cam_ife_hw_mgr_handle_hw_dump_info(
+	void                                 *ctx,
+	void                                 *evt_info)
+{
+	struct cam_ife_hw_mgr_ctx     *ife_hw_mgr_ctx =
+		(struct cam_ife_hw_mgr_ctx *)ctx;
+	struct cam_isp_hw_event_info  *event_info =
+		(struct cam_isp_hw_event_info *)evt_info;
+	struct cam_ife_hw_mgr_res     *hw_mgr_res = NULL;
+	struct cam_isp_resource_node  *rsrc_node = NULL;
+	struct cam_hw_intf            *hw_intf;
+	uint32_t i, out_port_id, rc;
+
+	list_for_each_entry(hw_mgr_res,
+		&ife_hw_mgr_ctx->res_list_ife_src, list) {
+		for (i = 0; i < CAM_ISP_HW_SPLIT_MAX; i++) {
+			if (!hw_mgr_res->hw_res[i])
+				continue;
+
+			rsrc_node = hw_mgr_res->hw_res[i];
+			if (rsrc_node->res_id == CAM_ISP_HW_VFE_IN_CAMIF) {
+				hw_intf = rsrc_node->hw_intf;
+				if (hw_intf && hw_intf->hw_ops.process_cmd) {
+					rc = hw_intf->hw_ops.process_cmd(
+						hw_intf->hw_priv,
+						CAM_ISP_HW_CMD_CAMIF_DATA,
+						rsrc_node,
+						sizeof(
+						struct cam_isp_resource_node));
+				}
+			}
+		}
+	}
+
+	out_port_id = event_info->res_id & 0xFF;
+	hw_mgr_res =
+		&ife_hw_mgr_ctx->res_list_ife_out[out_port_id];
+	for (i = 0; i < CAM_ISP_HW_SPLIT_MAX; i++) {
+		if (!hw_mgr_res->hw_res[i])
+			continue;
+		hw_intf = hw_mgr_res->hw_res[i]->hw_intf;
+		if (hw_intf->hw_ops.process_cmd) {
+			rc = hw_intf->hw_ops.process_cmd(hw_intf->hw_priv,
+				CAM_ISP_HW_CMD_DUMP_BUS_INFO,
+				(void *)event_info,
+				sizeof(struct cam_isp_hw_event_info));
+		}
+	}
+	return rc;
+}
+
 static int cam_ife_hw_mgr_handle_hw_sof(
 	void                                 *ctx,
 	void                                 *evt_info)
@@ -6652,6 +6703,10 @@ static int cam_ife_hw_mgr_event_handler(
 
 	case CAM_ISP_HW_EVENT_DONE:
 		rc = cam_ife_hw_mgr_handle_hw_buf_done(priv, evt_info);
+		break;
+
+	case CAM_ISP_HW_EVENT_OVERFLOW_DEBUG_DATA:
+		rc = cam_ife_hw_mgr_handle_hw_dump_info(priv, evt_info);
 		break;
 
 	case CAM_ISP_HW_EVENT_ERROR:

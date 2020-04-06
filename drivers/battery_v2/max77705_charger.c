@@ -1630,10 +1630,27 @@ static void max77705_chg_set_mode_state(struct max77705_charger_data *charger, u
 			break;
 	}
 
+	if (state == SEC_BAT_CHG_MODE_OTG_ON &&
+		charger->cnfg00_mode == MAX77705_MODE_F_BUCK_CHG_BOOST_OTG_ON) {
+		/* W/A for shutdown problem when turn on OTG during wireless charging */
+		pr_info("%s : disable WCIN_SEL before change mode to 0xF\n", __func__);
+		max77705_update_reg(charger->i2c, MAX77705_CHG_REG_CNFG_12,
+			(0 << CHG_CNFG_12_WCINSEL_SHIFT), CHG_CNFG_12_WCINSEL_MASK);
+	}
+
 	pr_info("%s: current_mode(0x%x)\n", __func__, charger->cnfg00_mode);
 	max77705_update_reg(charger->i2c, MAX77705_CHG_REG_CNFG_00,
 				    charger->cnfg00_mode,
 				    CHG_CNFG_00_MODE_MASK);
+
+	if (state == SEC_BAT_CHG_MODE_OTG_ON &&
+		charger->cnfg00_mode == MAX77705_MODE_F_BUCK_CHG_BOOST_OTG_ON) {
+		/* W/A for shutdown problem when turn on OTG during wireless charging */
+		pr_info("%s : enable WCIN_SEL after change mode to 0xF\n", __func__);
+		max77705_update_reg(charger->i2c, MAX77705_CHG_REG_CNFG_12,
+			MAX77705_CHG_WCINSEL,CHG_CNFG_12_WCINSEL_MASK);
+	}
+
 	max77705_read_reg(charger->i2c, MAX77705_CHG_REG_CNFG_00, &reg);
 	reg &= 0xF;
 	pr_info("%s: CNFG_00 (0x%x)\n", __func__, reg);

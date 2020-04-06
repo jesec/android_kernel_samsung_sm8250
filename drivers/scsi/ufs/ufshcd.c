@@ -8409,10 +8409,15 @@ static void ufshcd_rls_handler(struct work_struct *work)
 	int ret = 0;
 	u32 mode;
 
-	hba = container_of(work, struct ufs_hba, rls_work);
+	hba = container_of(work, struct ufs_hba, rls_work.work);
 
 	pm_runtime_get_sync(hba->dev);
-	down_write(&hba->lock);
+	if (!down_write_trylock(&hba->lock)) {
+		queue_delayed_work(hba->recovery_wq, &hba->rls_work,
+			 msecs_to_jiffies(500));
+		pm_runtime_put_sync(hba->dev);
+		return;
+	}
 	ufshcd_scsi_block_requests(hba);
 	if (ufshcd_is_shutdown_ongoing(hba))
 		goto out;
@@ -8511,7 +8516,8 @@ static irqreturn_t ufshcd_update_uic_error(struct ufs_hba *hba)
 				}
 			}
 			if (!hba->full_init_linereset)
-				queue_work(hba->recovery_wq, &hba->rls_work);
+				queue_delayed_work(hba->recovery_wq,
+					 &hba->rls_work, 0);
 		}
 		retval |= IRQ_HANDLED;
 	}
@@ -12841,7 +12847,7 @@ int ufshcd_init(struct ufs_hba *hba, void __iomem *mmio_base, unsigned int irq)
 
 	INIT_WORK(&hba->eh_work, ufshcd_err_handler);
 	INIT_WORK(&hba->eeh_work, ufshcd_exception_event_handler);
-	INIT_WORK(&hba->rls_work, ufshcd_rls_handler);
+	INIT_DELAYED_WORK(&hba->rls_work, ufshcd_rls_handler);
 	INIT_WORK(&hba->fatal_mode_work, ufshcd_fatal_mode_handler);
 
 	/* Initialize UIC command mutex */
