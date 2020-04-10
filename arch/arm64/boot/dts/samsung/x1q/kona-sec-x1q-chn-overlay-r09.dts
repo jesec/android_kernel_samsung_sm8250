@@ -10280,6 +10280,7 @@
 				debounce-interval = <0xf>;
 				pinctrl-names = "default";
 				pinctrl-0 = <0x96>;
+				phandle = <0x1bd>;
 			};
 
 			certify_hall {
@@ -10291,6 +10292,7 @@
 				debounce-interval = <0xf>;
 				pinctrl-names = "default";
 				pinctrl-0 = <0x97>;
+				phandle = <0x1be>;
 			};
 		};
 	};
@@ -10359,7 +10361,7 @@
 				cirrus,gpio-indv-enable = <0x4>;
 				cirrus,gpio1-mode = <0x1>;
 				samsung,vib_type = "LINEAR_INDEX";
-				phandle = <0x1bd>;
+				phandle = <0x1bf>;
 			};
 		};
 	};
@@ -10370,7 +10372,7 @@
 		__overlay__ {
 
 			qupv3_se10_motor_i2c_pins {
-				phandle = <0x1be>;
+				phandle = <0x1c0>;
 
 				qupv3_se10_motor_i2c_active {
 					phandle = <0x99>;
@@ -11829,7 +11831,8 @@
 				ss,mafpc = <0xb2>;
 				samsung,mafpc_crc_pass_data = [5c e5];
 				samsung,support_poc_driver;
-				samsung,poc_image_size = <0x86912>;
+				samsung,poc_start_addr = <0x8f000>;
+				samsung,poc_image_size = <0x1c407>;
 				samsung,poc_enable_tx_cmds_revA = <0x29000000 0x3f0 0x5a5a2900 0x0 0x3f1f1a2>;
 				samsung,poc_disable_tx_cmds_revA = <0x29000000 0x3f0 0xa5a52900 0x0 0x3f1a5a5>;
 				samsung,poc_erase_delay_us = <0x61a80>;
@@ -11853,6 +11856,7 @@
 				samsung,poc_read_tx_cmds_revA = <0x29000000 0xec1 0x6b 0x0 0x4 0x1290000 0x2 0xc0032900 0x0 0x3b00cfb>;
 				samsung,poc_read_rx_cmds_revA = [06 01 00 00 00 00 01 fb 01 00];
 				samsung,poc_post_read_tx_cmds_revA = [29 00 00 00 00 00 02 c0 00];
+				samsung,poc_mca_check_rx_cmds_revA = [06 01 00 00 00 00 01 98 37 00];
 				samsung,flash_spi_wr_enable = <0x8000106>;
 				samsung,flash_spi_wr_page_program = [08 01 04 02 00 00 00 01 02 03 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 04 05 06 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 1e 5f];
 				samsung,flash_spi_wr_status_reg1 = [08 00 02 01 00];
@@ -11999,7 +12003,7 @@
 				samsung,lpm-power-control-supply-name = "vddr";
 				samsung,lpm-power-control-supply-min-voltage = <0x16e360>;
 				samsung,lpm-power-control-supply-max-voltage = <0x16e360>;
-				phandle = <0x1bf>;
+				phandle = <0x1c1>;
 
 				samsung,flash_gamma_tables {
 
@@ -12687,7 +12691,7 @@
 				qcom,dsi-select-clocks = "mux_byte_clk0", "mux_pixel_clk0", "src_byte_clk0", "src_pixel_clk0", "shadow_byte_clk0", "shadow_pixel_clk0";
 				qcom,platform-reset-gpio = <0xffffffff 0x52 0x0>;
 				qcom,platform-te-gpio = <0xffffffff 0x42 0x0>;
-				phandle = <0x1c0>;
+				phandle = <0x1c2>;
 			};
 		};
 	};
@@ -12698,7 +12702,7 @@
 		__overlay__ {
 
 			pmx_sde {
-				phandle = <0x1c1>;
+				phandle = <0x1c3>;
 
 				sde_dsi_active {
 					phandle = <0x1c>;
@@ -12765,7 +12769,7 @@
 			};
 
 			qupv3_se3_spi_pins {
-				phandle = <0x1c2>;
+				phandle = <0x1c4>;
 
 				qupv3_se3_spi_active {
 					phandle = <0xb3>;
@@ -12841,7 +12845,7 @@
 				status = "ok";
 				pinctrl-0 = <0xb3 0xb4>;
 				pinctrl-1 = <0xb5 0xb6>;
-				phandle = <0x1c3>;
+				phandle = <0x1c5>;
 
 				ddi_spi@0 {
 					compatible = "ss,ddi-spi";
@@ -12849,7 +12853,7 @@
 					spi-max-frequency = <0xc65d40>;
 					spi-mode = <0x0>;
 					spi-bpw = <0x8>;
-					phandle = <0x1c4>;
+					phandle = <0x1c6>;
 				};
 			};
 		};
@@ -12862,17 +12866,17 @@
 
 			qcom,dsi-display@2 {
 				label = "ss_dsi_panel_S6E3HAB_AMB623TS01_WQHD";
-				phandle = <0x1c5>;
+				phandle = <0x1c7>;
 			};
 
 			qcom,dsi-display@3 {
 				label = "ss_dsi_panel_S6E3HA9_AMB611WE01_WQHD";
-				phandle = <0x1c6>;
+				phandle = <0x1c8>;
 			};
 
 			qcom,dsi-display@0 {
 				label = "ss_dsi_panel_PBA_BOOTING_FHD";
-				phandle = <0x1c7>;
+				phandle = <0x1c9>;
 			};
 		};
 	};
@@ -13129,7 +13133,7 @@
 					regulator-max-microvolt = <0x1cafc0>;
 					qcom,init-voltage = <0x1b7740>;
 					qcom,init-mode = <0x4>;
-					phandle = <0x1c8>;
+					phandle = <0x1ca>;
 				};
 			};
 		};
@@ -13177,7 +13181,7 @@
 			};
 
 			qupv3_se7_spi_pins {
-				phandle = <0x1c9>;
+				phandle = <0x1cb>;
 
 				qupv3_se7_spi_active {
 					phandle = <0xc2>;
@@ -13498,7 +13502,7 @@
 				cam,ois = <0x1>;
 				cam,dual_open = <0x0>;
 				cam,valid = <0x1>;
-				phandle = <0x1ca>;
+				phandle = <0x1cc>;
 			};
 
 			qcom,cam-sensor1 {
@@ -13546,7 +13550,7 @@
 				cam,ois = <0x0>;
 				cam,dual_open = <0x0>;
 				cam,valid = <0x1>;
-				phandle = <0x1cb>;
+				phandle = <0x1cd>;
 			};
 
 			qcom,cam-sensor3 {
@@ -13598,7 +13602,7 @@
 				cam,ois = <0x1>;
 				cam,dual_open = <0x0>;
 				cam,valid = <0x1>;
-				phandle = <0x1cc>;
+				phandle = <0x1ce>;
 			};
 
 			qcom,cam-sensor12 {
@@ -13646,7 +13650,7 @@
 				cam,ois = <0x0>;
 				cam,dual_open = <0x0>;
 				cam,valid = <0x1>;
-				phandle = <0x1cd>;
+				phandle = <0x1cf>;
 			};
 
 			qcom,cam-sensor14 {
@@ -13698,7 +13702,7 @@
 				cam,ois = <0x1>;
 				cam,dual_open = <0x0>;
 				cam,valid = <0x1>;
-				phandle = <0x1ce>;
+				phandle = <0x1d0>;
 			};
 		};
 	};
@@ -13800,7 +13804,7 @@
 				cam,ois = <0x0>;
 				cam,dual_open = <0x0>;
 				cam,valid = <0x1>;
-				phandle = <0x1cf>;
+				phandle = <0x1d1>;
 			};
 
 			qcom,actuator0 {
@@ -13973,7 +13977,7 @@
 					regulator-max-microvolt = <0x2c4020>;
 					qcom,init-voltage = <0x2c4020>;
 					regulator-always-on;
-					phandle = <0x1d0>;
+					phandle = <0x1d2>;
 				};
 			};
 
@@ -14199,6 +14203,7 @@
 				pinctrl-0 = <0xfc 0xfd 0xfe 0xff>;
 				pinctrl-1 = <0x100 0x101 0x102 0x103>;
 				qcom,lpi-gpios;
+				qcom,tlmm-gpio = <0x93>;
 				phandle = <0x104>;
 			};
 		};
@@ -14691,6 +14696,8 @@
 		s2mpb03_l7 = "/fragment@131/__overlay__/i2c@2/s2mpb03@56/regulators/s2mpb03-ldo7";
 		gpio_keys = "/fragment@133/__overlay__/gpio_keys";
 		usb_noti = "/fragment@137/__overlay__/usb-notifier";
+		hall = "/fragment@137/__overlay__/hall";
+		certify_hall = "/fragment@137/__overlay__/certify_hall";
 		cs40l25a = "/fragment@140/__overlay__/cs40l25a@40";
 		qupv3_se10_motor_i2c_pins = "/fragment@141/__overlay__/qupv3_se10_motor_i2c_pins";
 		qupv3_se10_motor_i2c_active = "/fragment@141/__overlay__/qupv3_se10_motor_i2c_pins/qupv3_se10_motor_i2c_active";
