@@ -1,0 +1,79 @@
+name: Build STAGING Kernel
+
+on:
+  push:
+    branches:
+      - stock-10
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Fetch sources
+      uses: actions/checkout@v2
+      with:
+        path: sources
+
+    - name: Install dependencies
+      run: |
+       wget https://apt.llvm.org/llvm.sh
+       sudo bash llvm.sh 10
+       sudo ln -sf /usr/bin/clang-10 /usr/bin/clang
+       sudo ln -sf /usr/bin/ld.lld-10 /usr/bin/ld.lld
+       sudo ln -sf /usr/bin/llvm-nm-10 /usr/bin/llvm-nm
+       sudo ln -sf /usr/bin/llvm-ar-10 /usr/bin/llvm-ar
+       sudo ln -sf /usr/bin/llvm-objcopy-10 /usr/bin/llvm-objcopy
+       sudo ln -sf /usr/bin/llvm-objdump-10 /usr/bin/llvm-objdump
+       sudo apt-get install -y binutils-aarch64-linux-gnu gcc-aarch64-linux-gnu
+       sudo apt-get install -y libncurses-dev flex bison openssl libssl-dev dkms libelf-dev libudev-dev libpci-dev libiberty-dev autoconf
+
+    - name: Prepare ccache timestamp
+      id: ccache_cache_timestamp
+      shell: cmake -P {0}
+      run: |
+        string(TIMESTAMP current_date "%Y-%m-%d-%H;%M;%S" UTC)
+        message("::set-output name=timestamp::${current_date}")
+
+    - name: ccache cache files
+      uses: actions/cache@v1
+      with:
+        path: ~/.ccache
+        key: kernel-ccache-${{ steps.ccache_cache_timestamp.outputs.timestamp }}
+        restore-keys: |
+            kernel-ccache-
+
+    - name: Install ccache
+      run: |
+        wget http://azure.archive.ubuntu.com/ubuntu/pool/main/c/ccache/ccache_3.7.7-1_amd64.deb
+        sudo dpkg -i ccache_3.7.7-1_amd64.deb
+        sudo ln -sf /usr/bin/ccache /usr/local/bin/clang
+        ccache -M 4.5
+
+    - name: Run kernel build script
+      run: ./build_kernel.sh x1q chn openx
+      working-directory: ${{ github.workspace }}/sources
+
+    - name: 'Upload artifact: Kernel Configuration (.config)'
+      uses: actions/upload-artifact@v1
+      with:
+        name: .config
+        path: ${{ github.workspace }}/sources/out/.config
+
+    - name: 'Upload artifact: Kernel Image (Image)'
+      uses: actions/upload-artifact@v1
+      with:
+        name: Image
+        path: ${{ github.workspace }}/sources/out/Image
+
+    - name: 'Upload artifact: Device Tree Blob Image (dtb.img)'
+      uses: actions/upload-artifact@v1
+      with:
+        name: dtb.img
+        path: ${{ github.workspace }}/sources/out/dtb.img
+
+    - name: 'Upload artifact: Device Tree Blob Overlay Image (dtbo.img)'
+      uses: actions/upload-artifact@v1
+      with:
+        name: dtbo.img
+        path: ${{ github.workspace }}/sources/out/dtbo.img
