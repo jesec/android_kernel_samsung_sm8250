@@ -67,6 +67,16 @@ static int ccic_misc_open(struct inode *inode, struct file *file)
 		goto err;
 	}
 
+	/* stop direct charging(pps) for uvdm and wait latest psrdy done for 1 second */
+	if (c_dev->pps_control) {
+		if (!c_dev->pps_control(0)) {
+			_unlock(&c_dev->open_excl);
+			pr_err("%s - error : psrdy is not done\n", __func__);
+			ret = -EBUSY;
+			goto err;
+		}
+	}
+
 	/* check if there is some connection */
 	if (!c_dev->uvdm_ready()) {
 		_unlock(&c_dev->open_excl);
@@ -87,6 +97,9 @@ static int ccic_misc_close(struct inode *inode, struct file *file)
 	if (c_dev)
 		_unlock(&c_dev->open_excl);
 	c_dev->uvdm_close();
+	if (c_dev->pps_control)
+		c_dev->pps_control(1); /* start direct charging(pps) */
+
 	pr_info("%s - close success\n", __func__);
 	return 0;
 }

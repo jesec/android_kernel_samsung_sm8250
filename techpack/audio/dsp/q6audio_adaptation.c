@@ -431,6 +431,37 @@ int q6asm_set_dolby_atmos(struct audio_client *ac, long *param)
 	return rc;
 }
 
+int adm_set_sound_booster(int port_id, int copp_idx,
+			long *param)
+{
+	struct adm_param_soundbooster_t sb_param;
+	struct param_hdr_v3 param_hdr;
+	int ret  = 0;
+
+	pr_debug("%s: Enter\n", __func__);
+
+	memset(&param_hdr, 0, sizeof(param_hdr));
+	param_hdr.module_id = MODULE_ID_PP_SB;
+	param_hdr.instance_id = INSTANCE_ID_0;
+	param_hdr.param_id = PARAM_ID_PP_SB_PARAM;
+	param_hdr.param_size = sizeof(sb_param);
+	/* soundbooster paramerters */
+	sb_param.sb_enable = (uint32_t)param[0];
+
+	pr_info("%s: Enter, port_id(0x%x), copp_idx(%d), enable(%d)\n",
+		  __func__, port_id, copp_idx, sb_param.sb_enable);
+
+	ret = adm_pack_and_set_one_pp_param(port_id, copp_idx, param_hdr,
+					    (uint8_t *) &sb_param);
+	if (ret)
+		pr_err("%s: Failed to set sound booster params, err %d\n",
+		       __func__, ret);
+
+	pr_debug("%s: Exit, ret=%d\n", __func__, ret);
+
+	return ret;
+}
+
 int adm_set_sb_rotation(int port_id, int copp_idx,
 			long *param)
 {
@@ -482,6 +513,37 @@ int adm_set_sb_flatmotion(int port_id, int copp_idx,
 					    (uint8_t *) &cmd);
 	if (ret)
 		pr_err("%s: Failed to set sb flatmotion params, err %d\n",
+		       __func__, ret);
+
+	pr_debug("%s: Exit, ret=%d\n", __func__, ret);
+
+	return ret;
+}
+
+int adm_set_sb_volume(int port_id, int copp_idx,
+			long *param)
+{
+	struct adm_param_sb_volume cmd;
+	struct param_hdr_v3 param_hdr;
+	int ret  = 0;
+
+	pr_debug("%s: Enter\n", __func__);
+
+	memset(&param_hdr, 0, sizeof(param_hdr));
+	param_hdr.module_id = MODULE_ID_PP_SB;
+	param_hdr.instance_id = INSTANCE_ID_0;
+	param_hdr.param_id = PARAM_ID_PP_SB_PARAMS_VOLUME;
+	param_hdr.param_size = sizeof(cmd);
+	/* soundbooster paramerters */
+	cmd.sb_volume = (uint32_t)param[0];
+
+	pr_info("%s: Enter, port_id(0x%x), copp_idx(%d), volume(%d)\n",
+		  __func__, port_id, copp_idx, cmd.sb_volume);
+
+	ret = adm_pack_and_set_one_pp_param(port_id, copp_idx, param_hdr,
+					    (uint8_t *) &cmd);
+	if (ret)
+		pr_err("%s: Failed to set sound booster volume, err %d\n",
 		       __func__, ret);
 
 	pr_debug("%s: Exit, ret=%d\n", __func__, ret);
@@ -585,6 +647,12 @@ static int sec_audio_voice_tracking_info_get(struct snd_kcontrol *kcontrol,
 }
 
 static int sec_audio_myspace_get(struct snd_kcontrol *kcontrol,
+			struct snd_ctl_elem_value *ucontrol)
+{
+	return 0;
+}
+
+static int sec_audio_sound_boost_get(struct snd_kcontrol *kcontrol,
 			struct snd_ctl_elem_value *ucontrol)
 {
 	return 0;
@@ -724,36 +792,30 @@ done:
 static int sec_audio_sb_rx_vol_put(struct snd_kcontrol *kcontrol,
 			struct snd_ctl_elem_value *ucontrol)
 {
-	uint32_t gain_list[8];
 	int ret = 0;
-	struct audio_client *ac;
-	struct msm_pcm_routing_fdai_data fe_dai_map;
+	int port_id, copp_idx;
 
-	gain_list[0] = (uint32_t)ucontrol->value.integer.value[0];
-	gain_list[1] = (uint32_t)ucontrol->value.integer.value[0];
-	gain_list[2] = (uint32_t)ucontrol->value.integer.value[0];
+	port_id = afe_port.amp_rx_id;
+	ret = q6audio_get_copp_idx_from_port_id(port_id, SB_VOLUME, &copp_idx);
+	if (ret) {
+		pr_err("%s: Could not get copp idx for port_id=%d\n",
+			__func__, port_id);
 
-	mutex_lock(&asm_lock);
-	msm_pcm_routing_get_fedai_info(MSM_FRONTEND_DAI_MULTIMEDIA1,
-					SESSION_TYPE_RX, &fe_dai_map);
-
-	if ((fe_dai_map.strm_id <= 0) ||
-	    (fe_dai_map.strm_id > ASM_ACTIVE_STREAMS_ALLOWED)) {
-		pr_info("%s: audio session is not active : %d\n",
-			__func__, fe_dai_map.strm_id);
 		ret = -EINVAL;
 		goto done;
 	}
-	pr_info("%s: stream id %d, vol = %d\n",
-			__func__, fe_dai_map.strm_id, gain_list[0]);
 
-	ac = q6asm_get_audio_client(fe_dai_map.strm_id);
-	ret = q6asm_set_multich_gain(ac, 3/*num_channels*/, gain_list, NULL, true);
-	if (ret < 0)
-		pr_err("%s: rx vol cmd failed ret=%d\n", __func__, ret);
+	ret = adm_set_sb_volume(port_id, copp_idx,
+		(long *)ucontrol->value.integer.value);
+	if (ret) {
+		pr_err("%s: Error setting sound booster volume, err=%d\n",
+			  __func__, ret);
+
+		ret = -EINVAL;
+		goto done;
+	}
 
 done:
-	mutex_unlock(&asm_lock);
 	return ret;
 }
 
@@ -889,6 +951,37 @@ static int sec_audio_myspace_put(struct snd_kcontrol *kcontrol,
 	return ret;
 }
 
+static int sec_audio_sound_boost_put(struct snd_kcontrol *kcontrol,
+			struct snd_ctl_elem_value *ucontrol)
+{
+	int ret = 0;
+	int port_id, copp_idx;
+	enum sb_type func_type = ucontrol->value.integer.value[0];
+
+	port_id = afe_port.amp_rx_id;
+	ret = q6audio_get_copp_idx_from_port_id(port_id, func_type, &copp_idx);
+	if (ret) {
+		pr_err("%s: Could not get copp idx for port_id=%d\n",
+			__func__, port_id);
+
+		ret = -EINVAL;
+		goto done;
+	}
+
+	ret = adm_set_sound_booster(port_id, copp_idx,
+		(long *)ucontrol->value.integer.value);
+	if (ret) {
+		pr_err("%s: Error setting Sound Focus Params, err=%d\n",
+			  __func__, ret);
+
+		ret = -EINVAL;
+		goto done;
+	}
+
+done:
+	return ret;
+}
+
 static int sec_audio_upscaler_put(struct snd_kcontrol *kcontrol,
 			struct snd_ctl_elem_value *ucontrol)
 {
@@ -911,10 +1004,9 @@ static int sec_audio_sb_rotation_put(struct snd_kcontrol *kcontrol,
 {
 	int ret = 0;
 	int port_id, copp_idx;
-	int sb_rotation = ucontrol->value.integer.value[0];
 
 	port_id = afe_port.amp_rx_id;
-	ret = q6audio_get_copp_idx_from_port_id(port_id, 2, sb_rotation, &copp_idx);
+	ret = q6audio_get_copp_idx_from_port_id(port_id, SB_ROTATION, &copp_idx);
 	if (ret) {
 		pr_err("%s: Could not get copp idx for port_id=%d\n",
 			__func__, port_id);
@@ -942,10 +1034,9 @@ static int sec_audio_sb_flatmotion_put(struct snd_kcontrol *kcontrol,
 {
 	int ret = 0;
 	int port_id, copp_idx;
-	int sb_flatmotion = ucontrol->value.integer.value[0];
 
 	port_id = afe_port.amp_rx_id;
-	ret = q6audio_get_copp_idx_from_port_id(port_id, 3, sb_flatmotion, &copp_idx);
+	ret = q6audio_get_copp_idx_from_port_id(port_id, SB_FLATMOTION, &copp_idx);
 	if (ret) {
 		pr_err("%s: Could not get copp idx for port_id=%d\n",
 			__func__, port_id);
@@ -2670,6 +2761,9 @@ static const struct snd_kcontrol_new samsung_solution_mixer_controls[] = {
 				sec_audio_voice_tracking_info_put),
 	SOC_SINGLE_MULTI_EXT("MSP data", SND_SOC_NOPM, 0, 65535, 0, 1,
 				sec_audio_myspace_get, sec_audio_myspace_put),
+	SOC_SINGLE_MULTI_EXT("SB enable", SND_SOC_NOPM, 0, 65535, 0, 1,
+				sec_audio_sound_boost_get,
+				sec_audio_sound_boost_put),
 	SOC_SINGLE_MULTI_EXT("UPSCALER", SND_SOC_NOPM, 0, 65535, 0, 1,
 				sec_audio_upscaler_get, sec_audio_upscaler_put),
 	SOC_SINGLE_MULTI_EXT("SB rotation", SND_SOC_NOPM, 0, 65535, 0, 1,

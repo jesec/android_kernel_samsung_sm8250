@@ -87,7 +87,7 @@ static ssize_t rear_ssm_frame_id_show(struct device *dev,
 	uint32_t read_data = -1;
 	int rc = 0;
 
-	cam_sensor_ssm_i2c_read(0x1A0C, &read_data, CAMERA_SENSOR_I2C_TYPE_WORD, CAMERA_SENSOR_I2C_TYPE_BYTE);
+	cam_sensor_ssm_i2c_read(0x000A, &read_data, CAMERA_SENSOR_I2C_TYPE_WORD, CAMERA_SENSOR_I2C_TYPE_BYTE);
 
 	rc = scnprintf(buf, PAGE_SIZE, "%x\n", read_data);
 	if (rc)
@@ -110,18 +110,11 @@ static ssize_t rear_ssm_gmc_state_show(struct device *dev,
 	struct device_attribute *attr, char *buf)
 {
 	uint32_t read_data = -1;
-    uint32_t modified_data = -1;
 	int rc = 0;
 
-	cam_sensor_ssm_i2c_write(0x6000, 0x0005, CAMERA_SENSOR_I2C_TYPE_WORD, CAMERA_SENSOR_I2C_TYPE_WORD);
-	cam_sensor_ssm_i2c_write(0xFCFC, 0x2001, CAMERA_SENSOR_I2C_TYPE_WORD, CAMERA_SENSOR_I2C_TYPE_WORD);
-	cam_sensor_ssm_i2c_read(0x0E34, &read_data, CAMERA_SENSOR_I2C_TYPE_WORD, CAMERA_SENSOR_I2C_TYPE_WORD);
-	cam_sensor_ssm_i2c_write(0xFCFC, 0x4000, CAMERA_SENSOR_I2C_TYPE_WORD, CAMERA_SENSOR_I2C_TYPE_WORD);
-	cam_sensor_ssm_i2c_write(0x6000, 0x0085, CAMERA_SENSOR_I2C_TYPE_WORD, CAMERA_SENSOR_I2C_TYPE_WORD);
+	cam_sensor_ssm_i2c_read(0x9C6A, &read_data, CAMERA_SENSOR_I2C_TYPE_WORD, CAMERA_SENSOR_I2C_TYPE_BYTE);
 
-	modified_data = read_data >> 8;
-
-	rc = scnprintf(buf, PAGE_SIZE, "%x\n", modified_data);
+	rc = scnprintf(buf, PAGE_SIZE, "%x\n", read_data);
 	if (rc)
 		return rc;
 	return 0;
@@ -138,21 +131,21 @@ static ssize_t rear_ssm_gmc_state_store(struct device *dev,
 	return size;
 }
 
-static ssize_t rear_ssm_precheck_md_show(struct device *dev,
+static ssize_t rear_ssm_flicker_state_show(struct device *dev,
 	struct device_attribute *attr, char *buf)
 {
 	uint32_t read_data = -1;
 	int rc = 0;
 
-	cam_sensor_ssm_i2c_read(0xDB0E, &read_data, CAMERA_SENSOR_I2C_TYPE_WORD, CAMERA_SENSOR_I2C_TYPE_WORD);
+	cam_sensor_ssm_i2c_read(0x9C6B, &read_data, CAMERA_SENSOR_I2C_TYPE_WORD, CAMERA_SENSOR_I2C_TYPE_BYTE);
 
-	rc = scnprintf(buf, PAGE_SIZE, "%d\n", read_data);
+	rc = scnprintf(buf, PAGE_SIZE, "%x\n", read_data);
 	if (rc)
 		return rc;
 	return 0;
 }
 
-static ssize_t rear_ssm_precheck_md_store(struct device *dev,
+static ssize_t rear_ssm_flicker_state_store(struct device *dev,
 	struct device_attribute *attr, const char *buf, size_t size)
 {
 	int value = -1;
@@ -5296,8 +5289,8 @@ static DEVICE_ATTR(ssm_frame_id, S_IRUGO|S_IWUSR|S_IWGRP,
 	rear_ssm_frame_id_show, rear_ssm_frame_id_store);
 static DEVICE_ATTR(ssm_gmc_state, S_IRUGO|S_IWUSR|S_IWGRP,
 	rear_ssm_gmc_state_show, rear_ssm_gmc_state_store);
-static DEVICE_ATTR(ssm_precheck_md, S_IRUGO|S_IWUSR|S_IWGRP,
-	rear_ssm_precheck_md_show, rear_ssm_precheck_md_store);
+static DEVICE_ATTR(ssm_flicker_state, S_IRUGO|S_IWUSR|S_IWGRP,
+	rear_ssm_flicker_state_show, rear_ssm_flicker_state_store);
 #endif
 
 static DEVICE_ATTR(rear_camtype, S_IRUGO, rear_type_show, NULL);
@@ -5787,9 +5780,9 @@ static int __init cam_sysfs_init(void)
 			dev_attr_ssm_gmc_state.attr.name);
 		ret = -ENODEV;
 	}
-	if (device_create_file(cam_dev_ssm, &dev_attr_ssm_precheck_md) < 0) {
+	if (device_create_file(cam_dev_ssm, &dev_attr_ssm_flicker_state) < 0) {
 		pr_err("Failed to create device file!(%s)!\n",
-			dev_attr_ssm_precheck_md.attr.name);
+			dev_attr_ssm_flicker_state.attr.name);
 		ret = -ENODEV;
 	}
 #endif

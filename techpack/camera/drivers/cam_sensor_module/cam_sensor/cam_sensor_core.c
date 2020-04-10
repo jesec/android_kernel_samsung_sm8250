@@ -20,6 +20,10 @@
 #define STREAM_OFF_ADDR   0x100
 #endif
 
+#if defined(CONFIG_CAMERA_SSM_I2C_ENV)
+struct cam_sensor_ctrl_t *g_s_ctrl_ssm;
+#endif
+
 #if defined(CONFIG_SAMSUNG_REAR_TOF) || defined(CONFIG_SAMSUNG_FRONT_TOF)
 struct cam_sensor_ctrl_t *g_s_ctrl_tof;
 int check_pd_ready;
@@ -1169,6 +1173,9 @@ int32_t cam_sensor_driver_cmd(struct cam_sensor_ctrl_t *s_ctrl,
 		}
 #endif
 
+#if defined(CONFIG_CAMERA_SSM_I2C_ENV)
+		g_s_ctrl_ssm = s_ctrl;
+#endif
 		if (copy_to_user(u64_to_user_ptr(cmd->handle),
 			&sensor_acq_dev,
 			sizeof(struct cam_sensor_acquire_dev))) {
@@ -1894,3 +1901,62 @@ void cam_sensor_tof_i2c_write(uint32_t addr, uint32_t data,
 }
 #endif
 
+#if defined(CONFIG_CAMERA_SSM_I2C_ENV)
+void cam_sensor_ssm_i2c_read(uint32_t addr, uint32_t *data,
+	enum camera_sensor_i2c_type addr_type,
+	enum camera_sensor_i2c_type data_type)
+{
+	int rc = 0;
+
+	if (g_s_ctrl_ssm)
+	{
+		rc = camera_io_dev_read(&g_s_ctrl_ssm->io_master_info, addr,
+			data, addr_type, data_type);
+
+		if (rc < 0)
+			CAM_ERR(CAM_SENSOR, "Failed to read 0x%x", addr);
+
+		CAM_ERR(CAM_SENSOR, "[SSM_I2C] ssm_i2c_read, addr : 0x%x, data : 0x%x", addr, *data);
+	}
+	else
+	{
+		CAM_ERR(CAM_SENSOR, "ssm i2c is not ready!");
+	}
+}
+
+void cam_sensor_ssm_i2c_write(uint32_t addr, uint32_t data,
+	enum camera_sensor_i2c_type addr_type,
+	enum camera_sensor_i2c_type data_type)
+{
+	int rc = 0;
+
+	struct cam_sensor_i2c_reg_setting  i2c_reg_settings;
+	struct cam_sensor_i2c_reg_array    i2c_reg_array;
+
+	CAM_INFO(CAM_SENSOR, "[SSM_I2C] ssm_i2c_write, addr : 0x%x, data : 0x%x", addr, data);
+
+	if (g_s_ctrl_ssm)
+	{
+		i2c_reg_settings.addr_type = addr_type;
+		i2c_reg_settings.data_type = data_type;
+		i2c_reg_settings.size = 1;
+		i2c_reg_settings.delay = 0;
+		i2c_reg_array.reg_addr = addr;
+		i2c_reg_array.reg_data = data;
+		i2c_reg_array.delay = 0;
+		i2c_reg_array.data_mask = 0x0;
+		i2c_reg_settings.reg_setting = &i2c_reg_array;
+
+		rc = camera_io_dev_write(&g_s_ctrl_ssm->io_master_info,
+			&i2c_reg_settings);
+
+		if (rc < 0)
+			CAM_ERR(CAM_SENSOR, "Failed to i2c write");
+
+	}
+	else
+	{
+		CAM_ERR(CAM_SENSOR, "ssm i2c is not ready!");
+	}
+}
+#endif

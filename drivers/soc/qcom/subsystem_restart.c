@@ -47,6 +47,7 @@ static int enable_debug;
 module_param(enable_debug, int, 0644);
 
 static bool silent_ssr;
+static bool adsp_silent_ssr;
 
 /* The maximum shutdown timeout is the product of MAX_LOOPS and DELAY_MS. */
 #define SHUTDOWN_ACK_MAX_LOOPS	100
@@ -1257,6 +1258,11 @@ int subsystem_restart_dev(struct subsys_device *dev)
 		dev->restart_level = RESET_SUBSYS_COUPLED;
 		silent_ssr = false;
 	}
+	/* force adsp silent ssr */
+	if (!strncmp(name, "adsp", 4) && adsp_silent_ssr) {
+		dev->restart_level = RESET_SUBSYS_COUPLED;
+		adsp_silent_ssr = false;
+	}
 	/*
 	 * If a system reboot/shutdown is underway, ignore subsystem errors.
 	 * However, print a message so that we know that a subsystem behaved
@@ -1367,6 +1373,12 @@ void subsys_set_modem_silent_ssr(bool value)
 	silent_ssr = value;
 }
 EXPORT_SYMBOL(subsys_set_modem_silent_ssr);
+
+void subsys_set_adsp_silent_ssr(bool value)
+{
+	adsp_silent_ssr = value;
+}
+EXPORT_SYMBOL(subsys_set_adsp_silent_ssr);
 
 void subsys_set_crash_status(struct subsys_device *dev,
 				enum crash_status crashed)

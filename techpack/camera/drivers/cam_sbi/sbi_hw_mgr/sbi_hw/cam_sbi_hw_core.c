@@ -289,8 +289,9 @@ static void cam_sbi_hw_update_wdma_address(struct cam_hw_info *sbi_hw)
 		SBI_REG_WRITE(dma->dma_wdma2_baseaddr,    ssm->preview_timestamp);
 		SBI_REG_WRITE(dma->dma_wdma2_baseaddr_hr, record_timestamp);
 
-		if (ssm->total_written_frames < ssm->max_frames)
+		if (ssm->total_written_frames < ssm->max_frames) {
 			INC_TNUM(ssm->t1_num, 1, ssm->max_num);
+		}
 	}
 }
 
@@ -370,7 +371,7 @@ static void cam_sbi_hw_init_dma_address(struct cam_hw_info *sbi_hw)
 	ssm->total_written_frames = 0;
 	ssm->total_read_frames = 0;
 	ssm->frame_drop_count = 0;
-	ssm->before_cue_num = (ssm->ssm_framerate == 0) ? 6 : 3;
+	ssm->before_cue_num = 7;
 
 	/* reset address queue */
 	CAM_DBG(CAM_SBI, "Reset WDMA0/WDMA2 and RDMA1/RDMA2 address queues");
@@ -453,8 +454,7 @@ void cam_sbi_hw_configure_mem_base_addr_for_ssm(struct cam_hw_info *sbi_hw)
 	CAM_DBG(CAM_SBI, "ssm->batch_size             = %d", ssm->batch_size);
 	CAM_DBG(CAM_SBI, "ssm->max_frames             = %d", ssm->max_frames);
 	CAM_DBG(CAM_SBI, "ssm->cue_option             = %d", ssm->cue_option);
-	CAM_DBG(CAM_SBI, "ssm->ssm_framerate          = %d:%d",
-		ssm->ssm_framerate, (ssm->ssm_framerate == 0)? 960 : 480);
+	CAM_DBG(CAM_SBI, "ssm->ssm_framerate          = %d", ssm->ssm_framerate);
 
 	cam_sbi_hw_init_dma_address(sbi_hw);
 
@@ -2089,13 +2089,25 @@ int cam_sbi_hw_process_cmd(void *hw_priv, uint32_t cmd_type, void *cmd_args,
 		ssm->is_ssm_mode = true;
 
 		if ((ssm->cue_option != cmd->cue_option) ||
-			((ssm->cue_option == CAM_SBI_CUE_OPTION_AUTO) &&
-			 (ssm->ssm_framerate != cmd->ssm_framerate))) {
-			CAM_INFO(CAM_SBI, "Update ssm_info is_ssm:%d cue_option:%d framerate:%d",
-					cmd->is_ssm, cmd->cue_option, cmd->ssm_framerate);
-			ssm->cue_option = cmd->cue_option;
-			ssm->ssm_framerate = cmd->ssm_framerate;
-			ssm->cue_option_changed = true;
+			(ssm->ssm_framerate != cmd->ssm_framerate)) {
+
+			if (cmd->ssm_framerate > 0) {
+				ssm->ssm_framerate = cmd->ssm_framerate;
+
+				ssm->max_frames = cmd->ssm_maxframes + (CAM_SBI_ADDR_FIFO_Q_NUM * 8);// 8 = batch num
+
+				CAM_INFO(CAM_SBI, "real ssm->ssm_framerate:%d, max_frames:%d",
+					ssm->ssm_framerate, ssm->max_frames);
+			}
+
+			// cue option update
+			if ((ssm->cue_option != cmd->cue_option) &&
+				(((ssm->cue_option > 0) && (cmd->cue_option == 0)) ||
+				((ssm->cue_option == 0) && (cmd->cue_option > 0))))
+			{
+				ssm->cue_option = cmd->cue_option;
+				ssm->cue_option_changed = true;
+			}
 		}
 	}
 	break;

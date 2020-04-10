@@ -21,9 +21,9 @@
 #include <linux/mutex.h>
 
 #define POC_IMG_ADDR	(0x000000)
-#define POC_ERASE_SECTOR	(4096)
-#define POC_ERASE_32KB		(32768)
-#define POC_ERASE_64KB		(65536)
+#define POC_ERASE_4KB	(4096)
+#define POC_ERASE_32KB	(32768)
+#define POC_ERASE_64KB	(65536)
 
 #define DEBUG_POC_CNT 4096
 

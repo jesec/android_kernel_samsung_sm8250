@@ -2854,7 +2854,7 @@ void max77705_usbc_check_sysmsg(struct max77705_usbc_platform_data *usbc_data, u
 				msg_maxim("SYSMSG PWR NEGO ERR : VDM request retry");
 			}
 		} else { /* unstructured vdm */
-			usbc_data->uvdm_error = 1;
+			usbc_data->uvdm_error = -EACCES;
 			msg_maxim("SYSMSG PWR NEGO ERR : UVDM request error - dir : %d",
 				usbc_data->is_in_sec_uvdm_out);
 			if (usbc_data->is_in_sec_uvdm_out == DIR_OUT)
@@ -3689,6 +3689,7 @@ static int max77705_usbc_probe(struct platform_device *pdev)
 	init_completion(&usbc_data->resume_wait);
 	init_completion(&usbc_data->op_completion);
 	init_completion(&usbc_data->ccic_sysfs_completion);
+	init_completion(&usbc_data->psrdy_wait);
 	init_waitqueue_head(&usbc_data->host_turn_on_wait_q);
 	usbc_data->host_turn_on_wait_time = 20;
 	usbc_data->op_wait_queue = create_singlethread_workqueue("op_wait");
@@ -3750,6 +3751,7 @@ static int max77705_usbc_probe(struct platform_device *pdev)
 	pccic_data->misc_dev->uvdm_write = max77705_sec_uvdm_out_request_message;
 	pccic_data->misc_dev->uvdm_ready = max77705_sec_uvdm_ready;
 	pccic_data->misc_dev->uvdm_close = max77705_sec_uvdm_close;
+	pccic_data->misc_dev->pps_control = max77705_sec_pps_control;
 #endif
 	/* Register ccic handler to ccic notifier block list */
 	ret = usb_external_notify_register(&usbc_data->usb_external_notifier_nb,

@@ -1435,8 +1435,17 @@ void sdhci_send_command(struct sdhci_host *host, struct mmc_command *cmd)
 		timeout += nsecs_to_jiffies(host->data_timeout);
 	else if (!cmd->data && cmd->busy_timeout > 9000)
 		timeout += DIV_ROUND_UP(cmd->busy_timeout, 1000) * HZ + HZ;
+#if defined(CONFIG_HDM)
+	else {
+		if (!cmd->data)
+			timeout += 1 * HZ;
+		else
+			timeout += 10 * HZ;
+	}
+#else
 	else
 		timeout += 10 * HZ;
+#endif
 	sdhci_mod_timer(host, cmd->mrq, timeout);
 
 	if (cmd->data)
@@ -2954,6 +2963,19 @@ static void sdhci_card_event(struct mmc_host *mmc)
 
 		sdhci_error_out_mrqs(host, -ENOMEDIUM);
 	}
+#if defined(CONFIG_HDM)
+	else if (present) {
+		sdhci_writel(host, 0, SDHCI_SIGNAL_ENABLE);
+		sdhci_reinit(host);
+		sdhci_set_power(host, mmc->ios.power_mode, mmc->ios.vdd);
+		if (host->ops->set_clock)
+			host->ops->set_clock(host, mmc->ios.clock);
+
+		/* to set PWRMASK */
+		if (host->ops->card_event)
+			host->ops->card_event(host);
+	}
+#endif
 
 	spin_unlock_irqrestore(&host->lock, flags);
 }
@@ -3170,6 +3192,10 @@ static void sdhci_timeout_data_timer(struct timer_list *t)
 	spin_lock_irqsave(&host->lock, flags);
 
 	if (host->data || host->data_cmd ||
+#if defined(CONFIG_HDM)
+	    (host->cmd && host->cmd->mrq && host->cmd->mrq->data &&
+	     (host->cmd == host->cmd->mrq->data->stop)) ||
+#endif
 	    (host->cmd && sdhci_data_line_cmd(host->cmd))) {
 		host->mmc->err_stats[MMC_ERR_REQ_TIMEOUT]++;
 		pr_err("%s: Timeout waiting for hardware interrupt.\n",
@@ -4615,6 +4641,10 @@ int sdhci_setup_host(struct sdhci_host *host)
 				(curr << SDHCI_MAX_CURRENT_180_SHIFT);
 		}
 	}
+
+#if defined(CONFIG_HDM)
+	host->caps |= (SDHCI_CAN_VDD_300 | SDHCI_CAN_VDD_180);
+#endif
 
 	if (host->caps & SDHCI_CAN_VDD_330) {
 		ocr_avail |= MMC_VDD_32_33 | MMC_VDD_33_34;

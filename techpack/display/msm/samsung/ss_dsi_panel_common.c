@@ -3815,7 +3815,11 @@ static void ss_panel_parse_dt(struct samsung_display_driver_data *vdd)
 		rc = of_property_read_u32(np, "samsung,poc_image_size", tmp);
 		vdd->poc_driver.image_size = (!rc ? tmp[0] : 0);
 
-		LCD_INFO("[POC] image_size (%d)\n", vdd->poc_driver.image_size);
+		rc = of_property_read_u32(np, "samsung,poc_start_addr", tmp);
+		vdd->poc_driver.start_addr = (!rc ? tmp[0] : 0);
+
+		LCD_INFO("[POC] start_addr (%d) image_size (%d)\n",
+			vdd->poc_driver.start_addr, vdd->poc_driver.image_size);
 
 		/* ERASE */
 		rc = of_property_read_u32(np, "samsung,poc_erase_delay_us", tmp);
@@ -6178,6 +6182,17 @@ void ss_panel_vrr_switch(struct vrr_info *vrr)
 	}
 
 	vrr->skip_vrr_in_brightness = false;
+
+	/* In OFF/LPM mode, skip VRR change, and just save VRR values.
+	 * After normal display on, it will applied in brightness setting.
+	 */
+	if (ss_is_panel_off(vdd) || ss_is_panel_lpm(vdd)) {
+		LCD_ERR("error: panel_state(%d), skip VRR (save VRR state)\n",
+				vdd->panel_state);
+		vrr->cur_refresh_rate = target_rr;
+		vrr->cur_sot_hs_mode = target_hs;
+		goto brr_done;
+	}
 
 	mutex_lock(&vrr->brr_lock);
 	vrr->brr_mode = ss_get_brr_mode(vdd);

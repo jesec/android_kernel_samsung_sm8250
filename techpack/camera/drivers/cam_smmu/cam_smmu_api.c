@@ -188,6 +188,7 @@ struct cam_dma_buff_info {
 	int ion_fd;
 	size_t len;
 	size_t phys_len;
+	struct timespec64 ts;
 };
 
 struct cam_sec_buff_info {
@@ -393,6 +394,9 @@ static void cam_smmu_dump_cb_info(int idx, bool dump_enable)
 	size_t shared_reg_len = 0, io_reg_len = 0;
 	size_t shared_free_len = 0, io_free_len = 0;
 	uint32_t i = 0;
+	uint64_t ms, tmp, hrs, min, sec;
+	struct timespec64 *ts = NULL;
+	struct timespec64 current_ts;
 	struct cam_context_bank_info *cb_info =
 		&iommu_cb_set.cb_info[idx];
 
@@ -406,9 +410,15 @@ static void cam_smmu_dump_cb_info(int idx, bool dump_enable)
 		io_free_len = io_reg_len - cb_info->io_mapping_size;
 	}
 
+	ktime_get_real_ts64(&(current_ts));
+	tmp = current_ts.tv_sec;
+	ms = (current_ts.tv_nsec) / 1000000;
+	sec = do_div(tmp, 60);
+	min = do_div(tmp, 60);
+	hrs = do_div(tmp, 24);
 	CAM_ERR(CAM_SMMU,
-		"********** Context bank dump for %s **********",
-		cb_info->name[0]);
+		"********** %llu:%llu:%llu:%llu Context bank dump for %s **********",
+		hrs, min, sec, ms, cb_info->name);
 	CAM_ERR(CAM_SMMU,
 		"Usage: shared_usage=%u io_usage=%u shared_free=%u io_free=%u",
 		(unsigned int)cb_info->shared_mapping_size,
@@ -420,9 +430,15 @@ static void cam_smmu_dump_cb_info(int idx, bool dump_enable)
 		list_for_each_entry_safe(mapping, mapping_temp,
 			&iommu_cb_set.cb_info[idx].smmu_buf_list, list) {
 			i++;
+			ts = &mapping->ts;
+			tmp = ts->tv_sec;
+			ms = (ts->tv_nsec) / 1000000;
+			sec = do_div(tmp, 60);
+			min = do_div(tmp, 60);
+			hrs = do_div(tmp, 24);
 			CAM_ERR(CAM_SMMU,
-				"%u. ion_fd=%d start=0x%x end=0x%x len=%u region=%d",
-				i, mapping->ion_fd, (void *)mapping->paddr,
+				"%llu:%llu:%llu:%llu: %u ion_fd=%d start=0x%x end=0x%x len=%u region=%d",
+				hrs, min, sec, ms, i, mapping->ion_fd, (void *)mapping->paddr,
 				((uint64_t)mapping->paddr +
 				(uint64_t)mapping->len),
 				(unsigned int)mapping->len,
@@ -594,6 +610,24 @@ void cam_smmu_set_client_page_fault_handler(int handle,
 				handle, iommu_cb_set.cb_info[idx].name);
 	}
 	mutex_unlock(&iommu_cb_set.cb_info[idx].lock);
+}
+
+void cam_smmu_check_user_mappings()
+{
+	int idx;
+
+	for (idx = 0; idx < iommu_cb_set.cb_num; idx++) {
+		mutex_lock(&iommu_cb_set.cb_info[idx].lock);
+		CAM_INFO(CAM_SMMU, "check mappings for cb %d %s",
+			idx, iommu_cb_set.cb_info[idx].name[0]);
+		if (!list_empty_careful(&iommu_cb_set.cb_info[idx].smmu_buf_list)) {
+			CAM_ERR(CAM_SMMU, "UMD %s buffer list is not clean",
+				iommu_cb_set.cb_info[idx].name[0]);
+			cam_smmu_print_user_list(idx);
+			cam_smmu_clean_user_buffer_list(idx);
+		}
+		mutex_unlock(&iommu_cb_set.cb_info[idx].lock);
+	}
 }
 
 void cam_smmu_unset_client_page_fault_handler(int handle, void *token)
@@ -1969,6 +2003,7 @@ static int cam_smmu_map_buffer_and_add_to_list(int idx, int ion_fd,
 	}
 
 	mapping_info->ion_fd = ion_fd;
+	ktime_get_real_ts64(&mapping_info->ts);
 	/* add to the list */
 	list_add(&mapping_info->list,
 		&iommu_cb_set.cb_info[idx].smmu_buf_list);
@@ -1997,6 +2032,7 @@ static int cam_smmu_map_kernel_buffer_and_add_to_list(int idx,
 
 	mapping_info->ion_fd = -1;
 
+	ktime_get_real_ts64(&mapping_info->ts);
 	/* add to the list */
 	list_add(&mapping_info->list,
 		&iommu_cb_set.cb_info[idx].smmu_buf_kernel_list);
@@ -2077,15 +2113,28 @@ static int cam_smmu_unmap_buf_and_remove_from_list(
 }
 
 static enum cam_smmu_buf_state cam_smmu_check_fd_in_list(int idx,
-	int ion_fd, dma_addr_t *paddr_ptr, size_t *len_ptr)
+	int ion_fd, dma_addr_t *paddr_ptr, size_t *len_ptr, size_t *dma_buf_len)
 {
 	struct cam_dma_buff_info *mapping;
+	struct timespec64 *ts = NULL;
+	uint64_t ms, tmp, hrs, min, sec;
 
 	list_for_each_entry(mapping,
 		&iommu_cb_set.cb_info[idx].smmu_buf_list, list) {
 		if (mapping->ion_fd == ion_fd) {
 			*paddr_ptr = mapping->paddr;
 			*len_ptr = mapping->len;
+			*dma_buf_len = mapping->buf->size;
+			ts = &mapping->ts;
+			tmp = ts->tv_sec;
+			ms = (ts->tv_nsec) / 1000000;
+			sec = do_div(tmp, 60);
+			min = do_div(tmp, 60);
+			hrs = do_div(tmp, 24);
+			CAM_DBG(CAM_SMMU,
+				"Mapping found ts %llu:%llu:%llu:%llu paddr 0x%p len %llu dma_len %llu",
+				hrs, min, sec, ms, (void *)mapping->paddr,
+				mapping->len, *dma_buf_len);
 			return CAM_SMMU_BUFF_EXIST;
 		}
 	}
@@ -2816,6 +2865,7 @@ int cam_smmu_map_user_iova(int handle, int ion_fd, bool dis_delayed_unmap,
 	size_t *len_ptr, enum cam_smmu_region_id region_id)
 {
 	int idx, rc = 0;
+	size_t dma_len = 0;
 	enum cam_smmu_buf_state buf_state;
 	enum dma_data_direction dma_dir;
 
@@ -2853,11 +2903,12 @@ int cam_smmu_map_user_iova(int handle, int ion_fd, bool dis_delayed_unmap,
 		goto get_addr_end;
 	}
 
-	buf_state = cam_smmu_check_fd_in_list(idx, ion_fd, paddr_ptr, len_ptr);
+	buf_state = cam_smmu_check_fd_in_list(idx, ion_fd, paddr_ptr, len_ptr, &dma_len);
 	if (buf_state == CAM_SMMU_BUFF_EXIST) {
 		CAM_ERR(CAM_SMMU,
-			"fd:%d already in list idx:%d, handle=%d, give same addr back",
-			ion_fd, idx, handle);
+			"fd:%d already in list idx:%d, handle=%d len=%llu dma_len=%llu, give same addr back",
+			ion_fd, idx, handle, *len_ptr, dma_len);
+		*len_ptr = dma_len;
 		rc = -EALREADY;
 		goto get_addr_end;
 	}
@@ -2942,6 +2993,7 @@ int cam_smmu_get_iova(int handle, int ion_fd,
 	dma_addr_t *paddr_ptr, size_t *len_ptr)
 {
 	int idx, rc = 0;
+	size_t dma_buf_size = 0;
 	enum cam_smmu_buf_state buf_state;
 
 	if (!paddr_ptr || !len_ptr) {
@@ -2981,7 +3033,7 @@ int cam_smmu_get_iova(int handle, int ion_fd,
 		goto get_addr_end;
 	}
 
-	buf_state = cam_smmu_check_fd_in_list(idx, ion_fd, paddr_ptr, len_ptr);
+	buf_state = cam_smmu_check_fd_in_list(idx, ion_fd, paddr_ptr, len_ptr, &dma_buf_size);
 	if (buf_state == CAM_SMMU_BUFF_NOT_EXIST) {
 		CAM_ERR(CAM_SMMU, "ion_fd:%d not in the mapped list", ion_fd);
 		rc = -EINVAL;

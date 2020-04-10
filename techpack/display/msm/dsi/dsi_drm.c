@@ -504,6 +504,54 @@ static bool dsi_bridge_mode_fixup(struct drm_bridge *bridge,
 					adjusted_mode->vrefresh,
 					!!(adjusted_mode->type & DRM_MODE_TYPE_USERDEF) ? "HS" : "NM");
 			}
+		} else if (!drm_mode_equal(cur_mode, adjusted_mode)) {
+			/* In case of that
+			 * - display power state is changing,
+			 * - splash is enabled yet, or
+			 * - VRR, POMS, or DYN_CLK is set,
+			 * it will apply display_mode in dsi_display_mode() function without set DMS flag.
+			 *
+			 * But, Samsung VRR should apply target VRR mode in vrr->cur_refresh_rate.
+			 * Brightness setting will apply current VRR mode, and apply it to UB.
+			 * So, in this corner case, just save target VRR mode in vrr->cur_refresh_rate.
+			 *
+			 * Even it is only multi resolution scenario, not VRR scenario,
+			 * it should save resolution for VRR, and it is harmless to save
+			 * current and target refresh rate to intended refresh rate.
+			 */
+			struct samsung_display_driver_data *vdd = display->panel->panel_private;
+			struct vrr_info *vrr = &vdd->vrr;
+
+			vrr->cur_refresh_rate = vrr->target_refresh_rate =
+				adjusted_mode->vrefresh;
+			vrr->cur_sot_hs_mode = vrr->target_sot_hs_mode =
+				!!(adjusted_mode->type & DRM_MODE_TYPE_USERDEF);
+
+			vrr->cur_h_active = vrr->target_h_active =
+				adjusted_mode->hdisplay;
+			vrr->cur_v_active  = vrr->target_v_active =
+				adjusted_mode->vdisplay;
+
+			SS_XLOG(cur_mode->vrefresh,
+				!!(cur_mode->type & DRM_MODE_TYPE_USERDEF),
+				adjusted_mode->vrefresh,
+				!!(adjusted_mode->type & DRM_MODE_TYPE_USERDEF),
+				crtc_state->active_changed, display->is_cont_splash_enabled);
+
+			LCD_INFO("DMS: switch mode %s(%dx%d@%d%s) -> %s(%dx%d@%d%s) " \
+					"during active_changed(%d) or splash(%d)\n",
+				cur_mode->name,
+				cur_mode->hdisplay,
+				cur_mode->vdisplay,
+				cur_mode->vrefresh,
+				!!(cur_mode->type & DRM_MODE_TYPE_USERDEF) ? "HS" : "NM",
+				adjusted_mode->name,
+				adjusted_mode->hdisplay,
+				adjusted_mode->vdisplay,
+				adjusted_mode->vrefresh,
+				!!(adjusted_mode->type & DRM_MODE_TYPE_USERDEF) ? "HS" : "NM",
+				crtc_state->active_changed,
+				display->is_cont_splash_enabled);
 		}
 #else
 			dsi_mode.dsi_mode_flags |= DSI_MODE_FLAG_DMS;

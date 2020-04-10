@@ -47,6 +47,13 @@ config SEC_LOG_LAST_KMSG
 	help
 	  This option enables /proc/last_kmsg support.
 
+config SEC_LOG_STORE_LAST_KMSG
+	bool "store sec log when power off or reboot"
+	default n
+	depends on SEC_LOG_LAST_KMSG
+	help
+	  store sec log when power off or reboot.
+
 config SEC_DEBUG_SCHED_LOG
 	bool "Samsung Scheduler Logging Feature"
 	default n

@@ -22331,68 +22331,68 @@ done:
 }
 
 #ifdef CONFIG_SEC_SND_ADAPTATION
-int q6audio_determine_curr_copp_idx(int stream, int func_type, int sb_val)
+static bool q6audio_determine_curr_copp_idx(int stream, enum sb_type func_type)
 {
-	int ret = 0;
+	int ret = false;
+
+	pr_info("%s: stream(%d) sb_type(%d)\n",
+		__func__,
+		stream, func_type);
 
 	switch (func_type) {
-	case 1: /* Sound Booster */
-		if (sb_val == 1) { /* offload or FM ASM loopback */
-			if ((stream == MSM_FRONTEND_DAI_MULTIMEDIA4) ||
-			    (stream == MSM_FRONTEND_DAI_MULTIMEDIA6)) {
-				pr_info("%s: offload/fm case. stream=%d\n",
-					__func__, stream);
-				ret = 1;
-			}
-		} else if (sb_val == 2) { /* ringtone */
-			if (stream == MSM_FRONTEND_DAI_MULTIMEDIA11) {
-				pr_info("%s: ringtone case. stream=%d\n",
-					__func__, stream);
-				ret = 1;
-			}
-		} else if (sb_val == 0) { /* disable */
-			if ((stream == MSM_FRONTEND_DAI_MULTIMEDIA4) ||
-			    (stream == MSM_FRONTEND_DAI_MULTIMEDIA6) ||
-			    (stream == MSM_FRONTEND_DAI_MULTIMEDIA11)) {
-				pr_info("%s: disable sound booster. stream=%d\n",
-					__func__, stream);
-				ret = 1;
-			}
-		}
+	case SB_DISABLE:
+		if ((stream == MSM_FRONTEND_DAI_MULTIMEDIA4) ||
+		    (stream == MSM_FRONTEND_DAI_MULTIMEDIA6) ||
+		    (stream == MSM_FRONTEND_DAI_MULTIMEDIA11))
+			ret = true;
 		break;
-	case 2: /* rotation */
+	case SB_ENABLE:
+		if ((stream == MSM_FRONTEND_DAI_MULTIMEDIA4) ||
+		    (stream == MSM_FRONTEND_DAI_MULTIMEDIA6))
+			ret = true;
+		break;
+	case SB_RINGTONE:
+		if (stream == MSM_FRONTEND_DAI_MULTIMEDIA11)
+			ret = true;
+		break;
+	case SB_REARLEFT:
+	case SB_REARRIGHT:
+	case SB_FRONTLEFT:
+	case SB_FRONTRIGHT:
+		if (stream == MSM_FRONTEND_DAI_MULTIMEDIA1)
+			ret = true;
+		break;
+	case SB_ROTATION:
 		if ((stream == MSM_FRONTEND_DAI_MULTIMEDIA1) ||
 		    (stream == MSM_FRONTEND_DAI_MULTIMEDIA4) ||
-		    (stream == MSM_FRONTEND_DAI_MULTIMEDIA6)) {
-			pr_info("%s: sb rotation case. stream=%d\n",
-				__func__, stream);
-			ret = 1;
-		}
+		    (stream == MSM_FRONTEND_DAI_MULTIMEDIA6))
+			ret = true;
 		break;
-	case 3: /* flatmotion */
-		if (stream == MSM_FRONTEND_DAI_MULTIMEDIA11) {
-			pr_info("%s: sb flatmotion case. stream=%d\n",
-				__func__, stream);
-			ret = 1;
-		}
+	case SB_FLATMOTION:
+		if (stream == MSM_FRONTEND_DAI_MULTIMEDIA11)
+			ret = true;
+		break;
+	case SB_VOLUME:
+		if (stream == MSM_FRONTEND_DAI_MULTIMEDIA1)
+			ret = true;
 		break;
 	default:
-		pr_debug("%s: unknown function\n", __func__);
+		pr_info("%s: unknown function type\n", __func__);
 		break;
 	}
 
 	return ret;
 }
 
-int q6audio_get_copp_idx_from_port_id(int port_id, int func_type,
-					int sb_val, int *copp_idx)
+int q6audio_get_copp_idx_from_port_id(int port_id, enum sb_type func_type,
+					int *copp_idx)
 {
 	int i, idx, be_idx;
 	int ret = 0;
 	unsigned long copp;
 
-	pr_info("%s: port_id=0x%x, func_type=%d, sb=%d\n",
-		__func__, port_id, func_type, sb_val);
+	pr_info("%s: port_id=0x%x, func_type=%d\n",
+		__func__, port_id, func_type);
 
 	ret = q6audio_validate_port(port_id);
 	if (ret < 0) {
@@ -22420,8 +22420,7 @@ int q6audio_get_copp_idx_from_port_id(int port_id, int func_type,
 			copp = session_copp_map[i]
 				[SESSION_TYPE_RX][be_idx];
 			if (test_bit(idx, &copp)) {
-				if (q6audio_determine_curr_copp_idx
-					(i, func_type, sb_val))
+				if (q6audio_determine_curr_copp_idx(i, func_type))
 					break;
 			}
 		}

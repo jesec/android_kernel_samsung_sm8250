@@ -1024,6 +1024,14 @@ static struct dsi_panel_cmd_set *__ss_vrr(struct samsung_display_driver_data *vd
 			vrr->target_sot_hs_mode ? "HS" : "NM",
 			vrr_cmds->cmds[VRR_CMDID_AID].msg.tx_buf[1]);
 
+	if (panel->cur_mode->timing.refresh_rate != vdd->vrr.target_refresh_rate ||
+			panel->cur_mode->timing.sot_hs_mode != vdd->vrr.target_sot_hs_mode)
+		LCD_ERR("VRR: unmatched RR mode (%dhz%s / %dhz%s)\n",
+				panel->cur_mode->timing.refresh_rate,
+				panel->cur_mode->timing.sot_hs_mode ? "HS" : "NM",
+				vdd->vrr.target_refresh_rate,
+				vdd->vrr.target_sot_hs_mode ? "HS" : "NM");
+
 	return vrr_cmds;
 }
 
@@ -2135,7 +2143,7 @@ static int poc_spi_get_status(struct samsung_display_driver_data *vdd)
 		return ret;
 	}
 
-	LCD_ERR("status : 0x%02x \n", rxbuf[0]);
+	//LCD_ERR("status : 0x%02x \n", rxbuf[0]);
 
 	return rxbuf[0];
 }
@@ -2145,6 +2153,8 @@ static int spi_write_enable_wait(struct samsung_display_driver_data *vdd)
 	struct spi_device *spi_dev;
 	int ret = 0;
 	int status = 0;
+	int try_cnt = 0;
+	int total_try = 35000;
 
 	if (IS_ERR_OR_NULL(vdd)) {
 		LCD_ERR("no vdd\n");
@@ -2160,18 +2170,61 @@ static int spi_write_enable_wait(struct samsung_display_driver_data *vdd)
 
 	/* BUSY check */
 	while ((status = poc_spi_get_status(vdd)) & 0x01) {
+		try_cnt++;
+		LCD_DEBUG("status(0x%02x) is busy.. wait!! cnt %d\n", status, try_cnt);
 		usleep_range(20, 30);
-		LCD_ERR("status(0x%02x) is busy.. wait!!\n", status);
+		if (try_cnt > total_try) {
+			LCD_ERR("BUSY wait error!! (0x%02x)\n", status);
+			return -EIO;
+		}
 	}
 
 	/* Write write enable */
 	ss_spi_sync(spi_dev, NULL, TX_WRITE_ENABLE);
 
 	/* WEL check */
+	try_cnt = 0;
 	while (!((status = poc_spi_get_status(vdd)) & 0x02)) {
-		LCD_ERR("Not ready to write (0x%02x).. wait!!\n", status);
+		LCD_DEBUG("Not ready to write (0x%02x).. wait!! cnt %d\n", status, try_cnt);
 		ss_spi_sync(spi_dev, NULL, TX_WRITE_ENABLE);
 		usleep_range(20, 30);
+		if (try_cnt++ > total_try) {
+			LCD_ERR("WEL wait error!! (0x%02x)\n", status);
+			return -EIO;
+		}
+	}
+
+	return ret;
+}
+
+static int spi_wait_status_reg1(struct samsung_display_driver_data *vdd, int wait_val)
+{
+	struct spi_device *spi_dev;
+	int ret = 0;
+	int status = 0;
+	int try_cnt = 0;
+	int total_try = 35000;
+
+	if (IS_ERR_OR_NULL(vdd)) {
+		LCD_ERR("no vdd\n");
+		return -EINVAL;
+	}
+
+	spi_dev = vdd->spi_dev;
+
+	if (IS_ERR_OR_NULL(spi_dev)) {
+		LCD_ERR("no spi_dev\n");
+		return -EINVAL;
+	}
+
+	/* STATUS REG1 check */
+	while ((status = poc_spi_get_status(vdd)) != wait_val) {
+		LCD_DEBUG("status(0x%02x) .. wait!!\n", status);
+		usleep_range(20, 30);
+		if (try_cnt++ > total_try) {
+			LCD_ERR("STATUS1 wait error!! (0x%02x) (0x%02x)\n", status, wait_val);
+			return -EIO;
+		}
 	}
 
 	return ret;
@@ -2205,12 +2258,23 @@ static int poc_spi_erase(struct samsung_display_driver_data *vdd, u32 erase_pos,
 	}
 
 	/* start */
-	spi_write_enable_wait(vdd);
-	ss_spi_sync(spi_dev, NULL, TX_WRITE_STATUS_REG1);
-	spi_write_enable_wait(vdd);
+	ret = spi_write_enable_wait(vdd);
+	if (ret)
+		goto err;
 	ss_spi_sync(spi_dev, NULL, TX_WRITE_STATUS_REG2);
+	ret = spi_write_enable_wait(vdd);
+	if (ret)
+		goto err;
+	ss_spi_sync(spi_dev, NULL, TX_WRITE_STATUS_REG1);
 
-	spi_write_enable_wait(vdd);
+	/* 0x00 : check QE is disabled (use single spi mode) */
+	ret = spi_wait_status_reg1(vdd, 0x00);
+	if (ret)
+		goto err;
+
+	ret = spi_write_enable_wait(vdd);
+	if (ret)
+		goto err;
 
 	/* spi erase */
 	if (erase_size == POC_ERASE_64KB)
@@ -2228,11 +2292,20 @@ static int poc_spi_erase(struct samsung_display_driver_data *vdd, u32 erase_pos,
 	ss_spi_sync(spi_dev, NULL, TX_ERASE);
 
 	/* end */
-	spi_write_enable_wait(vdd);
-	ss_spi_sync(spi_dev, NULL, TX_WRITE_STATUS_REG1_END);
-	spi_write_enable_wait(vdd);
+	ret = spi_write_enable_wait(vdd);
+	if (ret)
+		goto err;
 	ss_spi_sync(spi_dev, NULL, TX_WRITE_STATUS_REG2_END);
+	ret = spi_write_enable_wait(vdd);
+	if (ret)
+		goto err;
+	ss_spi_sync(spi_dev, NULL, TX_WRITE_STATUS_REG1_END);
 
+	/* 0x5C : check QE is enabled (use quad spi mode) and block protection */
+	ret = spi_wait_status_reg1(vdd, 0x5C);
+	if (ret)
+		goto err;
+err:
 	return ret;
 }
 
@@ -2241,7 +2314,7 @@ static int poc_spi_write(struct samsung_display_driver_data *vdd, u8 *data, u32 
 	struct spi_device *spi_dev;
 	struct ddi_spi_cmd_set *cmd_set = NULL;
 	int pos, ret = 0;
-	int last_pos, image_size, loop_cnt, poc_w_size;
+	int last_pos, image_size, loop_cnt, poc_w_size, start_addr;
 
 	if (IS_ERR_OR_NULL(vdd)) {
 		LCD_ERR("no vdd\n");
@@ -2259,6 +2332,7 @@ static int poc_spi_write(struct samsung_display_driver_data *vdd, u8 *data, u32 
 	last_pos = write_pos + write_size;
 	poc_w_size = vdd->poc_driver.write_data_size;
 	loop_cnt = vdd->poc_driver.write_loop_cnt;
+	start_addr = vdd->poc_driver.start_addr;
 
 	cmd_set = ss_get_spi_cmds(vdd, TX_WRITE_PAGE_PROGRAM);
 	if (cmd_set == NULL) {
@@ -2270,10 +2344,19 @@ static int poc_spi_write(struct samsung_display_driver_data *vdd, u8 *data, u32 
 		write_pos, write_size, last_pos, poc_w_size);
 
 	/* start */
-	spi_write_enable_wait(vdd);
-	ss_spi_sync(spi_dev, NULL, TX_WRITE_STATUS_REG1);
-	spi_write_enable_wait(vdd);
+	ret = spi_write_enable_wait(vdd);
+	if (ret)
+		goto err;
 	ss_spi_sync(spi_dev, NULL, TX_WRITE_STATUS_REG2);
+	ret = spi_write_enable_wait(vdd);
+	if (ret)
+		goto err;
+	ss_spi_sync(spi_dev, NULL, TX_WRITE_STATUS_REG1);
+
+	/* 0x00 : check QE is disabled (use single spi mode) */
+	ret = spi_wait_status_reg1(vdd, 0x00);
+	if (ret)
+		goto err;
 
 	for (pos = write_pos; pos < last_pos; ) {
 		if (unlikely(atomic_read(&vdd->poc_driver.cancel))) {
@@ -2284,9 +2367,11 @@ static int poc_spi_write(struct samsung_display_driver_data *vdd, u8 *data, u32 
 
 		cmd_set->tx_addr = pos;
 
-		memcpy(&cmd_set->tx_buf[4], &data[pos], cmd_set->tx_size - 3);
+		memcpy(&cmd_set->tx_buf[4], &data[pos - start_addr], cmd_set->tx_size - 3);
 
-		spi_write_enable_wait(vdd);
+		ret = spi_write_enable_wait(vdd);
+		if (ret)
+			goto err;
 
 		/* spi write */
 		ss_spi_sync(spi_dev, NULL, TX_WRITE_PAGE_PROGRAM);
@@ -2302,11 +2387,20 @@ cancel_poc:
 	}
 
 	/* end */
-	spi_write_enable_wait(vdd);
-	ss_spi_sync(spi_dev, NULL, TX_WRITE_STATUS_REG1_END);
-	spi_write_enable_wait(vdd);
+	ret = spi_write_enable_wait(vdd);
+	if (ret)
+		goto err;
 	ss_spi_sync(spi_dev, NULL, TX_WRITE_STATUS_REG2_END);
+	ret = spi_write_enable_wait(vdd);
+	if (ret)
+		goto err;
+	ss_spi_sync(spi_dev, NULL, TX_WRITE_STATUS_REG1_END);
 
+	/* 0x5C : check QE is enabled (use quad spi mode) and block protection */
+	ret = spi_wait_status_reg1(vdd, 0x5C);
+	if (ret)
+		goto err;
+err:
 	return ret;
 }
 
@@ -2356,13 +2450,13 @@ static int poc_spi_read(struct samsung_display_driver_data *vdd, u8 *buf, u32 re
 	ret = ss_spi_sync(spi_dev, rbuf, RX_DATA);
 
 	/* copy to buf */
-	memcpy(&buf[read_pos], rbuf, read_size);
+	memcpy(&buf[read_pos - vdd->poc_driver.start_addr], rbuf, read_size);
 
 	/* rx_buf reset */
 	memset(rbuf, 0, read_size);
 
 	if (!(read_pos % DEBUG_POC_CNT))
-		LCD_INFO("buf[%d] = 0x%x\n", read_pos, buf[read_pos]);
+		LCD_INFO("buf[%d] = 0x%x\n", read_pos, buf[read_pos - vdd->poc_driver.start_addr]);
 
 cancel_poc:
 	if (rbuf)

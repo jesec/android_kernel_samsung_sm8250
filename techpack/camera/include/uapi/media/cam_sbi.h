@@ -187,7 +187,7 @@ struct cam_sbi_cmd_buf_type_init {
 	uint32_t custom_info;
 	int32_t scratch_buf_hdl;
 	int32_t preview_buffer_len;
-	int32_t record_buffer_len;
+	int64_t record_buffer_len;
 	int32_t sensor_width;
 	int32_t sensor_height;
 	int32_t frame_size;
@@ -196,7 +196,7 @@ struct cam_sbi_cmd_buf_type_init {
 	bool is_ssm;
 	uint32_t umd_node_type;    // 0 : normal, 10 : SSM recording
 	uint32_t cue_option;       // 0 : maunual, 1 : auto
-	uint32_t ssm_framerate;    // 0 : 960, 1 : 480
+	uint32_t ssm_framerate;    // 960 = 960 fps, 480 = 480 fps
 	uint64_t clock_rate;
 
 	//TODO: should be modify register set buffer size
@@ -232,7 +232,8 @@ struct cam_sbi_cmd_buf_type_1 {
 	struct cam_sbi_bw_config_v2 bw_config_v2;
 	bool is_ssm;
 	uint32_t cue_option;       // 0 : maunual, 1 : auto
-	uint32_t ssm_framerate;    // 0 : 960, 1 : 480
+	uint32_t ssm_framerate;    // 960 = 960 fps, 480 = 480 fps
+	uint32_t ssm_maxframes;
 	uint32_t task2_action;
 
 	uint32_t register_set_size;

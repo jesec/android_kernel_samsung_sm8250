@@ -125,6 +125,16 @@ enum usb_certi_type {
 	USB_CERTI_HOST_RESOURCE_EXCEED,
 };
 
+enum usb_err_type {
+	USB_ERR_ABNORMAL_RESET,
+};
+
+enum usb_current_state {
+	NOTIFY_USB_SUSPENDED,
+	NOTIFY_USB_UNCONFIGURED,
+	NOTIFY_USB_CONFIGURED,
+};
+
 struct otg_notify {
 	int vbus_detect_gpio;
 	int redriver_en_gpio;
@@ -166,6 +176,7 @@ extern const char *event_string(enum otg_notify_events event);
 extern const char *status_string(enum otg_notify_event_status status);
 extern void send_usb_mdm_uevent(void);
 extern void send_usb_certi_uevent(int usb_certi);
+extern void send_usb_err_uevent(int usb_certi, int mode);
 extern int usb_check_whitelist_for_mdm(struct usb_device *dev);
 extern int usb_otg_restart_accessory(struct usb_device *dev);
 extern void send_otg_notify(struct otg_notify *n,
@@ -207,6 +218,7 @@ static inline const char *status_string(enum otg_notify_event_status status)
 			{return NULL; }
 static inline void send_usb_mdm_uevent(void) {}
 static inline void send_usb_certi_uevent(int usb_certi) {}
+static inline void send_usb_err_uevent(int usb_certi, int mode) {}
 static inline int usb_check_whitelist_for_mdm(struct usb_device *dev)
 			{return 0; }
 static inline int usb_otg_restart_accessory(struct usb_device *dev)

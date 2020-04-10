@@ -174,8 +174,8 @@ int cam_mipi_select_mipi_by_rf_channel(const struct cam_mipi_channel *channel_li
 			compare_rf_channel);
 
 	if (result == NULL) {
-		CAM_INFO(CAM_SENSOR, "[adaptive_mipi] searching result : not found, use default mipi clock");
-		return 0; /* return default mipi clock index = 0 */
+		CAM_INFO(CAM_SENSOR, "[adaptive_mipi] searching result : not found");
+		return -1;
 	}
 
 	CAM_INFO(CAM_SENSOR, "[adaptive_mipi] searching result : [0x%x,(%d-%d)]->(%d)",
@@ -286,6 +286,16 @@ void cam_mipi_update_info(struct cam_sensor_ctrl_t *s_ctrl)
 		} else {
 			CAM_ERR(CAM_SENSOR, "sensor setting size is out of bound");
 		}
+	}
+#if defined(CONFIG_MACH_X1Q_USA_SINGLE)
+	else if (s_ctrl->sensordata->slave_info.sensor_id == SENSOR_ID_IMX555) {
+		CAM_INFO(CAM_SENSOR, "Change imx555 default adaptive mipi value for x1 mmw project");
+		s_ctrl->mipi_clock_index_new = 1;
+	}
+#endif
+	else {
+		CAM_INFO(CAM_SENSOR, "not found rf channel, use default mipi clock");
+		s_ctrl->mipi_clock_index_new = 0;
 	}
 
 #if defined(CONFIG_MACH_Y2Q_KOR_SINGLE)

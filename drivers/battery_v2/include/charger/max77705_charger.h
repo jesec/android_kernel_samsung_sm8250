@@ -430,6 +430,8 @@ struct max77705_charger_data {
 	int float_voltage;
 	u8 *snkcap_data;
 
+	int misalign_cnt;
+
 	sec_charger_platform_data_t *pdata;
 };
 
