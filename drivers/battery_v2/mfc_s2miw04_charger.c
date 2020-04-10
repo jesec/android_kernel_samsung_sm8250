@@ -1081,10 +1081,8 @@ static bool is_sleep_mode_active(int pad_id)
 static void mfc_mis_align(struct mfc_charger_data *charger)
 {
 	pr_info("%s: Reset M0\n", __func__);
-	if (charger->pdata->cable_type == SEC_WIRELESS_PAD_WPC_HV ||
-		charger->pdata->cable_type == SEC_WIRELESS_PAD_PMA)
-		/* reset MCU of MFC IC */
-		mfc_set_cmd_l_reg(charger, MFC_CMD_MCU_RESET_MASK, MFC_CMD_MCU_RESET_MASK);
+	/* reset MCU of MFC IC */
+	mfc_set_cmd_l_reg(charger, MFC_CMD_MCU_RESET_MASK, MFC_CMD_MCU_RESET_MASK);
 }
 
 static bool mfc_tx_function_check(struct mfc_charger_data *charger)

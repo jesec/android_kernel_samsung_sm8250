@@ -19,6 +19,37 @@
 static struct cam_mem_table tbl;
 static atomic_t cam_mem_mgr_state = ATOMIC_INIT(CAM_MEM_MGR_UNINITIALIZED);
 
+static void cam_mem_mgr_print_tbl()
+{
+	int i;
+	uint64_t ms, tmp, hrs, min, sec;
+	struct timespec64 *ts =  NULL;
+	struct timespec64 current_ts;
+
+	ktime_get_real_ts64(&(current_ts));
+	tmp = current_ts.tv_sec;
+	ms = (current_ts.tv_nsec) / 1000000;
+	sec = do_div(tmp, 60);
+	min = do_div(tmp, 60);
+	hrs = do_div(tmp, 24);
+
+	CAM_INFO(CAM_MEM, "***%llu:%llu:%llu:%llu Mem mgr table dump***",
+		hrs, min, sec, ms);
+	for (i = 1; i < CAM_MEM_BUFQ_MAX; i++) {
+			ts = &tbl.bufq[i].timestamp;
+			tmp = ts->tv_sec;
+			ms = (ts->tv_nsec) / 1000000;
+			sec = do_div(tmp, 60);
+			min = do_div(tmp, 60);
+			hrs = do_div(tmp, 24);
+			CAM_INFO(CAM_MEM,
+				"%llu:%llu:%llu:%llu idx %d fd %d size %llu active %s",
+				hrs, min, sec, ms, i, tbl.bufq[i].fd,
+				tbl.bufq[i].len, tbl.bufq[i].active ? "true" : "false");
+	}
+
+}
+
 static int cam_mem_util_get_dma_dir(uint32_t flags)
 {
 	int rc = -EINVAL;
@@ -141,6 +172,7 @@ int cam_mem_mgr_init(void)
 
 	atomic_set(&cam_mem_mgr_state, CAM_MEM_MGR_INITIALIZED);
 
+	cam_smmu_check_user_mappings();
 	return 0;
 }
 
@@ -151,12 +183,14 @@ static int32_t cam_mem_get_slot(void)
 	mutex_lock(&tbl.m_lock);
 	idx = find_first_zero_bit(tbl.bitmap, tbl.bits);
 	if (idx >= CAM_MEM_BUFQ_MAX || idx <= 0) {
+        CAM_ERR(CAM_MEM, "cam_mem_get_slot failed : idx :%d ",idx);
 		mutex_unlock(&tbl.m_lock);
 		return -ENOMEM;
 	}
 
 	set_bit(idx, tbl.bitmap);
 	tbl.bufq[idx].active = true;
+	ktime_get_real_ts64(&(tbl.bufq[idx].timestamp));
 	mutex_init(&tbl.bufq[idx].q_lock);
 	mutex_unlock(&tbl.m_lock);
 
@@ -168,6 +202,7 @@ static void cam_mem_put_slot(int32_t idx)
 	mutex_lock(&tbl.m_lock);
 	mutex_lock(&tbl.bufq[idx].q_lock);
 	tbl.bufq[idx].active = false;
+	memset(&tbl.bufq[idx].timestamp, 0, sizeof(struct timespec64));
 	mutex_unlock(&tbl.bufq[idx].q_lock);
 	mutex_destroy(&tbl.bufq[idx].q_lock);
 	clear_bit(idx, tbl.bitmap);
@@ -644,8 +679,14 @@ int cam_mem_mgr_alloc_and_map(struct cam_mem_mgr_alloc_cmd *cmd)
 
 		if (rc) {
 			CAM_ERR(CAM_MEM,
-				"Failed in map_hw_va, flags=0x%x, fd=%d, region=%d, num_hdl=%d, rc=%d",
-				cmd->flags, fd, region, cmd->num_hdl, rc);
+			    "Failed in map_hw_va, [Size cmdlen=%llu dma %llu smmu %llu], flags=0x%x, fd=%d, region=%d, num_hdl=%d, rc=%d",
+			    cmd->len, dmabuf->size, len, cmd->flags, fd, region,
+				cmd->num_hdl, rc);
+			if (rc == -EALREADY) {
+				if ((size_t)dmabuf->size != len)
+					rc = -EBADR;
+				cam_mem_mgr_print_tbl();
+			}
 			goto map_hw_fail;
 		}
 	}
@@ -746,9 +787,15 @@ int cam_mem_mgr_map(struct cam_mem_mgr_map_cmd *cmd)
 			CAM_SMMU_REGION_IO);
 		if (rc) {
 			CAM_ERR(CAM_MEM,
-				"Failed in map_hw_va, flags=0x%x, fd=%d, region=%d, num_hdl=%d, rc=%d",
-				cmd->flags, cmd->fd, CAM_SMMU_REGION_IO,
+			    "Failed in map_hw_va, flags=0x%x, fd=%d, [Size smmu %llu dma %llu], region=%d, num_hdl=%d, rc=%d",
+			    cmd->flags, cmd->fd, len, dmabuf->size, CAM_SMMU_REGION_IO,
 				cmd->num_hdl, rc);
+			if (rc == -EALREADY) {
+				if ((size_t)dmabuf->size != len) {
+					rc = -EBADR;
+					cam_mem_mgr_print_tbl();
+				}
+			}
 			goto map_fail;
 		}
 	}
@@ -784,6 +831,7 @@ int cam_mem_mgr_map(struct cam_mem_mgr_map_cmd *cmd)
 	cmd->out.buf_handle = tbl.bufq[idx].buf_handle;
 	cmd->out.vaddr = 0;
 
+	cmd->out.reserved = len;
 	CAM_DBG(CAM_MEM,
 		"fd=%d, flags=0x%x, num_hdl=%d, idx=%d, buf handle=%x, len=%zu",
 		cmd->fd, cmd->flags, cmd->num_hdl, idx, cmd->out.buf_handle,
@@ -909,6 +957,7 @@ static int cam_mem_mgr_cleanup_table(void)
 		mutex_destroy(&tbl.bufq[i].q_lock);
 	}
 
+	cam_smmu_check_user_mappings();
 	bitmap_zero(tbl.bitmap, tbl.bits);
 	/* We need to reserve slot 0 because 0 is invalid */
 	set_bit(0, tbl.bitmap);
@@ -1003,6 +1052,7 @@ static int cam_mem_util_unmap(int32_t idx,
 	tbl.bufq[idx].len = 0;
 	tbl.bufq[idx].num_hdl = 0;
 	tbl.bufq[idx].active = false;
+	memset(&tbl.bufq[idx].timestamp, 0, sizeof(struct timespec64));
 	mutex_unlock(&tbl.bufq[idx].q_lock);
 	mutex_destroy(&tbl.bufq[idx].q_lock);
 	clear_bit(idx, tbl.bitmap);

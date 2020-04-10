@@ -1107,3 +1107,19 @@ void ss_image_logging_update(uint32_t plane_addr, int width, int height, int src
 
 	spin_unlock(&image_logging_lock);
 }
+
+void ss_xlog_vrr_change_in_drm_ioctl(int vrefresh, int sot_hs_mode)
+{
+	struct samsung_display_driver_data *vdd = ss_get_vdd(PRIMARY_DISPLAY_NDX);
+
+	if (vdd->vrr.target_refresh_rate != vrefresh || vdd->vrr.target_sot_hs_mode != sot_hs_mode) {
+		LCD_INFO("switch mode: drm_ioctl: %dhz%s -> %dhz%s\n",
+				vdd->vrr.target_refresh_rate,
+				vdd->vrr.target_sot_hs_mode ? "HS" : "NM",
+				vrefresh,
+				sot_hs_mode ? "HS" : "NM");
+		SS_XLOG(vdd->vrr.target_refresh_rate,
+				vdd->vrr.target_sot_hs_mode,
+				vrefresh, sot_hs_mode);
+	}
+}

@@ -637,7 +637,8 @@
 
 		samsung,support_poc_driver;
 
-		samsung,poc_image_size = <551186>;		/* 551,186 bytes */
+		samsung,poc_start_addr = <585728>;		/* 0x8F000 */
+		samsung,poc_image_size = <115719>;		/* 115,719 bytes */
 
 		samsung,poc_enable_tx_cmds_revA = [
 			29 00 00 00 00 00 03 F0 5A 5A
@@ -768,6 +769,8 @@
 		samsung,poc_post_read_tx_cmds_revA = [
 			29 00 00 00 00 00 02 C0 00				/* PGM Disable */
 		];
+
+		samsung,poc_mca_check_rx_cmds_revA	= [06 01 00 00 00 00 01 98 37 00];	/* MCA Check read 55bytes */
 
 #if 0 // TODO: comment out after fix below poc cmds...
 		samsung,poc_status_rx_cmds_revA		= [06 01 00 00 00 00 01 EB 04 00];	/* EB Check  */

@@ -8439,10 +8439,15 @@ static void ufshcd_rls_handler(struct work_struct *work)
 	int ret = 0;
 	u32 mode;
 
-	hba = container_of(work, struct ufs_hba, rls_work);
+	hba = container_of(work, struct ufs_hba, rls_work.work);
 
 	pm_runtime_get_sync(hba->dev);
-	down_write(&hba->lock);
+	if (!down_write_trylock(&hba->lock)) {
+		queue_delayed_work(hba->recovery_wq, &hba->rls_work,
+			 msecs_to_jiffies(500));
+		pm_runtime_put_sync(hba->dev);
+		return;
+	}
 	ufshcd_scsi_block_requests(hba);
 	if (ufshcd_is_shutdown_ongoing(hba))
 		goto out;
@@ -8541,7 +8546,8 @@ static irqreturn_t ufshcd_update_uic_error(struct ufs_hba *hba)
 				}
 			}
 			if (!hba->full_init_linereset)
-				queue_work(hba->recovery_wq, &hba->rls_work);
+				queue_delayed_work(hba->recovery_wq,
+					 &hba->rls_work, 0);
 		}
 		retval |= IRQ_HANDLED;
 	}
@@ -11328,6 +11334,7 @@ static int ufshcd_set_dev_pwr_mode(struct ufs_hba *hba,
 	struct scsi_device *sdp;
 	unsigned long flags;
 	int ret;
+	int retries = 0;
 
 	spin_lock_irqsave(hba->host->host_lock, flags);
 	sdp = hba->sdev_ufs_device;
@@ -11362,19 +11369,23 @@ static int ufshcd_set_dev_pwr_mode(struct ufs_hba *hba,
 
 	cmd[4] = pwr_mode << 4;
 
-	/*
-	 * Current function would be generally called from the power management
-	 * callbacks hence set the RQF_PM flag so that it doesn't resume the
-	 * already suspended childs.
-	 */
-	ret = scsi_execute(sdp, cmd, DMA_NONE, NULL, 0, NULL, &sshdr,
-			UFS_START_STOP_TIMEOUT, 2, 0, RQF_PM, NULL);
-	if (ret) {
-		sdev_printk(KERN_WARNING, sdp,
-			    "START_STOP failed for power mode: %d, result %x\n",
-			    pwr_mode, ret);
-		if (driver_byte(ret) & DRIVER_SENSE)
-			scsi_print_sense_hdr(sdp, NULL, &sshdr);
+	for (retries = 0; retries < 3; retries++) {
+		/*
+		 * Current function would be generally called from the power management
+		 * callbacks hence set the RQF_PM flag so that it doesn't resume the
+		 * already suspended childs.
+		 */
+		ret = scsi_execute(sdp, cmd, DMA_NONE, NULL, 0, NULL, &sshdr,
+				UFS_START_STOP_TIMEOUT, 2, 0, RQF_PM, NULL);
+		if (ret) {
+			sdev_printk(KERN_WARNING, sdp,
+					"START_STOP failed for power mode: %d, result %x, retries : %d\n",
+					pwr_mode, ret, retries);
+			if (driver_byte(ret) & DRIVER_SENSE)
+				scsi_print_sense_hdr(sdp, NULL, &sshdr);
+		} else {
+			break;
+		}
 	}
 
 	if (!ret)
@@ -12752,7 +12763,7 @@ static void ufs_sec_send_errinfo(void *data)
 static void ufs_sec_send_errinfo(void *data)
 {
 	char buf[23];
-	sprintf(buf, "UFSErrCount is disable\n");
+	sprintf(buf, "UFSErrCount is disable");
 	pr_err("%s: Send UFS information to AP : %s\n", __func__, buf);
 #if defined(CONFIG_SEC_USER_RESET_DEBUG)
 	sec_debug_store_additional_dbg(DBG_1_UFS_ERR, 0, "%s", buf);
@@ -12857,7 +12868,7 @@ int ufshcd_init(struct ufs_hba *hba, void __iomem *mmio_base, unsigned int irq)
 
 	INIT_WORK(&hba->eh_work, ufshcd_err_handler);
 	INIT_WORK(&hba->eeh_work, ufshcd_exception_event_handler);
-	INIT_WORK(&hba->rls_work, ufshcd_rls_handler);
+	INIT_DELAYED_WORK(&hba->rls_work, ufshcd_rls_handler);
 	INIT_WORK(&hba->fatal_mode_work, ufshcd_fatal_mode_handler);
 
 	/* Initialize UIC command mutex */

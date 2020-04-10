@@ -393,4 +393,6 @@ int cam_smmu_dealloc_qdss(int32_t smmu_hdl);
 int cam_smmu_get_io_region_info(int32_t smmu_hdl,
 	dma_addr_t *iova, size_t *len);
 
+void cam_smmu_check_user_mappings(void);
+
 #endif /* _CAM_SMMU_API_H_ */

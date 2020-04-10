@@ -959,6 +959,45 @@ err:
 }
 EXPORT_SYMBOL(send_usb_certi_uevent);
 
+void send_usb_err_uevent(int err_type, int mode)
+{
+	struct otg_notify *o_notify = get_otg_notify();
+	char *envp[4];
+	char *type = {"TYPE=usberr"};
+	char *state;
+	char *words;
+	int index = 0;
+	
+	if (mode)
+		state = "STATE=ADD";
+	else
+		state = "STATE=REMOVE";
+
+	envp[index++] = type;
+	envp[index++] = state;
+
+	switch (err_type) {
+	case USB_ERR_ABNORMAL_RESET:
+		words = "WORDS=abnormal_reset";
+		break;
+	default:
+		pr_err("%s invalid input\n", __func__);
+		goto err;
+	}
+
+	envp[index++] = words;
+	envp[index++] = NULL;
+
+	if (send_usb_notify_uevent(o_notify, envp)) {
+		pr_err("%s error\n", __func__);
+		goto err;
+	}
+	pr_info("%s: %s\n", __func__, words);
+err:
+	return;
+}
+EXPORT_SYMBOL(send_usb_err_uevent);
+
 int get_class_index(int ch9_class_num)
 {
 	int internal_class_index;

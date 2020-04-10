@@ -1095,7 +1095,7 @@ struct ufs_hba {
 	struct workqueue_struct *recovery_wq;
 	struct work_struct eh_work;
 	struct work_struct eeh_work;
-	struct work_struct rls_work;
+	struct delayed_work rls_work;
 
 	/* HBA Errors */
 	u32 errors;

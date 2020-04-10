@@ -682,6 +682,8 @@ static const struct file_operations sec_reset_summary_info_proc_fops = {
 static int sec_reset_klog_init(void)
 {
 	int ret = 0;
+	uint32_t klog_buf_max_size, last_idx;
+	char *log_src;
 
 	if ((klog_read_buf != NULL) && (klog_buf != NULL))
 		return true;
@@ -707,10 +709,24 @@ static int sec_reset_klog_init(void)
 		goto error_klog_read_buf;
 	}
 
-	pr_info("idx[%d]\n", klog_info->ap_klog_idx);
+	pr_info("magic[0x%x], idx[%u, %u]\n",
+		((struct sec_log_buf *)klog_read_buf)->magic,
+		((struct sec_log_buf *)klog_read_buf)->idx, klog_info->ap_klog_idx);
 
-	klog_size = min_t(uint32_t, SEC_DEBUG_RESET_KLOG_SIZE,
-			klog_info->ap_klog_idx);
+	if (((struct sec_log_buf *)klog_read_buf)->magic == SEC_LOG_MAGIC) {
+		last_idx = max_t(uint32_t,
+			((struct sec_log_buf *)klog_read_buf)->idx, klog_info->ap_klog_idx);
+		log_src = klog_read_buf + offsetof(struct sec_log_buf, buf);
+	} else {
+		last_idx = klog_info->ap_klog_idx;
+		log_src = klog_read_buf;
+	}
+
+	klog_buf_max_size = SEC_DEBUG_RESET_KLOG_SIZE - offsetof(struct sec_log_buf, buf);
+	klog_size = min_t(uint32_t, klog_buf_max_size, last_idx);
+
+	pr_debug("klog_size(0x%x), klog_buf_max_size(0x%x)\n",
+		klog_size, klog_buf_max_size);
 
 	klog_buf = vmalloc(klog_size);
 	if (!klog_buf) {
@@ -720,14 +736,14 @@ static int sec_reset_klog_init(void)
 	}
 
 	if (klog_size && klog_buf && klog_read_buf) {
-		unsigned int i;
-		size_t idx;
+		uint32_t idx = last_idx % klog_buf_max_size, len = 0;
 
-		for (i = 0; i < klog_size; i++) {
-			idx = (klog_info->ap_klog_idx - klog_size + i) %
-					SEC_DEBUG_RESET_KLOG_SIZE;
-			klog_buf[i] = klog_read_buf[idx];
+		if (last_idx > klog_buf_max_size) {
+			len = klog_buf_max_size - idx;
+			memcpy(klog_buf, log_src + idx, len);
 		}
+
+		memcpy(klog_buf + len, log_src, idx);
 	}
 
 	return ret;

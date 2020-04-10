@@ -41,6 +41,7 @@ int q6audio_get_afe_cal_validation(u16 port_id, u32 topology_id);
 #define PARAM_ID_PP_SB_PARAM            0x10001f04
 #define PARAM_ID_PP_SB_ROTATION_PARAM	0x10001f02
 #define PARAM_ID_PP_SB_FLATMOTION_PARAM    0x10001f05
+#define PARAM_ID_PP_SB_PARAMS_VOLUME     0x10001f00
 
 #define MODULE_ID_PP_SA_UPSCALER_COLOR            0x10001f20
 #define PARAM_ID_PP_SA_UPSCALER_COLOR_PARAMS      0x10001f21
@@ -53,6 +54,20 @@ int q6audio_get_afe_cal_validation(u16 port_id, u32 topology_id);
 #define AFE_MODULE_ID_VOLUME_MONITOR 0x10001f41
 #define AFE_MODULE_PARAM_ID_GET_VOLUME_MONITOR 0x10001f42
 #define AFE_MODULE_PARAM_ID_SET_VOLUME_MONITOR 0x10001f43
+
+enum sb_type {
+	SB_DISABLE,
+	SB_ENABLE,
+	SB_RINGTONE,
+	SB_REARLEFT,
+	SB_REARRIGHT,
+	SB_FRONTLEFT,
+	SB_FRONTRIGHT,
+	SB_ROTATION,
+	SB_FLATMOTION,
+	SB_VOLUME,
+	SB_MAX,
+};
 
 struct asm_stream_cmd_set_pp_params_sa {
 	int16_t OutDevice;
@@ -108,6 +123,10 @@ struct adm_param_sb_rotation {
 
 struct adm_param_sb_flatmotion {
 	uint32_t sb_flatmotion;
+} __packed;
+
+struct adm_param_sb_volume {
+	uint32_t sb_volume;
 } __packed;
 
 struct asm_stream_cmd_set_pp_params_dolby_atmos {

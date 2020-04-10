@@ -4704,6 +4704,15 @@ static void sdhci_msm_card_event(struct sdhci_host *host)
 
 	if (!mmc_gpio_get_cd(msm_host->mmc))
 		msm_host->saved_tuning_phase = INVALID_TUNING_PHASE;
+#if defined(CONFIG_SEC_HYBRID_TRAY) && defined(CONFIG_HDM)
+	else {
+		const struct sdhci_msm_offset *msm_host_offset =
+			msm_host->offset;
+		/* Enable pwr irq interrupts */
+		sdhci_msm_writel_relaxed(INT_MASK, host,
+				msm_host_offset->CORE_PWRCTL_MASK);
+	}
+#endif
 }
 
 static int sdhci_msm_notify_load(struct sdhci_host *host, enum mmc_load state)

@@ -638,6 +638,7 @@ struct POC {
 	u32 rpos;
 	u32 rsize;
 
+	int start_addr;
 	int image_size;
 
 	/* ERASE */

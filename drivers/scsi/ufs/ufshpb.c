@@ -1585,7 +1585,7 @@ static inline int ufshpb_get_scsi_device(struct ufs_hba *hba,
 	}
 	spin_unlock_irqrestore(hba->host->host_lock, flags);
 
-	return 0;
+        return ret;
 }
 
 static int ufshpb_execute_dev_ctx_req(struct ufshpb_lu *hpb, unsigned char *cdb,
@@ -3876,9 +3876,10 @@ static inline int ufshpb_probe_lun_done(struct ufsf_feature *ufsf)
 void ufshpb_init_handler(struct work_struct *work)
 {
 	struct ufsf_feature *ufsf;
+        struct delayed_work *dwork = to_delayed_work(work);
 	int ret;
 
-	ufsf = container_of(work, struct ufsf_feature, ufshpb_init_work);
+        ufsf = container_of(dwork, struct ufsf_feature, ufshpb_init_work);
 
 	init_waitqueue_head(&ufsf->wait_hpb);
 

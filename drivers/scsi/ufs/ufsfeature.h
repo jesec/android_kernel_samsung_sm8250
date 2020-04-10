@@ -122,7 +122,7 @@ struct ufsf_feature {
 #if defined(CONFIG_UFSHPB)
 	struct ufshpb_dev_info hpb_dev_info;
 	struct ufshpb_lu *ufshpb_lup[UFS_UPIU_MAX_GENERAL_LUN];
-	struct work_struct ufshpb_init_work;
+        struct delayed_work ufshpb_init_work;
 	struct work_struct ufshpb_reset_work;
 	struct work_struct ufshpb_eh_work;
 	wait_queue_head_t wait_hpb;

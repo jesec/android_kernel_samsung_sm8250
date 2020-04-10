@@ -531,8 +531,7 @@ ssize_t sec_bat_show_attrs(struct device *dev,
 
 	case BATT_LP_CHARGING:
 		if (lpcharge) {
-			i += scnprintf(buf + i, PAGE_SIZE - i, "%d\n",
-				       lpcharge ? 1 : 0);
+			i += scnprintf(buf + i, PAGE_SIZE - i, "%d\n", lpcharge ? 1 : 0);
 		}
 		break;
 	case SIOP_ACTIVATED:
@@ -1797,7 +1796,7 @@ ssize_t sec_bat_show_attrs(struct device *dev,
 		break;
 	case SWITCH_CHARGING_SOURCE:
 		psy_do_property(battery->pdata->charger_name, get,
-				POWER_SUPPLY_EXT_PRO_CHANGE_CHARGING_SOURCE, value);
+			POWER_SUPPLY_EXT_PROP_CHANGE_CHARGING_SOURCE, value);
 		pr_info("%s Test Charging Source(%d) ",__func__, value.intval);
 		i += scnprintf(buf + i, PAGE_SIZE - i, "%d\n", value.intval);
 		break;
@@ -3575,12 +3574,15 @@ ssize_t sec_bat_store_attrs(
 		break;
 	case SWITCH_CHARGING_SOURCE:
 		if (sscanf(buf, "%10d\n", &x) == 1) {
-			dev_info(battery->dev, "%s: Request Change Charging Source : %s \n",
-				__func__, x == 0 ? "Switch Charger" : "Direct Charger" );
-			
-			value.intval = (x == 0) ? SEC_DIRECT_CHG_CHARGING_SOURCE_SWITCHING : SEC_DIRECT_CHG_CHARGING_SOURCE_DIRECT;
-            		psy_do_property(battery->pdata->charger_name, set,
-				POWER_SUPPLY_EXT_PRO_CHANGE_CHARGING_SOURCE, value);
+			if (is_pd_apdo_wire_type(battery->cable_type)) {
+				dev_info(battery->dev, "%s: Request Change Charging Source : %s \n",
+					__func__, x == 0 ? "Switch Charger" : "Direct Charger" );
+
+				value.intval = (x == 0) ? SEC_DIRECT_CHG_CHARGING_SOURCE_SWITCHING : SEC_DIRECT_CHG_CHARGING_SOURCE_DIRECT;
+				psy_do_property(battery->pdata->charger_name, set,
+					POWER_SUPPLY_EXT_PROP_CHANGE_CHARGING_SOURCE, value);
+			}
+			ret = count;
 		}
 		break;
 #endif
@@ -3607,7 +3609,7 @@ ssize_t sec_bat_store_attrs(
 		if (sscanf(buf, "%10d\n", &x) == 1) {
 			unsigned int param_val = 0;
 			pr_info("%s PD_DISABLE %d\n", __func__, x);
-			
+
 			if (x == 1) {
 				battery->pd_disable = true;
 				param_val = '1';

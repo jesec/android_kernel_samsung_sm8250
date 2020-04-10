@@ -23,6 +23,8 @@
 #include <linux/proc_fs.h>
 #include <linux/uaccess.h>
 #include <linux/vmalloc.h>
+#include <linux/notifier.h>
+#include <linux/reboot.h>
 
 #include "sec_debug_internal.h"
 
@@ -34,16 +36,6 @@
  * *)(base - 4) is log_ptr. Therefore we reserve (size + 8) bytes from
  * (base - 8)
  */
-
-#define SEC_LOG_MAGIC		0x4d474f4c	/* "LOGM" */
-
-struct sec_log_buf {
-	uint32_t boot_cnt;
-	uint32_t magic;
-	uint32_t idx;
-	uint32_t prev_idx;
-	char buf[];
-};
 
 static struct sec_log_buf __iomem *s_log_buf;
 
@@ -76,7 +68,7 @@ static int __init sec_log_setup(char *str)
 		goto __err;
 
 	sec_log_paddr = base;
-	sec_log_buf_size = sec_log_size - sizeof(struct sec_log_buf);
+	sec_log_buf_size = sec_log_size - offsetof(struct sec_log_buf, buf);
 
 	return 0;
 
@@ -120,8 +112,10 @@ static ssize_t sec_last_log_buf_read(struct file *file, char __user *buf,
 	loff_t pos = *offset;
 	ssize_t count;
 
-	if (pos >= last_log_buf_size || !last_log_buf)
+	if (pos >= last_log_buf_size || !last_log_buf) {
+		pr_info("pos %lld, size %zu\n", pos, last_log_buf_size);
 		return 0;
+	}
 
 	count = min(len, (size_t) (last_log_buf_size - pos));
 	if (copy_to_user(buf, last_log_buf + pos, count))
@@ -162,6 +156,36 @@ static inline int __sec_last_kmsg_init(void)
 #else /* CONFIG_SEC_LOG_LAST_KMSG */
 static inline int __sec_last_kmsg_init(void)
 {}
+#endif
+
+#ifdef CONFIG_SEC_LOG_STORE_LAST_KMSG
+static int sec_log_store(struct notifier_block *nb,
+		unsigned long action, void *data)
+{
+	char cmd[20] = { 0, };
+
+	if (!sec_log_buf_init_done)
+		return 0;
+
+	if (data && strlen(data))
+		snprintf(cmd, sizeof(cmd), "%s", (char *)data);
+
+	switch (action) {
+	case SYS_RESTART:
+	case SYS_POWER_OFF:
+		pr_info("%s, %s\n",
+				action == SYS_RESTART ? "reboot" : "power off", cmd);
+		write_debug_partition(debug_index_reset_klog, s_log_buf);
+		break;
+	}
+
+	return 0;
+}
+
+static struct notifier_block sec_log_notifier = {
+	.notifier_call = sec_log_store,
+	.priority = -2,
+};
 #endif
 
 static __always_inline void __sec_log_buf_write(const char *s, unsigned int count)
@@ -239,6 +263,10 @@ static int __init sec_log_buf_init(void)
 	err = __sec_log_buf_prepare();
 	if (err)
 		return err;
+
+#ifdef CONFIG_SEC_LOG_STORE_LAST_KMSG
+	register_reboot_notifier(&sec_log_notifier);
+#endif
 
 	err = __sec_last_kmsg_init();
 	if (err)

@@ -5810,7 +5810,8 @@ static void sec_bat_cable_work(struct work_struct *work)
 					   SEC_BAT_CURRENT_EVENT_SAFETY_TMR |
 					   SEC_BAT_CURRENT_EVENT_25W_OCP |
 					   SEC_BAT_CURRENT_EVENT_DC_ERR |
-					   SEC_BAT_CURRENT_EVENT_USB_STATE));
+					   SEC_BAT_CURRENT_EVENT_USB_STATE |
+					   SEC_BAT_CURRENT_EVENT_SEND_UVDM));
 
 #if defined(CONFIG_ENABLE_100MA_CHARGING_BEFORE_USB_CONFIGURED)
 		cancel_delayed_work(&battery->slowcharging_work);
@@ -6312,6 +6313,17 @@ static int sec_bat_set_property(struct power_supply *psy,
 							SEC_BAT_CURRENT_EVENT_25W_OCP);
 			}
 			break;
+		case POWER_SUPPLY_EXT_PROP_DIRECT_SEND_UVDM:
+			if (is_pd_apdo_wire_type(battery->cable_type)) {
+				pr_info("@SEND_UVDM: Request Change Charging Source : %s \n",
+					val->intval == 0 ? "Switch Charger" : "Direct Charger" );
+				sec_bat_set_current_event(battery, val->intval == 0 ?
+					SEC_BAT_CURRENT_EVENT_SEND_UVDM : 0, SEC_BAT_CURRENT_EVENT_SEND_UVDM);
+				value.intval = val->intval;
+				psy_do_property(battery->pdata->charger_name, set,
+					POWER_SUPPLY_EXT_PROP_CHANGE_CHARGING_SOURCE, value);
+			}
+			break;
 #endif
 		default:
 			return -EINVAL;
@@ -6577,6 +6589,8 @@ static int sec_bat_get_property(struct power_supply *psy,
 				val->intval = battery->ta_alert_mode;
 			} else
 				val->intval = OCP_NONE;
+			break;
+		case POWER_SUPPLY_EXT_PROP_DIRECT_SEND_UVDM:
 			break;
 #endif
 		default:
