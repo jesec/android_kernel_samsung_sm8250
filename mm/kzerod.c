@@ -17,6 +17,11 @@
 #include <linux/vmstat.h>
 #include "internal.h"
 
+#if !defined(DEBUG)
+#undef trace_printk
+#define trace_printk(fmt, args...) (0)
+#endif
+
 static bool kzerod_enabled = true;
 
 #define K(x) ((x) << (PAGE_SHIFT-10))

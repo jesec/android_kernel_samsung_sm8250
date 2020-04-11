@@ -66,6 +66,11 @@
 #include <linux/debugfs.h>
 #include <linux/jiffies.h>
 
+#if !defined(DEBUG)
+#undef trace_printk
+#define trace_printk(fmt, args...) (0)
+#endif
+
 struct scan_control {
 	/* How many pages shrink_list() should reclaim */
 	unsigned long nr_to_reclaim;

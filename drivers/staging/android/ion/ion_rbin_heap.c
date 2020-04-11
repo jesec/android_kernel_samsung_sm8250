@@ -34,6 +34,11 @@
 #endif
 #include <trace/events/ion.h>
 
+#if !defined(DEBUG)
+#undef trace_printk
+#define trace_printk(fmt, args...) (0)
+#endif
+
 #define NUM_ORDERS ARRAY_SIZE(orders)
 
 static const unsigned int orders[] = {10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0};
