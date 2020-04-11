@@ -29,7 +29,6 @@ msm_adreno-y += \
 	adreno_drawctxt.o \
 	adreno_dispatch.o \
 	adreno_snapshot.o \
-	adreno_coresight.o \
 	adreno_trace.o \
 	adreno_a3xx.o \
 	adreno_a5xx.o \
@@ -45,6 +44,8 @@ msm_adreno-y += \
 	adreno.o \
 	adreno_cp_parser.o \
 	adreno_perfcounter.o
+
+msm_adreno-$(CONFIG_CORESIGHT) += adreno_coresight.o
 
 msm_adreno-$(CONFIG_QCOM_KGSL_IOMMU) += adreno_iommu.o
 msm_adreno-$(CONFIG_DEBUG_FS) += adreno_debugfs.o adreno_profile.o
