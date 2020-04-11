@@ -759,6 +759,7 @@ struct adreno_vbif_snapshot_registers {
 	const int count;
 };
 
+#ifdef CONFIG_CORESIGHT
 /**
  * struct adreno_coresight_register - Definition for a coresight (tracebus)
  * debug register
@@ -804,7 +805,7 @@ struct adreno_coresight {
 	const struct attribute_group **groups;
 	unsigned int atid;
 };
-
+#endif
 
 struct adreno_irq_funcs {
 	void (*func)(struct adreno_device *adreno_dev, int mask);
