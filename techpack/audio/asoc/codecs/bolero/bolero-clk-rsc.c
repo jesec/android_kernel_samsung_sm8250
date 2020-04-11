@@ -18,6 +18,11 @@
 #define BOLERO_CLK_NAME_LENGTH 30
 #define NPL_CLK_OFFSET (TX_NPL_CLK - TX_CORE_CLK)
 
+#if !defined(DEBUG)
+#undef trace_printk
+#define trace_printk(fmt, args...) (0)
+#endif
+
 static char clk_src_name[MAX_CLK][BOLERO_CLK_NAME_LENGTH] = {
 	"tx_core_clk",
 	"rx_core_clk",
