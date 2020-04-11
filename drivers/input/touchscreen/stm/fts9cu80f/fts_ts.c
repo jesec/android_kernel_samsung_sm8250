@@ -866,7 +866,9 @@ void fts_interrupt_set(struct fts_ts_info *info, int enable)
 			memset(buff, 0x00, 50);
 			snprintf(buff, 50, "\n[%lu.%06lu:%d:%s]ERROR\n",
 					(unsigned long)t, nanosec_rem / 1000, current->pid, current->comm);
+#ifdef CONFIG_SEC_DEBUG_TSP_LOG
 			sec_debug_tsp_command_history(buff);
+#endif
 
 			input_err(true, &info->client->dev, "%s: wrong enabled\n", __func__);
 			mutex_unlock(&info->irq_mutex);
