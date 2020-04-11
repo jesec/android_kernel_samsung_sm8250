@@ -1,0 +1,132 @@
+name: RELEASE Kernel
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Get the version
+      id: get_version
+      run: echo ::set-output name=VERSION::${GITHUB_REF#refs/tags/v}
+
+    - name: Fetch sources
+      uses: actions/checkout@v2
+      with:
+        path: sources
+
+    - name: Install dependencies
+      run: |
+       wget https://apt.llvm.org/llvm.sh
+       sudo bash llvm.sh 10
+       sudo ln -sf /usr/bin/clang-10 /usr/bin/clang
+       sudo ln -sf /usr/bin/ld.lld-10 /usr/bin/ld.lld
+       sudo ln -sf /usr/bin/llvm-nm-10 /usr/bin/llvm-nm
+       sudo ln -sf /usr/bin/llvm-ar-10 /usr/bin/llvm-ar
+       sudo ln -sf /usr/bin/llvm-objcopy-10 /usr/bin/llvm-objcopy
+       sudo ln -sf /usr/bin/llvm-objdump-10 /usr/bin/llvm-objdump
+       sudo apt-get install -y binutils-aarch64-linux-gnu gcc-aarch64-linux-gnu
+       sudo apt-get install -y libncurses-dev flex bison openssl libssl-dev dkms libelf-dev libudev-dev libpci-dev libiberty-dev autoconf
+
+    - name: Run kernel build script
+      run: ./build_kernel.sh x1q chn openx JESEC-${{ steps.get_version.outputs.VERSION }}
+      working-directory: ${{ github.workspace }}/sources
+
+    - name: 'Upload artifact: Kernel Configuration (.config)'
+      uses: actions/upload-artifact@v1
+      with:
+        name: .config
+        path: ${{ github.workspace }}/sources/out/.config
+
+    - name: 'Upload artifact: Kernel Image (Image)'
+      uses: actions/upload-artifact@v1
+      with:
+        name: Image
+        path: ${{ github.workspace }}/sources/out/Image
+
+    - name: 'Upload artifact: Device Tree Blob Image (dtb.img)'
+      uses: actions/upload-artifact@v1
+      with:
+        name: dtb.img
+        path: ${{ github.workspace }}/sources/out/dtb.img
+
+    - name: 'Upload artifact: Device Tree Blob Overlay Image (dtbo.img)'
+      uses: actions/upload-artifact@v1
+      with:
+        name: dtbo.img
+        path: ${{ github.workspace }}/sources/out/dtbo.img
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Get the version
+      id: get_version
+      run: echo ::set-output name=VERSION::${GITHUB_REF#refs/tags/v}
+
+    - name: Create RELEASE
+      id: create_release
+      uses: actions/create-release@latest
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ github.ref }}
+        release_name: Release Candidate ${{ github.ref }}
+        prerelease: true
+
+    - name: Fetch RELEASE tools
+      uses: actions/checkout@v2
+      with:
+        repository: jesec/releasetools_kernel_samsung_sm8250
+        path: releasetools
+
+    - name: 'Download artifact: Kernel Image (Image)'
+      uses: actions/download-artifact@v1
+      with:
+        name: Image
+        path: ${{ github.workspace }}/releasetools
+
+    - name: 'Download artifact: Device Tree Blob Image (dtb.img)'
+      uses: actions/download-artifact@v1
+      with:
+        name: dtb.img
+        path: ${{ github.workspace }}/releasetools
+
+    - name: 'Download artifact: Device Tree Blob Overlay Image (dtbo.img)'
+      uses: actions/download-artifact@v1
+      with:
+        name: dtbo.img
+        path: ${{ github.workspace }}/releasetools
+
+    - name: Make BOOT image
+      run: ./mkbootimg.sh boot.img Image dtb.img prebuilt/ramdisk/boot-stock-magisk.img
+      working-directory: ${{ github.workspace }}/releasetools
+
+    - name: Make flashable TAR archive
+      run: tar cvf boot.tar boot.img
+      working-directory: ${{ github.workspace }}/releasetools
+
+    - name: "Upload RELEASE asset: BOOT Image"
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ${{ github.workspace }}/releasetools/boot.img
+        asset_name: JESEC-KERNEL-${{ steps.get_version.outputs.VERSION }}.img
+        asset_content_type: application/octet-stream
+
+    - name: "Upload RELEASE asset: TAR Flashable"
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ${{ github.workspace }}/releasetools/boot.tar
+        asset_name: JESEC-KERNEL-${{ steps.get_version.outputs.VERSION }}.tar
+        asset_content_type: application/x-tar
