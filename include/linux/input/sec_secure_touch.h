@@ -11,6 +11,7 @@
 #include <linux/err.h>
 #include <linux/sched.h>
 #include <linux/input.h>
+#include <linux/of.h>
 //#if defined(CONFIG_SEC_SYSFS)
 //#include <linux/sec_sysfs.h>
 //#elif defined(CONFIG_DRV_SAMSUNG)
