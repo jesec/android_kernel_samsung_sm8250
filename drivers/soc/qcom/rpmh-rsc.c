@@ -239,7 +239,9 @@ static void __tcs_trigger(struct rsc_drv *drv, int tcs_id, bool trigger)
 		write_tcs_reg_sync(drv, RSC_DRV_CONTROL, tcs_id, enable);
 		enable |= TCS_AMC_MODE_TRIGGER;
 		write_tcs_reg(drv, RSC_DRV_CONTROL, tcs_id, enable);
+#ifdef CONFIG_IPC_LOGGING
 		ipc_log_string(drv->ipc_log_ctx, "TCS trigger: m=%d", tcs_id);
+#endif
 	}
 }
 
@@ -289,10 +291,13 @@ static irqreturn_t tcs_tx_done(int irq, void *p)
 				err = -EIO;
 			}
 		}
-
+#ifdef CONFIG_TRACEPOINTS
 		trace_rpmh_tx_done(drv, i, req, err);
+#endif
+#ifdef CONFIG_IPC_LOGGING
 		ipc_log_string(drv->ipc_log_ctx,
 			       "IRQ response: m=%d err=%d", i, err);
+#endif
 
 		/*
 		 * if wake tcs was re-purposed for sending active
@@ -320,7 +325,6 @@ skip:
 
 	return IRQ_HANDLED;
 }
-
 static void __tcs_buffer_write(struct rsc_drv *drv, int tcs_id, int cmd_id,
 			       const struct tcs_request *msg)
 {
@@ -428,9 +432,16 @@ static int tcs_write(struct rsc_drv *drv, const struct tcs_request *msg)
 
 	tcs->req[tcs_id - tcs->offset] = msg;
 	set_bit(tcs_id, drv->tcs_in_use);
-	if (msg->state == RPMH_ACTIVE_ONLY_STATE && tcs->type != ACTIVE_TCS)
+	if (msg->state == RPMH_ACTIVE_ONLY_STATE && tcs->type != ACTIVE_TCS) {
+		/*
+		 * Clear previously programmed WAKE commands in selected
+		 * repurposed TCS to avoid triggering them. tcs->slots will be
+		 * cleaned from rpmh_flush() by invoking rpmh_rsc_invalidate()
+		 */
+		write_tcs_reg_sync(drv, RSC_DRV_CMD_ENABLE, tcs_id, 0);
+		write_tcs_reg_sync(drv, RSC_DRV_CMD_WAIT_FOR_CMPL, tcs_id, 0);
 		enable_tcs_irq(drv, tcs_id, true);
-
+}
 	__tcs_buffer_write(drv, tcs_id, 0, msg);
 	__tcs_trigger(drv, tcs_id, true);
 
