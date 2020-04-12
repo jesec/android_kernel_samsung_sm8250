@@ -424,7 +424,7 @@ int blk_alloc_turbo_write(struct request_queue *q)
 	new->state = TW_OFF;
 	new->state_ts = jiffies;
 
-	new->up_threshold_bytes = (20 * 1024 * 1024);
+	new->up_threshold_bytes = (2 * 1024 * 1024);
 	new->down_threshold_bytes = (4 * 1024);
 	new->on_delay_ms = 10;
 	new->off_delay_ms = 7000;
