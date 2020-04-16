@@ -52,7 +52,7 @@ jobs:
         ccache -M 4.5
 
     - name: Run kernel build script
-      run: ./build_kernel.sh x1q chn openx
+      run: ./build_kernel.sh x1q_chn_openx
       working-directory: ${{ github.workspace }}/sources
 
     - name: 'Upload artifact: Kernel Configuration (.config)'

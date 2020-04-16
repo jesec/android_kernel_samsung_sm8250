@@ -34,7 +34,7 @@ jobs:
        sudo apt-get install -y libncurses-dev flex bison openssl libssl-dev dkms libelf-dev libudev-dev libpci-dev libiberty-dev autoconf
 
     - name: Run kernel build script
-      run: ./build_kernel.sh x1q chn openx JESEC-${{ steps.get_version.outputs.VERSION }}
+      run: ./build_kernel.sh x1q_chn_openx JESEC-${{ steps.get_version.outputs.VERSION }}
       working-directory: ${{ github.workspace }}/sources
 
     - name: 'Upload artifact: Kernel Configuration (.config)'
