@@ -9,6 +9,10 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
+    strategy:
+      matrix:
+        variant: ["x1q_chn_openx", "y2q_chn_openx", "z3q_chn_openx"]
+
     steps:
     - name: Get the version
       id: get_version
@@ -34,31 +38,31 @@ jobs:
        sudo apt-get install -y libncurses-dev flex bison openssl libssl-dev dkms libelf-dev libudev-dev libpci-dev libiberty-dev autoconf
 
     - name: Run kernel build script
-      run: ./build_kernel.sh x1q_chn_openx JESEC-${{ steps.get_version.outputs.VERSION }}
+      run: ./build_kernel.sh ${{ matrix.variant }} JESEC-${{ steps.get_version.outputs.VERSION }}
       working-directory: ${{ github.workspace }}/sources
 
     - name: 'Upload artifact: Kernel Configuration (.config)'
       uses: actions/upload-artifact@v1
       with:
-        name: .config
+        name: .config-${{ matrix.variant }}
         path: ${{ github.workspace }}/sources/out/.config
 
     - name: 'Upload artifact: Kernel Image (Image)'
       uses: actions/upload-artifact@v1
       with:
-        name: Image
+        name: Image-${{ matrix.variant }}
         path: ${{ github.workspace }}/sources/out/Image
 
     - name: 'Upload artifact: Device Tree Blob Image (dtb.img)'
       uses: actions/upload-artifact@v1
       with:
-        name: dtb.img
+        name: dtb.img-${{ matrix.variant }}
         path: ${{ github.workspace }}/sources/out/dtb.img
 
     - name: 'Upload artifact: Device Tree Blob Overlay Image (dtbo.img)'
       uses: actions/upload-artifact@v1
       with:
-        name: dtbo.img
+        name: dtbo.img-${{ matrix.variant }}
         path: ${{ github.workspace }}/sources/out/dtbo.img
 
   release:
@@ -80,6 +84,28 @@ jobs:
         release_name: Release Candidate ${{ github.ref }}
         prerelease: true
 
+    - name: Store RELEASE URL to file
+      run: echo "${{ steps.create_release.outputs.upload_url }}" > release_url.txt
+
+    - name: Upload RELEASE URL file for publish job
+      uses: actions/upload-artifact@v1
+      with:
+        name: release_url.txt
+        path: release_url.txt
+
+  publish:
+    needs: release
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        variant: ["x1q_chn_openx", "y2q_chn_openx", "z3q_chn_openx"]
+
+    steps:
+    - name: Get the version
+      id: get_version
+      run: echo ::set-output name=VERSION::${GITHUB_REF#refs/tags/v}
+
     - name: Fetch RELEASE tools
       uses: actions/checkout@v2
       with:
@@ -89,19 +115,19 @@ jobs:
     - name: 'Download artifact: Kernel Image (Image)'
       uses: actions/download-artifact@v1
       with:
-        name: Image
+        name: Image-${{ matrix.variant }}
         path: ${{ github.workspace }}/releasetools
 
     - name: 'Download artifact: Device Tree Blob Image (dtb.img)'
       uses: actions/download-artifact@v1
       with:
-        name: dtb.img
+        name: dtb.img-${{ matrix.variant }}
         path: ${{ github.workspace }}/releasetools
 
     - name: 'Download artifact: Device Tree Blob Overlay Image (dtbo.img)'
       uses: actions/download-artifact@v1
       with:
-        name: dtbo.img
+        name: dtbo.img-${{ matrix.variant }}
         path: ${{ github.workspace }}/releasetools
 
     - name: Make BOOT image
@@ -112,14 +138,26 @@ jobs:
       run: tar cvf boot.tar boot.img
       working-directory: ${{ github.workspace }}/releasetools
 
+    - name: Load RELEASE URL file from release job
+      uses: actions/download-artifact@v1
+      with:
+        name: release_url.txt
+        path: ${{ github.workspace }}
+
+    - name: Get RELEASE URL from file
+      id: get_release_info
+      run: |
+        value=`cat ${{ github.workspace }}/release_url.txt`
+        echo ::set-output name=upload_url::$value
+
     - name: "Upload RELEASE asset: BOOT Image"
       uses: actions/upload-release-asset@v1
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        upload_url: ${{ steps.get_release_info.outputs.upload_url }}
         asset_path: ${{ github.workspace }}/releasetools/boot.img
-        asset_name: JESEC-KERNEL-${{ steps.get_version.outputs.VERSION }}.img
+        asset_name: ${{ matrix.variant }}-JESEC-KERNEL-${{ steps.get_version.outputs.VERSION }}.img
         asset_content_type: application/octet-stream
 
     - name: "Upload RELEASE asset: TAR Flashable"
@@ -127,7 +165,7 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        upload_url: ${{ steps.get_release_info.outputs.upload_url }}
         asset_path: ${{ github.workspace }}/releasetools/boot.tar
-        asset_name: JESEC-KERNEL-${{ steps.get_version.outputs.VERSION }}.tar
+        asset_name: ${{ matrix.variant }}-JESEC-KERNEL-${{ steps.get_version.outputs.VERSION }}.tar
         asset_content_type: application/x-tar
