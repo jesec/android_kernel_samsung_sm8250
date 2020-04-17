@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014-2019, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2014-2020, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
  *
@@ -21,6 +21,7 @@
 #include <linux/debugfs.h>
 #include <linux/seq_file.h>
 #include <linux/sde_rsc.h>
+#include <linux/msm_kgsl.h>
 
 #include "msm_drv.h"
 #include "sde_kms.h"
@@ -39,6 +40,11 @@
 #include "sde_core_irq.h"
 #include "sde_hw_top.h"
 #include "sde_hw_qdss.h"
+
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+#include <linux/interrupt.h>
+#include "ss_dsi_panel_common.h"
+#endif
 
 #define SDE_DEBUG_ENC(e, fmt, ...) SDE_DEBUG("enc%d " fmt,\
 		(e) ? (e)->base.base.id : -1, ##__VA_ARGS__)
@@ -155,7 +161,16 @@ enum sde_enc_rc_states {
 	SDE_ENC_RC_STATE_PRE_OFF,
 	SDE_ENC_RC_STATE_ON,
 	SDE_ENC_RC_STATE_MODESET,
-	SDE_ENC_RC_STATE_IDLE
+	SDE_ENC_RC_STATE_IDLE,
+	SDE_ENC_RC_STATE_MAX
+};
+
+const char *sde_enc_rc_states_str[SDE_ENC_RC_STATE_MAX] = {
+	"SDE_ENC_RC_STATE_OFF",
+	"SDE_ENC_RC_STATE_PRE_OFF",
+	"SDE_ENC_RC_STATE_ON",
+	"SDE_ENC_RC_STATE_MODESET",
+	"SDE_END_RC_STATE_IDLE",
 };
 
 /**
@@ -212,7 +227,8 @@ enum sde_enc_rc_states {
  * @vsync_event_work:		worker to handle vsync event for autorefresh
  * @input_event_work:		worker to handle input device touch events
  * @esd_trigger_work:		worker to handle esd trigger events
- * @input_handler:			handler for input device events
+ * @input_handler:		handler for input device events
+ * @gpu_wakeup_event_work:	worker to handle gpu wakeup trigger events
  * @topology:                   topology of the display
  * @vblank_enabled:		boolean to track userspace vblank vote
  * @idle_pc_restore:		flag to indicate idle_pc_restore happened
@@ -278,6 +294,8 @@ struct sde_encoder_virt {
 	struct kthread_work vsync_event_work;
 	struct kthread_work input_event_work;
 	struct kthread_work esd_trigger_work;
+	struct kthread_work gpu_wakeup_event_work;
+	struct notifier_block gpu_wakeup_nb;
 	struct input_handler *input_handler;
 	struct msm_display_topology topology;
 	bool vblank_enabled;
@@ -736,6 +754,7 @@ void sde_encoder_destroy(struct drm_encoder *drm_enc)
 
 	mutex_lock(&sde_enc->enc_lock);
 	sde_rsc_client_destroy(sde_enc->rsc_client);
+	kgsl_pwrctrl_unregister_state_awake_notifier(&sde_enc->gpu_wakeup_nb);
 
 	for (i = 0; i < sde_enc->num_phys_encs; i++) {
 		struct sde_encoder_phys *phys;
@@ -1677,7 +1696,24 @@ static int _sde_encoder_dsc_setup(struct sde_encoder_virt *sde_enc,
 
 	if (sde_kms_rect_is_equal(&sde_enc->cur_conn_roi,
 			&sde_enc->prv_conn_roi))
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+		{
+			/* QC display driver prevent DMS before without first frame update (commit).
+			 * In above case, it returns error for DMS and it causes kernel panic, in result.
+			 * To prevent the limitation, allow DMS before first frame update, and sets proper DSC setting.
+			 */
+			static bool first = true;
+
+			if (first) {
+				SDE_INFO("do not skip duplicated dsc setting in forst booting\n");
+				first = false;
+			} else {
+				return ret;
+			}
+		}
+#else
 		return ret;
+#endif
 
 	switch (topology) {
 	case SDE_RM_TOPOLOGY_SINGLEPIPE_DSC:
@@ -2000,6 +2036,29 @@ static int _sde_encoder_update_rsc_client(
 			 (rsc_state == SDE_RSC_VID_STATE))
 		rsc_state = SDE_RSC_CLK_STATE;
 
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+	/* case 04323399:
+	 * MDP set SDE_RSC_CMD_STATE for inter-frame power collapse, which
+	 * refer to TE. In case of Bridge RR, which causes higher TE period than MDP setting,
+	 * it lost wr_ptr irq, and causes delayed pp_done irq and frame drop.
+	 * To prevent this
+	 * During Bridge RR, set RSC state to SDE_RSC_CLK_STATE, 4-frames power collapse,
+	 * Then recover its state after Bridge RR is done.
+	 */
+	{
+#if 1 // temp
+		if (rsc_state  == SDE_RSC_CMD_STATE)
+			rsc_state = SDE_RSC_CLK_STATE;
+#else // TODO: this causes pp timeout after VRR done..
+		struct samsung_display_driver_data *vdd = ss_get_vdd(PRIMARY_DISPLAY_NDX);
+
+		if (vdd->vrr.is_support_vrr && vdd->vrr.force_rsc_clk_state) {
+			LCD_INFO("force to set RSC STATE (%d) to CLK_STATE during VRR\n", rsc_state);
+			rsc_state = SDE_RSC_CLK_STATE;
+		}
+#endif
+	}
+#endif
 	SDE_EVT32(rsc_state, qsync_mode);
 
 	is_vid_mode = sde_encoder_check_curr_mode(&sde_enc->base,
@@ -2237,6 +2296,14 @@ static void sde_encoder_input_event_handler(struct input_handle *handle,
 	struct sde_encoder_virt *sde_enc = NULL;
 	struct msm_drm_thread *disp_thread = NULL;
 	struct msm_drm_private *priv = NULL;
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+	struct samsung_display_driver_data *vdd = ss_get_vdd(PRIMARY_DISPLAY_NDX);
+
+	if (ss_is_panel_off(vdd)) {
+		SDE_ERROR("invalid call during power off\n");
+		return;
+	}
+#endif
 
 	if (!handle || !handle->handler || !handle->handler->private) {
 		SDE_ERROR("invalid encoder for the input event\n");
@@ -2251,6 +2318,7 @@ static void sde_encoder_input_event_handler(struct input_handle *handle,
 
 	priv = drm_enc->dev->dev_private;
 	sde_enc = to_sde_encoder_virt(drm_enc);
+
 	if (!sde_enc->crtc || (sde_enc->crtc->index
 			>= ARRAY_SIZE(priv->disp_thread))) {
 		SDE_DEBUG_ENC(sde_enc,
@@ -2266,6 +2334,47 @@ static void sde_encoder_input_event_handler(struct input_handle *handle,
 
 	kthread_queue_work(&disp_thread->worker,
 				&sde_enc->input_event_work);
+}
+
+static int sde_encoder_gpu_wakeup_event_handler(struct notifier_block *nb,
+			unsigned long gpu_wakeup, void *data)
+{
+	struct msm_drm_thread *disp_thread;
+	struct msm_drm_private *priv;
+	struct sde_encoder_virt *sde_enc;
+	if (!nb || !gpu_wakeup) {
+		SDE_ERROR("invalid argument\n");
+		return NOTIFY_DONE;
+	}
+	sde_enc = container_of(nb, struct sde_encoder_virt, gpu_wakeup_nb);
+
+	 if (!sde_enc || !sde_enc->base.dev
+			|| !sde_enc->base.dev->dev_private) {
+		SDE_ERROR("invalid encoder addresses\n");
+		return NOTIFY_DONE;
+	}
+	priv = sde_enc->base.dev->dev_private;
+
+	if (!sde_enc->crtc || (sde_enc->crtc->index
+			>= ARRAY_SIZE(priv->disp_thread))) {
+		SDE_ERROR("invalid encoder %d crtc index\n",
+			sde_enc->base.base.id);
+		return NOTIFY_DONE;
+	}
+
+	 SDE_DEBUG_ENC(sde_enc, "rc_state:%s\n",
+			 sde_enc_rc_states_str[sde_enc->rc_state]);
+	 if (sde_enc->rc_state == SDE_ENC_RC_STATE_ON
+			|| sde_enc->rc_state == SDE_ENC_RC_STATE_MODESET) {
+		SDE_DEBUG_ENC(sde_enc, "is already powered on!\n");
+		return NOTIFY_DONE;
+	}
+	SDE_DEBUG_ENC(sde_enc, "scheduling early wake up\n");
+	disp_thread = &priv->disp_thread[sde_enc->crtc->index];
+	kthread_queue_work(&disp_thread->worker,
+				&sde_enc->gpu_wakeup_event_work);
+
+	return NOTIFY_OK;
 }
 
 void sde_encoder_control_idle_pc(struct drm_encoder *drm_enc, bool enable)
@@ -2634,6 +2743,7 @@ static int _sde_encoder_rc_idle(struct drm_encoder *drm_enc,
 		/* disable all the clks and resources */
 		_sde_encoder_update_rsc_client(drm_enc, false);
 		_sde_encoder_resource_control_helper(drm_enc, false);
+		kgsl_pwrctrl_register_state_awake_notifier(&sde_enc->gpu_wakeup_nb);
 	}
 
 	SDE_EVT32(DRMID(drm_enc), sw_event, sde_enc->rc_state,
@@ -3088,6 +3198,14 @@ static int _sde_encoder_input_handler_register(
 {
 	int rc = 0;
 
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+	static bool input_handler_registered = false;
+
+	if(!input_handler_registered)
+		input_handler_registered = true;
+	else
+		return rc;
+#endif
 	rc = input_register_handler(input_handler);
 	if (rc) {
 		pr_err("input_register_handler failed, rc= %d\n", rc);
@@ -3387,9 +3505,13 @@ static void sde_encoder_virt_disable(struct drm_encoder *drm_enc)
 	/* wait for idle */
 	sde_encoder_wait_for_event(drm_enc, MSM_ENC_TX_COMPLETE);
 
+#if !defined(CONFIG_DISPLAY_SAMSUNG)
+	/* CL 16617782 : Excessive delay in setPowerMode because of pending display off */
 	if (sde_enc->input_handler &&
 		sde_encoder_check_curr_mode(drm_enc, MSM_DISPLAY_CMD_MODE))
 		input_unregister_handler(sde_enc->input_handler);
+#endif
+	kgsl_pwrctrl_unregister_state_awake_notifier(&sde_enc->gpu_wakeup_nb);
 
 	/*
 	 * For primary command mode and video mode encoders, execute the
@@ -3648,6 +3770,9 @@ void sde_encoder_register_vblank_callback(struct drm_encoder *drm_enc,
 
 	if (!drm_enc) {
 		SDE_ERROR("invalid encoder\n");
+#if defined(CONFIG_DISPLAY_SAMSUNG) // case 04436106
+		SS_XLOG_VSYNC(0x1111);
+#endif
 		return;
 	}
 	SDE_DEBUG_ENC(sde_enc, "\n");
@@ -4449,8 +4574,28 @@ static void sde_encoder_input_event_work_handler(struct kthread_work *work)
 		return;
 	}
 
+	SDE_ATRACE_BEGIN("input event");
 	sde_encoder_resource_control(&sde_enc->base,
 			SDE_ENC_RC_EVENT_EARLY_WAKEUP);
+	SDE_ATRACE_END("input event");
+}
+
+static void sde_encoder_gpu_wakeup_event_work_handler(struct kthread_work *work)
+{
+	struct sde_encoder_virt *sde_enc = container_of(work,
+			struct sde_encoder_virt, gpu_wakeup_event_work);
+
+	if (!sde_enc) {
+		SDE_ERROR("invalid sde encoder\n");
+		return;
+	}
+
+	SDE_ATRACE_BEGIN("gpu wakeup event");
+	sde_encoder_resource_control(&sde_enc->base,
+			SDE_ENC_RC_EVENT_EARLY_WAKEUP);
+	SDE_ATRACE_END("gpu wakeup event");
+
+	kgsl_pwrctrl_unregister_state_awake_notifier(&sde_enc->gpu_wakeup_nb);
 }
 
 static void sde_encoder_vsync_event_work_handler(struct kthread_work *work)
@@ -4609,6 +4754,58 @@ static int _helper_flush_qsync(struct sde_encoder_phys *phys_enc)
 	return 0;
 }
 
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+#include <drm/drm_encoder.h>
+int ss_get_vdd_ndx_from_state(struct drm_atomic_state *old_state)
+{
+	struct drm_crtc *crtc;
+	struct drm_crtc_state *old_crtc_state;
+	int i;
+
+	struct drm_encoder *encoder;
+	struct drm_device *dev;
+
+	struct sde_encoder_virt *sde_enc = NULL;
+	struct sde_encoder_phys *phys;
+
+	struct sde_connector *c_conn;
+	struct dsi_display *display;
+	struct samsung_display_driver_data *vdd;
+	int ndx = -EINVAL;
+
+
+	for_each_old_crtc_in_state(old_state, crtc, old_crtc_state, i) {
+		if (crtc->state->active) {
+			dev = crtc->dev;
+			list_for_each_entry(encoder, &dev->mode_config.encoder_list, head) {
+				if (encoder->crtc == crtc)
+					sde_enc = to_sde_encoder_virt(encoder);
+			}
+		}
+	}
+
+	if (!sde_enc)
+		return -ENODEV;
+
+	/* TOOD: remove below W/A and debug why panic occurs in video mode (DP) or writeback case */
+        if (sde_enc->disp_info.intf_type != DRM_MODE_CONNECTOR_DSI)
+                return MAX_DISPLAY_NDX;
+
+
+	for (i = 0; i < sde_enc->num_phys_encs; i++) {
+		phys = sde_enc->phys_encs[i];
+		if (phys) {
+			c_conn = to_sde_connector(phys->connector);
+			display = c_conn->display;
+			vdd = display->panel->panel_private;
+			ndx = vdd->ndx;
+		}
+	}
+
+	return ndx;
+}
+#endif
+
 static bool _sde_encoder_dsc_is_dirty(struct sde_encoder_virt *sde_enc)
 {
 	int i;
@@ -4692,6 +4889,12 @@ int sde_encoder_prepare_for_kickoff(struct drm_encoder *drm_enc,
 	bool needs_hw_reset = false, is_cmd_mode;
 	int i, rc, ret = 0;
 	struct msm_display_info *disp_info;
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+	/* DSC Mismatch Debug, Case #04007749*/
+	struct sde_connector *sde_con;
+	struct dsi_display *display;
+	struct dsi_display_mode_priv_info *priv_info;
+#endif
 
 	if (!drm_enc || !params || !drm_enc->dev ||
 		!drm_enc->dev->dev_private) {
@@ -4768,9 +4971,17 @@ int sde_encoder_prepare_for_kickoff(struct drm_encoder *drm_enc,
 		}
 	}
 
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+			/* QC display driver prevent DMS before without first frame update (commit).
+			 * In above case, it returns error for DMS and it causes kernel panic, in result.
+			 * To prevent the limitation, allow DMS before first frame update, and sets proper DSC setting.
+			 */
+	if (_sde_encoder_is_dsc_enabled(drm_enc) && sde_enc->cur_master) {
+#else
 	if (_sde_encoder_is_dsc_enabled(drm_enc) && sde_enc->cur_master &&
 		((is_cmd_mode && sde_enc->cur_master->cont_splash_enabled) ||
 			!sde_enc->cur_master->cont_splash_enabled)) {
+#endif
 		rc = _sde_encoder_dsc_setup(sde_enc, params);
 		if (rc) {
 			SDE_ERROR_ENC(sde_enc, "failed to setup DSC: %d\n", rc);
@@ -4784,6 +4995,21 @@ int sde_encoder_prepare_for_kickoff(struct drm_encoder *drm_enc,
 	if (sde_enc->cur_master && !sde_enc->cur_master->cont_splash_enabled)
 		sde_configure_qdss(sde_enc, sde_enc->cur_master->hw_qdss,
 				sde_enc->cur_master, sde_kms->qdss_enabled);
+
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+	/* DSC Mismatch Debug, Case #04007749*/
+	sde_con = to_sde_connector(sde_enc->cur_master->connector);
+	display = sde_con->display;
+	priv_info = display->modes->priv_info;
+
+	if (disp_info->intf_type == DRM_MODE_CONNECTOR_DSI && !_sde_encoder_is_dsc_enabled(drm_enc) && priv_info->dsc_enabled) {
+		pr_err("DSC is disabled\n");
+		if (sde_enc && sde_enc->phys_encs[0] && sde_enc->phys_encs[0]->connector) {
+			SDE_EVT32(sde_connector_get_topology_name(sde_enc->phys_encs[0]->connector), 0x9999);
+		}
+		SDE_DBG_DUMP("all", "dbg_bus", "panic");
+	}
+#endif
 
 end:
 	SDE_ATRACE_END("sde_encoder_prepare_for_kickoff");
@@ -5261,8 +5487,10 @@ static int _sde_encoder_init_debugfs(struct drm_encoder *drm_enc)
 	debugfs_create_bool("idle_power_collapse", 0600, sde_enc->debugfs_root,
 			&sde_enc->idle_pc_enabled);
 
+#if 0 // Case 04266495 : Temporally remove debugfs for frame_trigger_mode
 	debugfs_create_u32("frame_trigger_mode", 0400, sde_enc->debugfs_root,
 			&sde_enc->frame_trigger_mode);
+#endif
 
 	for (i = 0; i < sde_enc->num_phys_encs; i++)
 		if (sde_enc->phys_encs[i] &&
@@ -5646,6 +5874,12 @@ struct drm_encoder *sde_encoder_init_with_ops(
 
 	kthread_init_work(&sde_enc->esd_trigger_work,
 			sde_encoder_esd_trigger_work_handler);
+
+	kthread_init_work(&sde_enc->gpu_wakeup_event_work,
+			sde_encoder_gpu_wakeup_event_work_handler);
+
+	sde_enc->gpu_wakeup_nb.notifier_call =
+			sde_encoder_gpu_wakeup_event_handler;
 
 	memcpy(&sde_enc->disp_info, disp_info, sizeof(*disp_info));
 

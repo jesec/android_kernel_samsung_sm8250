@@ -9,6 +9,9 @@
 #include "dsi_hw.h"
 #include "dsi_phy_hw.h"
 #include "dsi_catalog.h"
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+#include "ss_dsi_panel_common.h"
+#endif
 
 #define DSIPHY_CMN_REVISION_ID0						0x000
 #define DSIPHY_CMN_REVISION_ID1						0x004
@@ -203,6 +206,72 @@ void dsi_phy_hw_v4_0_commit_phy_timing(struct dsi_phy_hw *phy,
 	DSI_W32(phy, DSIPHY_CMN_TIMING_CTRL_13, timing->lane_v4[13]);
 }
 
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+/* To store driving streng for Motto tool  */
+void dsi_phy_hw_v4_0_store_str(struct dsi_phy_hw *phy, u32 *val)
+{
+	u32 read[1];
+
+	DSI_PHY_INFO(phy, "val: %x (ndx:%x)\n", *val, phy->index);
+	DSI_W32(phy, DSIPHY_CMN_GLBL_HSTX_STR_CTRL_0, *val);
+
+	read[0] = DSI_R32(phy, DSIPHY_CMN_GLBL_HSTX_STR_CTRL_0);
+	DSI_PHY_INFO(phy, "applied %x\n", read[0]);
+
+	/* Hand read data over pointer argument */
+	val = read;
+}
+
+/* To store de-emphasis adjusted for Motto tool  */
+void dsi_phy_hw_v4_0_store_emphasis(struct dsi_phy_hw *phy, u32 *val)
+{
+	u32 cal_sel = 0;
+	u32 cmn_ctrl_2 = 0;
+	u32 read[2];
+	/* TODO: get appropriate vdd..primary or secondary... */
+	struct samsung_display_driver_data *vdd = ss_get_vdd(PRIMARY_DISPLAY_NDX);
+
+	DSI_PHY_INFO(phy, "val:%x (ndx:%x)\n", *val, phy->index);
+
+	if ((!vdd->motto_info.motto_emphasis) && (!vdd->motto_info.init_backup)) {
+		/* backup default data */
+		vdd->motto_info.cal_sel_init =
+			DSI_R32(phy, DSIPHY_CMN_GLBL_STR_SWI_CAL_SEL_CTRL);
+		vdd->motto_info.cmn_ctrl2_init = DSI_R32(phy, DSIPHY_CMN_CTRL_2);
+		
+		DSI_PHY_INFO(phy, "backup sel:%x(0), cmn:%x(40)\n",
+			vdd->motto_info.cal_sel_init, vdd->motto_info.cmn_ctrl2_init);
+		vdd->motto_info.init_backup = true;
+	}
+		
+	/* Common for both DSI_PHY_VERSION_4_1 and DSI_PHY_VERSION_4_0 */
+	if (*val==0x01) {
+		/* cal_sel : assert [2] */	
+		cal_sel = vdd->motto_info.cal_sel_init | BIT(2);	
+		/* cmn_ctrl_2 : assert [2],[5] */
+		cmn_ctrl_2 = vdd->motto_info.cmn_ctrl2_init |BIT(2) |BIT(5);
+	} else if (*val==0) { /* restore init(set 0) value */
+		if (!vdd->motto_info.init_backup)
+			DSI_PHY_ERR(phy, "no init backed up.\n");
+		cal_sel = vdd->motto_info.cal_sel_init;
+		cmn_ctrl_2 = vdd->motto_info.cmn_ctrl2_init;
+		DSI_PHY_INFO(phy,"restore sel:%x, cmn:%x\n", cal_sel, cmn_ctrl_2);///
+	} else
+		DSI_PHY_ERR(phy, "invalid val:%x\n", *val);
+	
+	DSI_W32(phy, DSIPHY_CMN_GLBL_STR_SWI_CAL_SEL_CTRL, cal_sel);
+	DSI_W32(phy, DSIPHY_CMN_CTRL_2, cmn_ctrl_2);
+
+	read[0] = DSI_R32(phy, DSIPHY_CMN_GLBL_STR_SWI_CAL_SEL_CTRL);
+	read[1] = DSI_R32(phy, DSIPHY_CMN_CTRL_2);
+	DSI_PHY_INFO(phy,"applied sel:%x, cmn:%x\n", read[0], read[1]);
+
+	/* store curr to use enable fc if modified */
+	vdd->motto_info.cal_sel_curr = read[0];
+	vdd->motto_info.cmn_ctrl2_curr = read[1];
+}
+#endif
+
 /**
  * enable() - Enable PHY hardware
  * @phy:      Pointer to DSI PHY hardware object.
@@ -225,6 +294,10 @@ void dsi_phy_hw_v4_0_enable(struct dsi_phy_hw *phy,
 	u32 glbl_hstx_str_ctrl_0 = 0;
 	u32 glbl_rescode_top_ctrl = 0;
 	u32 glbl_rescode_bot_ctrl = 0;
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+	/* TODO: get appropriate vdd..primary or secondary... */
+	struct samsung_display_driver_data *vdd = ss_get_vdd(PRIMARY_DISPLAY_NDX);
+#endif
 
 	if (dsi_phy_hw_v4_0_is_pll_on(phy))
 		DSI_PHY_WARN(phy, "PLL turned on before configuring PHY\n");
@@ -254,6 +327,15 @@ void dsi_phy_hw_v4_0_enable(struct dsi_phy_hw *phy,
 		glbl_rescode_top_ctrl = 0x03;
 		glbl_rescode_bot_ctrl = 0x3c;
 	}
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+	/* Set HSTX as adb wrote/Motto or kernel default at enable */
+	if (vdd->motto_info.motto_swing) { /* if not zero */
+		glbl_hstx_str_ctrl_0 = vdd->motto_info.motto_swing;
+	}
+	if (vdd->motto_info.motto_emphasis) { 
+		glbl_str_swi_cal_sel_ctrl = vdd->motto_info.cal_sel_curr;
+	}
+#endif	
 
 	/* de-assert digital and pll power down */
 	data = BIT(6) | BIT(5);
@@ -293,6 +375,11 @@ void dsi_phy_hw_v4_0_enable(struct dsi_phy_hw *phy,
 
 	DSI_W32(phy, DSIPHY_CMN_LANE_CTRL0, 0x1F);
 
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+	if (vdd->motto_info.motto_emphasis) {
+		DSI_W32(phy, DSIPHY_CMN_CTRL_2, vdd->motto_info.cmn_ctrl2_curr);
+	} else
+#endif
 	/* Select full-rate mode */
 	DSI_W32(phy, DSIPHY_CMN_CTRL_2, 0x40);
 

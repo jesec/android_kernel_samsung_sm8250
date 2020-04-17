@@ -21,6 +21,11 @@
 
 #include "sde_hdcp_2x.h"
 
+#ifdef CONFIG_SEC_DISPLAYPORT
+#include <linux/secdp_logger.h>
+#include "dp/secdp.h"
+#endif
+
 /* all message IDs */
 #define INVALID_MESSAGE        0
 #define AKE_INIT               2
@@ -473,6 +478,11 @@ static void sde_hdcp_2x_msg_sent(struct sde_hdcp_2x_ctrl *hdcp)
 		HDCP_TRANSPORT_CMD_INVALID,
 		hdcp->client_data};
 
+	if (atomic_read(&hdcp->hdcp_off)) {
+		pr_debug("invalid state, hdcp off\n");
+		return;
+	}
+
 	switch (hdcp->app_data.response.data[0]) {
 	case SKE_SEND_TYPE_ID:
 		if (!hdcp2_app_comm(hdcp->hdcp2_ctx,
@@ -903,10 +913,8 @@ static int sde_hdcp_2x_wakeup(struct sde_hdcp_2x_wakeup_data *data)
 		break;
 	case HDCP_2X_CMD_MIN_ENC_LEVEL:
 		hdcp->min_enc_level = data->min_enc_level;
-		if (hdcp->authenticated) {
-			kfifo_put(&hdcp->cmd_q, data->cmd);
-			wake_up(&hdcp->wait_q);
-		}
+		kfifo_put(&hdcp->cmd_q, data->cmd);
+		wake_up(&hdcp->wait_q);
 		break;
 	default:
 		kfifo_put(&hdcp->cmd_q, data->cmd);

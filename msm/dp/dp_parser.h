@@ -228,6 +228,14 @@ struct dp_parser {
 	bool lphw_hpd;
 	u32 mst_fixed_port[MAX_DP_MST_STREAMS];
 
+#ifdef CONFIG_SEC_DISPLAYPORT
+	bool cc_dir_inv;	/* CC_DIR is inversed, e.g. T865 */
+	bool aux_sel_inv;	/* inverse control of AUX_SEL e.g. D2Xq hwid 01,02 */
+	bool aux_sw_redrv;	/* true if both aux switch and redriver are used, e.g. T865 */
+	int  dex_dft_res;	/* DeX default resolution, e.g. normal dongle such as HG950 */
+	bool prefer_res;	/* true if prefer resolution has high priority */
+#endif
+
 	int (*parse)(struct dp_parser *parser);
 	struct dp_io_data *(*get_io)(struct dp_parser *parser, char *name);
 	void (*get_io_buf)(struct dp_parser *parser, char *name);

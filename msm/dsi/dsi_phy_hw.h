@@ -332,6 +332,11 @@ struct dsi_phy_hw_ops {
 	void *timing_ops;
 	struct phy_ulps_config_ops ulps_ops;
 	struct phy_dyn_refresh_ops dyn_refresh_ops;
+
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+	void (*store_str)(struct dsi_phy_hw *phy, u32 *val);
+	void (*store_emphasis)(struct dsi_phy_hw *phy, u32 *val);
+#endif
 };
 
 /**

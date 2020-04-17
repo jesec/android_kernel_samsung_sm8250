@@ -477,6 +477,10 @@ int msm_atomic_prepare_fb(struct drm_plane *plane,
 	return msm_framebuffer_prepare(new_state->fb, kms->aspace);
 }
 
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+int ss_get_vdd_ndx_from_state(struct drm_atomic_state *old_state);
+#endif
+
 /* The (potentially) asynchronous part of the commit.  At this point
  * nothing can fail short of armageddon.
  */
@@ -486,6 +490,9 @@ static void complete_commit(struct msm_commit *c)
 	struct drm_device *dev = state->dev;
 	struct msm_drm_private *priv = dev->dev_private;
 	struct msm_kms *kms = priv->kms;
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+	int ndx;
+#endif
 
 	drm_atomic_helper_wait_for_fences(dev, state, false);
 
@@ -512,6 +519,16 @@ static void complete_commit(struct msm_commit *c)
 	 */
 
 	msm_atomic_wait_for_commit_done(dev, state);
+
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+	ndx = ss_get_vdd_ndx_from_state(state);
+
+	if (!kms->funcs->ss_callback) {
+		DRM_ERROR("No ss_callback function...\n");
+	} else {
+		kms->funcs->ss_callback(ndx, SS_EVENT_FRAME_UPDATE_POST, NULL);
+	}
+#endif
 
 	drm_atomic_helper_cleanup_planes(dev, state);
 
@@ -637,11 +654,30 @@ int msm_atomic_commit(struct drm_device *dev,
 	struct drm_plane *plane;
 	struct drm_plane_state *old_plane_state, *new_plane_state;
 	int i, ret;
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+	struct msm_kms *kms = priv->kms;
+	int ndx;
+#endif
 
 	if (!priv || priv->shutdown_in_progress) {
 		DRM_ERROR("priv is null or shutdwon is in-progress\n");
 		return -EINVAL;
 	}
+
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+	ndx = ss_get_vdd_ndx_from_state(state);
+
+	/* TODO: check if _sde_encoder_trigger_start() is suitable
+	 * for ss_callback called..
+	 */
+	if (!kms->funcs->ss_callback) {
+		DRM_ERROR("No ss_callback function...\n");
+	} else {
+
+		kms->funcs->ss_callback(ndx, SS_EVENT_PANEL_ESD_RECOVERY, NULL);
+		kms->funcs->ss_callback(ndx, SS_EVENT_FRAME_UPDATE_PRE, NULL);
+	}
+#endif
 
 	SDE_ATRACE_BEGIN("atomic_commit");
 	ret = drm_atomic_helper_prepare_planes(dev, state);

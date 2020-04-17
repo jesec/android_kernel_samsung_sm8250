@@ -263,6 +263,11 @@ static void dsi_catalog_phy_4_0_init(struct dsi_phy_hw *phy)
 		dsi_phy_hw_v4_0_cache_phy_timings;
 	phy->ops.set_continuous_clk = dsi_phy_hw_v4_0_set_continuous_clk;
 	phy->ops.commit_phy_timing = dsi_phy_hw_v4_0_commit_phy_timing;
+
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+	phy->ops.store_str = dsi_phy_hw_v4_0_store_str;
+	phy->ops.store_emphasis= dsi_phy_hw_v4_0_store_emphasis;
+#endif
 }
 
 /**

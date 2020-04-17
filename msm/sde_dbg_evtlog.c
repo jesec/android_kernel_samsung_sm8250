@@ -17,6 +17,10 @@
 #include "sde_dbg.h"
 #include "sde_trace.h"
 
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+#include <linux/sched/clock.h>
+#endif
+
 #define SDE_EVTLOG_FILTER_STRSIZE	64
 
 struct sde_evtlog_filter {

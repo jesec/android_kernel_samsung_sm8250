@@ -3,13 +3,15 @@
  * Copyright (c) 2017-2019, The Linux Foundation. All rights reserved.
  */
 
-
 #include <linux/delay.h>
 #include <linux/iopoll.h>
 
 #include "dp_catalog.h"
 #include "dp_reg.h"
 #include "dp_debug.h"
+#ifdef CONFIG_SEC_DISPLAYPORT
+#include "secdp.h"
+#endif
 
 #define DP_GET_MSB(x)	(x >> 8)
 #define DP_GET_LSB(x)	(x & 0xff)
@@ -59,6 +61,23 @@
 	catalog->write(catalog, io_data, x, y); \
 })
 
+#if 0/*def SECDP_CALIBRATE_VXPX*/
+/* table for calibraton - DO NOT USE IN MARKET BINARY */
+u8 vm_pre_emphasis[4][4] = {
+	{0x00, 0x0B, 0x12, 0xFF},       /* pe0, 0 db */
+	{0x00, 0x0A, 0x12, 0xFF},       /* pe1, 3.5 db */
+	{0x00, 0x0C, 0xFF, 0xFF},       /* pe2, 6.0 db */
+	{0xFF, 0xFF, 0xFF, 0xFF}        /* pe3, 9.5 db */
+};
+
+/* voltage swing, 0.2v and 1.0v are not support */
+u8 vm_voltage_swing[4][4] = {
+	{0x07, 0x0F, 0x14, 0xFF}, /* sw0, 0.4v  */
+	{0x11, 0x1D, 0x1F, 0xFF}, /* sw1, 0.6 v */
+	{0x18, 0x1F, 0xFF, 0xFF}, /* sw1, 0.8 v */
+	{0xFF, 0xFF, 0xFF, 0xFF}  /* sw1, 1.2 v, optional */
+};
+#else
 static u8 const vm_pre_emphasis[4][4] = {
 	{0x00, 0x0B, 0x12, 0xFF},       /* pe0, 0 db */
 	{0x00, 0x0A, 0x12, 0xFF},       /* pe1, 3.5 db */
@@ -73,6 +92,7 @@ static u8 const vm_voltage_swing[4][4] = {
 	{0x18, 0x1F, 0xFF, 0xFF}, /* sw1, 0.8 v */
 	{0xFF, 0xFF, 0xFF, 0xFF}  /* sw1, 1.2 v, optional */
 };
+#endif
 
 enum dp_flush_bit {
 	DP_PPS_FLUSH,
@@ -119,6 +139,13 @@ static u32 dp_read_hw(struct dp_catalog_private *catalog,
 {
 	u32 data = 0;
 
+#ifdef CONFIG_SEC_DISPLAYPORT
+	if (!secdp_get_clk_status(DP_CORE_PM)) {
+		DP_DEBUG("core_clks_on: off\n");
+		return 0;
+	}
+#endif
+
 	data = readl_relaxed(io_data->io.base + offset);
 
 	return data;
@@ -127,6 +154,13 @@ static u32 dp_read_hw(struct dp_catalog_private *catalog,
 static void dp_write_hw(struct dp_catalog_private *catalog,
 	struct dp_io_data *io_data, u32 offset, u32 data)
 {
+#ifdef CONFIG_SEC_DISPLAYPORT
+	if (!secdp_get_clk_status(DP_CORE_PM)) {
+		DP_DEBUG("core_clks_on: off\n");
+		return;
+	}
+#endif
+
 	writel_relaxed(data, io_data->io.base + offset);
 }
 
@@ -243,7 +277,15 @@ static int dp_catalog_aux_clear_trans(struct dp_catalog_aux *aux, bool read)
 
 	if (read) {
 		data = dp_read(DP_AUX_TRANS_CTRL);
+#ifdef CONFIG_SEC_DISPLAYPORT
+		/* Prevent_CXX Major defect.
+		 * Invalid Assignment: The type size of both side variables are different:
+		 * "data" is 4 ( unsigned int ) and "data & 0xfffffffffffffdffUL" is 8 ( unsigned long )
+		 */
+		data &= ((u32)~BIT(9));
+#else
 		data &= ~BIT(9);
+#endif
 		dp_write(DP_AUX_TRANS_CTRL, data);
 	} else {
 		dp_write(DP_AUX_TRANS_CTRL, 0);
@@ -267,6 +309,10 @@ static void dp_catalog_aux_clear_hw_interrupts(struct dp_catalog_aux *aux)
 	io_data = catalog->io.dp_phy;
 
 	data = dp_read(DP_PHY_AUX_INTERRUPT_STATUS);
+#ifdef CONFIG_SEC_DISPLAYPORT
+	if (data)
+		DP_DEBUG("PHY_AUX_INTERRUPT_STATUS=0x%08x\n", data);
+#endif
 
 	dp_write(DP_PHY_AUX_INTERRUPT_CLEAR, 0x1f);
 	wmb(); /* make sure 0x1f is written before next write */
@@ -342,6 +388,13 @@ static void dp_catalog_aux_update_cfg(struct dp_catalog_aux *aux,
 		DP_ERR("invalid input\n");
 		return;
 	}
+
+#ifdef CONFIG_SEC_DISPLAYPORT
+	if (!secdp_get_cable_status()) {
+		DP_INFO("cable is out\n");
+		return;
+	}
+#endif
 
 	catalog = dp_catalog_get_priv(aux);
 
@@ -1031,6 +1084,8 @@ static void dp_catalog_ctrl_state_ctrl(struct dp_catalog_ctrl *ctrl, u32 state)
 		return;
 	}
 
+	DP_DEBUG("+++\n");
+
 	catalog = dp_catalog_get_priv(ctrl);
 	io_data = catalog->io.dp_link;
 
@@ -1122,6 +1177,8 @@ static void dp_catalog_panel_config_dto(struct dp_catalog_panel *panel,
 		return;
 	}
 
+	DP_DEBUG("+++\n");
+
 	catalog = dp_catalog_get_priv(panel);
 	io_data = catalog->io.dp_link;
 
@@ -1197,6 +1254,8 @@ static void dp_catalog_ctrl_mainlink_ctrl(struct dp_catalog_ctrl *ctrl,
 		DP_ERR("invalid input\n");
 		return;
 	}
+
+	DP_DEBUG("+++\n");
 
 	catalog = dp_catalog_get_priv(ctrl);
 	io_data = catalog->io.dp_link;
@@ -1733,6 +1792,21 @@ static void dp_catalog_ctrl_update_vx_px(struct dp_catalog_ctrl *ctrl,
 
 	value0 = vm_voltage_swing[v_level][p_level];
 	value1 = vm_pre_emphasis[v_level][p_level];
+#ifdef SECDP_SELF_TEST
+	if (secdp_self_test_status(ST_VOLTAGE_TUN) >= 0) {
+		u8 val = secdp_self_test_get_arg(ST_VOLTAGE_TUN)[v_level*4 + p_level];
+
+		DP_INFO("value0 : 0x%02d => 0x%02d\n", value0, val);
+		value0 = val;
+	}
+
+	if (secdp_self_test_status(ST_PREEM_TUN) >= 0) {
+		u8 val = secdp_self_test_get_arg(ST_PREEM_TUN)[v_level*4 + p_level];
+		
+		DP_INFO("value0 : 0x%02d => 0x%02d\n", value1, val);
+		value1 = val;
+	}
+#endif
 
 	/* program default setting first */
 
@@ -1765,6 +1839,98 @@ static void dp_catalog_ctrl_update_vx_px(struct dp_catalog_ctrl *ctrl,
 			v_level, value0, p_level, value1);
 	}
 }
+
+#if 0/*def SECDP_CALIBRATE_VXPX*/
+void secdp_catalog_vx_show(void)
+{
+	u8 value0, value1, value2, value3;
+	int i;
+
+	DP_DEBUG("+++\n");
+
+	for (i = 0; i < 4; i++) {
+		value0 = vm_voltage_swing[i][0];
+		value1 = vm_voltage_swing[i][1];
+		value2 = vm_voltage_swing[i][2];
+		value3 = vm_voltage_swing[i][3];
+		DP_INFO("%02x,%02x,%02x,%02x\n", value0, value1, value2, value3);
+	}
+}
+
+int secdp_catalog_vx_store(int *val, int size)
+{
+	int rc = 0;
+
+	DP_DEBUG("+++\n");
+
+	vm_voltage_swing[0][0] = val[0];
+	vm_voltage_swing[0][1] = val[1];
+	vm_voltage_swing[0][2] = val[2];
+	vm_voltage_swing[0][3] = val[3];
+	
+	vm_voltage_swing[1][0] = val[4];
+	vm_voltage_swing[1][1] = val[5];
+	vm_voltage_swing[1][2] = val[6];
+	vm_voltage_swing[1][3] = val[7];
+
+	vm_voltage_swing[2][0] = val[8];
+	vm_voltage_swing[2][1] = val[9];
+	vm_voltage_swing[2][2] = val[10];
+	vm_voltage_swing[2][3] = val[11];
+
+	vm_voltage_swing[3][0] = val[12];
+	vm_voltage_swing[3][1] = val[13];
+	vm_voltage_swing[3][2] = val[14];
+	vm_voltage_swing[3][3] = val[15];
+
+	return rc;	
+}
+
+void secdp_catalog_px_show(void)
+{
+	u8 value0, value1, value2, value3;
+	int i;
+
+	DP_DEBUG("+++\n");
+
+	for (i = 0; i < 4; i++) {
+		value0 = vm_pre_emphasis[i][0];
+		value1 = vm_pre_emphasis[i][1];
+		value2 = vm_pre_emphasis[i][2];
+		value3 = vm_pre_emphasis[i][3];
+		DP_INFO("%02x,%02x,%02x,%02x\n", value0, value1, value2, value3);
+	}
+}
+
+int secdp_catalog_px_store(int *val, int size)
+{
+	int rc = 0;
+
+	DP_DEBUG("+++\n");
+
+	vm_pre_emphasis[0][0] = val[0];
+	vm_pre_emphasis[0][1] = val[1];
+	vm_pre_emphasis[0][2] = val[2];
+	vm_pre_emphasis[0][3] = val[3];
+	
+	vm_pre_emphasis[1][0] = val[4];
+	vm_pre_emphasis[1][1] = val[5];
+	vm_pre_emphasis[1][2] = val[6];
+	vm_pre_emphasis[1][3] = val[7];
+
+	vm_pre_emphasis[2][0] = val[8];
+	vm_pre_emphasis[2][1] = val[9];
+	vm_pre_emphasis[2][2] = val[10];
+	vm_pre_emphasis[2][3] = val[11];
+
+	vm_pre_emphasis[3][0] = val[12];
+	vm_pre_emphasis[3][1] = val[13];
+	vm_pre_emphasis[3][2] = val[14];
+	vm_pre_emphasis[3][3] = val[15];
+
+	return rc;	
+}
+#endif
 
 static void dp_catalog_ctrl_send_phy_pattern(struct dp_catalog_ctrl *ctrl,
 			u32 pattern)

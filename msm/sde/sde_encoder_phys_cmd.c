@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2015-2019, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2015-2020, The Linux Foundation. All rights reserved.
  */
 
 #define pr_fmt(fmt)	"[drm:%s:%d] " fmt, __func__, __LINE__
@@ -9,6 +9,10 @@
 #include "sde_core_irq.h"
 #include "sde_formats.h"
 #include "sde_trace.h"
+
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+#include "ss_dsi_panel_common.h"
+#endif
 
 #define SDE_DEBUG_CMDENC(e, fmt, ...) SDE_DEBUG("enc%d intf%d " fmt, \
 		(e) && (e)->base.parent ? \
@@ -34,8 +38,9 @@
 #define DEFAULT_TEARCHECK_SYNC_THRESH_CONTINUE	4
 
 #define SDE_ENC_WR_PTR_START_TIMEOUT_US 20000
-
-#define SDE_ENC_MAX_POLL_TIMEOUT_US	2000
+#define AUTOREFRESH_SEQ1_POLL_TIME	2000
+#define AUTOREFRESH_SEQ2_POLL_TIME	25000
+#define AUTOREFRESH_SEQ2_POLL_TIMEOUT	1000000
 
 static inline int _sde_encoder_phys_cmd_get_idle_timeout(
 		struct sde_encoder_phys_cmd *cmd_enc)
@@ -267,6 +272,33 @@ static void sde_encoder_phys_cmd_te_rd_ptr_irq(void *arg, int irq_idx)
 		phys_enc->parent_ops.handle_vblank_virt(phys_enc->parent,
 			phys_enc);
 
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+	{
+		struct samsung_display_driver_data *vdd = ss_get_vdd(PRIMARY_DISPLAY_NDX);
+		static ktime_t prev_t;
+		ktime_t cur_t = ktime_get();
+		int t_delt;
+		int fps;
+		static prev_fps = 0;
+		static int cnt = 0;
+
+		if (vdd->vrr.running_vrr || cnt-- > 0) {
+			t_delt = (int)ktime_us_delta(cur_t , prev_t);
+			fps = 1000000 / t_delt;
+
+			if (cnt == 1) {
+				LCD_INFO("VRR: teirq: %d, %d\n", prev_fps, fps);
+				SS_XLOG(prev_fps, fps);
+			}
+
+			if (vdd->vrr.running_vrr)
+				cnt = 5;
+			prev_fps = fps;
+		}
+
+		prev_t = cur_t;
+	}
+#endif
 	atomic_add_unless(&cmd_enc->pending_vblank_cnt, -1, 0);
 	wake_up_all(&cmd_enc->pending_vblank_wq);
 	SDE_ATRACE_END("rd_ptr_irq");
@@ -490,6 +522,32 @@ static int _sde_encoder_phys_cmd_handle_ppdone_timeout(
 			cmd_enc->pp_timeout_report_cnt,
 			pending_kickoff_cnt,
 			frame_event);
+
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+	SS_XLOG(cmd_enc->pp_timeout_report_cnt);
+
+	/* TODO: get proper ndx... */
+	phys_enc->sde_kms->base.funcs->ss_callback(PRIMARY_DISPLAY_NDX, SS_EVENT_CHECK_TE, NULL);
+	inc_dpui_u32_field(DPUI_KEY_QCT_PPTO, 1);
+#if 0
+	pr_err("%s (%d): pp_timeout_report_cnt: %d\n", __func__, __LINE__, cmd_enc->pp_timeout_report_cnt);
+	if (cmd_enc->pp_timeout_report_cnt < 10) {
+		/* request a ctl reset before the next kickoff */
+		phys_enc->enable_state = SDE_ENC_ERR_NEEDS_HW_RESET;
+		pr_err("%s (%d): ignore pp & phy_hw_reset\n", __func__, __LINE__);
+		goto exit;
+	}
+#endif
+
+	SDE_ERROR_CMDENC(cmd_enc,
+		"pp:%d kickoff timed out ctl %d koff_cnt %d\n",
+		phys_enc->hw_pp->idx - PINGPONG_0,
+		phys_enc->hw_ctl->idx - CTL_0,
+		pending_kickoff_cnt);
+
+	SDE_EVT32(DRMID(phys_enc->parent), SDE_EVTLOG_FATAL);
+	SDE_DBG_DUMP("all", "dbg_bus", "vbif_dbg_bus", "panic");
+#endif
 
 	/* check if panel is still sending TE signal or not */
 	if (sde_connector_esd_status(phys_enc->connector))
@@ -826,6 +884,9 @@ static int sde_encoder_phys_cmd_control_vblank_irq(
 	SDE_EVT32(DRMID(phys_enc->parent), phys_enc->hw_pp->idx - PINGPONG_0,
 			enable, refcount);
 
+#if defined(CONFIG_DISPLAY_SAMSUNG) // case 04436106
+	SS_XLOG_VSYNC(enable, refcount);
+#endif
 	if (enable && atomic_inc_return(&phys_enc->vblank_refcount) == 1)
 		ret = sde_encoder_helper_register_irq(phys_enc, INTR_IDX_RDPTR);
 	else if (!enable && atomic_dec_return(&phys_enc->vblank_refcount) == 0)
@@ -840,6 +901,9 @@ end:
 		SDE_EVT32(DRMID(phys_enc->parent),
 				phys_enc->hw_pp->idx - PINGPONG_0,
 				enable, refcount, SDE_EVTLOG_ERROR);
+#if defined(CONFIG_DISPLAY_SAMSUNG) // case 04436106
+		SS_XLOG_VSYNC(0xbad, enable, refcount, ret);
+#endif
 	}
 
 	mutex_unlock(phys_enc->vblank_ctl_lock);
@@ -1034,7 +1098,14 @@ static void sde_encoder_phys_cmd_tearcheck_config(
 	 * disable sde hw generated TE signal, since hw TE will arrive first.
 	 * Only caveat is if due to error, we hit wrap-around.
 	 */
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+	/* 3 * 16.6ms based on mode->vtotal
+	 note : need to multiply current_fps / 60 to match 16ms regardless of current fps
+	*/
+	tc_cfg.sync_cfg_height = (mode->vtotal * 3 * mode->vrefresh) / 12 / 5; 
+#else
 	tc_cfg.sync_cfg_height = 0xFFF0;
+#endif
 	tc_cfg.vsync_init_val = mode->vdisplay;
 	tc_cfg.sync_threshold_start = _get_tearcheck_threshold(phys_enc,
 			&extra_frame_trigger_time);
@@ -1708,12 +1779,132 @@ static void sde_encoder_phys_cmd_update_split_role(
 	_sde_encoder_phys_cmd_update_flush_mask(phys_enc);
 }
 
+static void _sde_encoder_autorefresh_disable_seq1(
+		struct sde_encoder_phys *phys_enc)
+{
+	int trial = 0;
+	struct sde_encoder_phys_cmd *cmd_enc =
+				to_sde_encoder_phys_cmd(phys_enc);
+	/*
+	 * If autorefresh is enabled, disable it and make sure it is safe to
+	 * proceed with current frame commit/push. Sequence fallowed is,
+	 * 1. Disable TE - caller will take care of it
+	 * 2. Disable autorefresh config
+	 * 4. Poll for frame transfer ongoing to be false
+	 * 5. Enable TE back - caller will take care of it
+	 */
+
+	_sde_encoder_phys_cmd_config_autorefresh(phys_enc, 0);
+
+	do {
+		udelay(AUTOREFRESH_SEQ1_POLL_TIME);
+		if ((trial * AUTOREFRESH_SEQ1_POLL_TIME)
+				> (KICKOFF_TIMEOUT_MS * USEC_PER_MSEC)) {
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+			struct samsung_display_driver_data *vdd = ss_get_vdd(PRIMARY_DISPLAY_NDX);
+			vdd->is_autorefresh_fail = true;
+			LCD_INFO("set is_autorefresh_fail true\n");
+#endif
+			SDE_ERROR_CMDENC(cmd_enc,
+					"disable autorefresh failed\n");
+
+			phys_enc->enable_state = SDE_ENC_ERR_NEEDS_HW_RESET;
+			break;
+		}
+
+		trial++;
+	} while (_sde_encoder_phys_cmd_is_ongoing_pptx(phys_enc));
+}
+
+static void _sde_encoder_autorefresh_disable_seq2(
+		struct sde_encoder_phys *phys_enc)
+{
+	int trial = 0;
+	struct sde_hw_mdp *hw_mdp = phys_enc->hw_mdptop;
+	u32 autorefresh_status = 0;
+	struct sde_encoder_phys_cmd *cmd_enc =
+				to_sde_encoder_phys_cmd(phys_enc);
+
+	/*
+	 * If autorefresh is still enabled after above sequence, proceed with
+	 * below disable sequence.
+	 * 1. Disable TEAR CHECK
+	 * 2. Disable autorefresh config
+	 * 4. Poll for autorefresh to be disabled
+	 * 5. Enable TEAR CHECK
+	 */
+
+	if (hw_mdp->ops.get_autorefresh_status) {
+		autorefresh_status = hw_mdp->ops.get_autorefresh_status(hw_mdp,
+					phys_enc->intf_idx);
+		SDE_EVT32(DRMID(phys_enc->parent), phys_enc->intf_idx - INTF_0,
+					autorefresh_status);
+	}
+
+	if (!(autorefresh_status & BIT(7))) {
+		usleep_range(AUTOREFRESH_SEQ2_POLL_TIME,
+			AUTOREFRESH_SEQ2_POLL_TIME);
+
+		autorefresh_status = hw_mdp->ops.get_autorefresh_status(hw_mdp,
+					phys_enc->intf_idx);
+		SDE_EVT32(DRMID(phys_enc->parent), phys_enc->intf_idx - INTF_0,
+					autorefresh_status);
+	}
+
+	if (autorefresh_status & BIT(7)) {
+		SDE_ERROR_CMDENC(cmd_enc, "autofresh status:0x%x intf:%d\n",
+			autorefresh_status, phys_enc->intf_idx - INTF_0);
+
+		if (phys_enc->has_intf_te &&
+		    phys_enc->hw_intf->ops.enable_tearcheck)
+			phys_enc->hw_intf->ops.enable_tearcheck(
+				phys_enc->hw_intf, false);
+		else if (phys_enc->hw_pp->ops.enable_tearcheck)
+			phys_enc->hw_pp->ops.enable_tearcheck(
+				phys_enc->hw_pp, false);
+
+		_sde_encoder_phys_cmd_config_autorefresh(phys_enc, 0);
+
+		do {
+			usleep_range(AUTOREFRESH_SEQ2_POLL_TIME,
+				AUTOREFRESH_SEQ2_POLL_TIME);
+			if ((trial * AUTOREFRESH_SEQ2_POLL_TIME)
+				> AUTOREFRESH_SEQ2_POLL_TIMEOUT) {
+				SDE_ERROR_CMDENC(cmd_enc,
+					"disable autorefresh failed\n");
+				SDE_DBG_DUMP("all", "dbg_bus", "vbif_dbg_bus",
+						"panic");
+				break;
+			}
+
+			trial++;
+			autorefresh_status =
+			    hw_mdp->ops.get_autorefresh_status(hw_mdp,
+					phys_enc->intf_idx);
+			SDE_ERROR_CMDENC(cmd_enc,
+				"autofresh status:0x%x intf:%d\n",
+				autorefresh_status,
+				phys_enc->intf_idx - INTF_0);
+			SDE_EVT32(DRMID(phys_enc->parent),
+				phys_enc->intf_idx - INTF_0,
+				autorefresh_status);
+		} while (autorefresh_status & BIT(7));
+
+		if (phys_enc->has_intf_te &&
+		    phys_enc->hw_intf->ops.enable_tearcheck)
+			phys_enc->hw_intf->ops.enable_tearcheck(
+				phys_enc->hw_intf, true);
+		else if (phys_enc->hw_pp->ops.enable_tearcheck)
+			phys_enc->hw_pp->ops.enable_tearcheck(
+				phys_enc->hw_pp, true);
+	}
+}
+
 static void sde_encoder_phys_cmd_prepare_commit(
 		struct sde_encoder_phys *phys_enc)
 {
 	struct sde_encoder_phys_cmd *cmd_enc =
 		to_sde_encoder_phys_cmd(phys_enc);
-	int trial = 0;
 
 	if (!phys_enc)
 		return;
@@ -1727,32 +1918,9 @@ static void sde_encoder_phys_cmd_prepare_commit(
 	if (!sde_encoder_phys_cmd_is_autorefresh_enabled(phys_enc))
 		return;
 
-	/*
-	 * If autorefresh is enabled, disable it and make sure it is safe to
-	 * proceed with current frame commit/push. Sequence fallowed is,
-	 * 1. Disable TE
-	 * 2. Disable autorefresh config
-	 * 4. Poll for frame transfer ongoing to be false
-	 * 5. Enable TE back
-	 */
 	sde_encoder_phys_cmd_connect_te(phys_enc, false);
-
-	_sde_encoder_phys_cmd_config_autorefresh(phys_enc, 0);
-
-	do {
-		udelay(SDE_ENC_MAX_POLL_TIMEOUT_US);
-		if ((trial * SDE_ENC_MAX_POLL_TIMEOUT_US)
-				> (KICKOFF_TIMEOUT_MS * USEC_PER_MSEC)) {
-			SDE_ERROR_CMDENC(cmd_enc,
-					"disable autorefresh failed\n");
-
-			phys_enc->enable_state = SDE_ENC_ERR_NEEDS_HW_RESET;
-			break;
-		}
-
-		trial++;
-	} while (_sde_encoder_phys_cmd_is_ongoing_pptx(phys_enc));
-
+	_sde_encoder_autorefresh_disable_seq1(phys_enc);
+	_sde_encoder_autorefresh_disable_seq2(phys_enc);
 	sde_encoder_phys_cmd_connect_te(phys_enc, true);
 
 	SDE_DEBUG_CMDENC(cmd_enc, "disabled autorefresh\n");
@@ -1776,9 +1944,6 @@ static void sde_encoder_phys_cmd_trigger_start(
 	} else {
 		sde_encoder_helper_trigger_start(phys_enc);
 	}
-
-	/* wr_ptr_wait_success is set true when wr_ptr arrives */
-	cmd_enc->wr_ptr_wait_success = false;
 }
 
 static void sde_encoder_phys_cmd_setup_vsync_source(

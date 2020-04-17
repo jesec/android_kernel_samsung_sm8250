@@ -673,6 +673,7 @@ void dsi_ctrl_hw_cmn_kickoff_command(struct dsi_ctrl_hw *ctrl,
 
 	if (!(flags & DSI_CTRL_HW_CMD_WAIT_FOR_TRIGGER))
 		DSI_W32(ctrl, DSI_CMD_MODE_DMA_SW_TRIGGER, 0x1);
+	SDE_EVT32(ctrl->index, flags);
 }
 
 /**
@@ -981,6 +982,7 @@ void dsi_ctrl_hw_cmn_enable_status_interrupts(
 		reg |= BIT(31);
 
 	DSI_W32(ctrl, DSI_INT_CTRL, reg);
+	wmb();
 
 	DSI_CTRL_HW_DBG(ctrl, "Enable interrupts 0x%x, INT_CTRL=0x%x\n", ints,
 			reg);
@@ -1182,6 +1184,8 @@ void dsi_ctrl_hw_cmn_enable_error_interrupts(struct dsi_ctrl_hw *ctrl,
 	u32 int_mask0 = 0x7FFF3BFF;
 
 	int_ctrl = DSI_R32(ctrl, DSI_INT_CTRL);
+	SDE_EVT32(ctrl->index, int_ctrl);
+
 	if (errors)
 		int_ctrl |= BIT(25);
 	else
@@ -1243,7 +1247,9 @@ void dsi_ctrl_hw_cmn_enable_error_interrupts(struct dsi_ctrl_hw *ctrl,
 	if (errors & DSI_INTERLEAVE_OP_CONTENTION)
 		int_mask0 &= ~BIT(8);
 
+	SDE_EVT32(ctrl->index, int_ctrl);
 	DSI_W32(ctrl, DSI_INT_CTRL, int_ctrl);
+	SDE_EVT32(ctrl->index, int_ctrl);
 	DSI_W32(ctrl, DSI_ERR_INT_MASK0, int_mask0);
 
 	DSI_CTRL_HW_DBG(ctrl, "[DSI_%d] enable errors = 0x%llx, int_mask0=0x%x\n",
@@ -1604,6 +1610,7 @@ int dsi_ctrl_hw_cmn_wait4dynamic_refresh_done(struct dsi_ctrl_hw *ctrl)
 	/* ack dynamic refresh done status */
 	reg = DSI_R32(ctrl, DSI_INT_CTRL);
 	reg |= dyn_refresh_done;
+	SDE_EVT32(reg);
 	DSI_W32(ctrl, DSI_INT_CTRL, reg);
 
 	return 0;

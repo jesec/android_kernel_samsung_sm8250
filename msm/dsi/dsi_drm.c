@@ -12,6 +12,11 @@
 #include "dsi_drm.h"
 #include "sde_trace.h"
 
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+//#include "ss_dsi_panel_common.h"
+#include "../samsung/ss_dsi_panel_common.h"
+#endif
+
 #define to_dsi_bridge(x)     container_of((x), struct dsi_bridge, base)
 #define to_dsi_state(x)      container_of((x), struct dsi_connector_state, base)
 
@@ -84,6 +89,13 @@ static void convert_to_dsi_mode(const struct drm_display_mode *drm_mode,
 		dsi_mode->panel_mode = DSI_OP_VIDEO_MODE;
 	if (drm_mode->flags & DRM_MODE_FLAG_CMD_MODE_PANEL)
 		dsi_mode->panel_mode = DSI_OP_CMD_MODE;
+
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+	if (drm_mode->type & DRM_MODE_TYPE_USERDEF)
+		dsi_mode->timing.sot_hs_mode = true;
+	else
+		dsi_mode->timing.sot_hs_mode = false;
+#endif
 }
 
 void dsi_convert_to_drm_mode(const struct dsi_display_mode *dsi_mode,
@@ -138,11 +150,22 @@ void dsi_convert_to_drm_mode(const struct dsi_display_mode *dsi_mode,
 	if (dsi_mode->panel_mode == DSI_OP_CMD_MODE)
 		drm_mode->flags |= DRM_MODE_FLAG_CMD_MODE_PANEL;
 
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+	if (dsi_mode->timing.sot_hs_mode)
+		drm_mode->type |= DRM_MODE_TYPE_USERDEF;
+
+	snprintf(drm_mode->name, DRM_DISPLAY_MODE_LEN, "%dx%dx%dx%d%s%s",
+			drm_mode->hdisplay, drm_mode->vdisplay,
+			drm_mode->vrefresh, drm_mode->clock,
+			video_mode ? "vid" : "cmd",
+			dsi_mode->timing.sot_hs_mode ? "HS" : "Normal");
+#else
 	/* set mode name */
 	snprintf(drm_mode->name, DRM_DISPLAY_MODE_LEN, "%dx%dx%dx%d%s",
 			drm_mode->hdisplay, drm_mode->vdisplay,
 			drm_mode->vrefresh, drm_mode->clock,
 			video_mode ? "vid" : "cmd");
+#endif
 }
 
 static int dsi_bridge_attach(struct drm_bridge *bridge)
@@ -420,7 +443,119 @@ static bool dsi_bridge_mode_fixup(struct drm_bridge *bridge,
 			(!(dsi_mode.dsi_mode_flags & DSI_MODE_FLAG_DYN_CLK)) &&
 			(!crtc_state->active_changed ||
 			 display->is_cont_splash_enabled))
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+		{
+			if (display->panel->panel_initialized || display->is_cont_splash_enabled) {
+				struct samsung_display_driver_data *vdd = display->panel->panel_private;
+				struct vrr_info *vrr = &vdd->vrr;
+
+				vrr->target_refresh_rate = adjusted_mode->vrefresh;
+				vrr->target_sot_hs_mode = !!(adjusted_mode->type & DRM_MODE_TYPE_USERDEF);
+
+				vrr->cur_h_active = cur_mode->hdisplay;
+				vrr->cur_v_active = cur_mode->vdisplay;
+				vrr->target_h_active = adjusted_mode->hdisplay;
+				vrr->target_v_active = adjusted_mode->vdisplay;
+
+				/* vrr->cur_refresh_rate valuse is changed in Bridge RR,
+				 * so use cur_mode info.
+				 */
+				if ((cur_mode->vrefresh != adjusted_mode->vrefresh) ||
+					((cur_mode->type & DRM_MODE_TYPE_USERDEF) !=
+					 (adjusted_mode->type & DRM_MODE_TYPE_USERDEF))) {
+					LCD_INFO("DMS: VRR flag: %d -> 1\n", vrr->is_vrr_changing);
+					vrr->is_vrr_changing = true;
+					vrr->running_vrr = true;
+
+					/* case 04323399:
+					 * MDP set SDE_RSC_CMD_STATE for inter-frame power collapse, which
+					 * refer to TE. In case of Bridge RR, which causes higher TE period than MDP setting,
+					 * it lost wr_ptr irq, and causes delayed pp_done irq and frame drop.
+					 * To prevent this
+					 * During Bridge RR, set RSC state to SDE_RSC_CLK_STATE, 4-frames power collapse,
+					 * Then recover its state after Bridge RR is done.
+					 */
+					vdd->vrr.force_rsc_clk_state = true;
+				}
+
+				if ((cur_mode->hdisplay != adjusted_mode->hdisplay) ||
+						(cur_mode->vdisplay != adjusted_mode->vdisplay)) {
+					LCD_INFO("DMS: MULTI RES flag: %d -> 1\n",
+							vrr->is_multi_resolution_changing);
+					vrr->is_multi_resolution_changing = true;
+				}
+
+				dsi_mode.dsi_mode_flags |= DSI_MODE_FLAG_DMS;
+
+				SS_XLOG(cur_mode->vrefresh,
+					!!(cur_mode->type & DRM_MODE_TYPE_USERDEF),
+					adjusted_mode->vrefresh,
+					!!(adjusted_mode->type & DRM_MODE_TYPE_USERDEF));
+
+				LCD_INFO("DMS: switch mode %s(%dx%d@%d%s) -> %s(%dx%d@%d%s)\n",
+					cur_mode->name,
+					cur_mode->hdisplay,
+					cur_mode->vdisplay,
+					cur_mode->vrefresh,
+					!!(cur_mode->type & DRM_MODE_TYPE_USERDEF) ? "HS" : "NM",
+					adjusted_mode->name, 
+					adjusted_mode->hdisplay,
+					adjusted_mode->vdisplay,
+					adjusted_mode->vrefresh,
+					!!(adjusted_mode->type & DRM_MODE_TYPE_USERDEF) ? "HS" : "NM");
+			}
+		} else if (!drm_mode_equal(cur_mode, adjusted_mode)) {
+			/* In case of that
+			 * - display power state is changing,
+			 * - splash is enabled yet, or
+			 * - VRR, POMS, or DYN_CLK is set,
+			 * it will apply display_mode in dsi_display_mode() function without set DMS flag.
+			 *
+			 * But, Samsung VRR should apply target VRR mode in vrr->cur_refresh_rate.
+			 * Brightness setting will apply current VRR mode, and apply it to UB.
+			 * So, in this corner case, just save target VRR mode in vrr->cur_refresh_rate.
+			 *
+			 * Even it is only multi resolution scenario, not VRR scenario,
+			 * it should save resolution for VRR, and it is harmless to save
+			 * current and target refresh rate to intended refresh rate.
+			 */
+			struct samsung_display_driver_data *vdd = display->panel->panel_private;
+			struct vrr_info *vrr = &vdd->vrr;
+
+			vrr->cur_refresh_rate = vrr->target_refresh_rate =
+				adjusted_mode->vrefresh;
+			vrr->cur_sot_hs_mode = vrr->target_sot_hs_mode =
+				!!(adjusted_mode->type & DRM_MODE_TYPE_USERDEF);
+
+			vrr->cur_h_active = vrr->target_h_active =
+				adjusted_mode->hdisplay;
+			vrr->cur_v_active  = vrr->target_v_active =
+				adjusted_mode->vdisplay;
+
+			SS_XLOG(cur_mode->vrefresh,
+				!!(cur_mode->type & DRM_MODE_TYPE_USERDEF),
+				adjusted_mode->vrefresh,
+				!!(adjusted_mode->type & DRM_MODE_TYPE_USERDEF),
+				crtc_state->active_changed, display->is_cont_splash_enabled);
+
+			LCD_INFO("DMS: switch mode %s(%dx%d@%d%s) -> %s(%dx%d@%d%s) " \
+					"during active_changed(%d) or splash(%d)\n",
+				cur_mode->name,
+				cur_mode->hdisplay,
+				cur_mode->vdisplay,
+				cur_mode->vrefresh,
+				!!(cur_mode->type & DRM_MODE_TYPE_USERDEF) ? "HS" : "NM",
+				adjusted_mode->name,
+				adjusted_mode->hdisplay,
+				adjusted_mode->vdisplay,
+				adjusted_mode->vrefresh,
+				!!(adjusted_mode->type & DRM_MODE_TYPE_USERDEF) ? "HS" : "NM",
+				crtc_state->active_changed,
+				display->is_cont_splash_enabled);
+		}
+#else
 			dsi_mode.dsi_mode_flags |= DSI_MODE_FLAG_DMS;
+#endif
 	}
 
 	/* Reject seamless transition when active changed */
@@ -865,6 +1000,9 @@ int dsi_connector_get_modes(struct drm_connector *connector, void *data,
 
 	edid.width_cm = (connector->display_info.width_mm) / 10;
 	edid.height_cm = (connector->display_info.height_mm) / 10;
+
+	width_mm = connector->display_info.width_mm; 
+	height_mm = connector->display_info.height_mm; 
 
 	dsi_drm_update_dtd(&edid, modes, count);
 	dsi_drm_update_checksum(&edid);
