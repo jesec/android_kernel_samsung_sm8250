@@ -1,0 +1,16 @@
+[submodule "techpack/audio"]
+	path = techpack/audio
+	url = https://github.com/jesec/android_vendor_qcom_audio-kernel
+	branch = stock-10
+[submodule "techpack/camera"]
+	path = techpack/camera
+	url = https://github.com/jesec/android_vendor_qcom_camera-kernel
+	branch = stock-10
+[submodule "techpack/display"]
+	path = techpack/display
+	url = https://github.com/jesec/android_vendor_qcom_display-drivers
+	branch = stock-10
+[submodule "techpack/video"]
+	path = techpack/video
+	url = https://github.com/jesec/android_vendor_qcom_video-driver
+	branch = stock-10
