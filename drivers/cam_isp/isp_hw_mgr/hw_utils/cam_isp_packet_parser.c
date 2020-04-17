@@ -463,7 +463,10 @@ int cam_isp_add_io_buffers(
 	struct cam_ife_hw_mgr_res            *res_list_isp_out,
 	struct list_head                     *res_list_ife_in_rd,
 	uint32_t                              size_isp_out,
-	bool                                  fill_fence)
+	bool                                  fill_fence,
+	bool                                  frame_header_enable,
+	uint32_t * res_id,
+	int64_t                               req_id)
 {
 	int                                 rc = 0;
 	dma_addr_t                          io_addr[CAM_PACKET_MAX_PLANES];
@@ -483,6 +486,7 @@ int cam_isp_add_io_buffers(
 	int32_t                             hdl;
 	int                                 mmu_hdl;
 	bool                                mode, is_buf_secure;
+	struct cam_buf_done_info           *info = NULL;
 
 	io_cfg = (struct cam_buf_io_cfg *) ((uint8_t *)
 			&prepare->packet->payload +
@@ -491,6 +495,8 @@ int cam_isp_add_io_buffers(
 	num_in_buf  = 0;
 	io_cfg_used_bytes = 0;
 	prepare->pf_data->packet = prepare->packet;
+	info = &prepare->pf_data->info;
+	memset(info, 0, sizeof(struct cam_buf_done_info));
 
 	/* Max one hw entries required for each base */
 	if (prepare->num_hw_update_entries + 1 >=
@@ -500,6 +506,8 @@ int cam_isp_add_io_buffers(
 			prepare->max_hw_update_entries);
 		return -EINVAL;
 	}
+
+	info->num_ports = prepare->packet->num_io_configs;
 
 	for (i = 0; i < prepare->packet->num_io_configs; i++) {
 		CAM_DBG(CAM_ISP, "======= io config idx %d ============", i);
@@ -598,6 +606,8 @@ int cam_isp_add_io_buffers(
 				return -EINVAL;
 			}
 
+			info->port_cfg[i].portID = io_cfg[i].resource_type;
+
 			memset(io_addr, 0, sizeof(io_addr));
 
 			for (plane_id = 0; plane_id < CAM_PACKET_MAX_PLANES;
@@ -611,6 +621,9 @@ int cam_isp_add_io_buffers(
 						&mode,
 						sizeof(bool)))
 					return -EINVAL;
+
+
+				info->port_cfg[i].plane = plane_id;
 
 				is_buf_secure = cam_mem_is_secure_buf(hdl);
 				if ((mode == CAM_SECURE_MODE_SECURE) &&
@@ -632,8 +645,21 @@ int cam_isp_add_io_buffers(
 					mmu_hdl, &io_addr[plane_id], &size);
 				if (rc) {
 					CAM_ERR(CAM_ISP,
-						"no io addr for plane%d",
-						plane_id);
+						"no io addr for plane%d io_addr:0x%llx mem_hdl:0x%x",
+						plane_id, io_addr[plane_id],
+						io_cfg[i].mem_handle[plane_id]);
+
+					CAM_ERR(CAM_ISP,
+						"Port i %d req_id %llu resource_type:%d fence:%d direction %d",
+						i, prepare->packet->header.request_id,
+						io_cfg[i].resource_type, io_cfg[i].fence,
+						io_cfg[i].direction);
+
+					CAM_ERR(CAM_ISP,
+						"planes - strid:%d sliceH:%d",
+						io_cfg[i].planes[plane_id].plane_stride,
+						io_cfg[i].planes[plane_id].slice_height);
+
 					rc = -ENOMEM;
 					return rc;
 				}
@@ -641,6 +667,22 @@ int cam_isp_add_io_buffers(
 				/* need to update with offset */
 				io_addr[plane_id] +=
 						io_cfg[i].offsets[plane_id];
+
+				info->port_cfg[i].plane_cfg[plane_id].height =
+					io_cfg[i].planes[plane_id].height;
+				info->port_cfg[i].plane_cfg[plane_id].width =
+					io_cfg[i].planes[plane_id].width;
+				info->port_cfg[i].plane_cfg[plane_id].stride =
+					io_cfg[i].planes[plane_id].plane_stride;
+				info->port_cfg[i].plane_cfg[plane_id].offset =
+					io_cfg[i].offsets[plane_id];
+				info->port_cfg[i].plane_cfg[plane_id].mem_hdl =
+					io_cfg[i].mem_handle[plane_id];
+				info->port_cfg[i].plane_cfg[plane_id].io_addr =
+					io_addr[plane_id];
+				info->port_cfg[i].plane_cfg[plane_id].size =
+					size;
+
 				CAM_DBG(CAM_ISP,
 					"get io_addr for plane %d: 0x%llx, mem_hdl=0x%x",
 					plane_id, io_addr[plane_id],
@@ -679,6 +721,15 @@ int cam_isp_add_io_buffers(
 			wm_update.image_buf = io_addr;
 			wm_update.num_buf   = plane_id;
 			wm_update.io_cfg    = &io_cfg[i];
+			wm_update.frame_header = 0;
+			if ((frame_header_enable) && !(*res_id)) {
+				wm_update.frame_header = kmd_buf_info->io_addr;
+				*res_id = res->res_id;
+				wm_update.local_id = (uint32_t) req_id;
+				CAM_DBG(CAM_ISP,
+					"Frame header enabled for res: 0x%x iova: %pK",
+					*res_id, kmd_buf_info->io_addr);
+			}
 			update_buf.cmd.size = kmd_buf_remain_size;
 			update_buf.wm_update = &wm_update;
 

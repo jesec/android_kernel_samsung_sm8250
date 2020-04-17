@@ -78,6 +78,9 @@ enum camera_flash_opcode {
 	CAMERA_SENSOR_FLASH_OP_OFF,
 	CAMERA_SENSOR_FLASH_OP_FIRELOW,
 	CAMERA_SENSOR_FLASH_OP_FIREHIGH,
+#if defined(CONFIG_LEDS_S2MPB02)
+	CAMERA_SENSOR_FLASH_OP_FIRETORCH,
+#endif
 	CAMERA_SENSOR_FLASH_OP_MAX,
 };
 
@@ -138,6 +141,9 @@ enum msm_camera_power_seq_type {
 	SENSOR_VAF_PWDM,
 	SENSOR_CUSTOM_REG1,
 	SENSOR_CUSTOM_REG2,
+	SENSOR_CUSTOM_REG3,
+	SENSOR_CUSTOM_REG4,
+	SENSOR_CUSTOM_REG5,
 	SENSOR_RESET,
 	SENSOR_STANDBY,
 	SENSOR_CUSTOM_GPIO1,
@@ -152,15 +158,14 @@ enum cam_sensor_packet_opcodes {
 	CAM_SENSOR_PACKET_OPCODE_SENSOR_PROBE,
 	CAM_SENSOR_PACKET_OPCODE_SENSOR_CONFIG,
 	CAM_SENSOR_PACKET_OPCODE_SENSOR_STREAMOFF,
-	CAM_SENSOR_PACKET_OPCODE_SENSOR_READ,
+	CAM_SENSOR_PACKET_OPCODE_SENSOR_MODE,
 	CAM_SENSOR_PACKET_OPCODE_SENSOR_NOP = 127
 };
 
 enum cam_actuator_packet_opcodes {
 	CAM_ACTUATOR_PACKET_OPCODE_INIT,
 	CAM_ACTUATOR_PACKET_AUTO_MOVE_LENS,
-	CAM_ACTUATOR_PACKET_MANUAL_MOVE_LENS,
-	CAM_ACTUATOR_PACKET_OPCODE_READ
+	CAM_ACTUATOR_PACKET_MANUAL_MOVE_LENS
 };
 
 enum cam_eeprom_packet_opcodes {
@@ -170,8 +175,7 @@ enum cam_eeprom_packet_opcodes {
 
 enum cam_ois_packet_opcodes {
 	CAM_OIS_PACKET_OPCODE_INIT,
-	CAM_OIS_PACKET_OPCODE_OIS_CONTROL,
-	CAM_OIS_PACKET_OPCODE_READ
+	CAM_OIS_PACKET_OPCODE_OIS_CONTROL
 };
 
 enum msm_bus_perf_setting {
@@ -221,8 +225,7 @@ enum cam_sensor_i2c_cmd_type {
 	CAM_SENSOR_I2C_WRITE_RANDOM,
 	CAM_SENSOR_I2C_WRITE_BURST,
 	CAM_SENSOR_I2C_WRITE_SEQ,
-	CAM_SENSOR_I2C_READ_RANDOM,
-	CAM_SENSOR_I2C_READ_SEQ,
+	CAM_SENSOR_I2C_READ,
 	CAM_SENSOR_I2C_POLL
 };
 
@@ -274,8 +277,6 @@ struct cam_sensor_i2c_reg_setting {
 	enum camera_sensor_i2c_type addr_type;
 	enum camera_sensor_i2c_type data_type;
 	unsigned short delay;
-	uint8_t *read_buff;
-	uint32_t read_buff_len;
 };
 
 struct cam_sensor_i2c_seq_reg {
@@ -303,7 +304,6 @@ struct i2c_data_settings {
 	struct i2c_settings_array config_settings;
 	struct i2c_settings_array streamon_settings;
 	struct i2c_settings_array streamoff_settings;
-	struct i2c_settings_array read_settings;
 	struct i2c_settings_array *per_frame;
 };
 
@@ -338,6 +338,16 @@ enum msm_sensor_camera_id_t {
 	CAMERA_4,
 	CAMERA_5,
 	CAMERA_6,
+	CAMERA_7,
+	CAMERA_8,
+	CAMERA_9,
+	CAMERA_10,
+	CAMERA_11,
+	CAMERA_12,
+	CAMERA_13,
+	CAMERA_14,
+	CAMERA_15,
+	CAMERA_16,
 	MAX_CAMERAS,
 };
 
@@ -382,6 +392,9 @@ enum msm_camera_vreg_name_t {
 	CAM_VAF,
 	CAM_V_CUSTOM1,
 	CAM_V_CUSTOM2,
+	CAM_V_CUSTOM3,
+	CAM_V_CUSTOM4,
+	CAM_V_CUSTOM5,
 	CAM_VREG_MAX,
 };
 

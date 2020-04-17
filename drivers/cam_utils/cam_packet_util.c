@@ -149,7 +149,98 @@ int cam_packet_util_get_kmd_buffer(struct cam_packet *packet,
 	kmd_buf->handle     = cmd_desc->mem_handle;
 	kmd_buf->offset     = cmd_desc->offset + packet->kmd_cmd_buf_offset;
 	kmd_buf->size       = cmd_desc->size - cmd_desc->length;
+	kmd_buf->kmd_frame_header_addr = cpu_addr;
 	kmd_buf->used_bytes = 0;
+
+	return rc;
+}
+
+void cam_packet_dump_patch_info(struct cam_packet *packet,
+	int32_t iommu_hdl, int32_t sec_mmu_hdl)
+{
+	struct cam_patch_desc *patch_desc = NULL;
+	dma_addr_t iova_addr;
+	size_t     dst_buf_len;
+	size_t     src_buf_size;
+	int        i, rc = 0;
+	int32_t    hdl;
+	uintptr_t  cpu_addr = 0;
+	uint32_t  *dst_cpu_addr;
+	uint64_t   value = 0;
+
+	patch_desc = (struct cam_patch_desc *)
+		((uint32_t *) &packet->payload +
+		packet->patch_offset/4);
+
+	for (i = 0; i < packet->num_patches; i++) {
+		hdl = cam_mem_is_secure_buf(patch_desc[i].src_buf_hdl) ?
+			sec_mmu_hdl : iommu_hdl;
+		rc = cam_mem_get_io_buf(patch_desc[i].src_buf_hdl,
+			hdl, &iova_addr, &src_buf_size);
+		if (rc < 0) {
+			CAM_ERR(CAM_UTIL,
+				"unable to get src buf address for hdl 0x%x",
+				hdl);
+			return;
+		}
+
+		rc = cam_mem_get_cpu_buf(patch_desc[i].dst_buf_hdl,
+			&cpu_addr, &dst_buf_len);
+		if (rc < 0 || !cpu_addr || (dst_buf_len == 0)) {
+			CAM_ERR(CAM_UTIL, "unable to get dst buf address");
+			return;
+		}
+
+		dst_cpu_addr = (uint32_t *)cpu_addr;
+		dst_cpu_addr = (uint32_t *)((uint8_t *)dst_cpu_addr +
+			patch_desc[i].dst_offset);
+		value = *((uint64_t *)dst_cpu_addr);
+		CAM_ERR(CAM_UTIL,
+			"i = %d src_buf 0x%llx src_hdl 0x%x src_buf_with_offset 0x%llx size 0x%llx dst %p dst_offset %u dst_hdl 0x%x value 0x%llx",
+			i, iova_addr, patch_desc[i].src_buf_hdl,
+			(iova_addr + patch_desc[i].src_offset),
+			src_buf_size, dst_cpu_addr,
+			patch_desc[i].dst_offset,
+			patch_desc[i].dst_buf_hdl, value);
+
+		if (!(*dst_cpu_addr))
+			CAM_ERR(CAM_ICP, "Null at dst addr %p", dst_cpu_addr);
+	}
+}
+
+int cam_packet_util_get_frame_header_addr(
+	struct cam_kmd_buf_info *kmd_buf, int32_t iommu_hdl)
+{
+	int rc = 0;
+	uint64_t iova_addr;
+	size_t   len;
+	uint64_t padded_bytes = 0;
+
+	rc = cam_mem_get_io_buf(kmd_buf->handle, iommu_hdl,
+		&iova_addr, &len);
+	if (rc) {
+		CAM_ERR(CAM_UTIL,
+			"Failed to get io addr for handle = %d for mmu_hdl = %u",
+			kmd_buf->handle, iommu_hdl);
+		return rc;
+	}
+
+	iova_addr += kmd_buf->offset;
+
+	/* frame header address needs to be 16 byte aligned */
+	if (iova_addr % 16) {
+		padded_bytes = (uint64_t)(16 - (iova_addr % 16));
+		iova_addr += padded_bytes;
+
+		/* update the padding for the cpu addr as well */
+		kmd_buf->kmd_frame_header_addr += (padded_bytes / 4);
+	}
+
+	kmd_buf->io_addr = iova_addr;
+
+	CAM_DBG(CAM_UTIL,
+		"iova_addr: %pK cpu_addr: %pK padded_bytes: %llu",
+		kmd_buf->io_addr, kmd_buf->cpu_addr, padded_bytes);
 
 	return rc;
 }

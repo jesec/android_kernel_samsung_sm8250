@@ -14,6 +14,9 @@
 #include "cam_context.h"
 #include "cam_isp_hw_mgr_intf.h"
 
+#define CAM_IFE_QTIMER_MUL_FACTOR        10000
+#define CAM_IFE_QTIMER_DIV_FACTOR        192
+
 /*
  * Maximum hw resource - This number is based on the maximum
  * output port resource. The current maximum resource number
@@ -30,7 +33,7 @@
 /*
  * Maximum entries in state monitoring array for error logging
  */
-#define CAM_ISP_CTX_STATE_MONITOR_MAX_ENTRIES   40
+#define CAM_ISP_CTX_STATE_MONITOR_MAX_ENTRIES   100
 
 /* forward declaration */
 struct cam_isp_context;
@@ -146,6 +149,7 @@ struct cam_isp_context_state_monitor {
 	uint64_t                             req_id;
 	int64_t                              frame_id;
 	unsigned int                         evt_time_stamp;
+	struct timespec64                    ts;
 };
 
 /**
@@ -153,10 +157,11 @@ struct cam_isp_context_state_monitor {
  *
  * @base:                      Common context object pointer
  * @frame_id:                  Frame id tracking for the isp context
+ * @frame_id_meta:             Frame id read every epoch for the ctx
+							   meta from the sensor
  * @substate_actiavted:        Current substate for the activated state.
  * @process_bubble:            Atomic variable to check if ctx is still
  *                             processing bubble.
- * @bubble_frame_cnt:          Count number of frames since the req is in bubble
  * @substate_machine:          ISP substate machine for external interface
  * @substate_machine_irq:      ISP substate machine for irq handling
  * @req_base:                  Common request object storage
@@ -176,6 +181,7 @@ struct cam_isp_context_state_monitor {
  * @hw_acquired:               Indicate whether HW resources are acquired
  * @init_received:             Indicate whether init config packet is received
  * @split_acquire:             Indicate whether a separate acquire is expected
+ * @custom_enabled:            Custom HW enabled for this ctx
  * @init_timestamp:            Timestamp at which this context is initialized
  *
  */
@@ -183,9 +189,9 @@ struct cam_isp_context {
 	struct cam_context                   *base;
 
 	int64_t                               frame_id;
+	uint32_t                              frame_id_meta;
 	enum cam_isp_ctx_activated_substate   substate_activated;
 	atomic_t                              process_bubble;
-	uint32_t                              bubble_frame_cnt;
 	struct cam_ctx_ops                   *substate_machine;
 	struct cam_isp_ctx_irq_ops           *substate_machine_irq;
 
@@ -206,7 +212,10 @@ struct cam_isp_context {
 	bool                                  hw_acquired;
 	bool                                  init_received;
 	bool                                  split_acquire;
+	bool                                  custom_enabled;
 	unsigned int                          init_timestamp;
+	struct cam_buf_done_info              info;
+	uint64_t                            last_buf_done_req_id;
 };
 
 /**

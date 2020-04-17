@@ -615,6 +615,7 @@ int32_t cam_context_flush_ctx_to_hw(struct cam_context *ctx)
 			ctx->dev_name, ctx->ctx_id);
 
 	flush_args.num_req_pending = 0;
+	flush_args.last_flush_req = ctx->last_flush_req;
 	while (true) {
 		spin_lock(&ctx->lock);
 		if (list_empty(&temp_list)) {
@@ -1005,7 +1006,7 @@ int32_t cam_context_dump_pf_info_to_hw(struct cam_context *ctx,
 	if (ctx->hw_mgr_intf->hw_cmd) {
 		cmd_args.ctxt_to_hw_map = ctx->ctxt_to_hw_map;
 		cmd_args.cmd_type = CAM_HW_MGR_CMD_DUMP_PF_INFO;
-		cmd_args.u.pf_args.pf_data.packet = packet;
+		cmd_args.u.pf_args.packet = packet;
 		cmd_args.u.pf_args.iova = iova;
 		cmd_args.u.pf_args.buf_info = buf_info;
 		cmd_args.u.pf_args.mem_found = mem_found;

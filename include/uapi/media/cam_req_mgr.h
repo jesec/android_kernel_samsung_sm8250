@@ -30,6 +30,9 @@
 #define CAM_EEPROM_DEVICE_TYPE    (CAM_DEVICE_TYPE_BASE + 12)
 #define CAM_OIS_DEVICE_TYPE       (CAM_DEVICE_TYPE_BASE + 13)
 #define CAM_CUSTOM_DEVICE_TYPE    (CAM_DEVICE_TYPE_BASE + 14)
+#if 1//defined(CONFIG_SAMSUNG_SBI)
+#define CAM_SBI_DEVICE_TYPE       (CAM_DEVICE_TYPE_BASE + 15)
+#endif
 
 /* cam_req_mgr hdl info */
 #define CAM_REQ_MGR_HDL_IDX_POS           8
@@ -274,6 +277,7 @@ struct cam_req_mgr_link_control {
 #define CAM_MEM_FLAG_CACHE                      (1<<10)
 #define CAM_MEM_FLAG_HW_SHARED_ACCESS           (1<<11)
 #define CAM_MEM_FLAG_CDSP_OUTPUT                (1<<12)
+#define CAM_MEM_FLAG_DISABLE_DELAYED_UNMAP      (1<<13)
 
 #define CAM_MEM_MMU_MAX_HANDLE                  16
 
@@ -420,6 +424,7 @@ struct cam_mem_cache_ops_cmd {
 #define CAM_REQ_MGR_ERROR_TYPE_BUFFER           2
 #define CAM_REQ_MGR_ERROR_TYPE_RECOVERY         3
 #define CAM_REQ_MGR_ERROR_TYPE_SOF_FREEZE       4
+#define CAM_REQ_MGR_ERROR_TYPE_RESERVED         5
 
 /**
  * struct cam_req_mgr_error_msg

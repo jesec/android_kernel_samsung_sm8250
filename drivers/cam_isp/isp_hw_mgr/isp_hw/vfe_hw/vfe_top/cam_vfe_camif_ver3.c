@@ -42,6 +42,9 @@ struct cam_vfe_mux_camif_ver3_data {
 
 	enum cam_isp_hw_sync_mode          sync_mode;
 	uint32_t                           dsp_mode;
+#if defined(CONFIG_SAMSUNG_SBI)
+	uint32_t                           cust_node;
+#endif
 	uint32_t                           pix_pattern;
 	uint32_t                           first_pixel;
 	uint32_t                           first_line;
@@ -52,6 +55,9 @@ struct cam_vfe_mux_camif_ver3_data {
 	uint32_t                           camif_debug;
 	uint32_t                           horizontal_bin;
 	uint32_t                           qcfa_bin;
+	struct timeval                     sof_ts;
+	struct timeval                     epoch_ts;
+	struct timeval                     eof_ts;
 };
 
 static int cam_vfe_camif_ver3_get_evt_payload(
@@ -253,6 +259,9 @@ int cam_vfe_camif_ver3_acquire_resource(
 	camif_data->last_pixel  = acquire_data->vfe_in.in_port->left_stop;
 	camif_data->first_line  = acquire_data->vfe_in.in_port->line_start;
 	camif_data->last_line   = acquire_data->vfe_in.in_port->line_stop;
+#if defined(CONFIG_SAMSUNG_SBI)
+	camif_data->cust_node   = acquire_data->vfe_in.in_port->cust_node;
+#endif
 	camif_data->horizontal_bin =
 		acquire_data->vfe_in.in_port->horizontal_bin;
 	camif_data->qcfa_bin    = acquire_data->vfe_in.in_port->qcfa_bin;
@@ -291,20 +300,12 @@ static int cam_vfe_camif_ver3_resource_init(
 			CAM_ERR(CAM_ISP,
 				"failed to enable dsp clk, rc = %d", rc);
 	}
-
-	/* All auto clock gating disabled by default */
-	CAM_INFO(CAM_ISP, "overriding clock gating");
-	cam_io_w_mb(0xFFFFFFFF, camif_data->mem_base +
-		camif_data->common_reg->core_cgc_ovd_0);
-
-	cam_io_w_mb(0xFF, camif_data->mem_base +
-		camif_data->common_reg->core_cgc_ovd_1);
-
-	cam_io_w_mb(0x1, camif_data->mem_base +
-		camif_data->common_reg->ahb_cgc_ovd);
-
-	cam_io_w_mb(0x1, camif_data->mem_base +
-		camif_data->common_reg->noc_cgc_ovd);
+	camif_data->sof_ts.tv_sec = 0;
+	camif_data->sof_ts.tv_usec = 0;
+	camif_data->epoch_ts.tv_sec = 0;
+	camif_data->epoch_ts.tv_usec = 0;
+	camif_data->eof_ts.tv_sec = 0;
+	camif_data->eof_ts.tv_usec = 0;
 
 	return rc;
 }
@@ -383,6 +384,17 @@ static int cam_vfe_camif_ver3_resource_start(
 	/* AF stitching by hw disabled by default
 	 * PP CAMIF currently operates only in offline mode
 	 */
+
+#if defined(CONFIG_SAMSUNG_SBI)
+	if (rsrc_data->cust_node == 1 || rsrc_data->cust_node == 2) {
+		rsrc_data->cam_common_cfg.input_mux_sel_pp = 0x3;
+	} else {
+		rsrc_data->cam_common_cfg.input_mux_sel_pp = 0x0;
+	}
+#else
+	rsrc_data->cam_common_cfg.input_mux_sel_pp = 0x0;
+#endif
+	CAM_INFO(CAM_ISP,"sbi, input_mux_sel_pp = 0x%x", rsrc_data->cam_common_cfg.input_mux_sel_pp );
 
 	if ((rsrc_data->dsp_mode >= CAM_ISP_DSP_MODE_ONE_WAY) &&
 		(rsrc_data->dsp_mode <= CAM_ISP_DSP_MODE_ROUND)) {
@@ -473,6 +485,13 @@ static int cam_vfe_camif_ver3_resource_start(
 			rsrc_data->common_reg->diag_config);
 	}
 
+#if defined(CONFIG_SAMSUNG_SBI)
+	if (rsrc_data->cust_node == 2) {
+		rsrc_data->reg_data->error_irq_mask0 &= ~(1 << 31);
+		CAM_DBG(CAM_ISP, "ignore pp overflow irq");
+	}
+#endif
+
 	err_irq_mask[CAM_IFE_IRQ_CAMIF_REG_STATUS0] =
 		rsrc_data->reg_data->error_irq_mask0;
 	err_irq_mask[CAM_IFE_IRQ_CAMIF_REG_STATUS2] =
@@ -503,6 +522,8 @@ static int cam_vfe_camif_ver3_resource_start(
 	irq_mask[CAM_IFE_IRQ_CAMIF_REG_STATUS1] =
 		rsrc_data->reg_data->sof_irq_mask;
 
+	irq_mask[CAM_IFE_IRQ_CAMIF_REG_STATUS0] =
+		rsrc_data->reg_data->frame_id_mask;
 	if (!rsrc_data->sof_irq_handle) {
 		rsrc_data->sof_irq_handle = cam_irq_controller_subscribe_irq(
 			rsrc_data->vfe_irq_controller,
@@ -569,15 +590,10 @@ static int cam_vfe_camif_ver3_reg_dump(
 		CAM_INFO(CAM_ISP, "offset 0x%X value 0x%X", offset, val);
 	}
 
-	CAM_INFO(CAM_ISP, "IFE:%d PP CLC PREPROCESS",
-		camif_res->hw_intf->hw_idx);
-	for (offset = 0x2200; offset <= 0x23FC; offset += 0x4) {
-		if (offset == 0x2208)
-			offset = 0x2260;
+	CAM_INFO(CAM_ISP, "IFE:%d CSID", camif_res->hw_intf->hw_idx);
+	for (offset = 0x1400; offset <= 0x19DC; offset += 0x4) {
 		val = cam_soc_util_r(camif_priv->soc_info, 0, offset);
 		CAM_INFO(CAM_ISP, "offset 0x%X value 0x%X", offset, val);
-		if (offset == 0x2260)
-			offset = 0x23F4;
 	}
 
 	CAM_INFO(CAM_ISP, "IFE:%d PP CLC CAMIF", camif_res->hw_intf->hw_idx);
@@ -592,8 +608,8 @@ static int cam_vfe_camif_ver3_reg_dump(
 			offset = 0x27EC;
 	}
 
-	CAM_INFO(CAM_ISP, "IFE:%d PP CLC Modules", camif_res->hw_intf->hw_idx);
-	for (offset = 0x2800; offset <= 0x8FFC; offset += 0x4) {
+	CAM_INFO(CAM_ISP, "IFE:%d PP Stats CLC Modules", camif_res->hw_intf->hw_idx);
+	for (offset = 0x7E00; offset <= 0x8FFC; offset += 0x4) {
 		val = cam_soc_util_r(camif_priv->soc_info, 0, offset);
 		CAM_INFO(CAM_ISP, "offset 0x%X value 0x%X", offset, val);
 	}
@@ -729,6 +745,24 @@ static int cam_vfe_camif_ver3_sof_irq_debug(
 	return 0;
 }
 
+int cam_vfe_camif_ver3_time(
+	struct cam_isp_resource_node *rsrc_node, void *cmd_args)
+{
+	struct cam_vfe_mux_camif_ver3_data *camif_priv =
+		(struct cam_vfe_mux_camif_ver3_data *)rsrc_node->res_priv;
+
+	CAM_INFO(CAM_ISP,
+		"CAMIF SOF %lld:%lld EPOCH %lld:%lld EOF %lld:%lld",
+		camif_priv->sof_ts.tv_sec,
+		camif_priv->sof_ts.tv_usec,
+		camif_priv->epoch_ts.tv_sec,
+		camif_priv->epoch_ts.tv_usec,
+		camif_priv->eof_ts.tv_sec,
+		camif_priv->eof_ts.tv_usec);
+
+	return 0;
+}
+
 static int cam_vfe_camif_ver3_process_cmd(
 	struct cam_isp_resource_node *rsrc_node,
 	uint32_t cmd_type, void *cmd_args, uint32_t arg_size)
@@ -765,6 +799,9 @@ static int cam_vfe_camif_ver3_process_cmd(
 		*((struct cam_hw_soc_info **)cmd_args) = camif_priv->soc_info;
 		rc = 0;
 		break;
+	case CAM_ISP_HW_CMD_CAMIF_DATA:
+		rc = cam_vfe_camif_ver3_time(rsrc_node, cmd_args);
+		break;
 	default:
 		CAM_ERR(CAM_ISP,
 			"unsupported process command:%d", cmd_type);
@@ -778,7 +815,25 @@ static int cam_vfe_camif_ver3_process_cmd(
 static void cam_vfe_camif_ver3_overflow_debug_info(
 	struct cam_vfe_mux_camif_ver3_data *camif_priv)
 {
-	uint32_t val0, val1, val2, val3;
+	struct cam_vfe_soc_private *soc_private;
+	uint32_t val0, val1, val2, val3, val4, val5;
+
+	soc_private = camif_priv->soc_info->soc_private;
+	cam_cpas_reg_read(soc_private->cpas_handle,
+		CAM_CPAS_REG_CAMNOC, 0xA20, true, &val0);
+	cam_cpas_reg_read(soc_private->cpas_handle,
+		CAM_CPAS_REG_CAMNOC, 0x1420, true, &val1);
+	cam_cpas_reg_read(soc_private->cpas_handle,
+		CAM_CPAS_REG_CAMNOC, 0x1A20, true, &val2);
+    cam_cpas_reg_read(soc_private->cpas_handle,
+        CAM_CPAS_REG_CAMNOC, 0x1010, true, &val3);
+    cam_cpas_reg_read(soc_private->cpas_handle,
+        CAM_CPAS_REG_CAMNOC, 0x1038, true, &val4);
+    cam_cpas_reg_read(soc_private->cpas_handle,
+        CAM_CPAS_REG_CAMNOC, 0x1438, true, &val5);
+	CAM_INFO(CAM_ISP,
+		"CAMNOC REG ife_linear: 0x%X ife_rdi_wr: 0x%X ife_ubwc_stats: 0x%X ife_rdi_read: 0x%X ife_rdi_urg 0x%X wr_urg 0x%X",
+		val0, val1, val2, val3, val4, val5);
 
 	val0 = cam_io_r(camif_priv->mem_base +
 		camif_priv->common_reg->top_debug_0);
@@ -926,6 +981,7 @@ static void cam_vfe_camif_ver3_print_status(uint32_t *status,
 		CAM_INFO(CAM_ISP,
 			"CAMNOC REG ife_linear: 0x%X ife_rdi_wr: 0x%X ife_ubwc_stats: 0x%X",
 			val0, val1, val2);
+		cam_cpas_log_votes();
 		return;
 	}
 
@@ -1186,9 +1242,18 @@ static int cam_vfe_camif_ver3_handle_irq_top_half(uint32_t evt_id,
 	}
 
 	cam_isp_hw_get_timestamp(&evt_payload->ts);
+	evt_payload->th_reg_val = 0;
 
 	for (i = 0; i < th_payload->num_registers; i++)
 		evt_payload->irq_reg_val[i] = th_payload->evt_status_arr[i];
+
+	if (evt_payload->irq_reg_val[CAM_IFE_IRQ_CAMIF_REG_STATUS1]
+		& camif_priv->reg_data->epoch0_irq_mask) {
+		if (camif_priv->common_reg->sbi_frame_idx)
+			evt_payload->th_reg_val = cam_io_r_mb(
+			camif_priv->mem_base +
+			camif_priv->common_reg->sbi_frame_idx);
+	}
 
 	th_payload->evt_payload_priv = evt_payload;
 
@@ -1205,6 +1270,7 @@ static int cam_vfe_camif_ver3_handle_irq_bottom_half(void *handler_priv,
 	struct cam_vfe_top_irq_evt_payload *payload;
 	struct cam_isp_hw_event_info evt_info;
 	uint32_t irq_status[CAM_IFE_IRQ_REGISTERS_MAX] = {0};
+	struct timespec64 ts;
 	int i = 0;
 
 	if (!handler_priv || !evt_payload_priv) {
@@ -1224,6 +1290,7 @@ static int cam_vfe_camif_ver3_handle_irq_bottom_half(void *handler_priv,
 	evt_info.hw_idx   = camif_node->hw_intf->hw_idx;
 	evt_info.res_id   = camif_node->res_id;
 	evt_info.res_type = camif_node->res_type;
+	evt_info.th_reg_val = 0;
 
 	if (irq_status[CAM_IFE_IRQ_CAMIF_REG_STATUS1]
 		& camif_priv->reg_data->sof_irq_mask) {
@@ -1240,9 +1307,14 @@ static int cam_vfe_camif_ver3_handle_irq_bottom_half(void *handler_priv,
 					false;
 				camif_priv->irq_debug_cnt = 0;
 			}
-		} else
+		} else {
 			CAM_DBG(CAM_ISP, "VFE:%d Received SOF",
 				evt_info.hw_idx);
+			camif_priv->sof_ts.tv_sec =
+				payload->ts.mono_time.tv_sec;
+			camif_priv->sof_ts.tv_usec =
+				payload->ts.mono_time.tv_usec;
+			}
 
 		if (camif_priv->event_cb)
 			camif_priv->event_cb(camif_priv->priv,
@@ -1253,7 +1325,15 @@ static int cam_vfe_camif_ver3_handle_irq_bottom_half(void *handler_priv,
 
 	if (irq_status[CAM_IFE_IRQ_CAMIF_REG_STATUS1]
 		& camif_priv->reg_data->epoch0_irq_mask) {
-		CAM_DBG(CAM_ISP, "VFE:%d Received EPOCH", evt_info.hw_idx);
+
+		evt_info.th_reg_val = payload->th_reg_val;
+		CAM_DBG(CAM_ISP, "VFE:%d Received EPOCH frame_id 0x%x",
+			evt_info.hw_idx,
+			evt_info.th_reg_val);
+		camif_priv->epoch_ts.tv_sec =
+			payload->ts.mono_time.tv_sec;
+		camif_priv->epoch_ts.tv_usec =
+			payload->ts.mono_time.tv_usec;
 
 		if (camif_priv->event_cb)
 			camif_priv->event_cb(camif_priv->priv,
@@ -1265,6 +1345,10 @@ static int cam_vfe_camif_ver3_handle_irq_bottom_half(void *handler_priv,
 	if (irq_status[CAM_IFE_IRQ_CAMIF_REG_STATUS1]
 		& camif_priv->reg_data->eof_irq_mask) {
 		CAM_DBG(CAM_ISP, "VFE:%d Received EOF", evt_info.hw_idx);
+		camif_priv->eof_ts.tv_sec =
+			payload->ts.mono_time.tv_sec;
+		camif_priv->eof_ts.tv_usec =
+			payload->ts.mono_time.tv_usec;
 
 		if (camif_priv->event_cb)
 			camif_priv->event_cb(camif_priv->priv,
@@ -1285,8 +1369,16 @@ static int cam_vfe_camif_ver3_handle_irq_bottom_half(void *handler_priv,
 
 		cam_vfe_camif_ver3_print_status(irq_status, ret, camif_priv);
 
-		if (camif_priv->camif_debug & CAMIF_DEBUG_ENABLE_REG_DUMP)
+//		if (camif_priv->camif_debug & CAMIF_DEBUG_ENABLE_REG_DUMP)
 			cam_vfe_camif_ver3_reg_dump(camif_node);
+	}
+
+	if (irq_status[CAM_IFE_IRQ_CAMIF_REG_STATUS0]
+		& camif_priv->reg_data->frame_id_mask) {
+		CAM_DBG(CAM_ISP,
+			 "VFE:%d Frame id change to: %u", evt_info.hw_idx,
+			cam_io_r_mb(camif_priv->mem_base +
+			camif_priv->common_reg->sbi_frame_idx), camif_priv->reg_data->frame_id_mask);
 	}
 
 	if (irq_status[CAM_IFE_IRQ_CAMIF_REG_STATUS2]) {
@@ -1297,6 +1389,18 @@ static int cam_vfe_camif_ver3_handle_irq_bottom_half(void *handler_priv,
 				CAM_ISP_HW_EVENT_ERROR, (void *)&evt_info);
 
 		ret = CAM_VFE_IRQ_STATUS_VIOLATION;
+		ktime_get_boottime_ts64(&ts);
+		CAM_INFO(CAM_ISP,
+			"current monotonic time stamp seconds %lld:%lld",
+			ts.tv_sec, ts.tv_nsec/1000);
+		CAM_INFO(CAM_ISP,
+			"CAMIF SOF %lld:%lld EPOCH %lld:%lld EOF %lld:%lld",
+			camif_priv->sof_ts.tv_sec,
+			camif_priv->sof_ts.tv_usec,
+			camif_priv->epoch_ts.tv_sec,
+			camif_priv->epoch_ts.tv_usec,
+			camif_priv->eof_ts.tv_sec,
+			camif_priv->eof_ts.tv_usec);
 
 		cam_vfe_camif_ver3_print_status(irq_status, ret, camif_priv);
 

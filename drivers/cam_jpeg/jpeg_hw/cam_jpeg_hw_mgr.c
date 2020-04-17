@@ -1498,7 +1498,7 @@ static int cam_jpeg_mgr_cmd(void *hw_mgr_priv, void *cmd_args)
 	switch (hw_cmd_args->cmd_type) {
 	case CAM_HW_MGR_CMD_DUMP_PF_INFO:
 		cam_jpeg_mgr_print_io_bufs(
-			hw_cmd_args->u.pf_args.pf_data.packet,
+			hw_cmd_args->u.pf_args.packet,
 			hw_mgr->iommu_hdl,
 			hw_mgr->iommu_sec_hdl,
 			hw_cmd_args->u.pf_args.buf_info,

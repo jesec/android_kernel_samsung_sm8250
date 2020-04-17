@@ -77,6 +77,7 @@ static struct cam_vfe_camif_ver3_reg_data vfe_480_camif_reg_data = {
 	.error_irq_mask0                 = 0x82000200,
 	.error_irq_mask2                 = 0x30301F80,
 	.subscribe_irq_mask1             = 0x00000007,
+	.frame_id_mask                   = 0x400,
 	.enable_diagnostic_hw            = 0x1,
 	.pp_camif_cfg_en_shift           = 0,
 	.pp_camif_cfg_ife_out_en_shift   = 8,

@@ -9,6 +9,10 @@
 #include "cam_actuator_core.h"
 #include "cam_trace.h"
 
+#if defined(CONFIG_SAMSUNG_OIS_MCU_STM32)
+struct cam_actuator_ctrl_t *g_a_ctrls[2];
+#endif
+
 static long cam_actuator_subdev_ioctl(struct v4l2_subdev *sd,
 	unsigned int cmd, void *arg)
 {
@@ -139,11 +143,13 @@ static int32_t cam_actuator_driver_i2c_probe(struct i2c_client *client,
 	struct cam_hw_soc_info          *soc_info = NULL;
 	struct cam_actuator_soc_private *soc_private = NULL;
 
+#if 0
 	if (client == NULL || id == NULL) {
 		CAM_ERR(CAM_ACTUATOR, "Invalid Args client: %pK id: %pK",
 			client, id);
 		return -EINVAL;
 	}
+#endif
 
 	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C)) {
 		CAM_ERR(CAM_ACTUATOR, "%s :: i2c_check_functionality failed",
@@ -210,6 +216,13 @@ static int32_t cam_actuator_driver_i2c_probe(struct i2c_client *client,
 		cam_actuator_apply_request;
 	a_ctrl->last_flush_req = 0;
 	a_ctrl->cam_act_state = CAM_ACTUATOR_INIT;
+
+#if defined(CONFIG_SAMSUNG_OIS_MCU_STM32)
+	if (a_ctrl->soc_info.index == 0)
+		g_a_ctrls[0] = a_ctrl;
+	else if (a_ctrl->soc_info.index == 2)
+		g_a_ctrls[1] = a_ctrl;
+#endif
 
 	return rc;
 
@@ -358,6 +371,12 @@ static int32_t cam_actuator_driver_platform_probe(
 	if (rc)
 		goto free_mem;
 
+	if (soc_private->i2c_info.slave_addr != 0)
+		a_ctrl->io_master_info.cci_client->sid =
+			soc_private->i2c_info.slave_addr >> 1;
+	a_ctrl->io_master_info.cci_client->cci_i2c_master =
+		a_ctrl->cci_i2c_master;
+
 	a_ctrl->bridge_intf.device_hdl = -1;
 	a_ctrl->bridge_intf.link_hdl = -1;
 	a_ctrl->bridge_intf.ops.get_dev_info =
@@ -372,6 +391,13 @@ static int32_t cam_actuator_driver_platform_probe(
 
 	platform_set_drvdata(pdev, a_ctrl);
 	a_ctrl->cam_act_state = CAM_ACTUATOR_INIT;
+
+#if defined(CONFIG_SAMSUNG_OIS_MCU_STM32)
+	if (a_ctrl->soc_info.index == 0)
+		g_a_ctrls[0] = a_ctrl;
+	else if (a_ctrl->soc_info.index == 2)
+		g_a_ctrls[1] = a_ctrl;
+#endif
 
 	return rc;
 
@@ -410,6 +436,9 @@ static struct i2c_driver cam_actuator_driver_i2c = {
 	.remove = cam_actuator_driver_i2c_remove,
 	.driver = {
 		.name = ACTUATOR_DRIVER_I2C,
+		.owner = THIS_MODULE,
+		.of_match_table = cam_actuator_driver_dt_match,
+		.suppress_bind_attrs = true,
 	},
 };
 

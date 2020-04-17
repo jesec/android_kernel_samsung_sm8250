@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2017-2019, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2017-2020, The Linux Foundation. All rights reserved.
  */
 
 #include <linux/module.h>
@@ -10,6 +10,13 @@
 #include "cam_res_mgr_api.h"
 #include "cam_common_util.h"
 #include "cam_packet_util.h"
+#if defined(CONFIG_LEDS_S2MPB02)
+#include <linux/leds-s2mpb02.h>
+#endif
+
+#if defined(CONFIG_LEDS_S2MPB02)
+extern bool sysfs_flash_op;
+#endif
 
 static int cam_flash_prepare(struct cam_flash_ctrl *flash_ctrl,
 	bool regulator_enable)
@@ -19,10 +26,12 @@ static int cam_flash_prepare(struct cam_flash_ctrl *flash_ctrl,
 		(struct cam_flash_private_soc *)
 		flash_ctrl->soc_info.soc_private;
 
+#if !defined(CONFIG_LEDS_S2MPB02)
 	if (!(flash_ctrl->switch_trigger)) {
 		CAM_ERR(CAM_FLASH, "Invalid argument");
 		return -EINVAL;
 	}
+#endif
 
 	if (soc_private->is_wled_flash) {
 		if (regulator_enable &&
@@ -55,6 +64,7 @@ static int cam_flash_prepare(struct cam_flash_ctrl *flash_ctrl,
 	} else {
 		if (regulator_enable &&
 			(flash_ctrl->is_regulator_enabled == false)) {
+#if !defined(CONFIG_LEDS_S2MPB02)
 			rc = qpnp_flash_led_prepare(flash_ctrl->switch_trigger,
 				ENABLE_REGULATOR, NULL);
 			if (rc) {
@@ -62,10 +72,11 @@ static int cam_flash_prepare(struct cam_flash_ctrl *flash_ctrl,
 					"Regulator enable failed rc = %d", rc);
 				return rc;
 			}
-
+#endif
 			flash_ctrl->is_regulator_enabled = true;
 		} else if ((!regulator_enable) &&
 			(flash_ctrl->is_regulator_enabled == true)) {
+#if !defined(CONFIG_LEDS_S2MPB02)
 			rc = qpnp_flash_led_prepare(flash_ctrl->switch_trigger,
 				DISABLE_REGULATOR, NULL);
 			if (rc) {
@@ -73,7 +84,7 @@ static int cam_flash_prepare(struct cam_flash_ctrl *flash_ctrl,
 					"Regulator disable failed rc = %d", rc);
 				return rc;
 			}
-
+#endif
 			flash_ctrl->is_regulator_enabled = false;
 		} else {
 			CAM_ERR(CAM_FLASH, "Wrong Flash State : %d",
@@ -185,10 +196,12 @@ int cam_flash_pmic_power_ops(struct cam_flash_ctrl *fctrl,
 {
 	int rc = 0;
 
+#if !defined(CONFIG_LEDS_S2MPB02)
 	if (!(fctrl->switch_trigger)) {
 		CAM_ERR(CAM_FLASH, "Invalid argument");
 		return -EINVAL;
 	}
+#endif
 
 	if (regulator_enable) {
 		rc = cam_flash_prepare(fctrl, true);
@@ -411,6 +424,93 @@ end:
 	return rc;
 }
 
+#if defined(CONFIG_LEDS_S2MPB02)
+int cam_flash_off(struct cam_flash_ctrl *flash_ctrl)
+{
+	if (!flash_ctrl) {
+		CAM_ERR(CAM_FLASH, "Flash control Null");
+		return -EINVAL;
+	}
+
+	CAM_INFO(CAM_FLASH, "CAM Flash OFF");
+	s2mpb02_led_en(S2MPB02_FLASH_LED_1, 0, S2MPB02_LED_TURN_WAY_I2C);/* flash, off */
+	s2mpb02_led_en(S2MPB02_TORCH_LED_1, 0, S2MPB02_LED_TURN_WAY_I2C);/* torch, off */
+
+	flash_ctrl->flash_state = CAM_FLASH_STATE_START;
+	return 0;
+}
+
+static int cam_flash_low(
+	struct cam_flash_ctrl *flash_ctrl,
+	struct cam_flash_frame_setting *flash_data)
+{
+	int rc = 0;
+
+	if (!flash_data) {
+		CAM_ERR(CAM_FLASH, "Flash Data Null");
+		return -EINVAL;
+	}
+
+	CAM_INFO(CAM_FLASH, "CAM Low Flash ON");
+	rc = s2mpb02_led_en(S2MPB02_TORCH_LED_1, S2MPB02_TORCH_OUT_I_280MA, S2MPB02_LED_TURN_WAY_I2C);/* low, on */
+	if (rc)
+		CAM_ERR(CAM_FLASH, "Fire Low Flash failed: %d", rc);
+
+	return rc;
+}
+
+static int cam_flash_high(
+	struct cam_flash_ctrl *flash_ctrl,
+	struct cam_flash_frame_setting *flash_data)
+{
+	int rc = 0;
+
+	if (flash_data->led_current_ma[0] == 100) {
+		rc = s2mpb02_led_en(S2MPB02_TORCH_LED_1, S2MPB02_TORCH_OUT_I_120MA, S2MPB02_LED_TURN_WAY_I2C);/* low, on */
+	}
+	else if (flash_data->led_current_ma[0] == 240) {
+		rc = s2mpb02_led_en(S2MPB02_TORCH_LED_1, S2MPB02_TORCH_OUT_I_280MA, S2MPB02_LED_TURN_WAY_I2C);/* low, on */
+	}
+	else {
+		rc = s2mpb02_led_en(S2MPB02_FLASH_LED_1, S2MPB02_FLASH_OUT_I_1400MA, S2MPB02_LED_TURN_WAY_I2C);/* low, on */
+	}
+
+	CAM_INFO(CAM_FLASH, "CAM Flash ON");
+	if (rc)
+		CAM_ERR(CAM_FLASH, "Fire Flash Failed: %d", rc);
+
+	return rc;
+}
+
+static int cam_flash_torch(
+	struct cam_flash_ctrl *flash_ctrl,
+	struct cam_flash_frame_setting *flash_data)
+{
+	int rc = 0;
+
+	if (!flash_data) {
+		CAM_ERR(CAM_FLASH, "Flash Data Null");
+		return -EINVAL;
+	}
+
+#if defined(CONFIG_FLASH_CURRENT_JAPAN)
+	CAM_INFO(CAM_FLASH, "CAM Torch Flash ON");
+	rc = s2mpb02_led_en(S2MPB02_TORCH_LED_1, S2MPB02_TORCH_OUT_I_60MA, S2MPB02_LED_TURN_WAY_I2C);/* torch, on */
+#else
+	CAM_INFO(CAM_FLASH, "CAM Torch Flash ON, %d mA", flash_data->led_current_ma[0]);
+	if (flash_data->led_current_ma[0] == 140) {
+		rc = s2mpb02_led_en(S2MPB02_TORCH_LED_1, S2MPB02_TORCH_OUT_I_120MA, S2MPB02_LED_TURN_WAY_I2C);/* torch, on */
+	} else {
+		rc = s2mpb02_led_en(S2MPB02_TORCH_LED_1, S2MPB02_TORCH_OUT_I_220MA, S2MPB02_LED_TURN_WAY_I2C);/* torch, on */
+	}
+#endif
+
+	if (rc)
+		CAM_ERR(CAM_FLASH, "Fire Torch failed: %d", rc);
+
+	return rc;
+}
+#else
 static int cam_flash_ops(struct cam_flash_ctrl *flash_ctrl,
 	struct cam_flash_frame_setting *flash_data, enum camera_flash_opcode op)
 {
@@ -533,6 +633,7 @@ static int cam_flash_high(
 
 	return rc;
 }
+#endif
 
 static int cam_flash_i2c_delete_req(struct cam_flash_ctrl *fctrl,
 	uint64_t req_id)
@@ -662,6 +763,16 @@ int cam_flash_i2c_apply_setting(struct cam_flash_ctrl *fctrl,
 				list) {
 				rc = cam_sensor_util_i2c_apply_setting
 					(&(fctrl->io_master_info), i2c_list);
+				if ((rc == -EAGAIN) &&
+					(fctrl->io_master_info.master_type ==
+					CCI_MASTER)) {
+					CAM_WARN(CAM_FLASH,
+						"CCI HW is in reset mode: Reapplying Init settings");
+					usleep_range(1000, 1010);
+					rc = cam_sensor_util_i2c_apply_setting
+					(&(fctrl->io_master_info), i2c_list);
+				}
+
 				if (rc) {
 					CAM_ERR(CAM_FLASH,
 					"Failed to apply init settings: %d",
@@ -763,6 +874,18 @@ int cam_flash_pmic_apply_setting(struct cam_flash_ctrl *fctrl,
 					return rc;
 				}
 			}
+#if defined(CONFIG_LEDS_S2MPB02)
+			if (flash_data->opcode ==
+				CAMERA_SENSOR_FLASH_OP_FIRETORCH) {
+				rc = cam_flash_torch(fctrl, flash_data);
+				if (rc) {
+					CAM_ERR(CAM_FLASH,
+						"Torch ON failed : %d",
+						rc);
+					return -EINVAL;
+				}
+			}
+#endif
 		} else if (fctrl->nrt_info.cmn_attr.cmd_type ==
 			CAMERA_SENSOR_FLASH_CMD_TYPE_WIDGET) {
 			flash_data = &fctrl->nrt_info;
@@ -787,6 +910,18 @@ int cam_flash_pmic_apply_setting(struct cam_flash_ctrl *fctrl,
 					"LED off failed: %d",
 					rc);
 			}
+#if defined(CONFIG_LEDS_S2MPB02)
+			else if (flash_data->opcode ==
+				CAMERA_SENSOR_FLASH_OP_FIRETORCH) {
+				rc = cam_flash_torch(fctrl, flash_data);
+				if (rc) {
+					CAM_ERR(CAM_FLASH,
+						"Torch ON failed : %d",
+						rc);
+					goto nrt_del_req;
+				}
+			}
+#endif
 		} else if (fctrl->nrt_info.cmn_attr.cmd_type ==
 			CAMERA_SENSOR_FLASH_CMD_TYPE_RER) {
 			flash_data = &fctrl->nrt_info;
@@ -806,7 +941,11 @@ int cam_flash_pmic_apply_setting(struct cam_flash_ctrl *fctrl,
 				/* Turn On Torch */
 				if (fctrl->flash_state ==
 					CAM_FLASH_STATE_START) {
+#if defined(CONFIG_LEDS_S2MPB02)
+					rc = cam_flash_torch(fctrl, flash_data);
+#else
 					rc = cam_flash_low(fctrl, flash_data);
+#endif
 					if (rc) {
 						CAM_ERR(CAM_FLASH,
 							"Fire Torch Failed");
@@ -850,7 +989,25 @@ int cam_flash_pmic_apply_setting(struct cam_flash_ctrl *fctrl,
 					goto apply_setting_err;
 				}
 			}
-		} else if ((flash_data->opcode ==
+		}
+#if defined(CONFIG_LEDS_S2MPB02)
+		else if ((flash_data->opcode ==
+			CAMERA_SENSOR_FLASH_OP_FIRETORCH) &&
+			(flash_data->cmn_attr.is_settings_valid) &&
+			(flash_data->cmn_attr.request_id == req_id)) {
+			/* Turn On Torch */
+			if (fctrl->flash_state == CAM_FLASH_STATE_START) {
+				rc = cam_flash_torch(fctrl, flash_data);
+				if (rc) {
+					CAM_ERR(CAM_FLASH,
+						"Torch ON failed: rc= %d",
+						rc);
+					goto apply_setting_err;
+				}
+			}
+		}
+#endif
+		else if ((flash_data->opcode ==
 			CAMERA_SENSOR_FLASH_OP_FIRELOW) &&
 			(flash_data->cmn_attr.is_settings_valid) &&
 			(flash_data->cmn_attr.request_id == req_id)) {
@@ -1070,7 +1227,7 @@ int cam_flash_i2c_pkt_parser(struct cam_flash_ctrl *fctrl, void *arg)
 				rc = cam_sensor_i2c_command_parser(
 					&fctrl->io_master_info,
 					i2c_reg_settings,
-					&cmd_desc[i], 1, NULL);
+					&cmd_desc[i], 1);
 				if (rc < 0) {
 					CAM_ERR(CAM_FLASH,
 					"pkt parsing failed: %d", rc);
@@ -1091,43 +1248,44 @@ int cam_flash_i2c_pkt_parser(struct cam_flash_ctrl *fctrl, void *arg)
 			CAM_ERR(CAM_FLASH, "Power_info is NULL");
 			return -EINVAL;
 		}
+		if (power_info->power_setting > 0)
+		{
+			/* Parse and fill vreg params for power up settings */
+			rc = msm_camera_fill_vreg_params(&fctrl->soc_info,
+				power_info->power_setting,
+				power_info->power_setting_size);
+			if (rc) {
+				CAM_ERR(CAM_FLASH,
+					"failed to fill vreg params for power up rc:%d",
+					rc);
+				return rc;
+			}
 
-		/* Parse and fill vreg params for power up settings */
-		rc = msm_camera_fill_vreg_params(&fctrl->soc_info,
-			power_info->power_setting,
-			power_info->power_setting_size);
-		if (rc) {
-			CAM_ERR(CAM_FLASH,
-				"failed to fill vreg params for power up rc:%d",
-				rc);
-			return rc;
+			/* Parse and fill vreg params for power down settings*/
+			rc = msm_camera_fill_vreg_params(
+				&fctrl->soc_info,
+				power_info->power_down_setting,
+				power_info->power_down_setting_size);
+			if (rc) {
+				CAM_ERR(CAM_FLASH,
+					"failed to fill vreg params power down rc:%d",
+					rc);
+				return rc;
+			}
+
+			rc = fctrl->func_tbl.power_ops(fctrl, true);
+			if (rc) {
+				CAM_ERR(CAM_FLASH,
+					"Enable Regulator Failed rc = %d", rc);
+				return rc;
+			}
+
+			rc = fctrl->func_tbl.apply_setting(fctrl, 0);
+			if (rc) {
+				CAM_ERR(CAM_FLASH, "cannot apply settings rc = %d", rc);
+				return rc;
+			}
 		}
-
-		/* Parse and fill vreg params for power down settings*/
-		rc = msm_camera_fill_vreg_params(
-			&fctrl->soc_info,
-			power_info->power_down_setting,
-			power_info->power_down_setting_size);
-		if (rc) {
-			CAM_ERR(CAM_FLASH,
-				"failed to fill vreg params power down rc:%d",
-				rc);
-			return rc;
-		}
-
-		rc = fctrl->func_tbl.power_ops(fctrl, true);
-		if (rc) {
-			CAM_ERR(CAM_FLASH,
-				"Enable Regulator Failed rc = %d", rc);
-			return rc;
-		}
-
-		rc = fctrl->func_tbl.apply_setting(fctrl, 0);
-		if (rc) {
-			CAM_ERR(CAM_FLASH, "cannot apply settings rc = %d", rc);
-			return rc;
-		}
-
 		fctrl->flash_state = CAM_FLASH_STATE_CONFIG;
 		break;
 	}
@@ -1150,7 +1308,7 @@ int cam_flash_i2c_pkt_parser(struct cam_flash_ctrl *fctrl, void *arg)
 		cmd_desc = (struct cam_cmd_buf_desc *)(offset);
 		rc = cam_sensor_i2c_command_parser(
 			&fctrl->io_master_info,
-			i2c_reg_settings, cmd_desc, 1, NULL);
+			i2c_reg_settings, cmd_desc, 1);
 		if (rc) {
 			CAM_ERR(CAM_FLASH,
 			"Failed in parsing i2c packets");
@@ -1181,7 +1339,7 @@ int cam_flash_i2c_pkt_parser(struct cam_flash_ctrl *fctrl, void *arg)
 		cmd_desc = (struct cam_cmd_buf_desc *)(offset);
 		rc = cam_sensor_i2c_command_parser(
 			&fctrl->io_master_info,
-			i2c_reg_settings, cmd_desc, 1, NULL);
+			i2c_reg_settings, cmd_desc, 1);
 		if (rc) {
 			CAM_ERR(CAM_FLASH,
 			"Failed in parsing i2c NRT packets");
@@ -1589,6 +1747,7 @@ int cam_flash_pmic_pkt_parser(struct cam_flash_ctrl *fctrl, void *arg)
 			flash_query_info =
 				(struct cam_flash_query_curr *)cmd_buf;
 
+#if !defined(CONFIG_LEDS_S2MPB02)
 			if (soc_private->is_wled_flash)
 				rc = wled_flash_led_prepare(
 					fctrl->switch_trigger,
@@ -1607,6 +1766,7 @@ int cam_flash_pmic_pkt_parser(struct cam_flash_ctrl *fctrl, void *arg)
 				"Query current failed with rc=%d", rc);
 				return rc;
 			}
+#endif
 			flash_query_info->query_current_ma = query_curr_ma;
 			break;
 		}
@@ -1767,6 +1927,14 @@ int cam_flash_release_dev(struct cam_flash_ctrl *fctrl)
 void cam_flash_shutdown(struct cam_flash_ctrl *fctrl)
 {
 	int rc;
+
+#if defined(CONFIG_LEDS_S2MPB02)
+	sysfs_flash_op = 0;
+	s2mpb02_led_en(S2MPB02_FLASH_LED_1, 0, S2MPB02_LED_TURN_WAY_I2C);/* flash, off */
+	s2mpb02_led_en(S2MPB02_TORCH_LED_1, 0, S2MPB02_LED_TURN_WAY_I2C);/* torch, off */
+	s2mpb02_led_en(S2MPB02_FLASH_LED_1, 0, S2MPB02_LED_TURN_WAY_GPIO);/* flash, off */
+	s2mpb02_led_en(S2MPB02_TORCH_LED_1, 0, S2MPB02_LED_TURN_WAY_GPIO);/* torch, off */
+#endif
 
 	if (fctrl->flash_state == CAM_FLASH_STATE_INIT)
 		return;

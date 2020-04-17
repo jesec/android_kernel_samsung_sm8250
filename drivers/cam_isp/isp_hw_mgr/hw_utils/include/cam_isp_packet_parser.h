@@ -127,7 +127,8 @@ int cam_isp_add_command_buffers(
  * @res_list_ife_in_rd:    IFE /VFE in rd resource list
  * @size_isp_out:          Size of the res_list_isp_out array
  * @fill_fence:            If true, Fence map table will be filled
- *
+ * @frame_header_enable:   Flag to indicate if frame header is enabled
+ * @res_id
  * @return:                0 for success
  *                         -EINVAL for Fail
  */
@@ -140,7 +141,10 @@ int cam_isp_add_io_buffers(
 	struct cam_ife_hw_mgr_res            *res_list_isp_out,
 	struct list_head                     *res_list_ife_in_rd,
 	uint32_t                              size_isp_out,
-	bool                                  fill_fence);
+	bool                                  fill_fence,
+	bool                                  frame_header_enable,
+	uint32_t * res_id,
+	int64_t                               req_id);
 
 /*
  * cam_isp_add_reg_update()

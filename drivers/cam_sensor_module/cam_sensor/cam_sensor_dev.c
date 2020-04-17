@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2017-2019, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2017-2018, The Linux Foundation. All rights reserved.
  */
 
 #include "cam_sensor_dev.h"
@@ -167,6 +167,10 @@ static int32_t cam_sensor_driver_i2c_probe(struct i2c_client *client,
 	if (rc)
 		goto free_s_ctrl;
 
+	if (s_ctrl->sensordata->slave_info.sensor_slave_addr > 0)
+		s_ctrl->io_master_info.client->addr =
+			s_ctrl->sensordata->slave_info.sensor_slave_addr;
+
 	s_ctrl->i2c_data.per_frame =
 		kzalloc(sizeof(struct i2c_settings_array) *
 		MAX_PER_FRAME_ARRAY, GFP_KERNEL);
@@ -179,7 +183,6 @@ static int32_t cam_sensor_driver_i2c_probe(struct i2c_client *client,
 	INIT_LIST_HEAD(&(s_ctrl->i2c_data.config_settings.list_head));
 	INIT_LIST_HEAD(&(s_ctrl->i2c_data.streamon_settings.list_head));
 	INIT_LIST_HEAD(&(s_ctrl->i2c_data.streamoff_settings.list_head));
-	INIT_LIST_HEAD(&(s_ctrl->i2c_data.read_settings.list_head));
 
 	for (i = 0; i < MAX_PER_FRAME_ARRAY; i++)
 		INIT_LIST_HEAD(&(s_ctrl->i2c_data.per_frame[i].list_head));
@@ -303,6 +306,10 @@ static int32_t cam_sensor_driver_platform_probe(
 	if (rc)
 		goto free_s_ctrl;
 
+	if (s_ctrl->sensordata->slave_info.sensor_slave_addr > 0)
+		s_ctrl->io_master_info.cci_client->sid =
+			s_ctrl->sensordata->slave_info.sensor_slave_addr >> 1;
+
 	s_ctrl->i2c_data.per_frame =
 		kzalloc(sizeof(struct i2c_settings_array) *
 		MAX_PER_FRAME_ARRAY, GFP_KERNEL);
@@ -315,7 +322,6 @@ static int32_t cam_sensor_driver_platform_probe(
 	INIT_LIST_HEAD(&(s_ctrl->i2c_data.config_settings.list_head));
 	INIT_LIST_HEAD(&(s_ctrl->i2c_data.streamon_settings.list_head));
 	INIT_LIST_HEAD(&(s_ctrl->i2c_data.streamoff_settings.list_head));
-	INIT_LIST_HEAD(&(s_ctrl->i2c_data.read_settings.list_head));
 
 	for (i = 0; i < MAX_PER_FRAME_ARRAY; i++)
 		INIT_LIST_HEAD(&(s_ctrl->i2c_data.per_frame[i].list_head));
@@ -363,6 +369,9 @@ static struct i2c_driver cam_sensor_driver_i2c = {
 	.remove = cam_sensor_driver_i2c_remove,
 	.driver = {
 		.name = SENSOR_DRIVER_I2C,
+		.owner = THIS_MODULE,
+		.of_match_table = cam_sensor_driver_dt_match,
+		.suppress_bind_attrs = true,
 	},
 };
 

@@ -3007,6 +3007,7 @@ static int cam_vfe_bus_ver3_update_wm(void *priv, void *cmd_args,
 	uint32_t  i, j, k, size = 0;
 	uint32_t  frame_inc = 0, val;
 	uint32_t loop_size = 0;
+	bool frame_header_enable = false;
 
 	bus_priv = (struct cam_vfe_bus_ver3_priv  *) priv;
 	update_buf =  (struct cam_isp_hw_get_cmd_update *) cmd_args;
@@ -3039,6 +3040,27 @@ static int cam_vfe_bus_ver3_update_wm(void *priv, void *cmd_args,
 
 		wm_data = vfe_out_data->wm_res[i]->res_priv;
 		ubwc_client = wm_data->hw_regs->ubwc_regs;
+
+		/* Disable frame header in case it was previously enabled */
+		if ((wm_data->en_cfg) & (1 << 2))
+			wm_data->en_cfg &= ~(1 << 2);
+
+		if (update_buf->wm_update->frame_header &&
+			!frame_header_enable) {
+			wm_data->en_cfg |= 1 << 2;
+			frame_header_enable = true;
+			CAM_VFE_ADD_REG_VAL_PAIR(reg_val_pair, j,
+					wm_data->hw_regs->frame_header_addr,
+					update_buf->wm_update->frame_header);
+			CAM_VFE_ADD_REG_VAL_PAIR(reg_val_pair, j,
+					wm_data->hw_regs->frame_header_cfg,
+					update_buf->wm_update->local_id);
+			CAM_DBG(CAM_ISP,
+				"WM: %d en_cfg 0x%x frame_header %pK local_id %u",
+				wm_data->index, wm_data->en_cfg,
+				update_buf->wm_update->frame_header,
+				update_buf->wm_update->local_id);
+		}
 
 		CAM_VFE_ADD_REG_VAL_PAIR(reg_val_pair, j,
 			wm_data->hw_regs->cfg, wm_data->en_cfg);
@@ -3398,11 +3420,11 @@ static int cam_vfe_bus_ver3_update_ubwc_config_v2(void *cmd_args)
 			wm_data->ubwc_updated = true;
 		}
 
-		if (wm_data->ubwc_bandwidth_limit !=
-			ubwc_generic_plane_cfg->bandwidth_limit ||
+		if (wm_data->ubwc_bandwidth_limit != 0 ||
+			//ubwc_generic_plane_cfg->bandwidth_limit ||
 			!wm_data->init_cfg_done) {
-			wm_data->ubwc_bandwidth_limit =
-				ubwc_generic_plane_cfg->bandwidth_limit;
+			wm_data->ubwc_bandwidth_limit = 0;
+				//ubwc_generic_plane_cfg->bandwidth_limit;
 			wm_data->ubwc_updated = true;
 		}
 	}
@@ -3665,6 +3687,7 @@ static int cam_vfe_bus_ver3_process_cmd(
 {
 	int rc = -EINVAL;
 	struct cam_vfe_bus_ver3_priv		 *bus_priv;
+	uint32_t top_irq_status_0;
 
 	if (!priv || !cmd_args) {
 		CAM_ERR_RATE_LIMIT(CAM_ISP, "Invalid input arguments");
@@ -3701,6 +3724,13 @@ static int cam_vfe_bus_ver3_process_cmd(
 	case CAM_ISP_HW_CMD_WM_CONFIG_UPDATE:
 		rc = cam_vfe_bus_ver3_update_wm_config(cmd_args);
 		break;
+	case CAM_ISP_HW_CMD_UNMASK_BUS_WR_IRQ:
+		bus_priv = (struct cam_vfe_bus_ver3_priv *) priv;
+
+		top_irq_status_0 = cam_io_r_mb(bus_priv->common_data.mem_base + 0x3C);
+		top_irq_status_0 |= (1 << bus_priv->top_irq_shift);
+		cam_io_w_mb(top_irq_status_0, bus_priv->common_data.mem_base + 0x3C);
+		break;
 	default:
 		CAM_ERR_RATE_LIMIT(CAM_ISP, "Invalid camif process command:%d",
 			cmd_type);
@@ -3722,7 +3752,7 @@ int cam_vfe_bus_ver3_init(
 	struct cam_vfe_bus              *vfe_bus_local;
 	struct cam_vfe_bus_ver3_hw_info *ver3_hw_info = bus_hw_info;
 	struct cam_vfe_soc_private      *soc_private = NULL;
-	char rup_controller_name[12] = "";
+	static const char rup_controller_name[] = "vfe_bus_rup";
 
 	CAM_DBG(CAM_ISP, "Enter");
 
@@ -3787,9 +3817,6 @@ int cam_vfe_bus_ver3_init(
 		CAM_ERR(CAM_ISP, "Init bus_irq_controller failed");
 		goto free_bus_priv;
 	}
-
-	strlcat(rup_controller_name, drv_name, sizeof(rup_controller_name));
-	strlcat(rup_controller_name, "_rup", sizeof(rup_controller_name));
 
 	rc = cam_irq_controller_init(rup_controller_name,
 		bus_priv->common_data.mem_base,

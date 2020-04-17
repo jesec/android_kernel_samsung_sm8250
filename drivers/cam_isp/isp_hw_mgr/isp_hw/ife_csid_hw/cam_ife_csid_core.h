@@ -367,11 +367,14 @@ struct cam_ife_csid_common_reg_offset {
 	uint32_t ipp_irq_mask_all;
 	uint32_t rdi_irq_mask_all;
 	uint32_t ppp_irq_mask_all;
-	uint32_t udi_irq_mask_all;
 	uint32_t measure_en_hbi_vbi_cnt_mask;
 	uint32_t format_measure_en_val;
 	uint32_t num_bytes_out_shift_val;
+#if defined(CONFIG_SAMSUNG_SBI)
+	uint32_t udi_irq_mask_all;
+#endif
 };
+
 
 /**
  * struct cam_ife_csid_reg_offset- CSID instance register info
@@ -392,6 +395,7 @@ struct cam_ife_csid_reg_offset {
 	const struct cam_ife_csid_rdi_reg_offset *rdi_reg[CAM_IFE_CSID_RDI_MAX];
 	const struct cam_ife_csid_udi_reg_offset *udi_reg[CAM_IFE_CSID_UDI_MAX];
 	const struct cam_ife_csid_csi2_tpg_reg_offset *tpg_reg;
+	struct cam_isp_resource_node     udi_res[CAM_IFE_CSID_UDI_MAX];
 };
 
 
@@ -553,6 +557,7 @@ struct cam_ife_csid_path_cfg {
  *
  * @first_sof_ts              first bootime stamp at the start
  * @prev_qtimer_ts            stores csid timestamp
+ * @cust_node                 indicates csid is for custom
  */
 struct cam_ife_csid_hw {
 	struct cam_hw_intf              *hw_intf;
@@ -586,15 +591,26 @@ struct cam_ife_csid_hw {
 	uint32_t                         binning_supported;
 	uint64_t                         prev_boot_timestamp;
 	uint64_t                         prev_qtimer_ts;
+	bool                             cust_node;
 };
 
+#if defined(CONFIG_SAMSUNG_SBI)
 int cam_ife_csid_hw_probe_init(struct cam_hw_intf  *csid_hw_intf,
 	uint32_t csid_idx, bool is_custom);
-
-int cam_ife_csid_hw_deinit(struct cam_ife_csid_hw *ife_csid_hw);
-
 int cam_ife_csid_cid_reserve(struct cam_ife_csid_hw *csid_hw,
 	struct cam_csid_hw_reserve_resource_args  *cid_reserv);
+
+int cam_ife_csid_path_reserve(struct cam_ife_csid_hw *csid_hw,
+	struct cam_csid_hw_reserve_resource_args  *reserve);
+#else
+int cam_ife_csid_hw_probe_init(struct cam_hw_intf  *csid_hw_intf,
+	uint32_t csid_idx);
+int cam_ife_csid_cid_reserve(
+	struct cam_ife_csid_hw *csid_hw,
+	struct cam_csid_hw_reserve_resource_args *cid_reserv);
+#endif
+
+int cam_ife_csid_hw_deinit(struct cam_ife_csid_hw *ife_csid_hw);
 
 int cam_ife_csid_path_reserve(struct cam_ife_csid_hw *csid_hw,
 	struct cam_csid_hw_reserve_resource_args  *reserve);

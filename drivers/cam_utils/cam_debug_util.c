@@ -94,6 +94,11 @@ const char *cam_get_module_name(unsigned int module_id)
 	case CAM_CUSTOM:
 		name = "CAM-CUSTOM";
 		break;
+#if defined(CONFIG_SAMSUNG_SBI)
+	case CAM_SBI:
+		name = "CAM-SBI";
+		break;
+#endif
 	default:
 		name = "CAM";
 		break;

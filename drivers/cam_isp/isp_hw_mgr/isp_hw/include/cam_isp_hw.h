@@ -92,8 +92,10 @@ enum cam_isp_hw_cmd_type {
 	CAM_ISP_HW_CMD_BW_CONTROL,
 	CAM_ISP_HW_CMD_STOP_BUS_ERR_IRQ,
 	CAM_ISP_HW_CMD_UBWC_UPDATE,
+	CAM_ISP_HW_CMD_DUMP_BUS_INFO,
 	CAM_ISP_HW_CMD_SOF_IRQ_DEBUG,
 	CAM_ISP_HW_CMD_SET_CAMIF_DEBUG,
+	CAM_ISP_HW_CMD_CAMIF_DATA,
 	CAM_ISP_HW_CMD_CSID_CLOCK_UPDATE,
 	CAM_ISP_HW_CMD_FE_UPDATE_IN_RD,
 	CAM_ISP_HW_CMD_FE_UPDATE_BUS_RD,
@@ -102,6 +104,7 @@ enum cam_isp_hw_cmd_type {
 	CAM_ISP_HW_CMD_WM_CONFIG_UPDATE,
 	CAM_ISP_HW_CMD_CSID_QCFA_SUPPORTED,
 	CAM_ISP_HW_CMD_QUERY_REGSPACE_DATA,
+	CAM_ISP_HW_CMD_UNMASK_BUS_WR_IRQ,
 	CAM_ISP_HW_CMD_MAX,
 };
 
@@ -165,6 +168,7 @@ struct cam_isp_resource_node {
  * @res_id:         Unique resource ID
  * @hw_idx:         IFE hw index
  * @err_type:       Error type if any
+ * @th_reg_val:     Any critical register value captured during th
  *
  */
 struct cam_isp_hw_event_info {
@@ -172,6 +176,7 @@ struct cam_isp_hw_event_info {
 	uint32_t                       res_id;
 	uint32_t                       hw_idx;
 	uint32_t                       err_type;
+	uint32_t                       th_reg_val;
 };
 
 /*
@@ -197,12 +202,16 @@ struct cam_isp_hw_cmd_buf_update {
  *
  * @ image_buf:    image buffer address array
  * @ num_buf:      Number of buffers in the image_buf array
+ * @ frame_header: frame header iova
+ * @ local_id:     local id for the wm
  * @ io_cfg:       IO buffer config information sent from UMD
  *
  */
 struct cam_isp_hw_get_wm_update {
 	dma_addr_t                     *image_buf;
 	uint32_t                        num_buf;
+	uint64_t                        frame_header;
+	uint32_t                        local_id;
 	struct cam_buf_io_cfg          *io_cfg;
 };
 

@@ -158,6 +158,7 @@ enum cam_req_mgr_device_error {
  * @EXTERNAL_1  : third party device
  * @EXTERNAL_2  : third party device
  * @EXTERNAL_3  : third party device
+ * @SBI         : SBI device
  * @MAX         : invalid device id
  */
 enum cam_req_mgr_device_id {
@@ -170,6 +171,9 @@ enum cam_req_mgr_device_id {
 	CAM_REQ_MGR_DEVICE_EXTERNAL_1,
 	CAM_REQ_MGR_DEVICE_EXTERNAL_2,
 	CAM_REQ_MGR_DEVICE_EXTERNAL_3,
+#if defined(CONFIG_SAMSUNG_SBI)
+	CAM_REQ_MGR_DEVICE_SBI,
+#endif
 	CAM_REQ_MGR_DEVICE_ID_MAX,
 };
 
@@ -208,7 +212,6 @@ struct cam_req_mgr_trigger_notify {
 	uint32_t trigger;
 	uint64_t sof_timestamp_val;
 };
-
 /**
  * struct cam_req_mgr_timer_notify
  * @link_hdl : link identifier

@@ -13,6 +13,8 @@
  *
  * @handle:                Memory handle
  * @cpu_addr:              Cpu address
+ * @kmd_frame_header_addr: Frame header address
+ * @io_addr:               I/O address
  * @offset:                Offset from the start of the buffer
  * @size:                  Size of the buffer
  * @used_bytes:            Used memory in bytes
@@ -21,6 +23,8 @@
 struct cam_kmd_buf_info {
 	int        handle;
 	uint32_t  *cpu_addr;
+	uint32_t * kmd_frame_header_addr;
+	uint64_t   io_addr;
 	uint32_t   offset;
 	uint32_t   size;
 	uint32_t   used_bytes;
@@ -85,6 +89,34 @@ int cam_packet_util_validate_cmd_desc(struct cam_cmd_buf_desc *cmd_desc);
  */
 int cam_packet_util_get_kmd_buffer(struct cam_packet *packet,
 	struct cam_kmd_buf_info *kmd_buf_info);
+
+/**
+ * cam_packet_dump_patch_info()
+ *
+ * @brief:              Dump patch info in case of page fault
+ *
+ * @packet:             Input packet containing Command Buffers and Patches
+ * @iommu_hdl:          IOMMU handle of the HW Device that received the packet
+ * @sec_iommu_hdl:      Secure IOMMU handle of the HW Device that
+ *                      received the packet
+ *
+ */
+void cam_packet_dump_patch_info(struct cam_packet *packet,
+	int32_t iommu_hdl, int32_t sec_mmu_hdl);
+
+/**
+ * cam_packet_util_get_kmd_io_mem_addr()
+ *
+ * @brief                  Get the io address for kmd buffer
+ *
+ * @kmd_buf:               KMD buffer information
+ * @iommu_hdl:             Address corresponding to the handle
+ *
+ * @return:                0 for success
+ */
+int cam_packet_util_get_frame_header_addr(
+	struct cam_kmd_buf_info *kmd_buf, int32_t iommu_hdl);
+
 
 /**
  * cam_packet_util_process_patches()
