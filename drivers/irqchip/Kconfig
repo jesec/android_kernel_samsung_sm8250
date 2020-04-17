@@ -382,6 +382,18 @@ config GOLDFISH_PIC
          Say yes here to enable Goldfish interrupt controller driver used
          for Goldfish based virtual platforms.
 
+config SIFIVE_PLIC
+	bool "SiFive Platform-Level Interrupt Controller"
+	depends on RISCV
+	help
+	   This enables support for the PLIC chip found in SiFive (and
+	   potentially other) RISC-V systems.  The PLIC controls devices
+	   interrupts and connects them to each core's local interrupt
+	   controller.  Aside from timer and software interrupts, all other
+	   interrupt sources are subordinate to the PLIC.
+
+	   If you don't know what to do here, say Y.
+
 config QCOM_PDC
 	bool "QCOM PDC"
 	depends on ARCH_QCOM
@@ -403,15 +415,3 @@ config QCOM_MPM
 	  controller to use as a wakeup interrupt controller.
 
 endmenu
-
-config SIFIVE_PLIC
-	bool "SiFive Platform-Level Interrupt Controller"
-	depends on RISCV
-	help
-	   This enables support for the PLIC chip found in SiFive (and
-	   potentially other) RISC-V systems.  The PLIC controls devices
-	   interrupts and connects them to each core's local interrupt
-	   controller.  Aside from timer and software interrupts, all other
-	   interrupt sources are subordinate to the PLIC.
-
-	   If you don't know what to do here, say Y.

@@ -17,6 +17,5 @@ int rmnet_vnd_dellink(u8 id, struct rmnet_port *port,
 		      struct rmnet_endpoint *ep);
 void rmnet_vnd_rx_fixup(struct net_device *dev, u32 skb_len);
 void rmnet_vnd_tx_fixup(struct net_device *dev, u32 skb_len);
-u8 rmnet_vnd_get_mux(struct net_device *rmnet_dev);
 void rmnet_vnd_setup(struct net_device *dev);
 #endif /* _RMNET_VND_H_ */
