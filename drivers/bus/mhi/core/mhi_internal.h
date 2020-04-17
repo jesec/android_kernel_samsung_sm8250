@@ -244,7 +244,7 @@ extern struct bus_type mhi_bus_type;
 			       div_u64(mhi_cntrl->remote_timer_freq, 10000ULL)))
 
 /* Wait time to allow runtime framework to resume MHI in milliseconds */
-#define MHI_RESUME_TIME (30000)
+#define MHI_RESUME_TIME	(30000)
 
 struct mhi_event_ctxt {
 	u32 reserved : 8;
@@ -847,7 +847,7 @@ void mhi_destroy_sysfs(struct mhi_controller *mhi_cntrl);
 int mhi_early_notify_device(struct device *dev, void *data);
 void mhi_write_reg_offload(struct mhi_controller *mhi_cntrl,
 			void __iomem *base, u32 offset, u32 val);
-			
+
 /* timesync log support */
 static inline void mhi_timesync_log(struct mhi_controller *mhi_cntrl)
 {

@@ -874,7 +874,7 @@ static struct mhi_controller *mhi_register_controller(struct pci_dev *pci_dev)
 		MHI_ERR("Error while creating the sysfs group\n");
 
 	return mhi_cntrl;
-	
+
 error_free_wq:
 	destroy_workqueue(mhi_cntrl->offload_wq);
 error_register:

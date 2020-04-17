@@ -541,6 +541,7 @@ static int hlosvm[1] = {VMID_HLOS};
 static int hlosvmperm[1] = {PERM_READ | PERM_WRITE | PERM_EXEC};
 
 static void fastrpc_pm_awake(struct fastrpc_file *fl);
+
 static inline int64_t getnstimediff(struct timespec *start)
 {
 	int64_t ns;

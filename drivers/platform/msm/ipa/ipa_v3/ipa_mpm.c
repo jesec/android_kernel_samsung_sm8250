@@ -3253,7 +3253,6 @@ int ipa3_mpm_enable_adpl_over_odl(bool enable)
 					&is_acted);
 			return ret;
 		}
-		
 
 		/* start remote mhip-dpl ch */
 		ret = ipa_mpm_start_stop_remote_mhip_chan(IPA_MPM_MHIP_CH_ID_2,

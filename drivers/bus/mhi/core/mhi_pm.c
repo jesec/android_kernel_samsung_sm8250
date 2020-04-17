@@ -534,7 +534,6 @@ static int mhi_pm_mission_mode_transition(struct mhi_controller *mhi_cntrl)
 	/* setup support for additional features (SFR, timesync, etc.) */
 	mhi_init_sfr(mhi_cntrl);
 	mhi_init_timesync(mhi_cntrl);
-	
 
 	if (MHI_REG_ACCESS_VALID(mhi_cntrl->pm_state))
 		mhi_timesync_log(mhi_cntrl);
@@ -574,7 +573,6 @@ static void mhi_pm_disable_transition(struct mhi_controller *mhi_cntrl,
 		to_mhi_pm_state_str(mhi_cntrl->pm_state),
 		TO_MHI_STATE_STR(mhi_cntrl->dev_state),
 		to_mhi_pm_state_str(transition_state));
-		
 
 	/* restore async write call back */
 	mhi_cntrl->write_reg = mhi_write_reg;
@@ -674,10 +672,10 @@ tsklet_kill:
 		sfr_info->buf_addr = NULL;
 	}
 
-	mutex_lock(&mhi_cntrl->pm_mutex);
-
 	/* remove support for time sync */
 	mhi_destroy_timesync(mhi_cntrl);
+
+	mutex_lock(&mhi_cntrl->pm_mutex);
 
 	MHI_ASSERT(atomic_read(&mhi_cntrl->dev_wake), "dev_wake != 0");
 	MHI_ASSERT(atomic_read(&mhi_cntrl->pending_pkts), "pending_pkts != 0");
@@ -1054,7 +1052,6 @@ void mhi_control_error(struct mhi_controller *mhi_cntrl)
 			to_mhi_pm_state_str(cur_state));
 		goto exit_control_error;
 	}
-	
 
 	mhi_cntrl->dev_state = MHI_STATE_SYS_ERR;
 
@@ -1503,7 +1500,7 @@ int __mhi_device_get_sync(struct mhi_controller *mhi_cntrl)
 	mhi_cntrl->wake_get(mhi_cntrl, true);
 	mhi_trigger_resume(mhi_cntrl);
 	read_unlock_bh(&mhi_cntrl->pm_lock);
-	
+
 	mhi_force_reg_write(mhi_cntrl);
 
 	ret = wait_event_timeout(mhi_cntrl->state_event,
