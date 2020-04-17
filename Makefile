@@ -12,7 +12,10 @@ include $(srctree)/techpack/audio/config/sm8150auto.conf
 export
 endif
 ifeq ($(CONFIG_ARCH_KONA), y)
-include $(srctree)/techpack/audio/config/konaauto.conf
+ifeq ($(PROJECT_NAME),$(filter $(PROJECT_NAME),x1q y2q z3q))
+include $(srctree)/techpack/audio/config/kona_picassoq.conf
+endif
+export
 endif
 
 # Use USERINCLUDE when you must reference the UAPI directories only.
@@ -39,8 +42,13 @@ LINUXINCLUDE    += \
                 -include $(srctree)/techpack/audio/config/sm8150autoconf.h
 endif
 ifeq ($(CONFIG_ARCH_KONA), y)
+ifeq ($(PROJECT_NAME),$(filter $(PROJECT_NAME),x1q y2q z3q))
+LINUXINCLUDE    += \
+                -include $(srctree)/techpack/audio/config/kona_picassoq.h
+else
 LINUXINCLUDE    += \
                 -include $(srctree)/techpack/audio/config/konaautoconf.h
+endif
 endif
 
 obj-y += soc/
