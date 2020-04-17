@@ -14,6 +14,11 @@
 #include "bolero-cdc.h"
 #include "bolero-clk-rsc.h"
 
+#if !defined(DEBUG)
+#undef trace_printk
+#define trace_printk(fmt, args...) (0)
+#endif
+
 #define DRV_NAME "bolero-clk-rsc"
 #define BOLERO_CLK_NAME_LENGTH 30
 #define NPL_CLK_OFFSET (TX_NPL_CLK - TX_CORE_CLK)
