@@ -1923,7 +1923,6 @@ int ipa_mpm_notify_wan_state(struct wan_ioctl_notify_wan_state *state)
 			IPA_MPM_ERR("MHIP remote chan stop fail = %d\n", ret);
 			return ret;
 		}
-		IPA_MPM_DBG("MHIP remote channels are stopped\n");
 
 		status = ipa_mpm_start_stop_mhip_chan(
 					IPA_MPM_MHIP_CHAN_UL, probe_id,
@@ -2442,12 +2441,20 @@ static int ipa_mpm_mhi_probe_cb(struct mhi_device *mhi_dev,
 	}
 
 	atomic_inc(&ipa_mpm_ctx->probe_cnt);
-	/* Check if ODL pipe is connected to MHIP DPL pipe before probe */
-	if (probe_id == IPA_MPM_MHIP_CH_ID_2 &&
-		ipa3_is_odl_connected()) {
-		IPA_MPM_DBG("setting DPL DMA to ODL\n");
-		ret = ipa_mpm_set_dma_mode(IPA_CLIENT_MHI_PRIME_DPL_PROD,
-			IPA_CLIENT_USB_DPL_CONS, false);
+	/* Check if ODL/USB DPL pipe is connected before probe */
+	if (probe_id == IPA_MPM_MHIP_CH_ID_2) {
+		if (ipa3_is_odl_connected())
+			ret = ipa_mpm_set_dma_mode(
+							IPA_CLIENT_MHI_PRIME_DPL_PROD,
+							IPA_CLIENT_ODL_DPL_CONS, false);
+		else if (atomic_read(&ipa_mpm_ctx->adpl_over_usb_available))
+			ret = ipa_mpm_set_dma_mode(
+							IPA_CLIENT_MHI_PRIME_DPL_PROD,
+							IPA_CLIENT_USB_DPL_CONS, false);
+	if (ret)
+		IPA_MPM_ERR("DPL DMA to ODL/USB failed, ret = %d\n",
+		ret);
+
 	}
 	mutex_lock(&ipa_mpm_ctx->md[probe_id].mhi_mutex);
 	ipa_mpm_ctx->md[probe_id].init_complete = true;
@@ -3246,6 +3253,7 @@ int ipa3_mpm_enable_adpl_over_odl(bool enable)
 					&is_acted);
 			return ret;
 		}
+		
 
 		/* start remote mhip-dpl ch */
 		ret = ipa_mpm_start_stop_remote_mhip_chan(IPA_MPM_MHIP_CH_ID_2,

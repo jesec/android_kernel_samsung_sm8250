@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2015-2019, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2015-2020, The Linux Foundation. All rights reserved.
  */
 
 /*
@@ -240,6 +240,8 @@ struct spcom_device {
 /* Device Driver State */
 static struct spcom_device *spcom_dev;
 
+/* error registers shared with SPU */
+static u32 spcom_rmb_error_reg_addr;
 /* Physical address of SP2SOC RMB shared register */
 /* SP_SCSR_RMB_SP2SOC_IRQ_SET_ADDR */
 static u32 spcom_sp2soc_rmb_reg_addr;
@@ -595,15 +597,32 @@ static int spcom_handle_create_channel_command(void *cmd_buf, int cmd_size)
  */
 static int spcom_local_powerup(const struct subsys_desc *subsys)
 {
-	void __iomem *regs;
+	void __iomem *regs, *err_regs;
+	u32 pbl_status_reg = 0;
 
-	regs = ioremap_nocache(spcom_sp2soc_rmb_reg_addr, sizeof(u32));
-	if (!regs)
+	err_regs = ioremap_nocache(spcom_rmb_error_reg_addr, sizeof(u32));
+	if (!err_regs)
 		return -ENOMEM;
 
-	writel_relaxed(spcom_sp2soc_pbldone_mask|spcom_sp2soc_initdone_mask,
-		regs);
-	iounmap(regs);
+	pbl_status_reg = readl_relaxed(err_regs);
+
+	if (pbl_status_reg == 0) {
+		regs = ioremap_nocache(spcom_sp2soc_rmb_reg_addr, sizeof(u32));
+		if (!regs) {
+			iounmap(err_regs);
+			return -ENOMEM;
+		}
+
+		writel_relaxed(
+			spcom_sp2soc_pbldone_mask|spcom_sp2soc_initdone_mask,
+			regs);
+		iounmap(regs);
+	} else {
+		pr_err("PBL has returned an error= 0x%x. Not sending sw_init_done\n",
+			pbl_status_reg);
+	}
+
+	iounmap(err_regs);
 	pr_debug("spcom local powerup - SPSS cold boot\n");
 	return 0;
 }
@@ -1511,6 +1530,14 @@ static int spcom_device_open(struct inode *inode, struct file *filp)
 	if (ch->is_busy) {
 		pr_err("channel [%s] is BUSY and has %d of clients, already in use\n",
 			name, ch->num_clients);
+
+		//SAMSUNG DEBUG
+		for(i = 0; i < ch->num_clients; i++) {
+			if(i < SPCOM_MAX_CHANNEL_CLIENTS) {
+				pr_err("channel [%s] is BUSY and has %d of clients, already in use by pid [%d]\n",
+					name, ch->num_clients, ch->pid[i]);
+			}
+		}
 		mutex_unlock(&ch->lock);
 		return -EBUSY;
 	}
@@ -2120,6 +2147,13 @@ static int spcom_parse_dt(struct device_node *np)
 	u32 soc2sp_rmb_sp_ssr_bit = 0;
 
 	/* Read SP HLOS SCSR RMB IRQ register address */
+	ret = of_property_read_u32(np, "qcom,spcom-rmb-err-reg-addr",
+		&spcom_rmb_error_reg_addr);
+	if (ret < 0) {
+		pr_err("can't get rmb error reg addr\n");
+		return ret;
+	}
+
 	ret = of_property_read_u32(np, "qcom,spcom-sp2soc-rmb-reg-addr",
 		&spcom_sp2soc_rmb_reg_addr);
 	if (ret < 0) {

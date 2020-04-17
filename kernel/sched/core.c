@@ -25,6 +25,12 @@
 #define CREATE_TRACE_POINTS
 #include <trace/events/sched.h>
 
+#include <linux/sec_debug.h>
+
+#ifdef CONFIG_FAST_TRACK
+#include <cpu/ftt/ftt.h>
+#endif
+
 DEFINE_PER_CPU_SHARED_ALIGNED(struct rq, runqueues);
 
 #if defined(CONFIG_SCHED_DEBUG) && defined(CONFIG_JUMP_LABEL)
@@ -904,8 +910,11 @@ static inline bool is_per_cpu_kthread(struct task_struct *p)
  */
 static inline bool is_cpu_allowed(struct task_struct *p, int cpu)
 {
-	if (!cpumask_test_cpu(cpu, &p->cpus_allowed))
-		return false;
+#ifdef CONFIG_PERF_MGR
+	if (!p->drawing_mig_boost)
+#endif
+		if (!cpumask_test_cpu(cpu, &p->cpus_allowed))
+			return false;
 
 	if (is_per_cpu_kthread(p))
 		return cpu_online(cpu);
@@ -2263,6 +2272,9 @@ static void __sched_fork(unsigned long clone_flags, struct task_struct *p)
 	p->boost_period			= 0;
 	INIT_LIST_HEAD(&p->se.group_node);
 
+#ifdef CONFIG_FAST_TRACK
+	init_task_ftt_info(p);
+#endif
 #ifdef CONFIG_FAIR_GROUP_SCHED
 	p->se.cfs_rq			= NULL;
 #endif
@@ -3722,6 +3734,8 @@ static void __sched notrace __schedule(bool preempt)
 		++*switch_count;
 
 		trace_sched_switch(preempt, prev, next);
+
+		sec_debug_task_sched_log(cpu, preempt, next, prev);
 
 		/* Also unlocks the rq: */
 		rq = context_switch(rq, prev, next, &rf);

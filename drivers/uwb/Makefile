@@ -30,3 +30,5 @@ umc-objs :=		\
 	umc-bus.o	\
 	umc-dev.o	\
 	umc-drv.o
+
+obj-$(CONFIG_UWB_SR100)		+= sr100.o

@@ -158,7 +158,6 @@ struct sdhci_msm_bus_vote {
 	int min_bw_vote;
 	int max_bw_vote;
 	bool is_max_bw_needed;
-	struct delayed_work vote_work;
 	struct device_attribute max_bus_bw;
 };
 
@@ -260,6 +259,7 @@ struct sdhci_msm_host {
 	bool core_3_0v_support;
 	bool pltfm_init_done;
 	struct sdhci_msm_regs_restore regs_restore;
+	u8 phase_on_tuning;
 	bool use_7nm_dll;
 	int soc_min_rev;
 	struct workqueue_struct *pm_qos_wq;

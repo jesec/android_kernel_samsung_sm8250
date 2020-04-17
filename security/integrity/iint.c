@@ -73,6 +73,13 @@ struct integrity_iint_cache *integrity_iint_find(struct inode *inode)
 
 static void iint_free(struct integrity_iint_cache *iint)
 {
+#ifdef CONFIG_FIVE
+	kfree(iint->five_label);
+	iint->five_label = NULL;
+	iint->five_flags = 0UL;
+	iint->five_status = FIVE_FILE_UNKNOWN;
+	iint->five_signing = false;
+#endif
 	kfree(iint->ima_hash);
 	iint->ima_hash = NULL;
 	iint->version = 0;
@@ -158,6 +165,11 @@ static void init_once(void *foo)
 	struct integrity_iint_cache *iint = foo;
 
 	memset(iint, 0, sizeof(*iint));
+#ifdef CONFIG_FIVE
+	iint->five_flags = 0UL;
+	iint->five_status = FIVE_FILE_UNKNOWN;
+	iint->five_signing = false;
+#endif
 	iint->ima_file_status = INTEGRITY_UNKNOWN;
 	iint->ima_mmap_status = INTEGRITY_UNKNOWN;
 	iint->ima_bprm_status = INTEGRITY_UNKNOWN;
@@ -191,12 +203,17 @@ int integrity_kernel_read(struct file *file, loff_t offset,
 	mm_segment_t old_fs;
 	char __user *buf = (char __user *)addr;
 	ssize_t ret;
+	struct inode *inode = file_inode(file);
 
 	if (!(file->f_mode & FMODE_READ))
 		return -EBADF;
 
 	old_fs = get_fs();
 	set_fs(get_ds());
+
+	if (inode->i_sb->s_magic == OVERLAYFS_SUPER_MAGIC && file->private_data)
+		file = (struct file *)file->private_data;
+
 	ret = __vfs_read(file, buf, count, &offset);
 	set_fs(old_fs);
 

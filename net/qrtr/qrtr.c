@@ -27,7 +27,11 @@
 
 #include "qrtr.h"
 
-#define QRTR_LOG_PAGE_CNT 4
+#define QRTR_LOG_PAGE_CNT 12
+static void *qrtr_ilc;
+#define QRTR_INFO_NEW(ctx, x, ...)			\
+		ipc_log_string(ctx, x, ##__VA_ARGS__)
+
 #define QRTR_INFO(ctx, x, ...)				\
 	ipc_log_string(ctx, x, ##__VA_ARGS__)
 
@@ -135,6 +139,15 @@ static DECLARE_RWSEM(qrtr_node_lock);
 static DEFINE_IDR(qrtr_ports);
 static DEFINE_MUTEX(qrtr_port_lock);
 
+/* backup buffers */
+#define QRTR_BACKUP_HI_NUM	5
+#define QRTR_BACKUP_HI_SIZE	SZ_16K
+#define QRTR_BACKUP_LO_NUM	20
+#define QRTR_BACKUP_LO_SIZE	SZ_1K
+static struct sk_buff_head qrtr_backup_lo;
+static struct sk_buff_head qrtr_backup_hi;
+static struct work_struct qrtr_backup_work;
+
 /**
  * struct qrtr_node - endpoint node
  * @ep_lock: lock for endpoint management and callbacks
@@ -217,6 +230,15 @@ static void qrtr_log_tx_msg(struct qrtr_node *node, struct qrtr_hdr_v1 *hdr,
 			  hdr->dst_node_id, hdr->dst_port_id,
 			  (unsigned int)pl_buf, (unsigned int)(pl_buf >> 32),
 			  current->comm);
+			  if (node->nid == 9) {
+				  QRTR_INFO_NEW(qrtr_ilc,
+				      "TX DATA: Len:0x%x CF:0x%x src[0x%x:0x%x] dst[0x%x:0x%x] [%08x %08x] [%s]\n",
+				      hdr->size, hdr->confirm_rx,
+				      hdr->src_node_id, hdr->src_port_id,
+				      hdr->dst_node_id, hdr->dst_port_id,
+				      (unsigned int)pl_buf, (unsigned int)(pl_buf >> 32),
+				      current->comm);
+			  }
 	} else {
 		skb_copy_bits(skb, QRTR_HDR_MAX_SIZE, &pkt, sizeof(pkt));
 		if (hdr->type == QRTR_TYPE_NEW_SERVER ||
@@ -228,12 +250,18 @@ static void qrtr_log_tx_msg(struct qrtr_node *node, struct qrtr_hdr_v1 *hdr,
 				  le32_to_cpu(pkt.server.node),
 				  le32_to_cpu(pkt.server.port));
 		else if (hdr->type == QRTR_TYPE_DEL_CLIENT ||
-			 hdr->type == QRTR_TYPE_RESUME_TX)
+			 hdr->type == QRTR_TYPE_RESUME_TX) {
 			QRTR_INFO(node->ilc,
 				  "TX CTRL: cmd:0x%x addr[0x%x:0x%x]\n",
 				  hdr->type, le32_to_cpu(pkt.client.node),
 				  le32_to_cpu(pkt.client.port));
-		else if (hdr->type == QRTR_TYPE_HELLO ||
+			if (node->nid == 9) {
+				  QRTR_INFO_NEW(qrtr_ilc,
+				      "TX CTRL: cmd:0x%x addr[0x%x:0x%x]\n",
+				      hdr->type, le32_to_cpu(pkt.client.node),
+				      le32_to_cpu(pkt.client.port));
+			}
+		} else if (hdr->type == QRTR_TYPE_HELLO ||
 			 hdr->type == QRTR_TYPE_BYE)
 			QRTR_INFO(node->ilc,
 				  "TX CTRL: cmd:0x%x node[0x%x]\n",
@@ -263,6 +291,13 @@ static void qrtr_log_rx_msg(struct qrtr_node *node, struct sk_buff *skb)
 			  skb->len, cb->confirm_rx, cb->src_node, cb->src_port,
 			  cb->dst_node, cb->dst_port,
 			  (unsigned int)pl_buf, (unsigned int)(pl_buf >> 32));
+		if (node->nid == 9) {
+			  QRTR_INFO_NEW(qrtr_ilc,
+			      "RX DATA: Len:0x%x CF:0x%x src[0x%x:0x%x] dst[0x%x:0x%x] [%08x %08x]\n",
+			      skb->len, cb->confirm_rx, cb->src_node, cb->src_port,
+			      cb->dst_node, cb->dst_port,
+			      (unsigned int)pl_buf, (unsigned int)(pl_buf >> 32));
+		}
 	} else {
 		skb_copy_bits(skb, 0, &pkt, sizeof(pkt));
 		if (cb->type == QRTR_TYPE_NEW_SERVER ||
@@ -634,6 +669,8 @@ static void qrtr_node_assign(struct qrtr_node *node, unsigned int nid)
 	if (!node->ilc) {
 		node->ilc = ipc_log_context_create(QRTR_LOG_PAGE_CNT, name, 0);
 	}
+	if (!qrtr_ilc)
+		qrtr_ilc = ipc_log_context_create(QRTR_LOG_PAGE_CNT, "qrtr_txns", 0);
 	/* create wakeup source for only NID = 3,0 or 7.
 	 * From other nodes sensor service stream samples
 	 * cause APPS suspend problems and power drain issue.
@@ -684,6 +721,57 @@ int qrtr_peek_pkt_size(const void *data)
 }
 EXPORT_SYMBOL(qrtr_peek_pkt_size);
 
+static void qrtr_alloc_backup(struct work_struct *work)
+{
+	struct sk_buff *skb;
+	int errcode;
+
+	while(skb_queue_len(&qrtr_backup_lo) < QRTR_BACKUP_LO_NUM) {
+		skb = alloc_skb_with_frags(sizeof(struct qrtr_hdr_v1),
+			QRTR_BACKUP_LO_SIZE, 0, &errcode, GFP_KERNEL);
+		if (!skb)
+			break;
+		skb_queue_tail(&qrtr_backup_lo, skb);
+	}
+	while(skb_queue_len(&qrtr_backup_hi) < QRTR_BACKUP_HI_NUM) {
+		skb = alloc_skb_with_frags(sizeof(struct qrtr_hdr_v1),
+			QRTR_BACKUP_HI_SIZE, 0, &errcode, GFP_KERNEL); 
+		if (!skb)
+			break;
+		skb_queue_tail(&qrtr_backup_hi, skb);
+	}
+}
+
+static struct sk_buff *qrtr_get_backup(size_t len)
+{
+	struct sk_buff *skb = NULL;
+
+	if (len < QRTR_BACKUP_LO_SIZE)
+		skb = skb_dequeue(&qrtr_backup_lo);
+	else if (len < QRTR_BACKUP_HI_SIZE)
+		skb = skb_dequeue(&qrtr_backup_hi);
+
+	if (skb)
+		queue_work(system_unbound_wq, &qrtr_backup_work);
+
+	return skb;
+}
+
+static void qrtr_backup_init(void)
+{
+	skb_queue_head_init(&qrtr_backup_lo);
+	skb_queue_head_init(&qrtr_backup_hi);
+	INIT_WORK(&qrtr_backup_work, qrtr_alloc_backup);
+	queue_work(system_unbound_wq, &qrtr_backup_work);
+}
+
+static void qrtr_backup_deinit(void)
+{
+	cancel_work_sync(&qrtr_backup_work);
+	skb_queue_purge(&qrtr_backup_lo);
+	skb_queue_purge(&qrtr_backup_hi);
+}
+
 /**
  * qrtr_endpoint_post() - post incoming data
  * @ep: endpoint handle
@@ -708,9 +796,13 @@ int qrtr_endpoint_post(struct qrtr_endpoint *ep, const void *data, size_t len)
 		return -EINVAL;
 
 	skb = alloc_skb_with_frags(sizeof(*v1), len, 0, &errcode, GFP_ATOMIC);
-	if (!skb)
-		return -ENOMEM;
-
+	if (!skb) {
+		skb = qrtr_get_backup(len);
+		if (!skb) {
+			QRTR_INFO_NEW(qrtr_ilc, "skb alloc failed in qrtr_endpoint_post\n");
+			return -ENOMEM;
+		}
+	}
 	skb_reserve(skb, sizeof(*v1));
 	cb = (struct qrtr_cb *)skb->cb;
 
@@ -1475,8 +1567,10 @@ static int qrtr_sendmsg(struct socket *sock, struct msghdr *msg, size_t len)
 	plen = (len + 3) & ~3;
 	skb = sock_alloc_send_skb(sk, plen + QRTR_HDR_MAX_SIZE,
 				  msg->msg_flags & MSG_DONTWAIT, &rc);
-	if (!skb)
+	if (!skb) {
+		QRTR_INFO_NEW(qrtr_ilc, " skb alloc failed in qrtr_resume_tx");
 		goto out_node;
+	}
 
 	skb_reserve(skb, QRTR_HDR_MAX_SIZE);
 
@@ -1539,8 +1633,10 @@ static int qrtr_resume_tx(struct qrtr_cb *cb)
 		return -EINVAL;
 
 	skb = qrtr_alloc_ctrl_packet(&pkt);
-	if (!skb)
+	if (!skb) {
+		QRTR_INFO_NEW(qrtr_ilc, "skb alloc failed in qrtr_resume_tx\n");
 		return -ENOMEM;
+	}
 
 	pkt->cmd = cpu_to_le32(QRTR_TYPE_RESUME_TX);
 	pkt->client.node = cpu_to_le32(cb->dst_node);
@@ -1864,6 +1960,8 @@ static int __init qrtr_proto_init(void)
 		proto_unregister(&qrtr_proto);
 	}
 
+	qrtr_backup_init();
+ 
 	return rc;
 }
 postcore_initcall(qrtr_proto_init);
@@ -1873,6 +1971,7 @@ static void __exit qrtr_proto_fini(void)
 	rtnl_unregister(PF_QIPCRTR, RTM_NEWADDR);
 	sock_unregister(qrtr_family.family);
 	proto_unregister(&qrtr_proto);
+	qrtr_backup_deinit();
 }
 module_exit(qrtr_proto_fini);
 

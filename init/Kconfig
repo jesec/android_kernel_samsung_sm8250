@@ -801,6 +801,11 @@ config MEMCG_SWAP_ENABLED
 	  select this option (if, for some reason, they need to disable it
 	  then swapaccount=0 does the trick).
 
+config MEMCG_FORCE_USE_VM_SWAPPINESS
+	bool "Force to use vm_swappiness instead of memcg->swappiness"
+	depends on MEMCG_SWAP
+	default y
+
 config MEMCG_KMEM
 	bool
 	depends on MEMCG && !SLOB
@@ -1875,6 +1880,12 @@ config SYSTEM_DATA_VERIFICATION
 	  module verification, kexec image verification and firmware blob
 	  verification.
 
+config DEFERRED_INITCALLS
+	bool "Deferred initcalls support"
+	default n
+	help
+	  Say Y here to include support for deferred initcalls.
+
 config PROFILING
 	bool "Profiling support"
 	help
@@ -2151,3 +2162,6 @@ config ARCH_HAS_SYNC_CORE_BEFORE_USERMODE
 # <asm/syscall_wrapper.h>.
 config ARCH_HAS_SYSCALL_WRAPPER
 	def_bool n
+
+source "kernel/Kconfig.intelligence"
+source "kernel/ftt/Kconfig"

@@ -269,4 +269,9 @@ void notify_adc_tm_fn(struct work_struct *work);
 
 int adc_tm_is_valid(struct adc_tm_chip *chip);
 
+#ifdef CONFIG_SEC_EXT_THERMAL_MONITOR
+int sec_bat_convert_adc_to_temp(unsigned int adc_ch, int temp_adc);
+int sec_bat_get_thr_voltage(unsigned int adc_ch, int temp);
+#endif /* CONFIG_SEC_EXT_THERMAL_MONITOR */
+
 #endif /* __QCOM_ADC_TM_H__ */

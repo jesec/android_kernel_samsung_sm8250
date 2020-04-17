@@ -371,7 +371,6 @@ struct mhi_controller {
 			struct mhi_link_info *link_info);
 	void (*write_reg)(struct mhi_controller *mhi_cntrl, void __iomem *base,
 			u32 offset, u32 val);
-
 	/* channel to control DTR messaging */
 	struct mhi_device *dtr_dev;
 
@@ -396,7 +395,10 @@ struct mhi_controller {
 	enum MHI_DEBUG_LEVEL log_lvl;
 
 	/* controller specific data */
+	const char *name;
 	bool power_down;
+	bool need_force_m3;
+	bool force_m3_done;
 	void *priv_data;
 	void *log_buf;
 	struct dentry *dentry;
@@ -824,6 +826,12 @@ void mhi_control_error(struct mhi_controller *mhi_cntrl);
  */
 void mhi_debug_reg_dump(struct mhi_controller *mhi_cntrl);
 
+/**
+ * mhi_get_restart_reason - retrieve the subsystem failure reason
+ * @name: controller name
+ */
+char *mhi_get_restart_reason(const char *name);
+
 #ifndef CONFIG_ARCH_QCOM
 
 #ifdef CONFIG_MHI_DEBUG
@@ -871,12 +879,7 @@ void mhi_debug_reg_dump(struct mhi_controller *mhi_cntrl);
 
 #else
 
-#define MHI_VERB(fmt, ...) do { \
-		if (mhi_cntrl->log_buf && \
-		    (mhi_cntrl->log_lvl <= MHI_MSG_LVL_VERBOSE)) \
-			ipc_log_string(mhi_cntrl->log_buf, "[D][%s] " fmt, \
-				       __func__, ##__VA_ARGS__); \
-} while (0)
+#define MHI_VERB(fmt, ...)
 
 #endif
 

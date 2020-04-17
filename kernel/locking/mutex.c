@@ -29,6 +29,9 @@
 #include <linux/debug_locks.h>
 #include <linux/osq_lock.h>
 #include <linux/delay.h>
+#ifdef CONFIG_KPERFMON
+#include <linux/ologk.h>
+#endif
 
 #ifdef CONFIG_DEBUG_MUTEXES
 # include "mutex-debug.h"
@@ -44,6 +47,9 @@ __mutex_init(struct mutex *lock, const char *name, struct lock_class_key *key)
 	INIT_LIST_HEAD(&lock->wait_list);
 #ifdef CONFIG_MUTEX_SPIN_ON_OWNER
 	osq_lock_init(&lock->osq);
+#endif
+#ifdef CONFIG_FAST_TRACK
+	lock->ftt_dep_task = NULL;
 #endif
 
 	debug_mutex_init(lock, name, key);
@@ -718,6 +724,12 @@ static noinline void __sched __mutex_unlock_slowpath(struct mutex *lock, unsigne
  */
 void __sched mutex_unlock(struct mutex *lock)
 {
+/* Temporary blocked :: miscalculation for jiffies */
+#if 0 // def CONFIG_KPERFMON
+	if(lock != 0) {
+		perflog_evt(PERFLOG_UNKNOWN, jiffies - lock->time);
+	}
+#endif
 #ifndef CONFIG_DEBUG_LOCK_ALLOC
 	if (__mutex_unlock_fast(lock))
 		return;
@@ -919,6 +931,12 @@ __mutex_lock_common(struct mutex *lock, long state, unsigned int subclass,
 
 	might_sleep();
 
+#ifdef CONFIG_KPERFMON
+	if(lock != 0) {
+		lock->time = jiffies;
+	}
+#endif
+
 	ww = container_of(lock, struct ww_mutex, base);
 	if (use_ww_ctx && ww_ctx) {
 		if (unlikely(ww_ctx == READ_ONCE(ww->ctx)))
@@ -962,9 +980,16 @@ __mutex_lock_common(struct mutex *lock, long state, unsigned int subclass,
 	lock_contended(&lock->dep_map, ip);
 
 	if (!use_ww_ctx) {
+#ifdef CONFIG_FAST_TRACK
+		debug_mutex_add_waiter(lock, &waiter, current);
+		mutex_list_add(current, &waiter.list, &lock->wait_list, lock);
+
+		if (__mutex_waiter_is_first(lock, &waiter))
+			__mutex_set_flag(lock, MUTEX_FLAG_WAITERS);
+#else
 		/* add waiting tasks to the end of the waitqueue (FIFO): */
 		__mutex_add_waiter(lock, &waiter, &lock->wait_list);
-
+#endif
 
 #ifdef CONFIG_DEBUG_MUTEXES
 		waiter.ww_ctx = MUTEX_POISON_WW_CTX;
@@ -1010,6 +1035,9 @@ __mutex_lock_common(struct mutex *lock, long state, unsigned int subclass,
 				goto err;
 		}
 
+#ifdef CONFIG_FAST_TRACK
+		mutex_dynamic_ftt_enqueue(lock, current);
+#endif
 		spin_unlock(&lock->wait_lock);
 		schedule_preempt_disabled();
 
@@ -1241,6 +1269,11 @@ static noinline void __sched __mutex_unlock_slowpath(struct mutex *lock, unsigne
 
 	spin_lock(&lock->wait_lock);
 	debug_mutex_unlock(lock);
+
+#ifdef CONFIG_FAST_TRACK
+	mutex_dynamic_ftt_dequeue(lock, current);
+#endif
+
 	if (!list_empty(&lock->wait_list)) {
 		/* get the first entry from the wait-list: */
 		struct mutex_waiter *waiter =

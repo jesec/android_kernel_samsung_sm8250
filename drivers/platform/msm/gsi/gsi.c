@@ -20,6 +20,7 @@
 #define GSI_CMD_POLL_CNT 5
 #define GSI_STOP_CMD_TIMEOUT_MS 200
 #define GSI_MAX_CH_LOW_WEIGHT 15
+#define GSI_IRQ_STORM_THR 7
 
 #define GSI_STOP_CMD_POLL_CNT 4
 #define GSI_STOP_IN_PROC_CMD_POLL_CNT 2
@@ -753,46 +754,46 @@ static void gsi_handle_irq(void)
 	int ee = gsi_ctx->per.ee;
 	unsigned long cnt = 0;
 
-	while (1) {
-		type = gsi_readl(gsi_ctx->base +
-			GSI_EE_n_CNTXT_TYPE_IRQ_OFFS(ee));
+	if (!gsi_ctx->per.clk_status_cb())
+		return;
+	type = gsi_readl(gsi_ctx->base +
+		GSI_EE_n_CNTXT_TYPE_IRQ_OFFS(ee));
 
-		if (!type)
-			break;
+	if (!type)
+		return;
 
-		GSIDBG_LOW("type 0x%x\n", type);
+	GSIDBG_LOW("type 0x%x\n", type);
 
-		if (type & GSI_EE_n_CNTXT_TYPE_IRQ_CH_CTRL_BMSK)
-			gsi_handle_ch_ctrl(ee);
+	if (type & GSI_EE_n_CNTXT_TYPE_IRQ_CH_CTRL_BMSK)
+		gsi_handle_ch_ctrl(ee);
 
-		if (type & GSI_EE_n_CNTXT_TYPE_IRQ_EV_CTRL_BMSK)
-			gsi_handle_ev_ctrl(ee);
+	if (type & GSI_EE_n_CNTXT_TYPE_IRQ_EV_CTRL_BMSK)
+		gsi_handle_ev_ctrl(ee);
 
-		if (type & GSI_EE_n_CNTXT_TYPE_IRQ_GLOB_EE_BMSK)
-			gsi_handle_glob_ee(ee);
+	if (type & GSI_EE_n_CNTXT_TYPE_IRQ_GLOB_EE_BMSK)
+		gsi_handle_glob_ee(ee);
 
-		if (type & GSI_EE_n_CNTXT_TYPE_IRQ_IEOB_BMSK)
-			gsi_handle_ieob(ee);
+	if (type & GSI_EE_n_CNTXT_TYPE_IRQ_IEOB_BMSK)
+		gsi_handle_ieob(ee);
 
-		if (type & GSI_EE_n_CNTXT_TYPE_IRQ_INTER_EE_CH_CTRL_BMSK)
-			gsi_handle_inter_ee_ch_ctrl(ee);
+	if (type & GSI_EE_n_CNTXT_TYPE_IRQ_INTER_EE_CH_CTRL_BMSK)
+		gsi_handle_inter_ee_ch_ctrl(ee);
 
-		if (type & GSI_EE_n_CNTXT_TYPE_IRQ_INTER_EE_EV_CTRL_BMSK)
-			gsi_handle_inter_ee_ev_ctrl(ee);
+	if (type & GSI_EE_n_CNTXT_TYPE_IRQ_INTER_EE_EV_CTRL_BMSK)
+		gsi_handle_inter_ee_ev_ctrl(ee);
 
-		if (type & GSI_EE_n_CNTXT_TYPE_IRQ_GENERAL_BMSK)
-			gsi_handle_general(ee);
+	if (type & GSI_EE_n_CNTXT_TYPE_IRQ_GENERAL_BMSK)
+		gsi_handle_general(ee);
 
-		if (unlikely(++cnt > GSI_ISR_MAX_ITER)) {
-			/*
-			 * Max number of spurious interrupts from hardware.
-			 * Unexpected hardware state.
-			 */
-			GSIERR("Too many spurious interrupt from GSI HW\n");
-			GSI_ASSERT();
-		}
-
+	if (unlikely(++cnt > GSI_ISR_MAX_ITER)) {
+		/*
+		 * Max number of spurious interrupts from hardware.
+		 * Unexpected hardware state.
+		 */
+		GSIERR("Too many spurious interrupt from GSI HW\n");
+		GSI_ASSERT();
 	}
+
 }
 
 static irqreturn_t gsi_isr(int irq, void *ctxt)
@@ -806,8 +807,14 @@ static irqreturn_t gsi_isr(int irq, void *ctxt)
 			gsi_ctx->per.rel_clk_cb(gsi_ctx->per.user_data);
 		}
 	} else if (!gsi_ctx->per.clk_status_cb()) {
+	/* we only want to capture the gsi isr storm here */
+		if (atomic_read(&gsi_ctx->num_unclock_irq) ==
+			GSI_IRQ_STORM_THR)
+			gsi_ctx->per.enable_clk_bug_on();
+		atomic_inc(&gsi_ctx->num_unclock_irq);
 		return IRQ_HANDLED;
 	} else {
+		atomic_set(&gsi_ctx->num_unclock_irq, 0);
 		gsi_handle_irq();
 	}
 	return IRQ_HANDLED;
@@ -2774,6 +2781,15 @@ int gsi_query_channel_db_addr(unsigned long chan_hdl,
 	return GSI_STATUS_SUCCESS;
 }
 EXPORT_SYMBOL(gsi_query_channel_db_addr);
+
+int gsi_pending_irq_type(void)
+{
+	int ee = gsi_ctx->per.ee;
+
+	return gsi_readl(gsi_ctx->base +
+		GSI_EE_n_CNTXT_TYPE_IRQ_OFFS(ee));
+}
+EXPORT_SYMBOL(gsi_pending_irq_type);
 
 int gsi_start_channel(unsigned long chan_hdl)
 {

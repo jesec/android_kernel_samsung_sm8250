@@ -1319,6 +1319,7 @@ static int cnss_cold_boot_cal_done_hdlr(struct cnss_plat_data *plat_priv,
 	cnss_bus_dev_shutdown(plat_priv);
 	msleep(COLD_BOOT_CAL_SHUTDOWN_DELAY_MS);
 	complete(&plat_priv->cal_complete);
+	usleep_range(10000, 20000);
 	clear_bit(CNSS_COLD_BOOT_CAL, &plat_priv->driver_state);
 
 out:
@@ -2094,6 +2095,10 @@ static void cnss_misc_deinit(struct cnss_plat_data *plat_priv)
 static void cnss_init_control_params(struct cnss_plat_data *plat_priv)
 {
 	plat_priv->ctrl_params.quirks = CNSS_QUIRKS_DEFAULT;
+	if (of_property_read_bool(plat_priv->plat_dev->dev.of_node,
+				  "cnss-daemon-support"))
+		plat_priv->ctrl_params.quirks |= BIT(ENABLE_DAEMON_SUPPORT);
+
 	plat_priv->ctrl_params.mhi_timeout = CNSS_MHI_TIMEOUT_DEFAULT;
 	plat_priv->ctrl_params.mhi_m2_timeout = CNSS_MHI_M2_TIMEOUT_DEFAULT;
 	plat_priv->ctrl_params.qmi_timeout = CNSS_QMI_TIMEOUT_DEFAULT;

@@ -19,6 +19,10 @@
 #include <linux/soc/qcom/smem.h>
 #include <asm/arch_timer.h>
 #include "rpmh_master_stat.h"
+#ifdef CONFIG_ADSP_SLEEP_RECOVERY
+#include <linux/adsp/adsp-loader.h>
+#include <linux/rtc.h>
+#endif /* CONFIG_ADSP_SLEEP_RECOVERY */
 
 #define UNIT_DIST 0x14
 #define REG_VALID 0x0
@@ -26,6 +30,12 @@
 #define REG_DATA_HI 0x8
 
 #define GET_ADDR(REG, UNIT_NO) (REG + (UNIT_DIST * UNIT_NO))
+
+#ifdef CONFIG_SEC_PM
+#define MSM_ARCH_TIMER_FREQ	19200000
+#define GET_SEC(A)		((A) / (MSM_ARCH_TIMER_FREQ))
+#define GET_MSEC(A)		(((A) / (MSM_ARCH_TIMER_FREQ / 1000)) % 1000)
+#endif
 
 enum master_smem_id {
 	MPSS = 605,
@@ -94,6 +104,116 @@ static struct msm_rpmh_master_stats apss_master_stats;
 static void __iomem *rpmh_unit_base;
 
 static DEFINE_MUTEX(rpmh_stats_mutex);
+#ifdef CONFIG_ADSP_SLEEP_RECOVERY
+#define MAX_COUNT 60
+/* It is UTC time KST+24-9 */
+#define START_H 17
+#define END_H 20
+
+extern unsigned int tx_mck;
+extern unsigned int tx_mck_div;
+extern bool voice_activated;
+
+static uint64_t entry_sec = 0;
+static uint64_t entry_msec = 0;
+static uint64_t prev_sec = 0;
+static uint64_t prev_msec = 0;
+
+static uint64_t error_count = 0;
+static uint64_t ssr_count = 0;
+
+struct rtc_time tm_chk;
+#endif
+
+#ifdef CONFIG_SEC_PM
+void debug_masterstats_show(char *annotation)
+{
+	int i = 0;
+	size_t size = 0;
+	struct msm_rpmh_master_stats *record = NULL;
+	uint64_t accumulated_duration;
+	unsigned int duration_sec, duration_msec;
+	char buf[256];
+	char *buf_ptr = buf;
+#ifdef CONFIG_ADSP_SLEEP_RECOVERY
+	struct timespec ts;
+#endif
+
+	mutex_lock(&rpmh_stats_mutex);
+
+	buf_ptr += sprintf(buf_ptr, "PM: %s: ", annotation);
+	/* Read SMEM data written by other masters */
+	for (i = 0; i < ARRAY_SIZE(rpmh_masters); i++) {
+		record = (struct msm_rpmh_master_stats *) qcom_smem_get(
+					rpmh_masters[i].pid,
+					rpmh_masters[i].smem_id, &size);
+
+		if (!IS_ERR_OR_NULL(record)) {
+			accumulated_duration = record->accumulated_duration;
+			if (record->last_entered > record->last_exited)
+				accumulated_duration +=
+					(arch_counter_get_cntvct() -
+						record->last_entered);
+
+			duration_sec = GET_SEC(accumulated_duration);
+			duration_msec = GET_MSEC(accumulated_duration);
+#ifdef CONFIG_ADSP_SLEEP_RECOVERY
+			if(!strcmp(rpmh_masters[i].master_name, "ADSP")) {
+				if(!strcmp(annotation, "entry")) {
+					entry_sec = duration_sec;
+					entry_msec = duration_msec;
+				} else if(!strcmp(annotation, "exit")) {
+					getnstimeofday(&ts);
+					rtc_time_to_tm(ts.tv_sec, &tm_chk);
+					if(!voice_activated) {
+						/* Error detected if exit duration is same as entry */
+						if((duration_sec == entry_sec && duration_msec == entry_msec)) {
+							/* increase count if entry duration is same as prev exit */
+							if(entry_sec == prev_sec && entry_msec == prev_msec)
+								error_count++;
+							/* set count as 1 when aDSP entered sleep just before */
+							else
+								error_count = 1;
+
+							pr_info("ADSP non-sleep count %d, tx_mck %d, tx_mck_div %d, ssr count %d\n",
+								error_count, tx_mck, tx_mck_div, ssr_count);
+						} else {
+							error_count = 0;
+						}
+					}
+					prev_sec = duration_sec;
+					prev_msec = duration_msec;
+				}
+			}
+#endif
+			buf_ptr += sprintf(buf_ptr, "%s(%d, %u.%u), ",
+					rpmh_masters[i].master_name,
+					record->counts,
+					duration_sec, duration_msec);
+		} else {
+			continue;
+		}
+	}
+
+	buf_ptr--;
+	buf_ptr--;
+	buf_ptr += sprintf(buf_ptr, "\n");
+	mutex_unlock(&rpmh_stats_mutex);
+
+	printk(KERN_INFO "%s", buf);
+
+#ifdef CONFIG_ADSP_SLEEP_RECOVERY
+	if(tm_chk.tm_hour >= START_H && tm_chk.tm_hour < END_H) {
+		if(error_count > MAX_COUNT)	{
+			adsp_ssr();
+			ssr_count++;
+			error_count = 0;
+		}
+	}
+#endif
+}
+EXPORT_SYMBOL(debug_masterstats_show);
+#endif
 
 static ssize_t msm_rpmh_master_stats_print_data(char *prvbuf, ssize_t length,
 				struct msm_rpmh_master_stats *record,

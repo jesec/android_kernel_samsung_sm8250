@@ -24,6 +24,13 @@
 #include <asm/pgtable-hwdef.h>
 #include <asm/pgtable-prot.h>
 
+#ifdef CONFIG_UH
+#include <linux/uh.h>
+#ifdef CONFIG_UH_RKP
+#include <linux/rkp.h>
+#endif
+#endif
+
 /*
  * VMALLOC range.
  *
@@ -247,6 +254,14 @@ pte_bad:
 pte_ok:
 #endif
 
+#ifdef CONFIG_UH_RKP
+	/* bug on double mapping */
+	BUG_ON(pte_val(pte) && rkp_is_pg_dbl_mapped(pte_val(pte)));
+ 
+	if (rkp_is_pg_protected((u64)ptep)) {
+		uh_call(UH_APP_RKP, RKP_WRITE_PGT3, (u64)ptep, pte_val(pte), 0, 0);
+	} else
+#endif
 	WRITE_ONCE(*ptep, pte);
 
 	/*
@@ -461,6 +476,11 @@ static inline bool pud_table(pud_t pud) { return true; }
 
 static inline void set_pmd(pmd_t *pmdp, pmd_t pmd)
 {
+#ifdef CONFIG_UH_RKP
+	if (rkp_is_pg_protected((u64)pmdp)) {
+		uh_call(UH_APP_RKP, RKP_WRITE_PGT2, (u64)pmdp, pmd_val(pmd), 0, 0);
+	} else
+#endif
 	WRITE_ONCE(*pmdp, pmd);
 	dsb(ishst);
 	isb();
@@ -518,6 +538,11 @@ static inline void pte_unmap(pte_t *pte) { }
 
 static inline void set_pud(pud_t *pudp, pud_t pud)
 {
+#ifdef CONFIG_UH_RKP
+	if (rkp_is_pg_protected((u64)pudp)) {
+		uh_call(UH_APP_RKP, RKP_WRITE_PGT1, (u64)pudp, pud_val(pud), 0, 0);
+	} else
+#endif
 	WRITE_ONCE(*pudp, pud);
 	dsb(ishst);
 	isb();

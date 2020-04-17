@@ -82,6 +82,8 @@ enum esoc_notify {
 	ESOC_PRIMARY_CRASH,
 	ESOC_PRIMARY_REBOOT,
 	ESOC_PON_RETRY,
+	ESOC_FORCE_CRASH = 100,
+	ESOC_FORCE_SILENT_RESET,
 };
 
 enum esoc_req {

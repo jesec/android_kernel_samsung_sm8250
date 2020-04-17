@@ -54,6 +54,9 @@
 struct qmi_handle *cntl_qmi;
 static uint64_t bootup_req[NUM_SOCKET_SUBSYSTEMS];
 
+char diag_ws_owner[DIAG_SOCKET_NAME_SZ];
+EXPORT_SYMBOL(diag_ws_owner);
+
 struct diag_socket_info socket_data[NUM_PERIPHERALS] = {
 	{
 		.peripheral = PERIPHERAL_MODEM,
@@ -430,6 +433,12 @@ static void socket_data_ready(struct sock *sk_ptr)
 
 	spin_lock_irqsave(&info->lock, flags);
 	info->data_ready++;
+	if(driver->diag_dev && driver->diag_dev->power.wakeup &&
+		(driver->diag_dev->power.wakeup->active) == false) {
+		info->pkt_read++;
+		strncpy(diag_ws_owner, info->name, strlen(info->name));
+	}
+
 	spin_unlock_irqrestore(&info->lock, flags);
 	diag_ws_on_notify();
 

@@ -1435,8 +1435,17 @@ void sdhci_send_command(struct sdhci_host *host, struct mmc_command *cmd)
 		timeout += nsecs_to_jiffies(host->data_timeout);
 	else if (!cmd->data && cmd->busy_timeout > 9000)
 		timeout += DIV_ROUND_UP(cmd->busy_timeout, 1000) * HZ + HZ;
+#if defined(CONFIG_HDM)
+	else {
+		if (!cmd->data)
+			timeout += 1 * HZ;
+		else
+			timeout += 10 * HZ;
+	}
+#else
 	else
 		timeout += 10 * HZ;
+#endif
 	sdhci_mod_timer(host, cmd->mrq, timeout);
 
 	if (cmd->data)
@@ -1966,6 +1975,8 @@ static int sdhci_crypto_cfg_end(struct sdhci_host *host,
 	return 0;
 }
 
+static int sdhci_card_busy(struct mmc_host *mmc);
+
 static void sdhci_request(struct mmc_host *mmc, struct mmc_request *mrq)
 {
 	struct sdhci_host *host;
@@ -2001,6 +2012,16 @@ static void sdhci_request(struct mmc_host *mmc, struct mmc_request *mrq)
 		else
 			present = sdhci_readl(host, SDHCI_PRESENT_STATE) &
 					SDHCI_CARD_PRESENT;
+	}
+
+	/*
+	 * Check SDcard busy signal by DAT0 before sending CMD13
+	 * about 10ms : 100us * 100 times
+	 */
+	if (present && (mrq->cmd->opcode == MMC_SEND_STATUS)) {
+		int tries = 100;
+		while (sdhci_card_busy(mmc) && --tries)
+			usleep_range(95, 105);
 	}
 
 	spin_lock_irqsave(&host->lock, flags);
@@ -2195,6 +2216,10 @@ void sdhci_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 				mmc_card_sdio(host->mmc->card))
 			sdhci_cfg_irq(host, true, false);
 		spin_unlock_irqrestore(&host->lock, flags);
+#if defined(CONFIG_SEC_HYBRID_TRAY)
+		sdhci_set_power(host, ios->power_mode, ios->vdd);
+		host->ops->set_clock(host, ios->clock);
+#endif
 		return;
 	}
 	spin_unlock_irqrestore(&host->lock, flags);
@@ -2938,6 +2963,19 @@ static void sdhci_card_event(struct mmc_host *mmc)
 
 		sdhci_error_out_mrqs(host, -ENOMEDIUM);
 	}
+#if defined(CONFIG_HDM)
+	else if (present) {
+		sdhci_writel(host, 0, SDHCI_SIGNAL_ENABLE);
+		sdhci_reinit(host);
+		sdhci_set_power(host, mmc->ios.power_mode, mmc->ios.vdd);
+		if (host->ops->set_clock)
+			host->ops->set_clock(host, mmc->ios.clock);
+
+		/* to set PWRMASK */
+		if (host->ops->card_event)
+			host->ops->card_event(host);
+	}
+#endif
 
 	spin_unlock_irqrestore(&host->lock, flags);
 }
@@ -3136,7 +3174,7 @@ static void sdhci_timeout_timer(struct timer_list *t)
 				"Timeout waiting for cmd interrupt\n");
 		sdhci_dumpregs(host);
 
-		host->cmd->error = -ETIMEDOUT;
+		host->cmd->error = -ENOMEDIUM;
 		sdhci_finish_mrq(host, host->cmd->mrq);
 	}
 
@@ -3154,6 +3192,10 @@ static void sdhci_timeout_data_timer(struct timer_list *t)
 	spin_lock_irqsave(&host->lock, flags);
 
 	if (host->data || host->data_cmd ||
+#if defined(CONFIG_HDM)
+	    (host->cmd && host->cmd->mrq && host->cmd->mrq->data &&
+	     (host->cmd == host->cmd->mrq->data->stop)) ||
+#endif
 	    (host->cmd && sdhci_data_line_cmd(host->cmd))) {
 		host->mmc->err_stats[MMC_ERR_REQ_TIMEOUT]++;
 		pr_err("%s: Timeout waiting for hardware interrupt.\n",
@@ -3168,13 +3210,13 @@ static void sdhci_timeout_data_timer(struct timer_list *t)
 				(host->data->blksz * host->data->blocks),
 				(sdhci_readw(host, SDHCI_BLOCK_SIZE) & 0xFFF) *
 				sdhci_readw(host, SDHCI_BLOCK_COUNT));
-			host->data->error = -ETIMEDOUT;
+			host->data->error = -ENOMEDIUM;
 			sdhci_finish_data(host);
 		} else if (host->data_cmd) {
-			host->data_cmd->error = -ETIMEDOUT;
+			host->data_cmd->error = -ENOMEDIUM;
 			sdhci_finish_mrq(host, host->data_cmd->mrq);
 		} else {
-			host->cmd->error = -ETIMEDOUT;
+			host->cmd->error = -ENOMEDIUM;
 			sdhci_finish_mrq(host, host->cmd->mrq);
 		}
 	}
@@ -4024,6 +4066,8 @@ struct sdhci_host *sdhci_alloc_host(struct device *dev,
 
 	host->sdma_boundary = SDHCI_DEFAULT_BOUNDARY_ARG;
 
+	mmc->trigger_card_event = true;
+
 	spin_lock_init(&host->lock);
 	ratelimit_state_init(&host->dbg_dump_rs, SDHCI_DBG_DUMP_RS_INTERVAL,
 			SDHCI_DBG_DUMP_RS_BURST);
@@ -4597,6 +4641,10 @@ int sdhci_setup_host(struct sdhci_host *host)
 				(curr << SDHCI_MAX_CURRENT_180_SHIFT);
 		}
 	}
+
+#if defined(CONFIG_HDM)
+	host->caps |= (SDHCI_CAN_VDD_300 | SDHCI_CAN_VDD_180);
+#endif
 
 	if (host->caps & SDHCI_CAN_VDD_330) {
 		ocr_avail |= MMC_VDD_32_33 | MMC_VDD_33_34;

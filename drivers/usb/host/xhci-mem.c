@@ -13,6 +13,10 @@
 #include <linux/slab.h>
 #include <linux/dmapool.h>
 #include <linux/dma-mapping.h>
+#if defined(CONFIG_USB_HOST_CERTI)
+#include <linux/usb_notify.h>
+#define MAX_HC_SLOT_LIMIT 15
+#endif
 
 #include "xhci.h"
 #include "xhci-trace.h"
@@ -974,12 +978,24 @@ int xhci_alloc_virt_device(struct xhci_hcd *xhci, int slot_id,
 {
 	struct xhci_virt_device *dev;
 	int i;
+#if defined(CONFIG_USB_HOST_CERTI)
+	int count = 0;
+#endif
 
 	/* Slot ID 0 is reserved */
 	if (slot_id == 0 || xhci->devs[slot_id]) {
 		xhci_warn(xhci, "Bad Slot ID %d\n", slot_id);
 		return 0;
 	}
+
+#if defined(CONFIG_USB_HOST_CERTI)
+	for (i = 0; i < MAX_HC_SLOTS; i++) {
+		if (xhci->devs[i] && xhci->devs[i]->udev)
+			count++;
+	}
+	if (count >= MAX_HC_SLOT_LIMIT)
+		goto fail2;
+#endif
 
 	dev = kzalloc(sizeof(*dev), flags);
 	if (!dev)
@@ -1034,6 +1050,11 @@ fail:
 	if (dev->out_ctx)
 		xhci_free_container_ctx(xhci, dev->out_ctx);
 	kfree(dev);
+
+#if defined(CONFIG_USB_HOST_CERTI)
+fail2:
+	send_usb_certi_uevent(USB_CERTI_HOST_RESOURCE_EXCEED);
+#endif
 
 	return 0;
 }

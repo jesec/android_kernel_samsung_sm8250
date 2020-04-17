@@ -648,6 +648,7 @@ static int __init __fdt_scan_reserved_mem(unsigned long node, const char *uname,
 {
 	static int found;
 	int err;
+	int noship;
 
 	if (!found && depth == 1 && strcmp(uname, "reserved-memory") == 0) {
 		if (__reserved_mem_check_root(node) != 0) {
@@ -668,6 +669,15 @@ static int __init __fdt_scan_reserved_mem(unsigned long node, const char *uname,
 
 	if (!of_fdt_device_is_available(initial_boot_params, node))
 		return 0;
+
+	noship = of_get_flat_dt_prop(node, "no-ship", NULL) != NULL;
+#if !defined(CONFIG_SAMSUNG_USER_TRIAL) && defined(CONFIG_SAMSUNG_PRODUCT_SHIP)
+	if (noship) {
+		pr_info("Reserved memory: skip to reserve memory for node '%s'\n",
+			uname);
+		return 0;
+	}
+#endif
 
 	err = __reserved_mem_reserve_reg(node, uname);
 	if (err == -ENOENT && of_get_flat_dt_prop(node, "size", NULL))
@@ -698,6 +708,7 @@ void __init early_init_fdt_scan_reserved_mem(void)
 		if (!size)
 			break;
 		early_init_dt_reserve_memory_arch(base, size, 0);
+		record_memsize_reserved(NULL, base, size, 0, 0);
 	}
 
 	of_scan_flat_dt(__fdt_scan_reserved_mem, NULL);
@@ -1279,6 +1290,7 @@ void __init early_init_dt_scan_nodes(void)
 
 	/* Setup memory, calling early_init_dt_add_memory_arch */
 	of_scan_flat_dt(early_init_dt_scan_memory, NULL);
+	record_memsize_memory_hole();
 }
 
 bool __init early_init_dt_scan(void *params)

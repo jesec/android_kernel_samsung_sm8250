@@ -29,6 +29,8 @@
 #include "reset.h"
 #include "vdd-level.h"
 
+#include <linux/sde_rsc.h>
+
 #define F(f, s, h, m, n) { (f), (s), (2 * (h) - 1), (m), (n) }
 
 static DEFINE_VDD_REGULATORS(vdd_mm, VDD_NUM_MM, 1, vdd_corner);
@@ -1526,6 +1528,7 @@ static int disp_cc_kona_probe(struct platform_device *pdev)
 	struct clk *clk;
 	int ret, i;
 
+	reg_log_dump(__func__, __LINE__);
 	regmap = qcom_cc_map(pdev, &disp_cc_kona_desc);
 	if (IS_ERR(regmap)) {
 		pr_err("Failed to map the disp_cc registers\n");
@@ -1570,7 +1573,7 @@ static int disp_cc_kona_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "Failed to register Display CC clocks\n");
 		return ret;
 	}
-
+	reg_log_dump(__func__, __LINE__);
 	dev_info(&pdev->dev, "Registered Display CC clocks\n");
 	return ret;
 }

@@ -20,6 +20,13 @@
 #include "kgsl_sharedmem.h"
 #include "kgsl_trace.h"
 
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+#if defined(CONFIG_SEC_ABC)
+#include <linux/sti/abc_common.h>
+#endif
+#include "../../../techpack/display/msm/samsung/ss_dpui_common.h"
+#endif
+
 #define _IOMMU_PRIV(_mmu) (&((_mmu)->priv.iommu))
 
 #define ADDR_IN_GLOBAL(_mmu, _a) \
@@ -746,6 +753,7 @@ static int kgsl_iommu_fault_handler(struct iommu_domain *domain,
 	u64 ptbase;
 	u32 contextidr;
 	pid_t pid = 0;
+	pid_t tid = 0;
 	pid_t ptname;
 	struct _mem_entry prev, next;
 	int write;
@@ -785,6 +793,7 @@ static int kgsl_iommu_fault_handler(struct iommu_domain *domain,
 
 	if (private) {
 		pid = private->pid;
+		tid = private->tid;
 		comm = private->comm;
 	}
 
@@ -820,8 +829,8 @@ static int kgsl_iommu_fault_handler(struct iommu_domain *domain,
 
 	if (!no_page_fault_log && __ratelimit(&_rs)) {
 		dev_crit(ctx->kgsldev->dev,
-			"GPU PAGE FAULT: addr = %lX pid= %d name=%s\n", addr,
-			ptname, comm);
+			"GPU PAGE FAULT: addr = %lX pid= %d tid= %d name=%s\n",
+			addr, ptname, tid, comm);
 		dev_crit(ctx->kgsldev->dev,
 			"context=%s TTBR0=0x%llx CIDR=0x%x (%s %s fault)\n",
 			ctx->name, ptbase, contextidr,
@@ -858,6 +867,23 @@ static int kgsl_iommu_fault_handler(struct iommu_domain *domain,
 			else
 				dev_err(ctx->kgsldev->dev, "*EMPTY*\n");
 		}
+
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+#if defined(CONFIG_SEC_ABC)
+		sec_abc_send_event("MODULE=gpu_qc@ERROR=gpu_page_fault");
+#endif
+		inc_dpui_u32_field(DPUI_KEY_QCT_GPU_PF, 1);
+
+		{
+			/* To print gpuaddr info */
+			extern void kgsl_svm_addr_mapping_check(pid_t pid, unsigned long fault_addr);
+			extern void kgsl_svm_addr_mapping_log(struct kgsl_device *device, pid_t pid);
+
+			kgsl_svm_addr_mapping_log(device, ptname);
+			kgsl_svm_addr_mapping_check(ptname, addr);
+		}
+#endif
+
 	}
 
 
@@ -2078,6 +2104,15 @@ kgsl_iommu_get_current_ttbr0(struct kgsl_mmu *mmu)
 		return 0;
 
 	kgsl_iommu_enable_clk(mmu);
+
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+	if (ctx->regbase == NULL) {
+		WARN(1, "regbase seems not to be initialzed yet\n");
+		kgsl_iommu_disable_clk(mmu);
+		return 0;
+	}
+#endif
+
 	val = KGSL_IOMMU_GET_CTX_REG_Q(ctx, TTBR0);
 	kgsl_iommu_disable_clk(mmu);
 	return val;

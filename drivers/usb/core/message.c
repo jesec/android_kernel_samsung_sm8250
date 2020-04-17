@@ -20,6 +20,7 @@
 #include <linux/usb/hcd.h>	/* for usbcore internals */
 #include <linux/usb/of.h>
 #include <asm/byteorder.h>
+#include <linux/usb_notify.h>
 
 #include "usb.h"
 
@@ -1925,7 +1926,6 @@ static void __usb_queue_reset_device(struct work_struct *ws)
 	usb_put_intf(iface);	/* Undo _get_ in usb_queue_reset_device() */
 }
 
-
 /*
  * usb_set_configuration - Makes a particular device setting be current
  * @dev: the device whose configuration is being updated
@@ -2159,6 +2159,10 @@ free_interfaces:
 	}
 	usb_set_device_state(dev, USB_STATE_CONFIGURED);
 
+#ifdef CONFIG_USB_AUDIO_ENHANCED_DETECT_TIME
+	send_usb_audio_uevent(dev, 0, 1);
+#endif
+
 	if (cp->string == NULL &&
 			!(dev->quirks & USB_QUIRK_CONFIG_INTF_STRINGS))
 		cp->string = usb_cache_string(dev, cp->desc.iConfiguration);
@@ -2189,6 +2193,11 @@ free_interfaces:
 			continue;
 		}
 		create_intf_ep_devs(intf);
+		if (dev->bus->root_hub != dev) {
+			store_usblog_notify(NOTIFY_PORT_CLASS,
+				(void *)&dev->descriptor.bDeviceClass,
+				(void *)&intf->cur_altsetting->desc.bInterfaceClass);
+		}
 	}
 
 	usb_autosuspend_device(dev);

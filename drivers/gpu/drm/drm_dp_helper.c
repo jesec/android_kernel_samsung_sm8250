@@ -199,6 +199,11 @@ drm_dp_dump_access(const struct drm_dp_aux *aux,
 			aux->name, offset, arrow, ret);
 }
 
+#ifdef CONFIG_SEC_DISPLAYPORT
+extern int secdp_get_hpd_status(void);
+extern bool secdp_get_cable_status(void);
+#endif
+
 /**
  * DOC: dp helpers
  *
@@ -226,6 +231,14 @@ static int drm_dp_dpcd_access(struct drm_dp_aux *aux, u8 request,
 
 	mutex_lock(&aux->hw_mutex);
 
+#ifdef CONFIG_SEC_DISPLAYPORT
+	if (/*!secdp_get_hpd_status() ||*/ !secdp_get_cable_status()) {
+		pr_info("[drm-dp] %s: cable is out-1\n", __func__);
+		ret = -EIO;
+		goto unlock;
+	}
+#endif
+
 	/*
 	 * The specification doesn't give any recommendation on how often to
 	 * retry native transactions. We used to retry 7 times like for
@@ -250,6 +263,13 @@ static int drm_dp_dpcd_access(struct drm_dp_aux *aux, u8 request,
 			} else
 				ret = -EIO;
 		}
+#ifdef CONFIG_SEC_DISPLAYPORT
+		if (/*!secdp_get_hpd_status() ||*/ !secdp_get_cable_status()) {
+			pr_info("[drm-dp] %s: cable is out-2\n", __func__);
+			ret = -EIO;
+			goto unlock;
+		}
+#endif
 
 		/*
 		 * We want the error we return to be the error we received on
@@ -339,6 +359,48 @@ ssize_t drm_dp_dpcd_write(struct drm_dp_aux *aux, unsigned int offset,
 }
 EXPORT_SYMBOL(drm_dp_dpcd_write);
 
+#ifdef CONFIG_SEC_DISPLAYPORT
+static int drm_dp_i2c_access(struct drm_dp_aux *aux, int mode,
+				void *buffer, size_t size)
+{
+
+	struct i2c_adapter *adapter = &aux->ddc;
+	int ret, retries = 3;
+
+	do {
+		struct i2c_msg msgs = {
+			.addr	= 0x50,
+			.flags	= mode == DP_AUX_I2C_READ ? I2C_M_RD : 0,
+			.len	= size,
+			.buf	= buffer,
+		};
+
+		ret = i2c_transfer(adapter, &msgs, 1);
+
+		if (ret == -ENXIO) {
+			DRM_DEBUG_KMS("drm: skipping non-existent adapter %s\n",
+					adapter->name);
+			break;
+		}
+	} while (ret != 1 && --retries);
+
+	return (ret == 1) ? size : ret;
+}
+
+ssize_t drm_dp_i2c_read(struct drm_dp_aux *aux, void *buffer, size_t size)
+{
+	return drm_dp_i2c_access(aux, DP_AUX_I2C_READ, buffer,
+				  size);
+}
+EXPORT_SYMBOL(drm_dp_i2c_read);
+
+ssize_t drm_dp_i2c_write(struct drm_dp_aux *aux, void *buffer, size_t size)
+{
+	return drm_dp_i2c_access(aux, DP_AUX_I2C_WRITE, buffer,
+				  size);
+}
+EXPORT_SYMBOL(drm_dp_i2c_write);
+#endif
 /**
  * drm_dp_dpcd_read_link_status() - read DPCD link status (bytes 0x202-0x207)
  * @aux: DisplayPort AUX channel
@@ -400,6 +462,8 @@ int drm_dp_link_power_up(struct drm_dp_aux *aux, struct drm_dp_link *link)
 	u8 value;
 	int err;
 
+	pr_debug("%s: +++\n", __func__);
+
 	/* DP_SET_POWER register is only available on DPCD v1.1 and later */
 	if (link->revision < 0x11)
 		return 0;
@@ -437,6 +501,8 @@ int drm_dp_link_power_down(struct drm_dp_aux *aux, struct drm_dp_link *link)
 {
 	u8 value;
 	int err;
+
+	pr_debug("%s: +++\n", __func__);
 
 	/* DP_SET_POWER register is only available on DPCD v1.1 and later */
 	if (link->revision < 0x11)

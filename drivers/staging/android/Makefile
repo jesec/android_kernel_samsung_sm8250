@@ -4,3 +4,5 @@ obj-y					+= ion/
 
 obj-$(CONFIG_ASHMEM)			+= ashmem.o
 obj-$(CONFIG_ANDROID_VSOC)		+= vsoc.o
+obj-$(CONFIG_SAMSUNG_FREECESS)		+= freecess.o
+obj-$(CONFIG_SAMSUNG_FREECESS)		+= freecess_pkg.o

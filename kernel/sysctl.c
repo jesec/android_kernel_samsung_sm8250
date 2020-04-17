@@ -97,6 +97,10 @@
 #include <linux/nmi.h>
 #endif
 
+#ifdef CONFIG_HUGEPAGE_POOL
+#include <linux/hugepage_pool.h>
+#endif
+
 #if defined(CONFIG_SYSCTL)
 
 /* External variables not in a header file. */
@@ -133,6 +137,9 @@ static unsigned long zero_ul;
 static unsigned long one_ul = 1;
 static unsigned long long_max = LONG_MAX;
 static int one_hundred = 100;
+#ifdef CONFIG_INCREASE_MAXIMUM_SWAPPINESS
+static int max_swappiness = 200;
+#endif
 static int one_thousand = 1000;
 #ifdef CONFIG_PRINTK
 static int ten_thousand = 10000;
@@ -141,6 +148,7 @@ static int ten_thousand = 10000;
 static int six_hundred_forty_kb = 640 * 1024;
 #endif
 static int two_hundred_fifty_five = 255;
+static int __maybe_unused two_hundred_million = 200000000;
 
 #ifdef CONFIG_SCHED_WALT
 const int sched_user_hint_max = 1000;
@@ -467,13 +475,13 @@ static struct ctl_table kern_table[] = {
 		.proc_handler	= proc_douintvec_minmax,
 	},
 	{
-		.procname	= "sched_task_unfilter_nr_windows",
-		.data		= &sysctl_sched_task_unfilter_nr_windows,
+		.procname	= "sched_task_unfilter_period",
+		.data		= &sysctl_sched_task_unfilter_period,
 		.maxlen		= sizeof(unsigned int),
 		.mode		= 0644,
 		.proc_handler   = proc_dointvec_minmax,
 		.extra1         = &one,
-		.extra2		= &two_hundred_fifty_five,
+		.extra2		= &two_hundred_million,
 	},
 	{
 		.procname	= "sched_busy_hysteresis_enable_cpus",
@@ -1642,7 +1650,19 @@ static struct ctl_table vm_table[] = {
 		.mode		= 0644,
 		.proc_handler	= proc_dointvec_minmax,
 		.extra1		= &zero,
+#ifdef CONFIG_INCREASE_MAXIMUM_SWAPPINESS
+		.extra2		= &max_swappiness,
+#else
 		.extra2		= &one_hundred,
+#endif
+	},
+	{
+		.procname	= "mmap_readaround_limit",
+		.data		= &mmap_readaround_limit,
+		.maxlen		= sizeof(mmap_readaround_limit),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec_minmax,
+		.extra1		= &zero,
 	},
 	{
 		.procname       = "want_old_faultaround_pte",
@@ -1653,6 +1673,17 @@ static struct ctl_table vm_table[] = {
 		.extra1         = &zero,
 		.extra2         = &one,
 	},
+#ifdef CONFIG_HUGEPAGE_POOL
+	{
+		.procname	= "use_hugepage_pool_global",
+		.data		= &use_hugepage_pool_global,
+		.maxlen		= sizeof(use_hugepage_pool_global),
+		.mode		= 0666,
+		.proc_handler	= proc_dointvec_minmax,
+		.extra1		= &zero,
+		.extra2		= &one,
+	},
+#endif
 #ifdef CONFIG_HUGETLB_PAGE
 	{
 		.procname	= "nr_hugepages",

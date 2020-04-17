@@ -38,6 +38,9 @@
 #include <drm/drm_encoder.h>
 #include <drm/drm_displayid.h>
 #include <drm/drm_scdc_helper.h>
+#ifdef CONFIG_SEC_DISPLAYPORT
+#include <linux/secdp_logger.h>
+#endif
 
 #include "drm_crtc_internal.h"
 
@@ -1562,6 +1565,14 @@ drm_do_probe_ddc_edid(void *data, u8 *buf, unsigned int block, size_t len)
 			break;
 		}
 	} while (ret != xfers && --retries);
+
+#ifdef CONFIG_SEC_DISPLAYPORT
+	if (len == EDID_LENGTH) {
+		print_hex_dump(KERN_DEBUG, "secdp_EDID: ", DUMP_PREFIX_NONE, 16, 1,
+			buf, len, false);
+		secdp_logger_hex_dump(buf, "EDID:", len);
+	}
+#endif
 
 	return ret == xfers ? 0 : -1;
 }
@@ -4128,6 +4139,11 @@ drm_extract_hdr_db(struct drm_connector *connector, const u8 *db)
 	DRM_DEBUG_KMS("avg luminance %d\n", connector->hdr_avg_luminance);
 	DRM_DEBUG_KMS("min luminance %d\n", connector->hdr_min_luminance);
 }
+
+#ifdef CONFIG_SEC_DISPLAYPORT
+bool secdp_panel_hdr_supported(void);
+#endif
+
 /*
  * drm_hdmi_extract_extended_blk_info - Parse the HDMI extended tag blocks
  * @connector: connector corresponding to the HDMI sink
@@ -4140,6 +4156,10 @@ drm_hdmi_extract_extended_blk_info(struct drm_connector *connector,
 {
 	const u8 *cea = drm_find_cea_extension(edid);
 	const u8 *db = NULL;
+
+#ifdef CONFIG_SEC_DISPLAYPORT
+	connector->hdr_supported = false;
+#endif
 
 	if (cea && cea_revision(cea) >= 3) {
 		int i, start, end;
@@ -4172,6 +4192,18 @@ drm_hdmi_extract_extended_blk_info(struct drm_connector *connector,
 			}
 		}
 	}
+
+#ifdef CONFIG_SEC_DISPLAYPORT
+	if (connector) {
+		pr_info("[drm-dp] %s: HDR electro-optical <%d>, hdr_supported <%d>\n",
+			__func__, connector->hdr_eotf, connector->hdr_supported);
+
+		if (connector->hdr_supported && !secdp_panel_hdr_supported()) {
+			connector->hdr_supported = false;
+		}
+	}
+	pr_info("[drm-dp] %s: hdr_supported <%d>\n", __func__, connector->hdr_supported);
+#endif
 }
 
 static void

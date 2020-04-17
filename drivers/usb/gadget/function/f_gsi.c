@@ -487,10 +487,22 @@ static int ipa_connect_channels(struct gsi_data_port *d_port)
 	log_event_dbg("IN: num_bufs:=%zu, buf_len=%zu\n",
 		d_port->in_request.num_bufs, d_port->in_request.buf_len);
 
-	usb_gsi_ep_op(d_port->in_ep, &d_port->in_request,
-		GSI_EP_OP_PREPARE_TRBS);
-	usb_gsi_ep_op(d_port->in_ep, &d_port->in_request,
+	ret = usb_gsi_ep_op(d_port->in_ep, &d_port->in_request,
+			GSI_EP_OP_PREPARE_TRBS);
+	if (ret) {
+		log_event_err("%s: GSI_EP_OP_PREPARE_TRBS failed: %d\n",
+				__func__, ret);
+		return ret;
+	}
+
+	ret = usb_gsi_ep_op(d_port->in_ep, &d_port->in_request,
 			GSI_EP_OP_STARTXFER);
+	if (ret) {
+		log_event_err("%s: GSI_EP_OP_STARTXFER failed: %d\n",
+				__func__, ret);
+		goto free_trb_ep_in;
+	}
+
 	d_port->in_xfer_rsc_index = usb_gsi_ep_op(d_port->in_ep, NULL,
 			GSI_EP_OP_GET_XFER_IDX);
 
@@ -533,10 +545,22 @@ static int ipa_connect_channels(struct gsi_data_port *d_port)
 		log_event_dbg("OUT: num_bufs:=%zu, buf_len=%zu\n",
 			d_port->out_request.num_bufs,
 			d_port->out_request.buf_len);
-		usb_gsi_ep_op(d_port->out_ep, &d_port->out_request,
+		ret = usb_gsi_ep_op(d_port->out_ep, &d_port->out_request,
 			GSI_EP_OP_PREPARE_TRBS);
-		usb_gsi_ep_op(d_port->out_ep, &d_port->out_request,
+		if (ret) {
+			log_event_err("%s: GSI_EP_OP_PREPARE_TRBS failed: %d\n",
+					__func__, ret);
+			goto end_xfer_ep_in;
+		}
+
+		ret = usb_gsi_ep_op(d_port->out_ep, &d_port->out_request,
 				GSI_EP_OP_STARTXFER);
+		if (ret) {
+			log_event_err("%s: GSI_EP_OP_STARTXFER failed: %d\n",
+					__func__, ret);
+			goto free_trb_ep_out;
+		}
+
 		d_port->out_xfer_rsc_index =
 			usb_gsi_ep_op(d_port->out_ep,
 				NULL, GSI_EP_OP_GET_XFER_IDX);
@@ -612,7 +636,7 @@ static int ipa_connect_channels(struct gsi_data_port *d_port)
 					conn_params);
 	if (ret) {
 		log_event_err("%s: IPA connect failed %d", __func__, ret);
-		return ret;
+		goto end_xfer_ep_out;
 	}
 	log_event_dbg("%s: xdci_connect done", __func__);
 
@@ -640,6 +664,23 @@ static int ipa_connect_channels(struct gsi_data_port *d_port)
 		d_port->out_request.db_reg_phs_addr_msb =
 			ipa_out_channel_out_params.db_reg_phs_addr_msb;
 	}
+
+	return ret;
+
+end_xfer_ep_out:
+	if (d_port->out_ep)
+		usb_gsi_ep_op(d_port->out_ep, NULL,
+			GSI_EP_OP_ENDXFER);
+free_trb_ep_out:
+	if (d_port->out_ep)
+		usb_gsi_ep_op(d_port->out_ep, &d_port->out_request,
+			GSI_EP_OP_FREE_TRBS);
+end_xfer_ep_in:
+	usb_gsi_ep_op(d_port->in_ep, NULL,
+		GSI_EP_OP_ENDXFER);
+free_trb_ep_in:
+	usb_gsi_ep_op(d_port->in_ep, &d_port->in_request,
+		GSI_EP_OP_FREE_TRBS);
 	return ret;
 }
 
@@ -802,8 +843,10 @@ static int gsi_ep_enable(struct f_gsi *gsi)
 			return ret;
 
 		log_event_dbg("%s: Enable IN ep", __func__);
-		usb_gsi_ep_op(gsi->d_port.in_ep,
-			&gsi->d_port.in_request, GSI_EP_OP_CONFIG);
+		ret = usb_gsi_ep_op(gsi->d_port.in_ep,
+				&gsi->d_port.in_request, GSI_EP_OP_CONFIG);
+		if (ret)
+			return ret;
 	}
 
 	if (gsi->d_port.out_ep && !gsi->d_port.out_ep->desc) {
@@ -813,8 +856,13 @@ static int gsi_ep_enable(struct f_gsi *gsi)
 			return ret;
 
 		log_event_dbg("%s: Enable OUT ep", __func__);
-		usb_gsi_ep_op(gsi->d_port.out_ep,
+		ret = usb_gsi_ep_op(gsi->d_port.out_ep,
 				&gsi->d_port.out_request, GSI_EP_OP_CONFIG);
+		if (ret) {
+			usb_gsi_ep_op(gsi->d_port.in_ep,
+				&gsi->d_port.in_request, GSI_EP_OP_DISABLE);
+			return ret;
+		}
 	}
 
 	return 0;
@@ -887,7 +935,16 @@ static void ipa_work_handler(struct work_struct *w)
 				break;
 			}
 
-			ipa_connect_channels(d_port);
+			ret = ipa_connect_channels(d_port);
+			if (ret) {
+				log_event_err("%s: ipa_connect_channels failed\n",
+								__func__);
+				ipa_data_path_disable(d_port);
+				usb_gadget_autopm_put_async(d_port->gadget);
+				d_port->sm_state = STATE_INITIALIZED;
+				break;
+			}
+
 			d_port->sm_state = STATE_WAIT_FOR_IPA_RDY;
 			log_event_dbg("%s: ST_INIT_EVT_SET_ALT",
 					__func__);
@@ -1026,7 +1083,14 @@ static void ipa_work_handler(struct work_struct *w)
 			log_event_dbg("%s: get = %d", __func__,
 				atomic_read(&gad_dev->power.usage_count));
 
-			ipa_connect_channels(d_port);
+			ret = ipa_connect_channels(d_port);
+			if (ret) {
+				log_event_err("%s: ipa_connect_channels failed\n",
+								__func__);
+				usb_gadget_autopm_put_async(d_port->gadget);
+				break;
+			}
+
 			ipa_data_path_enable(d_port);
 			d_port->sm_state = STATE_CONNECTED;
 			log_event_dbg("%s: ST_HOST_NRDY_EVT_HRDY_", __func__);
@@ -2771,6 +2835,7 @@ static int gsi_bind(struct usb_configuration *c, struct usb_function *f)
 		rndis_set_param_medium(gsi->params, RNDIS_MEDIUM_802_3, 0);
 
 		/* export host's Ethernet address in CDC format */
+#ifndef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
 		random_ether_addr(gsi->d_port.ipa_init_params.device_ethaddr);
 		random_ether_addr(gsi->d_port.ipa_init_params.host_ethaddr);
 		log_event_dbg("setting host_ethaddr=%pM, device_ethaddr = %pM",
@@ -2778,6 +2843,14 @@ static int gsi_bind(struct usb_configuration *c, struct usb_function *f)
 		gsi->d_port.ipa_init_params.device_ethaddr);
 		memcpy(gsi->ethaddr, &gsi->d_port.ipa_init_params.host_ethaddr,
 				ETH_ALEN);
+#else
+		random_ether_addr(gsi->d_port.ipa_init_params.device_ethaddr);
+		pr_info("%s MAC: %02X:%02X:%02X:%02X:%02X:%02X\n", __func__,
+			gsi->ethaddr[0], gsi->ethaddr[1], gsi->ethaddr[2],
+			gsi->ethaddr[3], gsi->ethaddr[4], gsi->ethaddr[5]);
+		memcpy(&gsi->d_port.ipa_init_params.host_ethaddr, gsi->ethaddr,
+				ETH_ALEN);
+#endif
 		rndis_set_host_mac(gsi->params, gsi->ethaddr);
 
 		if (gsi->manufacturer && gsi->vendorID &&
@@ -2816,7 +2889,11 @@ static int gsi_bind(struct usb_configuration *c, struct usb_function *f)
 		 * for windows7/windows10 to avoid data stall issues
 		 */
 		if (gsi->rndis_id == RNDIS_ID_UNKNOWN)
+#ifdef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
+			gsi->rndis_id = WIRELESS_CONTROLLER_REMOTE_NDIS;
+#else
 			gsi->rndis_id = MISC_RNDIS_OVER_ETHERNET;
+#endif
 
 		switch (gsi->rndis_id) {
 		default:
@@ -3414,6 +3491,68 @@ static struct config_item_type gsi_func_rndis_type = {
 	.ct_owner	= THIS_MODULE,
 };
 
+#ifdef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
+static ssize_t ethaddr_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	struct usb_function_instance *f = dev_get_drvdata(dev);
+	struct gsi_opts *opts = container_of(f, struct gsi_opts, func_inst);
+
+	return snprintf(buf, PAGE_SIZE, "%02x:%02x:%02x:%02x:%02x:%02x\n",
+		opts->gsi->ethaddr[0], opts->gsi->ethaddr[1], opts->gsi->ethaddr[2],
+		opts->gsi->ethaddr[3], opts->gsi->ethaddr[4], opts->gsi->ethaddr[5]);
+}
+
+static ssize_t ethaddr_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t size)
+{
+	struct usb_function_instance *f = dev_get_drvdata(dev);
+	struct gsi_opts *opts = container_of(f, struct gsi_opts, func_inst);
+
+	if (sscanf(buf, "%02x:%02x:%02x:%02x:%02x:%02x\n",
+		    (int *)&opts->gsi->ethaddr[0], (int *)&opts->gsi->ethaddr[1],
+		    (int *)&opts->gsi->ethaddr[2], (int *)&opts->gsi->ethaddr[3],
+		    (int *)&opts->gsi->ethaddr[4], (int *)&opts->gsi->ethaddr[5]) == 6)
+		return size;
+
+	return -EINVAL;
+}
+
+static DEVICE_ATTR(ethaddr, S_IRUGO | S_IWUSR, ethaddr_show, ethaddr_store);
+
+static struct device_attribute *rndis_function_attributes[] = {
+	&dev_attr_ethaddr,
+	NULL,
+};
+
+extern struct device *create_function_device(char *name);
+static int create_rndis_device(struct usb_function_instance *fi)
+{
+	struct device *dev;
+	struct device_attribute **attrs;
+	struct device_attribute *attr;
+	int err = 0;
+
+	dev = create_function_device("f_rndis");
+
+	if (IS_ERR(dev)) {
+		pr_info("%s : failed to create f_rndis device\n", __func__);
+		return PTR_ERR(dev);
+	}
+
+	attrs = rndis_function_attributes;
+	if (attrs) {
+		while ((attr = *attrs++) && !err)
+			err = device_create_file(dev, attr);
+		if (err) {
+			device_destroy(dev->class, dev->devt);
+			return -EINVAL;
+		}
+	}
+	dev_set_drvdata(dev, fi);
+	return 0;
+}
+#endif
 static void gsi_inst_clean(struct gsi_opts *opts)
 {
 	if (opts->gsi->c_port.cdev.dev) {
@@ -3482,6 +3621,17 @@ static int gsi_set_inst_name(struct usb_function_instance *fi,
 		pr_err("%s: Err allocating ipc_log_ctxt for prot:%s\n",
 						__func__, gsi_inst_name);
 	opts->gsi->ipc_log_ctxt = ipc_log_ctxt;
+
+#ifdef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
+	if (prot_id != IPA_USB_RNDIS)
+		goto other_config;
+
+	if (create_rndis_device(&opts->func_inst)) {
+		pr_err("%s: failed to create device\n", __func__);
+		return -ENODEV;
+	}
+other_config:
+#endif
 
 	/* Set instance status */
 	mutex_lock(&inst_status[prot_id].gsi_lock);

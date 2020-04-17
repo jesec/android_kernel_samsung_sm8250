@@ -532,6 +532,13 @@ struct sched_entity {
 	struct cfs_rq			*my_q;
 #endif
 
+#ifdef CONFIG_FAST_TRACK
+	int ftt_mark;
+	int ftt_enqueue_time;
+	atomic64_t ftt_dyn_mark;
+	u64 ftt_vrt_delta;
+#endif
+
 #ifdef CONFIG_SMP
 	/*
 	 * Per entity load average tracking.
@@ -742,6 +749,10 @@ union rcu_special {
 	u32 s; /* Set of bits. */
 };
 
+#ifdef CONFIG_FIVE
+struct task_integrity;
+#endif
+
 enum perf_event_task_context {
 	perf_invalid_context = -1,
 	perf_hw_context = 0,
@@ -825,7 +836,7 @@ struct task_struct {
 	struct list_head grp_list;
 	u64 cpu_cycles;
 	bool misfit;
-	u8 unfilter;
+	u32 unfilter;
 #endif
 
 #ifdef CONFIG_CGROUP_SCHED
@@ -1013,6 +1024,10 @@ struct task_struct {
 	/* MM fault and swap info: this can arguably be seen as either mm-specific or thread-specific: */
 	unsigned long			min_flt;
 	unsigned long			maj_flt;
+
+#ifdef CONFIG_HUGEPAGE_POOL
+	int				use_hugepage_pool;
+#endif
 
 #ifdef CONFIG_POSIX_TIMERS
 	struct task_cputime		cputime_expires;
@@ -1381,8 +1396,14 @@ struct task_struct {
 	unsigned int			sequential_io;
 	unsigned int			sequential_io_avg;
 #endif
+#if defined(CONFIG_SDP)
+	unsigned int sensitive;
+#endif
 #ifdef CONFIG_DEBUG_ATOMIC_SLEEP
 	unsigned long			task_state_change;
+#endif
+#ifdef CONFIG_FIVE
+	struct task_integrity		*integrity;
 #endif
 	int				pagefault_disabled;
 #ifdef CONFIG_MMU
@@ -1402,7 +1423,10 @@ struct task_struct {
 	/* Used by LSM modules for access restriction: */
 	void				*security;
 #endif
-
+#ifdef CONFIG_PERF_MGR
+	int drawing_flag;
+	int drawing_mig_boost;
+#endif
 	/*
 	 * New fields for task_struct should be added above here, so that
 	 * they are included in the randomized portion of task_struct.
@@ -1419,6 +1443,18 @@ struct task_struct {
 	 * Do not put anything below here!
 	 */
 };
+
+#ifdef CONFIG_HUGEPAGE_POOL
+static inline int get_task_use_hugepage_pool(struct task_struct *task)
+{
+	return task->use_hugepage_pool;
+}
+
+static inline void set_task_use_hugepage_pool(struct task_struct *task, int val)
+{
+	task->use_hugepage_pool = val;
+}
+#endif
 
 static inline struct pid *task_pid(struct task_struct *task)
 {

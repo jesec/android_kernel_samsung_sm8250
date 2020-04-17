@@ -1084,6 +1084,7 @@ static void handle_uaudio_stream_req(struct qmi_handle *handle,
 	}
 
 	mutex_lock(&chip->dev_lock);
+	pr_info("%s : inside mutex\n", __func__);
 	info_idx = info_idx_from_ifnum(pcm_card_num, subs->interface,
 		req_msg->enable);
 	if (atomic_read(&chip->shutdown) || !subs->stream || !subs->stream->pcm
@@ -1146,25 +1147,28 @@ static void handle_uaudio_stream_req(struct qmi_handle *handle,
 	}
 
 	ret = snd_usb_enable_audio_stream(subs, datainterval, req_msg->enable);
+	pr_info("%s : snd_usb_enable_audio_stream : ret = %d\n", __func__, ret);
 
 	if (!ret && req_msg->enable)
 		ret = prepare_qmi_response(subs, req_msg, &resp, info_idx);
 
+	pr_info("%s : prepare_qmi_response : ret = %d\n", __func__, ret);
 	mutex_unlock(&chip->dev_lock);
 
 response:
+	pr_info("%s : response : ret = %d\n", __func__, ret);
 	if (!req_msg->enable && ret != -EINVAL) {
+		mutex_lock(&chip->dev_lock);
 		if (info_idx >= 0) {
-			mutex_lock(&chip->dev_lock);
 			info = &uadev[pcm_card_num].info[info_idx];
 			uaudio_dev_intf_cleanup(uadev[pcm_card_num].udev, info);
 			uaudio_dbg("release resources: intf# %d card# %d\n",
 					subs->interface, pcm_card_num);
-			mutex_unlock(&chip->dev_lock);
 		}
 		if (atomic_read(&uadev[pcm_card_num].in_use))
 			kref_put(&uadev[pcm_card_num].kref,
 					uaudio_dev_release);
+		mutex_unlock(&chip->dev_lock);
 	}
 
 	resp.usb_token = req_msg->usb_token;

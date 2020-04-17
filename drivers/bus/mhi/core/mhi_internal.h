@@ -243,6 +243,9 @@ extern struct bus_type mhi_bus_type;
 #define REMOTE_TICKS_TO_US(x) (div_u64((x) * 100ULL, \
 			       div_u64(mhi_cntrl->remote_timer_freq, 10000ULL)))
 
+/* Wait time to allow runtime framework to resume MHI in milliseconds */
+#define MHI_RESUME_TIME (30000)
+
 struct mhi_event_ctxt {
 	u32 reserved : 8;
 	u32 intmodc : 8;
@@ -662,6 +665,9 @@ struct mhi_event {
 			     struct mhi_event *mhi_event,
 			     u32 event_quota);
 	struct mhi_controller *mhi_cntrl;
+	struct mhi_tre last_cached_tre;
+	u64 last_dev_rp;
+	bool force_uncached;
 };
 
 struct mhi_chan {
@@ -729,6 +735,7 @@ struct mhi_sfr_info {
 	void *buf_addr;
 	dma_addr_t dma_addr;
 	size_t len;
+	char *str;
 	enum MHI_EV_CCS ccs;
 	struct completion completion;
 };
@@ -742,7 +749,10 @@ struct mhi_bus {
 #define MHI_TIMEOUT_MS (1000)
 extern struct mhi_bus mhi_bus;
 
+struct mhi_controller *find_mhi_controller_by_name(const char *name);
+
 /* debug fs related functions */
+int mhi_debugfs_mhi_vote_show(struct seq_file *m, void *d);
 int mhi_debugfs_mhi_chan_show(struct seq_file *m, void *d);
 int mhi_debugfs_mhi_event_show(struct seq_file *m, void *d);
 int mhi_debugfs_mhi_states_show(struct seq_file *m, void *d);
@@ -837,7 +847,7 @@ void mhi_destroy_sysfs(struct mhi_controller *mhi_cntrl);
 int mhi_early_notify_device(struct device *dev, void *data);
 void mhi_write_reg_offload(struct mhi_controller *mhi_cntrl,
 			void __iomem *base, u32 offset, u32 val);
-
+			
 /* timesync log support */
 static inline void mhi_timesync_log(struct mhi_controller *mhi_cntrl)
 {
@@ -868,6 +878,30 @@ static inline void mhi_free_coherent(struct mhi_controller *mhi_cntrl,
 {
 	atomic_sub(size, &mhi_cntrl->alloc_size);
 	dma_free_coherent(mhi_cntrl->dev, size, vaddr, dma_handle);
+}
+
+static inline void *mhi_alloc_uncached(struct mhi_controller *mhi_cntrl,
+		size_t size,
+		dma_addr_t *dma_handle,
+		gfp_t gfp)
+{
+	void *buf = dma_alloc_attrs(mhi_cntrl->dev, size, dma_handle, gfp,
+					DMA_ATTR_FORCE_NON_COHERENT);
+	
+	if (buf)
+		atomic_add(size, &mhi_cntrl->alloc_size);
+	
+	return buf;
+}
+
+static inline void mhi_free_uncached(struct mhi_controller *mhi_cntrl,
+	size_t size,
+	void *vaddr,
+	dma_addr_t dma_handle)
+{
+	atomic_sub(size, &mhi_cntrl->alloc_size);
+	dma_free_attrs(mhi_cntrl->dev, size, vaddr, dma_handle,
+	DMA_ATTR_FORCE_NON_COHERENT);
 }
 
 static inline void *mhi_alloc_contig_coherent(

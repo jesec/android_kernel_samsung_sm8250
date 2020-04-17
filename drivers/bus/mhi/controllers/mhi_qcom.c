@@ -164,6 +164,9 @@ static int mhi_init_pci_dev(struct mhi_controller *mhi_cntrl)
 	pm_runtime_mark_last_busy(&pci_dev->dev);
 	pm_runtime_put_noidle(&pci_dev->dev);
 
+	MHI_ERR("pcidev usage_cnt: %d, pcidev runtime_auto: %d\n",
+			atomic_read(&mhi_dev->pci_dev->dev.power.usage_count),
+			mhi_dev->pci_dev->dev.power.runtime_auto);
 	return 0;
 
 error_get_irq_vec:
@@ -316,7 +319,9 @@ int mhi_system_suspend(struct device *dev)
 	struct mhi_dev *mhi_dev = mhi_controller_get_devdata(mhi_cntrl);
 	int ret;
 
-	MHI_LOG("Entered\n");
+	MHI_LOG("Entered, pcidev usage_cnt: %d, pcidev runtime_auto: %d\n",
+			atomic_read(&mhi_dev->pci_dev->dev.power.usage_count),
+			mhi_dev->pci_dev->dev.power.runtime_auto);
 
 	mutex_lock(&mhi_cntrl->pm_mutex);
 
@@ -414,19 +419,19 @@ static int mhi_force_suspend(struct mhi_controller *mhi_cntrl)
 		if (!ret || ret != -EBUSY)
 			break;
 
-		MHI_LOG("MHI busy, sleeping and retry\n");
+		MHI_ERR("MHI busy, sleeping and retry\n");
 		msleep(delayms);
 	}
 
-	if (ret)
+	if (ret) {
+		MHI_ERR("Force suspend ret with %d\n", ret);
 		goto exit_force_suspend;
-
+	}
+	
 	mhi_dev->suspend_mode = MHI_DEFAULT_SUSPEND;
 	ret = mhi_arch_link_suspend(mhi_cntrl);
 
 exit_force_suspend:
-	MHI_LOG("Force suspend ret with %d\n", ret);
-
 	mutex_unlock(&mhi_cntrl->pm_mutex);
 
 	return ret;
@@ -599,10 +604,14 @@ static int mhi_qcom_power_up(struct mhi_controller *mhi_cntrl)
 
 static int mhi_runtime_get(struct mhi_controller *mhi_cntrl, void *priv)
 {
+	int ret;
 	struct mhi_dev *mhi_dev = priv;
 	struct device *dev = &mhi_dev->pci_dev->dev;
 
-	return pm_runtime_get(dev);
+	ret = pm_runtime_get(dev);
+	pm_runtime_mark_last_busy(dev); 
+
+	return ret;
 }
 
 static void mhi_runtime_put(struct mhi_controller *mhi_cntrl, void *priv)
@@ -634,9 +643,15 @@ static void mhi_status_cb(struct mhi_controller *mhi_cntrl,
 		 */
 		pm_runtime_get(dev);
 		ret = mhi_force_suspend(mhi_cntrl);
-		if (!ret)
+		if (!ret) {
+			MHI_LOG("Attempt resume after forced suspend\n");
 			mhi_runtime_resume(dev);
+		}
 		pm_runtime_put(dev);
+		mhi_arch_mission_mode_enter(mhi_cntrl);
+		MHI_ERR("mission mode : pcidev usage_cnt: %d, pcidev runtime_auto: %d\n",
+			atomic_read(&mhi_dev->pci_dev->dev.power.usage_count),
+			mhi_dev->pci_dev->dev.power.runtime_auto);
 		break;
 	default:
 		MHI_ERR("Unhandled cb:0x%x\n", reason);
@@ -770,6 +785,8 @@ static struct mhi_controller *mhi_register_controller(struct pci_dev *pci_dev)
 	mhi_cntrl->iova_start = memblock_start_of_DRAM();
 	mhi_cntrl->iova_stop = memblock_end_of_DRAM();
 
+	mhi_cntrl->need_force_m3 = true;
+
 	/* setup host support for SFR retreival */
 	if (of_property_read_bool(of_node, "mhi,sfr-support"))
 		mhi_cntrl->sfr_len = MHI_MAX_SFR_LEN;
@@ -857,7 +874,7 @@ static struct mhi_controller *mhi_register_controller(struct pci_dev *pci_dev)
 		MHI_ERR("Error while creating the sysfs group\n");
 
 	return mhi_cntrl;
-
+	
 error_free_wq:
 	destroy_workqueue(mhi_cntrl->offload_wq);
 error_register:
