@@ -334,26 +334,26 @@ static void mhi_recycle_ev_ring_element(struct mhi_controller *mhi_cntrl,
 }
 
 static void mhi_recycle_fwd_ev_ring_element(struct mhi_controller *mhi_cntrl,
-					    struct mhi_ring *ring)
+					struct mhi_ring *ring)
 {
-	 dma_addr_t ctxt_wp;
+	dma_addr_t ctxt_wp;
 
-	 /* update the WP */
-	 ring->wp += ring->el_size;
-	 if (ring->wp >= (ring->base + ring->len))
+	/* update the WP */
+	ring->wp += ring->el_size;
+	if (ring->wp >= (ring->base + ring->len))
 		ring->wp = ring->base;
 
-	 /* update the context WP based on the RP to support fast forwarding */
-	 ctxt_wp = ring->iommu_base + (ring->wp - ring->base);
-	 *ring->ctxt_wp = ctxt_wp;
+	/* update the context WP based on the RP to support fast forwarding */
+	ctxt_wp = ring->iommu_base + (ring->wp - ring->base);
+	*ring->ctxt_wp = ctxt_wp;
 
-	 /* update the RP */
-	 ring->rp += ring->el_size;
-	 if (ring->rp >= (ring->base + ring->len))
+	/* update the RP */
+	ring->rp += ring->el_size;
+	if (ring->rp >= (ring->base + ring->len))
 		ring->rp = ring->base;
 
-	 /* visible to other cores */
-	 smp_wmb();
+	/* visible to other cores */
+	smp_wmb();
 }
 
 static void mhi_recycle_ev_ring_element_color(
@@ -361,28 +361,28 @@ static void mhi_recycle_ev_ring_element_color(
 {
 	dma_addr_t ctxt_wp;
 	struct mhi_tre *ev_tre;
-	
+
 	ev_tre = ring->wp;
 	ev_tre->ptr = 0xdeadbeef;
 	ev_tre->dword[0] = 0xdeadbeef;
 	ev_tre->dword[1] = 0xdeadbeef;
-	
+
 	/* update the WP */
 	ring->wp += ring->el_size;
 	ctxt_wp = *ring->ctxt_wp + ring->el_size;
-	
+
 	if (ring->wp >= (ring->base + ring->len)) {
 		ring->wp = ring->base;
 		ctxt_wp = ring->iommu_base;
 	}
-	
+
 	*ring->ctxt_wp = ctxt_wp;
-	
+
 	/* update the RP */
 	ring->rp += ring->el_size;
 	if (ring->rp >= (ring->base + ring->len))
 		ring->rp = ring->base;
-	
+
 	/* visible to other cores */
 	smp_wmb();
 }
@@ -1755,15 +1755,18 @@ irqreturn_t mhi_intvec_threaded_handlr(int irq_number, void *dev)
 	MHI_VERB("Enter\n");
 
 	write_lock_irq(&mhi_cntrl->pm_lock);
-	if (MHI_REG_ACCESS_VALID(mhi_cntrl->pm_state)) {
-		state = mhi_get_mhi_state(mhi_cntrl);
-		ee = mhi_cntrl->ee;
-		mhi_cntrl->ee = mhi_get_exec_env(mhi_cntrl);
-		MHI_LOG("local ee: %s device ee:%s dev_state:%s\n",
-			TO_MHI_EXEC_STR(ee),
-			TO_MHI_EXEC_STR(mhi_cntrl->ee),
-			TO_MHI_STATE_STR(state));
+	if (!MHI_REG_ACCESS_VALID(mhi_cntrl->pm_state)) {
+		write_unlock_irq(&mhi_cntrl->pm_lock);
+		goto exit_intvec;
 	}
+
+	state = mhi_get_mhi_state(mhi_cntrl);
+	ee = mhi_cntrl->ee;
+	mhi_cntrl->ee = mhi_get_exec_env(mhi_cntrl);
+	MHI_LOG("local ee: %s device ee:%s dev_state:%s\n",
+		TO_MHI_EXEC_STR(ee),
+		TO_MHI_EXEC_STR(mhi_cntrl->ee),
+		TO_MHI_STATE_STR(state));
 
 	if (state == MHI_STATE_SYS_ERR) {
 		MHI_ERR("MHI system error detected\n");

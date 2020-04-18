@@ -427,7 +427,7 @@ static int mhi_force_suspend(struct mhi_controller *mhi_cntrl)
 		MHI_ERR("Force suspend ret with %d\n", ret);
 		goto exit_force_suspend;
 	}
-	
+
 	mhi_dev->suspend_mode = MHI_DEFAULT_SUSPEND;
 	ret = mhi_arch_link_suspend(mhi_cntrl);
 
