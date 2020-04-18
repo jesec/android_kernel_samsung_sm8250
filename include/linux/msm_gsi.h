@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (c) 2015-2019, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2015-2020, The Linux Foundation. All rights reserved.
  */
 
 #ifndef MSM_GSI_H
@@ -1327,6 +1327,16 @@ int gsi_read_channel_scratch(unsigned long chan_hdl,
 int gsi_pending_irq_type(void);
 
 /**
+ * gsi_pending_irq_type - Peripheral should call this function to
+ * check if there is any pending irq
+ *
+ * This function can sleep
+ *
+ * @Return gsi_irq_type
+ */
+int gsi_pending_irq_type(void);
+
+/**
  * gsi_update_mhi_channel_scratch - MHI Peripheral should call this
  * function to update the scratch area of the channel context. Updating
  * will be by read-modify-write method, so non SWI fields will not be
@@ -1666,6 +1676,20 @@ int gsi_map_virtual_ch_to_per_ep(u32 ee, u32 chan_num, u32 per_ep_index);
  */
 int gsi_alloc_channel_ee(unsigned int chan_idx, unsigned int ee, int *code);
 
+/**
+ * gsi_enable_flow_control_ee - Peripheral should call this function
+ * to enable flow control other EE's channel. This is usually done in USB
+ * connent and SSR scenarios.
+ *
+ * @chan_idx: Virtual channel index
+ * @ee: EE
+ * @code: [out] response code for operation
+
+ * @Return gsi_status
+ */
+int gsi_enable_flow_control_ee(unsigned int chan_idx, unsigned int ee,
+								int *code);
+
 /*
  * Here is a typical sequence of calls
  *
@@ -1788,6 +1812,7 @@ static inline int gsi_read_channel_scratch(unsigned long chan_hdl,
 
 static inline int gsi_pending_irq_type(void)
 {
+	return -GSI_STATUS_UNSUPPORTED_OP;
 }
 
 static inline int gsi_update_mhi_channel_scratch(unsigned long chan_hdl,
@@ -1935,6 +1960,12 @@ static inline int gsi_map_virtual_ch_to_per_ep(
 
 static inline int gsi_alloc_channel_ee(unsigned int chan_idx, unsigned int ee,
 	int *code)
+{
+	return -GSI_STATUS_UNSUPPORTED_OP;
+}
+
+static inline int gsi_enable_flow_control_ee(unsigned int chan_idx,
+			unsigned int ee, int *code)
 {
 	return -GSI_STATUS_UNSUPPORTED_OP;
 }

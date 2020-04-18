@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2017-2019, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2017-2020, The Linux Foundation. All rights reserved.
  */
 
 #include <linux/io.h>
@@ -407,7 +407,7 @@ static int qmp_send_data(struct mbox_chan *chan, void *data)
 			mbox->idx_in_flight = i;
 	}
 	QMP_INFO(mdev->ilc, "Copied buffer to msgram sz:%d i:%d\n",
-			size, mbox->idx_in_flight);
+		 size, mbox->idx_in_flight);
 	send_irq(mdev);
 	qmp_schedule_tx_timeout(mbox);
 	spin_unlock_irqrestore(&mbox->tx_lock, flags);

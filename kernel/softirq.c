@@ -529,7 +529,9 @@ static void tasklet_action_common(struct softirq_action *a,
 							&t->state))
 					BUG();
 				sec_debug_irq_sched_log(-1, t->func, "tasklet_action", SOFTIRQ_ENTRY);
+				trace_tasklet_entry(t->func);
 				t->func(t->data);
+				trace_tasklet_exit(t->func);
 				sec_debug_irq_sched_log(-1, t->func, "tasklet_action", SOFTIRQ_EXIT);
 
 				tasklet_unlock(t);

@@ -391,6 +391,9 @@ struct ufs_hba_variant_ops {
 	u32	(*get_scale_down_gear)(struct ufs_hba *hba);
 	int	(*set_bus_vote)(struct ufs_hba *hba, bool on);
 	int	(*phy_initialization)(struct ufs_hba *);
+#if 0
+	u32	(*get_user_cap_mode)(struct ufs_hba *hba);
+#endif
 #ifdef CONFIG_DEBUG_FS
 	void	(*add_debugfs)(struct ufs_hba *hba, struct dentry *root);
 	void	(*remove_debugfs)(struct ufs_hba *hba);
@@ -1116,6 +1119,9 @@ struct ufs_hba {
 	/* Keeps information of the UFS device connected to this host */
 	struct ufs_dev_info dev_info;
 	bool auto_bkops_enabled;
+#if 0
+	bool wb_buf_flush_enabled;
+#endif
 
 #ifdef CONFIG_DEBUG_FS
 	struct debugfs_files debugfs_files;
@@ -1208,6 +1214,9 @@ struct ufs_hba {
 
 	bool phy_init_g4;
 	bool force_g4;
+#if 0
+	bool wb_enabled;
+#endif
 	char unique_number[UFS_UN_MAX_DIGITS + 1];
 
 	u32 transferred_sector;
@@ -1806,6 +1815,14 @@ static inline u8 ufshcd_scsi_to_upiu_lun(unsigned int scsi_lun)
 int ufshcd_dump_regs(struct ufs_hba *hba, size_t offset, size_t len,
 		     const char *prefix);
 
+#if 0
+static inline unsigned int ufshcd_vops_get_user_cap_mode(struct ufs_hba *hba)
+{
+	if (hba->var && hba->var->vops->get_user_cap_mode)
+		return hba->var->vops->get_user_cap_mode(hba);
+	return 0;
+}
+#endif
 
 #define UFS_DEV_ATTR(name, fmt, args...)					\
 static ssize_t ufs_##name##_show(struct device *dev, struct device_attribute *attr, char *buf)	\

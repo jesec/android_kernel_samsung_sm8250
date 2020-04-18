@@ -1069,10 +1069,14 @@ static void dwc3_stop_active_transfers(struct dwc3 *dwc)
 				DWC3_CONTROLLER_NOTIFY_CLEAR_DB, 0);
 
 		dwc3_remove_requests(dwc, dep);
-		if (dep->trb_pool) {
-			memset(&dep->trb_pool[0], 0,
-			sizeof(struct dwc3_trb) * dep->num_trbs);
-			dbg_event(dep->number, "Clr_TRB", 0);
+		if (dep->endpoint.ep_type != EP_TYPE_GSI &&
+					!dep->endpoint.endless) {
+			if (dep->trb_pool) {
+				memset(&dep->trb_pool[0], 0,
+					sizeof(struct dwc3_trb) *
+							dep->num_trbs);
+				dbg_event(dep->number, "Clr_TRB", 0);
+			}
 		}
 	}
 	dbg_log_string("DONE");
@@ -3316,7 +3320,8 @@ static void dwc3_endpoint_interrupt(struct dwc3 *dwc,
 		if (cmd == DWC3_DEPCMD_ENDTRANSFER) {
 			dep->flags &= ~(DWC3_EP_END_TRANSFER_PENDING |
 					DWC3_EP_TRANSFER_STARTED);
-			dbg_event(0xFF, "DWC3_DEPEVT_EPCMDCMPLT", dep->number);
+			dbg_log_string("DWC3_DEPEVT_EPCMDCMPLT (%d)",
+							dep->number);
 			wake_up(&dep->wait_end_transfer);
 		}
 		break;
