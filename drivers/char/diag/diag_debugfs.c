@@ -518,6 +518,7 @@ static ssize_t diag_dbgfs_read_socketinfo(struct file *file, char __user *ubuf,
 			info = &socket_dci_cmd[j];
 			break;
 		default:
+			kfree(buf);
 			return -EINVAL;
 		}
 		fwd_ctxt = (struct diagfwd_info *)(info->fwd_ctxt);
@@ -618,6 +619,7 @@ static ssize_t diag_dbgfs_read_rpmsginfo(struct file *file, char __user *ubuf,
 			info = &rpmsg_dci_cmd[j];
 			break;
 		default:
+			kfree(buf);
 			return -EINVAL;
 		}
 

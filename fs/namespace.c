@@ -2101,6 +2101,17 @@ int ksys_umount(char __user *name, int flags)
 dput_and_out:
 	/* we mustn't call path_put() as that would clear mnt_expiry_mark */
 	dput(path.dentry);
+	if (user_request && (!retval || (flags & MNT_FORCE))) {
+		/* filesystem needs to handle unclosed namespaces */
+#ifdef CONFIG_KDP_NS
+		if (mnt->mnt->mnt_sb->s_op->umount_end)
+			mnt->mnt->mnt_sb->s_op->umount_end(mnt->mnt->mnt_sb, flags);
+#else
+		if (mnt->mnt.mnt_sb->s_op->umount_end)
+			mnt->mnt.mnt_sb->s_op->umount_end(mnt->mnt.mnt_sb,
+					flags);
+#endif
+	}
 	mntput_no_expire(mnt);
 	if (!retval)
 		sys_umount_trace_print(mnt, flags);
@@ -2118,17 +2129,6 @@ dput_and_out:
 
 		/* flush delayed_mntput_work to put sb->s_active */
 		flush_delayed_mntput_wait();
-	}
-	if (!retval || (flags & MNT_FORCE)) {
-		/* filesystem needs to handle unclosed namespaces */
-#ifdef CONFIG_KDP_NS
-		if (mnt->mnt->mnt_sb->s_op->umount_end)
-			mnt->mnt->mnt_sb->s_op->umount_end(mnt->mnt->mnt_sb, flags);
-#else
-		if (mnt->mnt.mnt_sb->s_op->umount_end)
-			mnt->mnt.mnt_sb->s_op->umount_end(mnt->mnt.mnt_sb,
-					flags);
-#endif
 	}
 out:
 	return retval;

@@ -156,8 +156,8 @@ void diag_md_close_device(int id)
 		 * internal buffers in the table so that there are no stale
 		 * entries.
 		 *
-		 * Give Write_done notifications to buffers with packets indicated
-		 * valid length
+		 * Give Write_done notifications to buffers with packets
+		 * indicated valid length.
 		 */
 		spin_lock_irqsave(&ch->lock, flags);
 		for (j = 0; j < ch->num_tbl_entries; j++) {
@@ -345,7 +345,7 @@ int diag_md_copy_to_user(char __user *buf, int *pret, size_t buf_size,
 			peripheral = diag_md_get_peripheral(entry->ctx);
 			if (peripheral < 0) {
 				spin_unlock_irqrestore(&ch->lock, flags);
- 				goto drop_data;
+				goto drop_data;
 			}
 			spin_unlock_irqrestore(&ch->lock, flags);
 			session_info =

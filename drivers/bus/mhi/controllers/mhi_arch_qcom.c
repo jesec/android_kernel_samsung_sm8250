@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-/* Copyright (c) 2018-2019, The Linux Foundation. All rights reserved.*/
+/* Copyright (c) 2018-2020, The Linux Foundation. All rights reserved.*/
 
 #include <asm/dma-iommu.h>
 #include <linux/async.h>
@@ -377,13 +377,13 @@ int mhi_arch_power_up(struct mhi_controller *mhi_cntrl)
 
 void mhi_arch_mission_mode_enter(struct mhi_controller *mhi_cntrl)
 {
- struct mhi_dev *mhi_dev = mhi_controller_get_devdata(mhi_cntrl);
- struct arch_info *arch_info = mhi_dev->arch_info;
- struct mhi_device *boot_dev = arch_info->boot_dev;
+	struct mhi_dev *mhi_dev = mhi_controller_get_devdata(mhi_cntrl);
+	struct arch_info *arch_info = mhi_dev->arch_info;
+	struct mhi_device *boot_dev = arch_info->boot_dev;
 
- /* disable boot logger channel */
- if (boot_dev)
- mhi_unprepare_from_transfer(boot_dev);
+	/* disable boot logger channel */
+	if (boot_dev)
+		mhi_unprepare_from_transfer(boot_dev);
 }
 
 static  int mhi_arch_pcie_scale_bw(struct mhi_controller *mhi_cntrl,

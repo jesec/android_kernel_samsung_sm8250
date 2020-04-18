@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2008-2019, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2008-2020, The Linux Foundation. All rights reserved.
  */
 #ifndef __ADRENO_H
 #define __ADRENO_H
@@ -200,6 +200,7 @@ enum adreno_gpurev {
 	ADRENO_REV_A615 = 615,
 	ADRENO_REV_A616 = 616,
 	ADRENO_REV_A618 = 618,
+	ADRENO_REV_A619 = 619,
 	ADRENO_REV_A620 = 620,
 	ADRENO_REV_A630 = 630,
 	ADRENO_REV_A640 = 640,
@@ -1169,6 +1170,7 @@ static inline int adreno_is_a6xx(struct adreno_device *adreno_dev)
 ADRENO_TARGET(a610, ADRENO_REV_A610)
 ADRENO_TARGET(a612, ADRENO_REV_A612)
 ADRENO_TARGET(a618, ADRENO_REV_A618)
+ADRENO_TARGET(a619, ADRENO_REV_A619)
 ADRENO_TARGET(a620, ADRENO_REV_A620)
 ADRENO_TARGET(a630, ADRENO_REV_A630)
 ADRENO_TARGET(a640, ADRENO_REV_A640)
@@ -1177,14 +1179,14 @@ ADRENO_TARGET(a680, ADRENO_REV_A680)
 
 /*
  * All the derived chipsets from A615 needs to be added to this
- * list such as A616, A618 etc.
+ * list such as A616, A618, A619 etc.
  */
 static inline int adreno_is_a615_family(struct adreno_device *adreno_dev)
 {
 	unsigned int rev = ADRENO_GPUREV(adreno_dev);
 
 	return (rev == ADRENO_REV_A615 || rev == ADRENO_REV_A616 ||
-			rev == ADRENO_REV_A618);
+			rev == ADRENO_REV_A618 || rev == ADRENO_REV_A619);
 }
 
 /*
@@ -1822,4 +1824,5 @@ int adreno_gmu_fenced_write(struct adreno_device *adreno_dev,
 	unsigned int fence_mask);
 int adreno_clear_pending_transactions(struct kgsl_device *device);
 void adreno_gmu_send_nmi(struct adreno_device *adreno_dev);
+void adreno_smmu_resume(struct adreno_device *adreno_dev);
 #endif /*__ADRENO_H */

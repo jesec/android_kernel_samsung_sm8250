@@ -726,16 +726,18 @@ static void qrtr_alloc_backup(struct work_struct *work)
 	struct sk_buff *skb;
 	int errcode;
 
-	while(skb_queue_len(&qrtr_backup_lo) < QRTR_BACKUP_LO_NUM) {
+	while (skb_queue_len(&qrtr_backup_lo) < QRTR_BACKUP_LO_NUM) {
 		skb = alloc_skb_with_frags(sizeof(struct qrtr_hdr_v1),
-			QRTR_BACKUP_LO_SIZE, 0, &errcode, GFP_KERNEL);
+					   QRTR_BACKUP_LO_SIZE, 0, &errcode,
+					   GFP_KERNEL);
 		if (!skb)
 			break;
 		skb_queue_tail(&qrtr_backup_lo, skb);
 	}
-	while(skb_queue_len(&qrtr_backup_hi) < QRTR_BACKUP_HI_NUM) {
+	while (skb_queue_len(&qrtr_backup_hi) < QRTR_BACKUP_HI_NUM) {
 		skb = alloc_skb_with_frags(sizeof(struct qrtr_hdr_v1),
-			QRTR_BACKUP_HI_SIZE, 0, &errcode, GFP_KERNEL); 
+					   QRTR_BACKUP_HI_SIZE, 0, &errcode,
+					   GFP_KERNEL);
 		if (!skb)
 			break;
 		skb_queue_tail(&qrtr_backup_hi, skb);
@@ -799,10 +801,11 @@ int qrtr_endpoint_post(struct qrtr_endpoint *ep, const void *data, size_t len)
 	if (!skb) {
 		skb = qrtr_get_backup(len);
 		if (!skb) {
-			QRTR_INFO_NEW(qrtr_ilc, "skb alloc failed in qrtr_endpoint_post\n");
+			pr_err("qrtr: Unable to get skb with len:%lu\n", len);
 			return -ENOMEM;
 		}
 	}
+
 	skb_reserve(skb, sizeof(*v1));
 	cb = (struct qrtr_cb *)skb->cb;
 
@@ -1961,7 +1964,7 @@ static int __init qrtr_proto_init(void)
 	}
 
 	qrtr_backup_init();
- 
+
 	return rc;
 }
 postcore_initcall(qrtr_proto_init);
@@ -1971,6 +1974,7 @@ static void __exit qrtr_proto_fini(void)
 	rtnl_unregister(PF_QIPCRTR, RTM_NEWADDR);
 	sock_unregister(qrtr_family.family);
 	proto_unregister(&qrtr_proto);
+
 	qrtr_backup_deinit();
 }
 module_exit(qrtr_proto_fini);
