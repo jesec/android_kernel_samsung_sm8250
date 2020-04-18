@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2018-2019, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2018-2020, The Linux Foundation. All rights reserved.
  */
 
 #ifndef __H_CVP_HFI_HELPER_H__
@@ -508,8 +508,8 @@ struct cvp_buf_type {
 			u32 reserved1;
 			u32 reserved2;
 		};
-	} __attribute__((packed));
-} __attribute__((packed));
+	} __packed;
+} __packed;
 
 struct cvp_hfi_msg_dme_pkt {
 	u32 size;
@@ -529,6 +529,6 @@ struct cvp_hfi_msg_dme_pkt {
 	u32 processwidth;
 	u32 processheight;
 	u32 confidence;
-} __attribute__((packed));
+} __packed;
 
 #endif

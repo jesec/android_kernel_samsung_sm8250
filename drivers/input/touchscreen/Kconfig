@@ -1359,4 +1359,6 @@ config TOUCHSCREEN_SYNAPTICS_TCM
 
 source "drivers/input/touchscreen/synaptics_tcm/Kconfig"
 
+source "drivers/input/touchscreen/focaltech_touch/Kconfig"
+
 endif

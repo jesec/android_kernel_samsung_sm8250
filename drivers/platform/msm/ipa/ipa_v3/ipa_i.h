@@ -62,6 +62,8 @@
 #define IPA_UC_FINISH_MAX 6
 #define IPA_UC_WAIT_MIN_SLEEP 1000
 #define IPA_UC_WAII_MAX_SLEEP 1200
+#define IPA_HOLB_TMR_DIS 0x0
+#define IPA_HOLB_TMR_EN 0x1
 /*
  * The transport descriptor size was changed to GSI_CHAN_RE_SIZE_16B, but
  * IPA users still use sps_iovec size as FIFO element size.
@@ -1032,6 +1034,8 @@ struct ipa3_sys_context {
 	struct workqueue_struct *repl_wq;
 	struct ipa3_status_stats *status_stat;
 	u32 pm_hdl;
+	unsigned int napi_sch_cnt;
+	unsigned int napi_comp_cnt;
 	/* ordering is important - other immutable fields go below */
 };
 
@@ -1837,6 +1841,8 @@ struct ipa3_app_clock_vote {
  * @lan_ndev: dummy netdev for LAN rx NAPI
  * @napi_lan_rx: NAPI object for LAN rx
  * @coal_cmd_pyld: holds the coslescing close frame command payload
+ * @gsi_fw_file_name: GSI IPA fw file name
+ * @uc_fw_file_name: uC IPA fw file name
  */
 struct ipa3_context {
 	struct ipa3_char_device_context cdev;
@@ -2010,6 +2016,8 @@ struct ipa3_context {
 	struct napi_struct napi_lan_rx;
 	struct ipahal_imm_cmd_pyld *coal_cmd_pyld;
 	struct ipa3_app_clock_vote app_clock_vote;
+	char *gsi_fw_file_name;
+	char *uc_fw_file_name;
 };
 
 struct ipa3_plat_drv_res {
@@ -2058,6 +2066,8 @@ struct ipa3_plat_drv_res {
 	bool ipa_endp_delay_wa;
 	bool skip_ieob_mask_wa;
 	bool ipa_wan_skb_page;
+	const char *gsi_fw_file_name;
+	const char *uc_fw_file_name;
 };
 
 /**

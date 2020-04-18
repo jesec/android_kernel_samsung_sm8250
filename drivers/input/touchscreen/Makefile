@@ -114,4 +114,5 @@ obj-$(CONFIG_TOUCHSCREEN_SEC_TS_Y79A_C)	+= sec_ts/y79a_c/
 obj-$(CONFIG_TOUCHSCREEN_ST)		+= st/
 obj-$(CONFIG_TOUCHSCREEN_SYNAPTICS_DSX)	+= synaptics_dsx/
 obj-$(CONFIG_TOUCHSCREEN_SYNAPTICS_TCM)	+= synaptics_tcm/
+obj-$(CONFIG_TOUCHSCREEN_FTS)	+= focaltech_touch/
 obj-$(CONFIG_TOUCHSCREEN_FTS9)		+= stm/fts9cu80f/

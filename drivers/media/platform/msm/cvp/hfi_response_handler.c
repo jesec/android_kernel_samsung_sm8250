@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2018-2019, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2018-2020, The Linux Foundation. All rights reserved.
  */
 
 #include <linux/bitops.h>
@@ -508,6 +508,7 @@ static int hfi_process_session_cvp_msg(u32 device_id,
 			kdata1 = pkt->client_data.kdata1;
 			kdata2 = pkt->client_data.kdata2;
 			ktid = ((u64)kdata2 << 32) | kdata1;
+
 
 			if (pkt->packet_type == HFI_MSG_SESSION_CVP_DME)
 				__dme_output_cache_operation(pkt);
