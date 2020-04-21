@@ -75,6 +75,26 @@ jobs:
       id: get_version
       run: echo ::set-output name=VERSION::${GITHUB_REF#refs/tags/v}
 
+    - name: Fetch RELEASE tools
+      uses: actions/checkout@v2
+      with:
+        repository: jesec/releasetools_kernel_samsung_sm8250
+        path: releasetools
+
+    - name: Fetch Module Template
+      uses: actions/checkout@v2
+      with:
+        repository: Zackptg5/MMT-Extended
+        path: releasetools/template
+
+    - name: Build companion module
+      run: |
+       cp -rf companion/* template
+       mkdir -p template/system/product/overlay
+       cp prebuilt/companion/io.jesec.framework-res_xyz__.apk template/system/product/overlay
+       7z a companion.zip ./template/*
+      working-directory: ${{ github.workspace }}/releasetools
+
     - name: Create RELEASE
       id: create_release
       uses: actions/create-release@latest
@@ -93,6 +113,16 @@ jobs:
       with:
         name: release_url.txt
         path: release_url.txt
+
+    - name: "Upload RELEASE asset: Companion Module"
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ${{ github.workspace }}/releasetools/companion.zip
+        asset_name: COMPANION-JESEC-KERNEL-${{ steps.get_version.outputs.VERSION }}.zip
+        asset_content_type: application/zip
 
   publish:
     needs: release
