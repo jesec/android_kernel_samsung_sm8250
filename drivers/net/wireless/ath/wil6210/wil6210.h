@@ -825,7 +825,7 @@ struct wil_halp {
 	struct mutex		lock; /* protect halp ref_cnt */
 	unsigned int		ref_cnt;
 	struct completion	comp;
-	atomic_t		handle_icr;
+	u8			handle_icr;
 };
 
 struct wil_blob_wrapper {
