@@ -169,6 +169,13 @@ jobs:
       run: tar cvf boot.tar boot.img
       working-directory: ${{ github.workspace }}/releasetools
 
+    - name: Get model
+      id: get_model
+      run: |
+        model=`./getmodel.sh ${{ matrix.variant }}`
+        echo ::set-output name=model::$model
+      working-directory: ${{ github.workspace }}/releasetools
+
     - name: Load RELEASE URL file from release job
       uses: actions/download-artifact@v1
       with:
@@ -188,7 +195,7 @@ jobs:
       with:
         upload_url: ${{ steps.get_release_info.outputs.upload_url }}
         asset_path: ${{ github.workspace }}/releasetools/boot.img
-        asset_name: ${{ matrix.variant }}-JESEC-KERNEL-${{ steps.get_version.outputs.VERSION }}.img
+        asset_name: ${{ steps.get_model.outputs.model }}-JESEC-KERNEL-${{ steps.get_version.outputs.VERSION }}.img
         asset_content_type: application/octet-stream
 
     - name: "Upload RELEASE asset: TAR Flashable"
@@ -198,5 +205,5 @@ jobs:
       with:
         upload_url: ${{ steps.get_release_info.outputs.upload_url }}
         asset_path: ${{ github.workspace }}/releasetools/boot.tar
-        asset_name: ${{ matrix.variant }}-JESEC-KERNEL-${{ steps.get_version.outputs.VERSION }}.tar
+        asset_name: ${{ steps.get_model.outputs.model }}-JESEC-KERNEL-${{ steps.get_version.outputs.VERSION }}.tar
         asset_content_type: application/x-tar
