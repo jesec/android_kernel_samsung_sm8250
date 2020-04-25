@@ -19,14 +19,14 @@ jobs:
     - name: Install dependencies
       run: |
        wget https://apt.llvm.org/llvm.sh
-       sudo bash llvm.sh 10
-       sudo ln -sf /usr/bin/clang-10 /usr/bin/clang
-       sudo ln -sf /usr/bin/ld.lld-10 /usr/bin/ld.lld
-       sudo ln -sf /usr/bin/llvm-ar-10 /usr/bin/llvm-ar
-       sudo ln -sf /usr/bin/llvm-nm-10 /usr/bin/llvm-nm
-       sudo ln -sf /usr/bin/llvm-objcopy-10 /usr/bin/llvm-objcopy
-       sudo ln -sf /usr/bin/llvm-objdump-10 /usr/bin/llvm-objdump
-       sudo ln -sf /usr/bin/llvm-strip-10 /usr/bin/llvm-strip
+       sudo bash llvm.sh 11
+       sudo ln -sf /usr/bin/clang-11 /usr/bin/clang
+       sudo ln -sf /usr/bin/ld.lld-11 /usr/bin/ld.lld
+       sudo ln -sf /usr/bin/llvm-ar-11 /usr/bin/llvm-ar
+       sudo ln -sf /usr/bin/llvm-nm-11 /usr/bin/llvm-nm
+       sudo ln -sf /usr/bin/llvm-objcopy-11 /usr/bin/llvm-objcopy
+       sudo ln -sf /usr/bin/llvm-objdump-11 /usr/bin/llvm-objdump
+       sudo ln -sf /usr/bin/llvm-strip-11 /usr/bin/llvm-strip
        sudo apt-get install -y binutils-aarch64-linux-gnu gcc-aarch64-linux-gnu binutils-arm-linux-gnueabi gcc-arm-linux-gnueabi
        sudo apt-get install -y libncurses-dev flex bison openssl libssl-dev dkms libelf-dev libudev-dev libpci-dev libiberty-dev autoconf
 
