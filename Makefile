@@ -513,6 +513,11 @@ ifeq ($(if $(AS),$(shell $(AS) --version 2>&1 | head -n 1 | grep clang)),)
 CLANG_FLAGS	+= -no-integrated-as
 endif
 CLANG_FLAGS	+= -Werror=unknown-warning-option
+HOST_POLLY_LIB	+= $(shell llvm-config --libdir)/LLVMPolly.so
+ifneq (,$(wildcard $(HOST_POLLY_LIB)))
+CLANG_FLAGS	+= -fplugin=$(HOST_POLLY_LIB) \
+		-fpass-plugin=$(HOST_POLLY_LIB)
+endif
 KBUILD_CFLAGS	+= $(CLANG_FLAGS)
 KBUILD_AFLAGS	+= $(CLANG_FLAGS)
 export CLANG_FLAGS
