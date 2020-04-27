@@ -513,13 +513,6 @@ ifeq ($(if $(AS),$(shell $(AS) --version 2>&1 | head -n 1 | grep clang)),)
 CLANG_FLAGS	+= -no-integrated-as
 endif
 CLANG_FLAGS	+= -Werror=unknown-warning-option
-ifdef CONFIG_LLVM_POLLY
-CLANG_FLAGS	+= -mllvm -polly \
-		-mllvm -polly-run-inliner \
-		-mllvm -polly-run-dce \
-		-mllvm -polly-opt-fusion=max \
-		-mllvm -polly-vectorizer=polly
-endif
 KBUILD_CFLAGS	+= $(CLANG_FLAGS)
 KBUILD_AFLAGS	+= $(CLANG_FLAGS)
 export CLANG_FLAGS
