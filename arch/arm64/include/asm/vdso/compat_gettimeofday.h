@@ -12,14 +12,6 @@
 
 #include <asm/vdso/compat_barrier.h>
 
-#undef compat_time_t
-#undef old_timespec32
-typedef s32 compat_time_t;
-struct old_timespec32 {
-	compat_time_t tv_sec;
-	s32 tv_nsec;
-};
-
 #define __VDSO_USE_SYSCALL		ULLONG_MAX
 
 #define VDSO_HAS_CLOCK_GETRES		1
