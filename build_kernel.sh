@@ -16,13 +16,26 @@ CLANG_TRIPLE=aarch64-linux-gnu-
 KERNEL_MAKE_ENV="DTC_EXT=$(pwd)/tools/dtc CONFIG_BUILD_ARM64_DT_OVERLAY=y"
 KERNEL_MAKE_ENV="$KERNEL_MAKE_ENV VARIANT_DEFCONFIG=vendor/variant_$1_defconfig"
 
-if [[ ! -z "$2" ]]
-then
-KERNEL_MAKE_ENV="$KERNEL_MAKE_ENV LOCALVERSION=-$2 DEBUG_DEFCONFIG=vendor/release_defconfig"
-fi
+case $2 in
+  savedefconfig)
+    SAVE_DEFCONFIG="savedefconfig"
+    ;;
+
+  *)
+    KERNEL_MAKE_ENV="$KERNEL_MAKE_ENV LOCALVERSION=-$2 DEBUG_DEFCONFIG=vendor/release_defconfig"
+    ;;
+
+  "")
+    ;;
+esac
 
 make -j$(nproc) -C $(pwd) O=$(pwd)/out $KERNEL_MAKE_ENV ARCH=arm64 CROSS_COMPILE=$BUILD_CROSS_COMPILE CROSS_COMPILE_COMPAT=$BUILD_CROSS_COMPILE_COMPAT LLVM=1 LLVM_IAS=1 CLANG_TRIPLE=$CLANG_TRIPLE vendor/x1q_chn_openx_defconfig || exit 1
-make -j$(nproc) -C $(pwd) O=$(pwd)/out $KERNEL_MAKE_ENV ARCH=arm64 CROSS_COMPILE=$BUILD_CROSS_COMPILE CROSS_COMPILE_COMPAT=$BUILD_CROSS_COMPILE_COMPAT LLVM=1 LLVM_IAS=1 CLANG_TRIPLE=$CLANG_TRIPLE || exit 1
+make -j$(nproc) -C $(pwd) O=$(pwd)/out $KERNEL_MAKE_ENV ARCH=arm64 CROSS_COMPILE=$BUILD_CROSS_COMPILE CROSS_COMPILE_COMPAT=$BUILD_CROSS_COMPILE_COMPAT LLVM=1 LLVM_IAS=1 CLANG_TRIPLE=$CLANG_TRIPLE $SAVE_DEFCONFIG || exit 1
+
+if [[ ! -z "$SAVE_DEFCONFIG" ]]; then
+cp $(pwd)/out/defconfig $(pwd)/arch/$ARCH/configs/vendor/x1q_chn_openx_defconfig
+exit 0
+fi
 
 cp $(pwd)/out/arch/$ARCH/boot/Image $(pwd)/out/Image
 
