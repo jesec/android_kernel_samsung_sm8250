@@ -1900,17 +1900,18 @@ static int dwc3_gadget_ep_dequeue(struct usb_ep *ep,
 				goto out0;
 
 			if (r->num_pending_sgs) {
-				struct dwc3_trb *trb;
+				struct dwc3_trb *trb = r->trb;
 				int i = 0;
 
 				for (i = 0; i < r->num_pending_sgs; i++) {
-					trb = r->trb + i;
 					trb->ctrl &= ~DWC3_TRB_CTRL_HWO;
 					dwc3_ep_inc_deq(dep);
+					trb++;
+					if (trb->ctrl & DWC3_TRBCTL_LINK_TRB)
+						trb = dep->trb_pool;
 				}
 
 				if (r->unaligned || r->zero) {
-					trb = r->trb + r->num_pending_sgs + 1;
 					trb->ctrl &= ~DWC3_TRB_CTRL_HWO;
 					dwc3_ep_inc_deq(dep);
 				}
@@ -1921,7 +1922,9 @@ static int dwc3_gadget_ep_dequeue(struct usb_ep *ep,
 				dwc3_ep_inc_deq(dep);
 
 				if (r->unaligned || r->zero) {
-					trb = r->trb + 1;
+					trb++;
+					if (trb->ctrl & DWC3_TRBCTL_LINK_TRB)
+						trb = dep->trb_pool;
 					trb->ctrl &= ~DWC3_TRB_CTRL_HWO;
 					dwc3_ep_inc_deq(dep);
 				}
@@ -2641,19 +2644,6 @@ static int dwc3_gadget_vbus_session(struct usb_gadget *_gadget, int is_active)
 				store_usblog_notify(NOTIFY_USBSTATE,
 						(void *)"USB_STATE=VBUS:EN:FAIL", NULL);
 #endif
-		} else {
-#ifdef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
-			dwc3_gadget_cable_connect(dwc, false);
-#endif
-			ret = dwc3_gadget_run_stop(dwc, 0, false);
-#ifdef CONFIG_USB_NOTIFY_PROC_LOG
-			if (ret == 0)
-				store_usblog_notify(NOTIFY_USBSTATE,
-						(void *)"USB_STATE=VBUS:DIS:SUCCESS", NULL);
-			else
-				store_usblog_notify(NOTIFY_USBSTATE,
-						(void *)"USB_STATE=VBUS:DIS:FAIL", NULL);
-#endif
 		}
 	}
 
@@ -2662,10 +2652,19 @@ static int dwc3_gadget_vbus_session(struct usb_gadget *_gadget, int is_active)
 	 * Make sure to let gadget driver know in that case.
 	 */
 	if (!dwc->vbus_active) {
-		dev_dbg(dwc->dev, "calling disconnect from %s\n", __func__);
 #ifdef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
 		dwc3_gadget_cable_connect(dwc, false);
 #endif
+		ret = dwc3_gadget_run_stop(dwc, 0, false);
+#ifdef CONFIG_USB_NOTIFY_PROC_LOG
+		if (ret == 0)
+			store_usblog_notify(NOTIFY_USBSTATE,
+					(void *)"USB_STATE=VBUS:DIS:SUCCESS", NULL);
+		else
+			store_usblog_notify(NOTIFY_USBSTATE,
+					(void *)"USB_STATE=VBUS:DIS:FAIL", NULL);
+#endif
+		dev_dbg(dwc->dev, "calling disconnect from %s\n", __func__);
 		dwc3_gadget_disconnect_interrupt(dwc);
 	}
 
