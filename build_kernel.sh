@@ -21,11 +21,11 @@ case $2 in
     SAVE_DEFCONFIG="savedefconfig"
     ;;
 
-  *)
-    KERNEL_MAKE_ENV="$KERNEL_MAKE_ENV LOCALVERSION=-$2 DEBUG_DEFCONFIG=vendor/release_defconfig"
+  "")
     ;;
 
-  "")
+  *)
+    KERNEL_MAKE_ENV="$KERNEL_MAKE_ENV LOCALVERSION=-$2 DEBUG_DEFCONFIG=vendor/release_defconfig"
     ;;
 esac
 
