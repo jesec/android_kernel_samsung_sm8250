@@ -12696,6 +12696,7 @@
 						qcom,mdss-dsc-block-prediction-enable;
 					};
 
+					/*
 					wqhd48 {
 						qcom,display-topology = <0x1 0x1 0x1 0x2 0x2 0x1>;
 						qcom,default-topology-index = <0x1>;
@@ -13106,6 +13107,7 @@
 						qcom,mdss-dsc-bit-per-pixel = <0x8>;
 						qcom,mdss-dsc-block-prediction-enable;
 					};
+					*/
 				};
 
 				qcom,panel-supply-entries {
