@@ -13,7 +13,7 @@ rm ${DTS_DIR}/vendor/qcom/*.dtb ${DTBO_FILES}
 BUILD_CROSS_COMPILE=aarch64-linux-gnu-
 BUILD_CROSS_COMPILE_COMPAT=arm-linux-gnueabi-
 CLANG_TRIPLE=aarch64-linux-gnu-
-KERNEL_MAKE_ENV="DTC_EXT=$(pwd)/tools/dtc CONFIG_BUILD_ARM64_DT_OVERLAY=y"
+KERNEL_MAKE_ENV="CONFIG_BUILD_ARM64_DT_OVERLAY=y"
 KERNEL_MAKE_ENV="$KERNEL_MAKE_ENV VARIANT_DEFCONFIG=vendor/variant_$1_defconfig"
 
 case $2 in
