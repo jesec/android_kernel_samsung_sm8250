@@ -1,7 +1,7 @@
 #!/bin/bash
 
 CHIPSET_NAME=kona
-VARIANT=$1
+VARIANT=$3
 
 export ARCH=arm64
 mkdir out
@@ -13,7 +13,7 @@ rm ${DTS_DIR}/vendor/qcom/*.dtb ${DTBO_FILES}
 BUILD_CROSS_COMPILE=aarch64-linux-gnu-
 BUILD_CROSS_COMPILE_COMPAT=arm-linux-gnueabi-
 CLANG_TRIPLE=aarch64-linux-gnu-
-KERNEL_MAKE_ENV="VARIANT_DEFCONFIG=vendor/variant_$1_defconfig"
+KERNEL_MAKE_ENV="VARIANT_DEFCONFIG=vendor/variant_$3_defconfig"
 
 case $2 in
   savedefconfig)
