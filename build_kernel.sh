@@ -32,7 +32,7 @@ make -j$(nproc) -C $(pwd) O=$(pwd)/out $KERNEL_MAKE_ENV ARCH=arm64 CROSS_COMPILE
 make -j$(nproc) -C $(pwd) O=$(pwd)/out $KERNEL_MAKE_ENV ARCH=arm64 CROSS_COMPILE=$BUILD_CROSS_COMPILE CROSS_COMPILE_COMPAT=$BUILD_CROSS_COMPILE_COMPAT LLVM=1 LLVM_IAS=1 CLANG_TRIPLE=$CLANG_TRIPLE $SAVE_DEFCONFIG || exit 1
 
 if [[ ! -z "$SAVE_DEFCONFIG" ]]; then
-cp $(pwd)/out/defconfig $(pwd)/arch/$ARCH/configs/vendor/x1q_chn_openx_defconfig
+cp $(pwd)/out/defconfig $(pwd)/arch/$ARCH/configs/vendor/z3q_chn_openx_defconfig
 exit 0
 fi
 
