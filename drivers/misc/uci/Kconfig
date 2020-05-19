@@ -1,0 +1,10 @@
+#
+# Unprivileged Configuration Interface
+#
+menu "Unprivileged Configuration Interface"
+config UCI
+       default n
+       tristate "Unprivileged Configuration Interface"
+
+endmenu
+
