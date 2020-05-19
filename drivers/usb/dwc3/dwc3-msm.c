@@ -2211,6 +2211,9 @@ static void dwc3_msm_notify_event(struct dwc3 *dwc, unsigned int event,
 		dwc3_msm_write_reg_field(mdwc->base,
 			GSI_GENERAL_CFG_REG(mdwc->gsi_reg),
 			BLOCK_GSI_WR_GO_MASK, true);
+		dwc3_msm_write_reg_field(mdwc->base,
+			GSI_GENERAL_CFG_REG(mdwc->gsi_reg),
+			GSI_EN_MASK, 0);
 		break;
 	default:
 		dev_info(mdwc->dev, "unknown dwc3 event\n");
