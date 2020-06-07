@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - stock-10
+      - lineage-17.1
 
 jobs:
   build:
