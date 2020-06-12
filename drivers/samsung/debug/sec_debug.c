@@ -503,6 +503,7 @@ struct __upload_cause upload_cause_st[] = {
 	{ "lpass", UPLOAD_CAUSE_LPASS_RST_ERR, SEC_STRNSTR },
 	{ "dsps", UPLOAD_CAUSE_DSPS_RST_ERR, SEC_STRNSTR },
 	{ "subsys", UPLOAD_CAUSE_PERIPHERAL_ERR, SEC_STRNCASECMP },
+	{ "SMPL", UPLOAD_CAUSE_SMPL, SEC_STRNSTR },
 #if defined(CONFIG_SEC_QUEST)
 	{ "crypto_test", UPLOAD_CAUSE_QUEST_CRYPTO, SEC_STRNCMP },
 	{ "icache_test", UPLOAD_CAUSE_QUEST_ICACHE, SEC_STRNCMP },

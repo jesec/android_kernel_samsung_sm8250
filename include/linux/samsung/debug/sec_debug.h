@@ -101,6 +101,9 @@ enum sec_debug_upload_cause_t {
 /* ++ PP ++ */
 	UPLOAD_CAUSE_EDL_FORCED_UPLOAD = 0x50500000,
 /* -- PP -- */
+/* ++ SP -- */
+	UPLOAD_CAUSE_SMPL = 0x53500000,
+/* -- SP -- */
 };
 
 enum sec_restart_reason_t {

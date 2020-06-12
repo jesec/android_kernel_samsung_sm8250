@@ -895,3 +895,12 @@ config PREVENT_USB_CONN_OVERHEAT
     default n
     help
 	  Say Y to enable CONFIG_PREVENT_USB_CONN_OVERHEAT
+
+config DISABLE_MFC_IC
+    bool "disable mfc ic because of burnt issue"
+    default n
+    help
+	  Say Y to enable CONFIG_DISABLE_MFC_IC
+	  High vrect occurs when No load scenario.
+	  so mfc ic burnt.
+	  disable mfc ic in this case.

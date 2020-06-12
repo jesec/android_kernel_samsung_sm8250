@@ -1908,7 +1908,7 @@ static inline int handle_poll(struct file *file,
 		pr_debug("ch [%s] reported retval=%d\n", name, op->retval);
 		break;
 	default:
-		pr_err("ch [%s] unsupported ioctl:%u\n", op->cmd_id);
+		pr_err("ch [%s] unsupported ioctl:%u\n", name, op->cmd_id);
 		ret = -EINVAL;
 	}
 	pr_debug("name=%s, retval=%d, ready=%d\n", name, op->retval, ready);
