@@ -31,7 +31,8 @@
 
 #define __CAM_SBI_FRAME_DROP_NOTIFY_ENABLE__
 
-#define CAM_SBI_HW_RESET_TIMEOUT 3000
+#define CAM_SBI_HW_RESET_TIMEOUT 10
+#define CAM_SBI_HW_FRAME_DONE_TIMEOUT 50
 
 #define CAM_SBI_BUS_RD_MAX_CLIENTS 2
 #define CAM_SBI_BUS_WR_MAX_CLIENTS 2
@@ -206,7 +207,9 @@ struct cam_sbi_core {
 	enum cam_sbi_core_state state;
 	struct completion all_reset_complete;
 	struct completion t1_reset_complete;
+	struct completion t1_frame_done_complete;
 	struct completion t2_reset_complete;
+	struct completion t2_frame_done_complete;
 	struct completion t3_reset_complete;
 	struct cam_req_mgr_core_workq *work;
 	struct cam_sbi_hw_work_data work_data[CAM_SBI_HW_WORKQ_NUM_TASK];
@@ -356,7 +359,6 @@ int cam_sbi_hw_process_cmd(void *hw_priv, uint32_t cmd_type, void *cmd_args,
 int cam_sbi_hw_util_get_caps(struct cam_hw_info *sbi_hw,
 				 struct cam_sbi_dev_cap_info *hw_caps);
 int cam_sbi_hw_start(void *hw_priv, void *hw_init_args, uint32_t arg_size);
-int cam_sbi_hw_flush(void *hw_priv, void *hw_flush_args, uint32_t arg_size);
 void cam_sbi_set_irq(struct cam_hw_info *sbi_hw, enum cam_sbi_irq_set set);
 
 #endif /* _CAM_SBI_HW_CORE_H_ */

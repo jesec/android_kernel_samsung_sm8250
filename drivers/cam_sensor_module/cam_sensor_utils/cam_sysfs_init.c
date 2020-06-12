@@ -2650,6 +2650,61 @@ static ssize_t ois_hall_position_show(struct device *dev,
 #endif
 #endif
 
+#if defined(CONFIG_SAMSUNG_ACTUATOR_PREVENT_SHAKING)
+extern struct cam_actuator_ctrl_t *g_a_ctrls[2];
+#endif
+
+static ssize_t rear_actuator_power_store(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t size)
+{
+#if defined(CONFIG_SAMSUNG_ACTUATOR_PREVENT_SHAKING)
+	int i = 0, cnt = 0;
+	cnt = (int)(sizeof(g_a_ctrls) / sizeof(g_a_ctrls[0]));
+
+	switch (buf[0]) {
+	case '0':
+		for (i = 0; i < cnt; i++) {
+			if (g_a_ctrls[i] != NULL) {
+#if defined(CONFIG_SEC_Z3Q_PROJECT)
+				if (g_a_ctrls[i]->soc_info.index == 2)
+				{
+					cam_ois_power_down(g_o_ctrl);
+				}
+				else
+#endif
+				cam_actuator_power_down(g_a_ctrls[i]);
+				pr_info("%s: actuator %d power down", __func__, i);
+			}
+		}
+		break;
+	case '1':
+		for (i = 0; i < cnt; i++) {
+			if (g_a_ctrls[i] != NULL) {
+#if defined(CONFIG_SEC_Z3Q_PROJECT)
+				if (g_a_ctrls[i]->soc_info.index == 2)
+				{
+					cam_ois_power_up(g_o_ctrl);
+					msleep(20);
+					cam_ois_mcu_init(g_o_ctrl);
+
+				}
+				else
+#endif
+				cam_actuator_power_up(g_a_ctrls[i]);
+                cam_actuator_default_init_setting(g_a_ctrls[i]);
+				pr_info("%s: actuator %d power up", __func__, i);
+			}
+		}
+		break;
+
+	default:
+		break;
+	}
+#endif
+
+	return size;
+}
+
 #if defined(CONFIG_CAMERA_ADAPTIVE_MIPI)
 char mipi_string[20] = {0, };
 static ssize_t front_camera_mipi_clock_show(struct device *dev,
@@ -5524,6 +5579,8 @@ static DEVICE_ATTR(front3_hwparam, S_IRUGO|S_IWUSR|S_IWGRP,
 #endif
 #endif
 
+static DEVICE_ATTR(rear_actuator_power, S_IWUSR|S_IWGRP, NULL, rear_actuator_power_store);
+
 #if defined(CONFIG_SAMSUNG_OIS_MCU_STM32)
 static DEVICE_ATTR(ois_power, S_IWUSR, NULL, ois_power_store);
 static DEVICE_ATTR(autotest, S_IRUGO|S_IWUSR|S_IWGRP, ois_autotest_show, ois_autotest_store);
@@ -5930,6 +5987,12 @@ static int __init cam_sysfs_init(void)
 		ret = -ENODEV;
 	}
 #endif
+	if (device_create_file(cam_dev_rear, &dev_attr_rear_actuator_power) < 0) {
+		pr_err("failed to create device file, %s\n",
+			dev_attr_rear_actuator_power.attr.name);
+		ret = -ENOENT;
+	}
+
 	cam_dev_front = device_create(camera_class, NULL,
 		2, NULL, "front");
 

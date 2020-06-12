@@ -207,8 +207,8 @@ config SAMSUNG_REAR_TELE_TETRA
 	---help---
 	Enables support for rear tetra
 
-config SAMSUNG_ACTUATOR_SOFTLANDING
-	tristate "actuator softlanding support"
+config SAMSUNG_ACTUATOR_PREVENT_SHAKING
+	tristate "Prevent actuator shaking"
 	depends on SPECTRA_CAMERA
 	default n
 	---help---

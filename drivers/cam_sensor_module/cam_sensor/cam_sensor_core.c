@@ -471,6 +471,31 @@ static int32_t cam_sensor_i2c_modes_util(
 		}
 #endif
 
+		if (i2c_list->i2c_settings.reg_setting[0].reg_addr == STREAM_OFF_ADDR
+			&& i2c_list->i2c_settings.reg_setting[0].reg_data == 0x0) {
+			uint32_t frame_cnt = 0;
+
+			rc = camera_io_dev_read(&s_ctrl->io_master_info, 0x0005,
+				&frame_cnt, CAMERA_SENSOR_I2C_TYPE_WORD, CAMERA_SENSOR_I2C_TYPE_BYTE);
+
+			CAM_INFO(CAM_SENSOR, "[CNT_DBG] 0x%x : Last frame_cnt 0x%x",
+				s_ctrl->sensordata->slave_info.sensor_id, frame_cnt);
+
+			// prevent gw2 stream on issue
+			if (s_ctrl->sensordata->slave_info.sensor_id == SENSOR_ID_S5KGW2
+				&& frame_cnt == 0xFF) {
+				int retry_cnt = 10;
+
+				while ((frame_cnt < 0x01 || frame_cnt == 0xFF) && (retry_cnt > 0)) {
+					usleep_range(5000, 6000);
+					rc = camera_io_dev_read(&s_ctrl->io_master_info, 0x0005,
+							&frame_cnt, CAMERA_SENSOR_I2C_TYPE_WORD, CAMERA_SENSOR_I2C_TYPE_BYTE);
+					CAM_INFO(CAM_SENSOR, "[CNT_DBG] retry cnt : %d, Stream on, frame_cnt : 0x%x", retry_cnt, frame_cnt);
+					retry_cnt--;
+				}
+			}
+		}
+
 #if 1
 		if (i2c_list->i2c_settings.size >  CCI_I2C_MAX_WRITE) {
 			reg_setting = i2c_list->i2c_settings.reg_setting;

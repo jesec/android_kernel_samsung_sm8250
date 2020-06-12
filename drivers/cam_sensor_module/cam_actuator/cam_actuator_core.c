@@ -22,29 +22,31 @@ extern struct cam_ois_ctrl_t *g_o_ctrl;
 
 static DEFINE_MUTEX(global_mutex);
 
+static struct cam_sensor_power_setting default_power_setting[] =
+{
+	//seq_type,				seq_val,	config_val,	delay,
+	{SENSOR_VAF,			CAM_VAF,		1,		1,		{}},
+	{SENSOR_VIO,			CAM_VIO,		1,		12,		{}},
+};
+
+static struct cam_sensor_power_setting default_power_down_setting[] =
+{
+	//seq_type,				seq_val,	config_val,	delay,
+	{SENSOR_VIO,			CAM_VIO,		0,		0,		{}},
+	{SENSOR_VAF,			CAM_VAF,		0,		0,		{}},
+};
+
 int32_t cam_actuator_construct_default_power_setting(
 	struct cam_sensor_power_ctrl_t *power_info)
 {
 	int rc = 0;
 
-	power_info->power_setting_size = 2;
 	power_info->power_setting =
 		kzalloc(sizeof(struct cam_sensor_power_setting) * MAX_POWER_CONFIG,
 			GFP_KERNEL);
 	if (!power_info->power_setting)
 		return -ENOMEM;
 
-	power_info->power_setting[0].seq_type = SENSOR_VAF;
-	power_info->power_setting[0].seq_val = CAM_VAF;
-	power_info->power_setting[0].config_val = 1;
-	power_info->power_setting[0].delay = 1;
-
-	power_info->power_setting[1].seq_type = SENSOR_VIO;
-	power_info->power_setting[1].seq_val = CAM_VIO;
-	power_info->power_setting[1].config_val = 1;
-	power_info->power_setting[1].delay = 12;
-
-	power_info->power_down_setting_size = 2;
 	power_info->power_down_setting =
 		kzalloc(sizeof(struct cam_sensor_power_setting) * MAX_POWER_CONFIG,
 			GFP_KERNEL);
@@ -53,13 +55,17 @@ int32_t cam_actuator_construct_default_power_setting(
 		goto free_power_settings;
 	}
 
-	power_info->power_down_setting[0].seq_type = SENSOR_VIO;
-	power_info->power_down_setting[0].seq_val = CAM_VIO;
-	power_info->power_down_setting[0].config_val = 0;
+	memcpy(power_info->power_setting,
+		default_power_setting,
+		sizeof(default_power_setting));
+	power_info->power_setting_size =
+		ARRAY_SIZE(default_power_setting);
 
-	power_info->power_down_setting[1].seq_type = SENSOR_VAF;
-	power_info->power_down_setting[1].seq_val = CAM_VAF;
-	power_info->power_down_setting[1].config_val = 0;
+	memcpy(power_info->power_down_setting,
+		default_power_down_setting,
+		sizeof(default_power_down_setting));
+	power_info->power_down_setting_size =
+		ARRAY_SIZE(default_power_down_setting);
 
 	return rc;
 
@@ -1200,6 +1206,101 @@ int16_t cam_actuator_move_for_ois_test(struct cam_actuator_ctrl_t *a_ctrl)
 		reg_setting.reg_setting = NULL;
 	}
 
+	return rc;
+}
+#endif
+
+#if defined(CONFIG_SAMSUNG_ACTUATOR_PREVENT_SHAKING)
+struct cam_sensor_i2c_reg_array wide_init_1[] =  {
+	{ 0x02,	0x40,	0,	0},
+};
+
+struct cam_sensor_i2c_reg_array wide_init_2[] =  {
+	{ 0x02,	0x00,	0,	0},
+};
+
+struct cam_sensor_i2c_reg_setting wide_init_setting[] =  {
+	{	wide_init_1,
+		ARRAY_SIZE(wide_init_1),
+		CAMERA_SENSOR_I2C_TYPE_BYTE,
+		CAMERA_SENSOR_I2C_TYPE_BYTE,
+		2
+	},
+	{	wide_init_2,
+		ARRAY_SIZE(wide_init_2),
+		CAMERA_SENSOR_I2C_TYPE_BYTE,
+		CAMERA_SENSOR_I2C_TYPE_BYTE,
+		1
+	},
+};
+
+#if defined(CONFIG_SEC_Z3Q_PROJECT)
+struct cam_sensor_i2c_reg_array tele_init_1[] =  {
+	{ 0x0060,	0x00,	0,	0},
+};
+
+struct cam_sensor_i2c_reg_setting tele_init_setting[] =  {
+	{	tele_init_1,
+		ARRAY_SIZE(tele_init_1),
+		CAMERA_SENSOR_I2C_TYPE_WORD,
+		CAMERA_SENSOR_I2C_TYPE_BYTE,
+		0
+	},
+};
+#endif
+
+int32_t cam_actuator_default_init_setting(struct cam_actuator_ctrl_t *a_ctrl)
+{
+	struct cam_sensor_i2c_reg_setting* init_setting;
+	struct cam_sensor_i2c_reg_setting reg_setting;
+	int rc = 0, i = 0, size = 0, init_size = 0;
+
+	if (a_ctrl == NULL) {
+		CAM_ERR(CAM_ACTUATOR, "failed. a_ctrl is NULL");
+		return -EINVAL;
+	}
+
+	if (a_ctrl->cam_act_state != CAM_ACTUATOR_INIT)
+		return rc;
+
+	CAM_INFO(CAM_ACTUATOR, "E");
+
+	init_setting = wide_init_setting;
+	init_size = ARRAY_SIZE(wide_init_setting);
+#if defined(CONFIG_SEC_Z3Q_PROJECT)
+	if (a_ctrl->soc_info.index == 2) {
+		init_setting = tele_init_setting;
+		init_size = ARRAY_SIZE(tele_init_setting);
+	}
+#endif
+	for (i = 0; i < init_size; i++) {
+		if (size < init_setting[i].size)
+			size = init_setting[i].size;
+	}
+
+	reg_setting.reg_setting = kmalloc(sizeof(struct cam_sensor_i2c_reg_array) * size, GFP_KERNEL);
+	for (i = 0; i < init_size; i++) {
+		size = init_setting[i].size;
+		memcpy(reg_setting.reg_setting,
+			init_setting[i].reg_setting,
+			sizeof(struct cam_sensor_i2c_reg_array) * size);
+		reg_setting.size = size;
+		reg_setting.addr_type = init_setting[i].addr_type;
+		reg_setting.data_type = init_setting[i].data_type;
+		reg_setting.delay = init_setting[i].delay;
+		rc = camera_io_dev_write(&a_ctrl->io_master_info,
+			&reg_setting);
+		if (rc < 0)
+			CAM_ERR(CAM_ACTUATOR,
+				"Failed to random write I2C settings[%d]: %d", i, rc);
+	}
+
+	if (reg_setting.reg_setting) {
+		kfree(reg_setting.reg_setting);
+		reg_setting.reg_setting = NULL;
+	}
+
+	CAM_INFO(CAM_ACTUATOR, "X");
 	return rc;
 }
 #endif

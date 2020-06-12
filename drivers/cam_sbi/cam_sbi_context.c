@@ -25,6 +25,9 @@ static const char sbi_dev_name[] = "cam-sbi";
 static int __cam_sbi_ctx_handle_irq_in_activated(
 	void *context, uint32_t evt_id, void *evt_data);
 
+static int __cam_sbi_ctx_config_dev_in_top_state(
+	struct cam_context *ctx, struct cam_config_dev_cmd *cmd);
+
 #define CAM_SBI_SET_STATE(ctx, new_state) \
 { \
 	ctx->state = new_state; \
@@ -133,6 +136,21 @@ __cam_sbi_ctx_unlink_in_acquired(struct cam_context *ctx,
 
 	ctx->link_hdl = -1;
 	ctx->ctx_crm_intf = NULL;
+
+	return rc;
+}
+
+
+static int
+__cam_sbi_ctx_unlink_in_ready(struct cam_context *ctx,
+	struct cam_req_mgr_core_dev_link_setup *unlink)
+{
+	int rc = 0;
+
+	CAM_DBG(CAM_SBI, "enter..ctx_id %d", ctx->ctx_id);
+	ctx->link_hdl = -1;
+	ctx->ctx_crm_intf = NULL;
+	ctx->state = CAM_CTX_ACQUIRED;
 
 	return rc;
 }
@@ -462,7 +480,7 @@ static int __cam_sbi_ctx_start___dev_in_ready____(struct cam_context *ctx,
 	struct cam_start_stop_dev_cmd *cmd)
 {
 	int rc = 0;
-	struct cam_hw_config_args        hw_config;
+	struct cam_sbi_start_args        sbi_start;
 	struct cam_ctx_request          *req;
 	struct cam_sbi_dev_ctx_req   *req_custom;
 	struct cam_sbi_dev_context *ctx_custom =
@@ -493,17 +511,21 @@ static int __cam_sbi_ctx_start___dev_in_ready____(struct cam_context *ctx,
 		goto end;
 	}
 
-	hw_config.ctxt_to_hw_map = ctx_custom->hw_ctx;
-	hw_config.request_id = req->request_id;
-	hw_config.hw_update_entries = req_custom->cfg;
-	hw_config.num_hw_update_entries = req_custom->num_cfg;
-	hw_config.priv  = &req_custom->hw_update_data;
-	hw_config.init_packet = 1;
+	sbi_start.hw_config.ctxt_to_hw_map = ctx_custom->hw_ctx;
+	sbi_start.hw_config.request_id = req->request_id;
+	sbi_start.hw_config.hw_update_entries = req_custom->cfg;
+	sbi_start.hw_config.num_hw_update_entries = req_custom->num_cfg;
+	sbi_start.hw_config.priv  = &req_custom->hw_update_data;
+	sbi_start.hw_config.init_packet = 1;
+	if (ctx->state == CAM_CTX_FLUSHED)
+		sbi_start.start_only = true;
+	else
+		sbi_start.start_only = false;
 
 	CAM_SBI_SET_STATE(ctx, CAM_CTX_ACTIVATED);
 
 	rc = ctx->hw_mgr_intf->hw_start(ctx->hw_mgr_intf->hw_mgr_priv,
-		&hw_config);
+		&sbi_start);
 	if (rc) {
 		/* HW failure. User need to clean up the resource */
 		CAM_ERR(CAM_SBI, "Start HW failed");
@@ -549,10 +571,22 @@ static int __cam_sbi_ctx_stop____dev_in_activated(struct cam_context *ctx,
 	struct cam_start_stop_dev_cmd *cmd)
 {
 	int rc = 0;
+	struct cam_hw_stop_args           stop;
+	struct cam_sbi_stop_args          sbi_stop;
 
 	CAM_DBG(CAM_SBI, "Enter ctx_id %d", ctx->ctx_id);
 
-	rc = cam_context_stop_dev_to_hw(ctx);
+	/* stop hw first */
+	if (ctx->hw_mgr_intf->hw_stop) {
+		sbi_stop.stop_only = false;
+		stop.ctxt_to_hw_map = ctx->ctxt_to_hw_map;
+		stop.args = (void *) &sbi_stop;
+		rc = ctx->hw_mgr_intf->hw_stop(ctx->hw_mgr_intf->hw_mgr_priv,
+			&stop);
+		if (rc)
+			CAM_ERR(CAM_SBI, "HW stop failed rc %d", rc);
+	}
+
 	if (rc) {
 		CAM_ERR(CAM_SBI, "Failed to stop dev");
 		return rc;
@@ -561,6 +595,46 @@ static int __cam_sbi_ctx_stop____dev_in_activated(struct cam_context *ctx,
 
 	return rc;
 }
+
+
+static int __cam_sbi_ctx_config_dev_in_flushed(struct cam_context *ctx,
+	struct cam_config_dev_cmd *cmd)
+{
+	int rc = 0;
+	struct cam_start_stop_dev_cmd start_cmd;
+	struct cam_sbi_dev_context *ctx_sbi =
+		(struct cam_sbi_dev_context *) ctx->ctx_priv;
+
+	if (!ctx_sbi->hw_acquired) {
+		CAM_ERR(CAM_SBI, "HW is not acquired, reject packet");
+		rc = -EINVAL;
+		goto end;
+	}
+
+	rc = __cam_sbi_ctx_config_dev_in_top_state(ctx, cmd);
+	if (rc)
+		goto end;
+
+	if (!ctx_sbi->init_received) {
+		CAM_WARN(CAM_SBI,
+			"Received update packet in flushed state, skip start");
+		goto end;
+	}
+
+	start_cmd.dev_handle = cmd->dev_handle;
+	start_cmd.session_handle = cmd->session_handle;
+	rc = __cam_sbi_ctx_start___dev_in_ready____(ctx, &start_cmd);
+	if (rc)
+		CAM_ERR(CAM_SBI,
+			"Failed to re-start HW after flush rc: %d", rc);
+	else
+		CAM_INFO(CAM_SBI,
+			"Received init after flush. Re-start HW complete.");
+
+end:
+	return rc;
+}
+
 
 static int __cam_sbi_ctx_release_dev_in_activated(struct cam_context *ctx,
 	struct cam_release_dev_cmd *cmd)
@@ -869,7 +943,7 @@ static int __cam_sbi_ctx_config_dev_in_top_state(
 			}
 			else {
 				rc = -EINVAL;
-				CAM_ERR(CAM_SBI, "Recevied INIT pkt in wrong state");
+				CAM_ERR(CAM_SBI, "Received INIT pkt in wrong state, %d", ctx->state);
 			}
 		}
 		else if ((req_sbi->hw_update_data.packet_opcode_type == CAM_SBI_PACKET_UPDATE_DEV) ||
@@ -877,7 +951,8 @@ static int __cam_sbi_ctx_config_dev_in_top_state(
 
 			//CAM_DBG(CAM_REQ,"Stage 1 : %lld", req->request_id);
 
-			if (ctx->ctx_crm_intf && ctx->ctx_crm_intf->add_req) { //Fallback to old change
+			if (ctx->state != CAM_CTX_FLUSHED && ctx->state >= CAM_CTX_READY &&
+				ctx->ctx_crm_intf && ctx->ctx_crm_intf->add_req) { //Fallback to old change
 			   //CAM_DBG(CAM_REQ,"Stage 2 ");
 
 				add_req.link_hdl = ctx->link_hdl;
@@ -995,19 +1070,58 @@ static int __cam_sbi_ctx_flush_req_in_top_state(
 	struct cam_req_mgr_flush_request *flush_req)
 {
 	int rc = 0;
+	struct cam_sbi_dev_context       *ctx_sbi;
+	struct cam_hw_reset_args          reset_args;
+	struct cam_hw_stop_args           stop;
+	struct cam_sbi_stop_args          sbi_stop;
 
-	if (flush_req->type == CAM_REQ_MGR_FLUSH_TYPE_ALL) {
-		CAM_INFO(CAM_SBI, "Last request id to flush is %lld",
-			flush_req->req_id);
-		ctx->last_flush_req = flush_req->req_id;
-	}
+	ctx_sbi =
+		(struct cam_sbi_dev_context *)ctx->ctx_priv;
 
+	CAM_DBG(CAM_SBI, "Flushing pending list");
 	spin_lock_bh(&ctx->lock);
 	rc = __cam_sbi_ctx_flush_req(ctx, &ctx->pending_req_list, flush_req);
 	spin_unlock_bh(&ctx->lock);
 
+	if (flush_req->type == CAM_REQ_MGR_FLUSH_TYPE_ALL) {
+		if (ctx->state <= CAM_CTX_READY) {
+			ctx->state = CAM_CTX_ACQUIRED;
+			goto end;
+		}
+
+		spin_lock_bh(&ctx->lock);
+		ctx->state = CAM_CTX_FLUSHED;
+
+		spin_unlock_bh(&ctx->lock);
+
+		CAM_INFO(CAM_SBI, "Last request id to flush is %lld",
+			flush_req->req_id);
+		ctx->last_flush_req = flush_req->req_id;
+		/* stop hw first */
+		if (ctx->hw_mgr_intf->hw_stop) {
+			sbi_stop.stop_only = true;
+			stop.ctxt_to_hw_map = ctx->ctxt_to_hw_map;
+			stop.args = (void *) &sbi_stop;
+			rc = ctx->hw_mgr_intf->hw_stop(ctx->hw_mgr_intf->hw_mgr_priv,
+				&stop); // stop (1) cid, (2) csid, (3) sbi
+			if (rc)
+				CAM_ERR(CAM_SBI, "HW stop failed in flush rc %d", rc);
+	}
+
+		reset_args.ctxt_to_hw_map = ctx_sbi->hw_ctx;
+		rc = ctx->hw_mgr_intf->hw_reset(ctx->hw_mgr_intf->hw_mgr_priv,
+			&reset_args);
+		if (rc)
+			CAM_ERR(CAM_SBI, "Reset HW failed in flush rc %d", rc);
+
+		ctx_sbi->init_received = false;
+	}
+
+end:
+
 	return rc;
 }
+
 
 /* top state machine */
 static struct cam_ctx_ops
@@ -1041,6 +1155,7 @@ static struct cam_ctx_ops
 			.link = __cam_sbi_ctx_link________in_acquired_,
 			.unlink = __cam_sbi_ctx_unlink_in_acquired,
 			.get_dev_info = __cam_sbi_ctx_get_dev_info_in_acquired,
+			.flush_req = __cam_sbi_ctx_flush_req_in_top_state,
 		},
 		.irq_ops = __cam_sbi_ctx_handle_irq_in_activated,
 	},
@@ -1055,14 +1170,25 @@ static struct cam_ctx_ops
 		},
 		.crm_ops = {
 			.link = __cam_sbi_ctx_link________in_acquired_,
-			.unlink = __cam_sbi_ctx_unlink_in_acquired,
+			.unlink = __cam_sbi_ctx_unlink_in_ready,
 			//.flush_req = __cam_sbi_ctx_flush_req_in_ready,
 			.apply_req = __cam_sbi_ctx_apply_req,
 		},
 		.irq_ops = __cam_sbi_ctx_handle_irq_in_activated,
 	},
 	/* Flushed */
-	{},
+	{
+		.ioctl_ops = {
+			.stop_dev = __cam_sbi_ctx_stop____dev_in_activated,
+			.release_dev = __cam_sbi_ctx_release_dev_in_activated,
+			.config_dev = __cam_sbi_ctx_config_dev_in_flushed,
+			.release_hw = __cam_sbi_ctx_release_hw_in_activated_state,
+		},
+		.crm_ops = {
+			.unlink = __cam_sbi_ctx_unlink_in_ready,
+		},
+		.irq_ops = NULL,
+	},
 	/* Activate */
 	{
 		.ioctl_ops = {

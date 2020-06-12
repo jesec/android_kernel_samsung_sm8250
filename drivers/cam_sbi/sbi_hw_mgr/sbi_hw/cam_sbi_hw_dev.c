@@ -143,6 +143,8 @@ static int cam_sbi_hw_dev_probe(struct platform_device *pdev)
 	init_completion(&sbi_core->t1_reset_complete);
 	init_completion(&sbi_core->t2_reset_complete);
 	init_completion(&sbi_core->t3_reset_complete);
+	init_completion(&sbi_core->t1_frame_done_complete);
+	init_completion(&sbi_core->t2_frame_done_complete);
 
 	rc = cam_req_mgr_workq_create("cam_sbi_hw_worker",
 		CAM_SBI_HW_WORKQ_NUM_TASK,
@@ -206,7 +208,6 @@ static int cam_sbi_hw_dev_probe(struct platform_device *pdev)
 	sbi_hw_intf.hw_ops.read = NULL;
 	sbi_hw_intf.hw_ops.write = NULL;
 	sbi_hw_intf.hw_ops.process_cmd = cam_sbi_hw_process_cmd;
-	sbi_hw_intf.hw_ops.flush = cam_sbi_hw_flush;
 	sbi_hw_intf.hw_type = CAM_HW_SBI;
 
 	rc = cam_sbi_mgr_register_device(&sbi_hw_intf,
