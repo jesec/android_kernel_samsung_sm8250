@@ -14,6 +14,8 @@ endif
 ifeq ($(CONFIG_ARCH_KONA), y)
 ifeq ($(PROJECT_NAME),$(filter $(PROJECT_NAME),x1q y2q z3q))
 include $(srctree)/techpack/audio/config/kona_picassoq.conf
+else
+include $(srctree)/techpack/audio/config/konaauto.conf
 endif
 export
 endif
