@@ -711,18 +711,65 @@ enum cam_sbi_hw_irq_regs {
 };
 
 
+static int cam_sbi_hw_wait_frame_done(struct cam_hw_info *sbi_hw)
+{
+	struct cam_sbi_core *sbi_core;
+	struct cam_sbi_hw_info *hw_info;
+	long time_left = 0;
+	int rc = 0;
+
+	sbi_core = sbi_hw->core_info;
+	hw_info = sbi_core->hw_info;
+
+	if ((sbi_hw->hw_state == CAM_HW_STATE_POWER_DOWN) ||
+		(sbi_core->state == CAM_SBI_CORE_STATE_IDLE))
+	{
+		CAM_DBG(CAM_SBI, "overridden");
+		return 0;
+	}
+
+	reinit_completion(&sbi_core->t1_frame_done_complete);
+	time_left = wait_for_completion_timeout(
+		&sbi_core->t1_frame_done_complete,
+		msecs_to_jiffies(CAM_SBI_HW_FRAME_DONE_TIMEOUT));
+	if (time_left <= 0) {
+		CAM_ERR(CAM_SBI, "t1 rup_done wait failed time_left=%ld",
+			time_left);
+		rc = -1;
+	}
+
+	reinit_completion(&sbi_core->t2_frame_done_complete);
+	time_left = wait_for_completion_timeout(
+		&sbi_core->t2_frame_done_complete,
+		msecs_to_jiffies(CAM_SBI_HW_FRAME_DONE_TIMEOUT));
+	if (time_left <= 0) {
+		CAM_ERR(CAM_SBI, "t2 rup_done wait failed time_left=%ld",
+			time_left);
+		rc = -1;
+	}
+
+	return rc;
+}
+
+
 static int cam_sbi_hw_util_reset(struct cam_hw_info *sbi_hw,
-				uint32_t reset_type)
+				uint32_t reset_type, int ln )
 {
 	struct cam_sbi_core *sbi_core;
 	struct cam_hw_soc_info *soc_info = &sbi_hw->soc_info;
 	struct cam_sbi_hw_info *hw_info;
 	long time_left;
 
-	CAM_DBG(CAM_SBI, "reset_type = %d ...", reset_type);
-
 	sbi_core = sbi_hw->core_info;
 	hw_info = sbi_core->hw_info;
+
+	if (sbi_hw->hw_state == CAM_HW_STATE_POWER_DOWN)
+	{
+		CAM_DBG(CAM_SBI, "overridden, reset_type(%d)", reset_type);
+		return 0;
+	}
+
+	CAM_DBG(CAM_SBI, "reset_type = %d called ln %d", reset_type, ln);
 
 	switch (reset_type) {
 	case CAM_SBI_HW_RESET_TYPE_ALL_RESET:
@@ -734,7 +781,7 @@ static int cam_sbi_hw_util_reset(struct cam_hw_info *sbi_hw,
 			&sbi_core->all_reset_complete,
 			msecs_to_jiffies(CAM_SBI_HW_RESET_TIMEOUT));
 		if (time_left <= 0) {
-			CAM_ERR(CAM_SBI, "HW reset wait failed time_left=%ld",
+			CAM_ERR(CAM_SBI, "sync reset timeout time_left=%ld",
 				time_left);
 			return -ETIMEDOUT;
 		}
@@ -748,7 +795,7 @@ static int cam_sbi_hw_util_reset(struct cam_hw_info *sbi_hw,
 			&sbi_core->t1_reset_complete,
 			msecs_to_jiffies(CAM_SBI_HW_RESET_TIMEOUT));
 		if (time_left <= 0) {
-			CAM_ERR(CAM_SBI, "SW reset wait failed time_left=%ld",
+			CAM_ERR(CAM_SBI, "task1 reset timeout time_left=%ld",
 				time_left);
 			return -ETIMEDOUT;
 		}
@@ -762,7 +809,7 @@ static int cam_sbi_hw_util_reset(struct cam_hw_info *sbi_hw,
 			&sbi_core->t2_reset_complete,
 			msecs_to_jiffies(CAM_SBI_HW_RESET_TIMEOUT));
 		if (time_left <= 0) {
-			CAM_ERR(CAM_SBI, "SW reset wait failed time_left=%ld",
+			CAM_ERR(CAM_SBI, "task2 reset timeout time_left=%ld",
 				time_left);
 			return -ETIMEDOUT;
 		}
@@ -776,7 +823,7 @@ static int cam_sbi_hw_util_reset(struct cam_hw_info *sbi_hw,
 			&sbi_core->t3_reset_complete,
 			msecs_to_jiffies(CAM_SBI_HW_RESET_TIMEOUT));
 		if (time_left <= 0) {
-			CAM_ERR(CAM_SBI, "SW reset wait failed time_left=%ld",
+			CAM_ERR(CAM_SBI, "task3 reset timeout time_left=%ld",
 				time_left);
 			return -ETIMEDOUT;
 		}
@@ -842,135 +889,7 @@ static int cam_sbi_hw_util_submit_req(struct cam_sbi_core *sbi_core,
 	return rc;
 }
 
-static int cam_sbi_hw_util_flush_ctx(struct cam_hw_info *sbi_hw,
-					void *ctxt_to_hw_map)
-{
-	int rc = -ENODEV;
-	struct cam_sbi_core *sbi_core = sbi_hw->core_info;
-	struct cam_sbi_hw_cb_args cb_args;
-	struct cam_sbi_frame_request *req_proc, *req_submit;
-	struct cam_sbi_hw_submit_args submit_args;
 
-	rc = cam_sbi_hw_util_reset(sbi_hw, CAM_SBI_HW_RESET_TYPE_TASK1_RESET);
-	rc = cam_sbi_hw_util_reset(sbi_hw, CAM_SBI_HW_RESET_TYPE_TASK2_RESET);
-	rc = cam_sbi_hw_util_reset(sbi_hw, CAM_SBI_HW_RESET_TYPE_TASK3_RESET);
-	rc = cam_sbi_hw_util_reset(sbi_hw, CAM_SBI_HW_RESET_TYPE_ALL_RESET);
-	if (rc) {
-		CAM_ERR(CAM_SBI, "reset failed");
-		return rc;
-	}
-
-	sbi_core->state = CAM_SBI_CORE_STATE_IDLE;
-	req_proc = sbi_core->req_proc;
-	req_submit = sbi_core->req_submit;
-	sbi_core->req_proc = NULL;
-	sbi_core->req_submit = NULL;
-
-	if (req_submit && req_submit->ctxt_to_hw_map == ctxt_to_hw_map) {
-		cb_args.cb_type = CAM_SBI_CB_PUT_FRAME;
-		cb_args.frame_req = req_submit;
-		if (sbi_core->hw_mgr_cb.cam_sbi_hw_mgr_cb)
-			sbi_core->hw_mgr_cb.cam_sbi_hw_mgr_cb(
-				sbi_core->hw_mgr_cb.data, &cb_args);
-	} else if (req_submit) {
-		submit_args.frame_req = req_submit;
-		submit_args.hw_update_entries = req_submit->hw_update_entries;
-		submit_args.num_hw_update_entries =
-			req_submit->num_hw_update_entries;
-		rc = cam_sbi_hw_util_submit_req(sbi_core, req_submit);
-		if (rc)
-			CAM_ERR(CAM_SBI, "Submit failed");
-		sbi_core->req_submit = req_submit;
-		cam_sbi_hw_util_submit_go(sbi_hw);
-		sbi_core->state = CAM_SBI_CORE_STATE_REQ_PENDING;
-	}
-
-	if (req_proc && req_proc->ctxt_to_hw_map == ctxt_to_hw_map) {
-		cb_args.cb_type = CAM_SBI_CB_PUT_FRAME;
-		cb_args.frame_req = req_proc;
-		if (sbi_core->hw_mgr_cb.cam_sbi_hw_mgr_cb)
-			sbi_core->hw_mgr_cb.cam_sbi_hw_mgr_cb(
-				sbi_core->hw_mgr_cb.data, &cb_args);
-	} else if (req_proc) {
-		submit_args.frame_req = req_proc;
-		submit_args.hw_update_entries = req_proc->hw_update_entries;
-		submit_args.num_hw_update_entries =
-			req_proc->num_hw_update_entries;
-		rc = cam_sbi_hw_util_submit_req(sbi_core, req_proc);
-		if (rc)
-			CAM_ERR(CAM_SBI, "Submit failed");
-		sbi_core->req_submit = req_proc;
-		cam_sbi_hw_util_submit_go(sbi_hw);
-		sbi_core->state = CAM_SBI_CORE_STATE_REQ_PENDING;
-	}
-
-	return rc;
-}
-
-static int cam_sbi_hw_util_flush_req(struct cam_hw_info *sbi_hw,
-					struct cam_sbi_frame_request *req_to_flush)
-{
-	int rc = -ENODEV;
-	struct cam_sbi_core *sbi_core = sbi_hw->core_info;
-	struct cam_sbi_hw_cb_args cb_args;
-	struct cam_sbi_frame_request *req_proc, *req_submit;
-	struct cam_sbi_hw_submit_args submit_args;
-
-	rc = cam_sbi_hw_util_reset(sbi_hw, CAM_SBI_HW_RESET_TYPE_TASK1_RESET);
-	rc = cam_sbi_hw_util_reset(sbi_hw, CAM_SBI_HW_RESET_TYPE_TASK2_RESET);
-	rc = cam_sbi_hw_util_reset(sbi_hw, CAM_SBI_HW_RESET_TYPE_TASK3_RESET);
-	rc = cam_sbi_hw_util_reset(sbi_hw, CAM_SBI_HW_RESET_TYPE_ALL_RESET);
-	if (rc) {
-		CAM_ERR(CAM_SBI, "reset failed");
-		return rc;
-	}
-
-	sbi_core->state = CAM_SBI_CORE_STATE_IDLE;
-	req_proc = sbi_core->req_proc;
-	req_submit = sbi_core->req_submit;
-	sbi_core->req_proc = NULL;
-	sbi_core->req_submit = NULL;
-
-	if (req_submit && req_submit == req_to_flush) {
-		cb_args.cb_type = CAM_SBI_CB_PUT_FRAME;
-		cb_args.frame_req = req_submit;
-		if (sbi_core->hw_mgr_cb.cam_sbi_hw_mgr_cb)
-			sbi_core->hw_mgr_cb.cam_sbi_hw_mgr_cb(
-				sbi_core->hw_mgr_cb.data, &cb_args);
-	} else if (req_submit) {
-		submit_args.frame_req = req_submit;
-		submit_args.hw_update_entries = req_submit->hw_update_entries;
-		submit_args.num_hw_update_entries =
-			req_submit->num_hw_update_entries;
-		rc = cam_sbi_hw_util_submit_req(sbi_core, req_submit);
-		if (rc)
-			CAM_ERR(CAM_SBI, "Submit failed");
-		sbi_core->req_submit = req_submit;
-		cam_sbi_hw_util_submit_go(sbi_hw);
-		sbi_core->state = CAM_SBI_CORE_STATE_REQ_PENDING;
-	}
-
-	if (req_proc && req_proc == req_to_flush) {
-		cb_args.cb_type = CAM_SBI_CB_PUT_FRAME;
-		cb_args.frame_req = req_proc;
-		if (sbi_core->hw_mgr_cb.cam_sbi_hw_mgr_cb)
-			sbi_core->hw_mgr_cb.cam_sbi_hw_mgr_cb(
-				sbi_core->hw_mgr_cb.data, &cb_args);
-	} else if (req_proc) {
-		submit_args.frame_req = req_proc;
-		submit_args.hw_update_entries = req_proc->hw_update_entries;
-		submit_args.num_hw_update_entries =
-			req_proc->num_hw_update_entries;
-		rc = cam_sbi_hw_util_submit_req(sbi_core, req_proc);
-		if (rc)
-			CAM_ERR(CAM_SBI, "Submit failed");
-		sbi_core->req_submit = req_proc;
-		cam_sbi_hw_util_submit_go(sbi_hw);
-		sbi_core->state = CAM_SBI_CORE_STATE_REQ_PENDING;
-	}
-
-	return rc;
-}
 
 #if 0
 static void cam_sbi_dump_registers(void __iomem *base)
@@ -1425,10 +1344,10 @@ int cam_sbi_hw_start(void *hw_priv, void *hw_start_args, uint32_t arg_size)
 		goto start_unlock;
 	}
 
-	rc = cam_sbi_hw_util_reset(sbi_hw, CAM_SBI_HW_RESET_TYPE_TASK1_RESET);
-	rc = cam_sbi_hw_util_reset(sbi_hw, CAM_SBI_HW_RESET_TYPE_TASK2_RESET);
-	rc = cam_sbi_hw_util_reset(sbi_hw, CAM_SBI_HW_RESET_TYPE_TASK3_RESET);
-	rc = cam_sbi_hw_util_reset(sbi_hw, CAM_SBI_HW_RESET_TYPE_ALL_RESET);
+	rc = cam_sbi_hw_util_reset(sbi_hw, CAM_SBI_HW_RESET_TYPE_TASK1_RESET, __LINE__);
+	rc = cam_sbi_hw_util_reset(sbi_hw, CAM_SBI_HW_RESET_TYPE_TASK2_RESET, __LINE__);
+	rc = cam_sbi_hw_util_reset(sbi_hw, CAM_SBI_HW_RESET_TYPE_TASK3_RESET, __LINE__);
+	rc = cam_sbi_hw_util_reset(sbi_hw, CAM_SBI_HW_RESET_TYPE_ALL_RESET, __LINE__);
 	if (rc) {
 		CAM_ERR(CAM_SBI, "Failed to reset hw");
 		goto disable_soc;
@@ -1490,10 +1409,11 @@ int cam_sbi_hw_stop(void *hw_priv, void * stop_hw_args, uint32_t arg_size)
 	}
 	sbi_hw->open_count--;
 
-	if (sbi_hw->open_count) {
-		rc = cam_sbi_hw_util_reset(sbi_hw, CAM_SBI_HW_RESET_TYPE_TASK1_RESET);
-		rc = cam_sbi_hw_util_reset(sbi_hw, CAM_SBI_HW_RESET_TYPE_TASK2_RESET);
-		rc = cam_sbi_hw_util_reset(sbi_hw, CAM_SBI_HW_RESET_TYPE_TASK3_RESET);
+	//if (sbi_hw->open_count)
+	{
+		rc = cam_sbi_hw_util_reset(sbi_hw, CAM_SBI_HW_RESET_TYPE_TASK1_RESET, __LINE__);
+		rc = cam_sbi_hw_wait_frame_done(sbi_hw);
+		rc = cam_sbi_hw_util_reset(sbi_hw, CAM_SBI_HW_RESET_TYPE_ALL_RESET, __LINE__);
 
 		// sbi addr queue reset
 		CAM_DBG(CAM_SBI, "clear address queue");
@@ -1505,8 +1425,6 @@ int cam_sbi_hw_stop(void *hw_priv, void * stop_hw_args, uint32_t arg_size)
 		SBI_REG_WRITE(0x0000076c, 0x00000000);
 		SBI_REG_WRITE(0x000007ac, 0x00000008);
 		SBI_REG_WRITE(0x000007ac, 0x00000000);
-
-		goto stop_unlock;
 	}
 
 	sbi_core->req_proc = NULL;
@@ -1657,10 +1575,14 @@ int cam_sbi_hw_reset(void *hw_priv, void *reset_core_args, uint32_t arg_size)
 
 	sbi_core->state = CAM_SBI_CORE_STATE_RECOVERY;
 
-	rc = cam_sbi_hw_util_reset(sbi_hw, sbi_reset_args->reset_type);
+	rc = cam_sbi_hw_util_reset(sbi_hw, CAM_SBI_HW_RESET_TYPE_TASK1_RESET, __LINE__);
+	rc = cam_sbi_hw_util_reset(sbi_hw, CAM_SBI_HW_RESET_TYPE_TASK2_RESET, __LINE__);
+	rc = cam_sbi_hw_wait_frame_done(sbi_hw);
+
+	rc = cam_sbi_hw_util_reset(sbi_hw, CAM_SBI_HW_RESET_TYPE_ALL_RESET, __LINE__);
 	if (rc) {
 		mutex_unlock(&sbi_hw->hw_mutex);
-		CAM_ERR(CAM_FD, "Failed to reset");
+		CAM_ERR(CAM_SBI, "Failed to reset %d", sbi_reset_args->reset_type);
 		return rc;
 	}
 
@@ -1672,80 +1594,7 @@ int cam_sbi_hw_reset(void *hw_priv, void *reset_core_args, uint32_t arg_size)
 	return 0;
 }
 
-int cam_sbi_hw_flush(void *hw_priv, void *hw_flush_args, uint32_t arg_size)
-{
-	struct cam_sbi_core *sbi_core = NULL;
-	struct cam_hw_info *sbi_hw = hw_priv;
-	struct cam_sbi_hw_flush_args *flush_args =
-		(struct cam_sbi_hw_flush_args *)hw_flush_args;
-	int rc = -ENODEV;
 
-	if (!hw_priv) {
-		CAM_ERR(CAM_SBI, "Invalid arguments %pK", hw_priv);
-		return -EINVAL;
-	}
-
-	sbi_core = (struct cam_sbi_core *)sbi_hw->core_info;
-
-	mutex_lock(&sbi_hw->hw_mutex);
-
-	if (sbi_core->state != CAM_SBI_CORE_STATE_PROCESSING &&
-		sbi_core->state != CAM_SBI_CORE_STATE_REQ_PENDING &&
-		sbi_core->state != CAM_SBI_CORE_STATE_REQ_PROC_PEND) {
-		mutex_unlock(&sbi_hw->hw_mutex);
-		CAM_DBG(CAM_SBI, "Flush is not needed in %d state",
-			sbi_core->state);
-		return 0;
-	}
-
-	if (!sbi_core->req_proc && !sbi_core->req_submit) {
-		mutex_unlock(&sbi_hw->hw_mutex);
-		CAM_DBG(CAM_SBI, "no req in device");
-		return 0;
-	}
-
-	switch (flush_args->flush_type) {
-	case CAM_FLUSH_TYPE_ALL:
-		if ((!sbi_core->req_submit ||
-			sbi_core->req_submit->ctxt_to_hw_map !=
-				flush_args->ctxt_to_hw_map) &&
-			(!sbi_core->req_proc ||
-			sbi_core->req_proc->ctxt_to_hw_map !=
-				flush_args->ctxt_to_hw_map)) {
-			mutex_unlock(&sbi_hw->hw_mutex);
-			CAM_DBG(CAM_SBI, "hw running on different ctx");
-			return 0;
-		}
-		rc = cam_sbi_hw_util_flush_ctx(sbi_hw,
-						flush_args->ctxt_to_hw_map);
-		if (rc)
-			CAM_ERR(CAM_SBI, "Flush all failed");
-		break;
-
-	case CAM_FLUSH_TYPE_REQ:
-		if ((!sbi_core->req_submit ||
-			sbi_core->req_submit != flush_args->req_to_flush) &&
-			(!sbi_core->req_proc ||
-			sbi_core->req_proc != flush_args->req_to_flush)) {
-			mutex_unlock(&sbi_hw->hw_mutex);
-			CAM_DBG(CAM_SBI, "hw running on different ctx");
-			return 0;
-		}
-		rc = cam_sbi_hw_util_flush_req(sbi_hw,
-						flush_args->req_to_flush);
-		if (rc)
-			CAM_ERR(CAM_SBI, "Flush req failed");
-		break;
-
-	default:
-		CAM_ERR(CAM_SBI, "Unsupported flush type");
-		break;
-	}
-
-	mutex_unlock(&sbi_hw->hw_mutex);
-
-	return rc;
-}
 
 int cam_sbi_hw_get_caps(void *hw_priv, void *get_hw_cap_args, uint32_t arg_size)
 {
@@ -1823,6 +1672,8 @@ static void cam_sbi_hw_irq_task1_frame_done(struct cam_hw_info *sbi_hw)
 	struct cam_sbi_core * core = (struct cam_sbi_core *)sbi_hw->core_info;
 	cam_sbi_ssm_info *    ssm  = &core->ssm_info;
 
+	complete(&core->t1_frame_done_complete);
+
 	if (ssm->is_ssm_mode) {
 		//cam_sbi_hw_rup_ready(sbi_hw, BIT(TASK1_RUP_RDY));
 		/*
@@ -1849,11 +1700,9 @@ static void cam_sbi_hw_irq_task1_frame_done(struct cam_hw_info *sbi_hw)
 			cam_sbi_hw_init_dma_address(sbi_hw);
 			ssm->cue_option_changed = false;
 		}
-
 		cam_sbi_hw_check_activation(sbi_hw);
-
+		ssm->prev_frame_id = ssm->frame_id;
 	}
-	ssm->prev_frame_id = ssm->frame_id;
 }
 
 static void cam_sbi_hw_irq_task2_rup_done(struct cam_hw_info *sbi_hw)
@@ -1863,6 +1712,8 @@ static void cam_sbi_hw_irq_task2_rup_done(struct cam_hw_info *sbi_hw)
 
 static void cam_sbi_hw_irq_task2_frame_done(struct cam_hw_info *sbi_hw)
 {
+	struct cam_sbi_core* core = (struct cam_sbi_core*)sbi_hw->core_info;
+	complete(&core->t2_frame_done_complete);
 	cam_sbi_hw_rup_ready(sbi_hw, BIT(TASK1_RUP_RDY));
 }
 
@@ -1875,6 +1726,7 @@ static void cam_sbi_hw_irq_task3_frame_done(struct cam_hw_info *sbi_hw)
 {
 	struct cam_sbi_core * core = (struct cam_sbi_core *)sbi_hw->core_info;
 	cam_sbi_ssm_info *    ssm  = &core->ssm_info;
+
 	if (ssm->is_ssm_mode) {
 		if (RECORD960(ssm->frame_id)) {
 			ssm->total_read_frames += ssm->batch_num;

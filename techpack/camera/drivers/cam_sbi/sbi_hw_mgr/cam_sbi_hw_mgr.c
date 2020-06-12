@@ -776,8 +776,9 @@ static int cam_sbi_hw_mgr_start(void *hw_mgr_priv, void *hw_start_args)
 {
 	int rc = 0, i;
 	struct cam_sbi_hw_mgr *hw_mgr = hw_mgr_priv;
-	struct cam_hw_start_args *args =
-		(struct cam_hw_start_args *)hw_start_args;
+	struct cam_sbi_start_args *sbi_args =
+		(struct cam_sbi_start_args *)hw_start_args;
+	struct cam_hw_start_args *args;
 	struct cam_sbi_hw_mgr_res *hw_mgr_res;
 	struct cam_sbi_hw_mgr_ctx * ctx_manager;
 	struct cam_sbi_device *hw_device;
@@ -791,11 +792,12 @@ static int cam_sbi_hw_mgr_start(void *hw_mgr_priv, void *hw_start_args)
 	enum cam_sbi_reg_cmd sbi_cmd;
 	struct cam_sbi_cmd_buf_type_init * cmd;
 
-	if (!hw_mgr || !args) {
+	if (!hw_mgr || !sbi_args) {
 		CAM_ERR(CAM_SBI, "Invalid input params");
 		return -EINVAL;
 	}
 
+	args = (struct cam_hw_start_args *) &sbi_args->hw_config;
 	ctx_manager = (struct cam_sbi_hw_mgr_ctx *)args->ctxt_to_hw_map;
 	if (!ctx_manager || !ctx_manager->ctx_in_use) {
 		if (ctx_manager == NULL)
@@ -819,6 +821,9 @@ static int cam_sbi_hw_mgr_start(void *hw_mgr_priv, void *hw_start_args)
 		CAM_ERR(CAM_SBI, "Failed to get hw device");
 		return rc;
 	}
+
+	if (sbi_args->start_only)
+		goto start_only;
 
 	/* set current csid debug information to CUSTOM CSID HW */
 	for (i = 0; i < CAM_CUSTOM_CSID_HW_MAX; i++) {
@@ -850,6 +855,7 @@ static int cam_sbi_hw_mgr_start(void *hw_mgr_priv, void *hw_start_args)
 		}
 	}
 
+start_only:
 	/* Check SSM record node */
 	cmd_desc = (struct cam_cmd_buf_desc *)(ctx_manager->reg_dump_buf_desc);
 	rc = cam_packet_util_get_cmd_mem_addr(cmd_desc->mem_handle, &ptr, &len);
@@ -884,6 +890,12 @@ static int cam_sbi_hw_mgr_start(void *hw_mgr_priv, void *hw_start_args)
 					hw_mgr->img_iommu_hdl,
 					&scratch_iova,
 					&scratch_mem_len);
+		if (rc) {
+			CAM_INFO(CAM_SBI, "failed to get iova for scratch_hdl 0x%x rc %d",
+				scratch_hdl, rc);
+			goto err;
+		}
+
 		{
 			void *args = (void *)&cmd->register_set;
 			uint32_t args_size = cmd->register_set_size;
@@ -1602,6 +1614,7 @@ static int cam_sbi_hw_mgr_stop(void *hw_mgr_priv, void *stop_hw_args)
 	struct cam_sbi_hw_mgr *hw_mgr = hw_mgr_priv;
 	struct cam_hw_stop_args *stop_args =
 		(struct cam_hw_stop_args *)stop_hw_args;
+	 struct cam_sbi_stop_args  *sbi_stop_args = stop_args->args;
 	struct cam_sbi_hw_mgr_res * hw_mgr_res;
 	struct cam_sbi_hw_mgr_ctx * hw_mgr_ctx;
 
@@ -1659,8 +1672,14 @@ static int cam_sbi_hw_mgr_stop(void *hw_mgr_priv, void *stop_hw_args)
 			&hw_mgr_ctx->is_ssm_recording_instance, sizeof(bool));
 		if (rc) {
 			CAM_ERR(CAM_SBI, "Failed in HW stop %d", rc);
-			goto end;
 		}
+	}
+
+	if (sbi_stop_args->stop_only) {
+		CAM_DBG(CAM_SBI, "sbi_stop_only");
+		 goto end;
+	} else {
+		CAM_DBG(CAM_SBI, "sbi_stop_fully");
 	}
 
 	/* Deinit custom cid here */
@@ -2036,6 +2055,100 @@ static int cam_sbi_hw_mgr_notify_error(
 		ssm->error_notified = true;
 	}
 
+	return rc;
+}
+
+
+static int cam_sbi_hw_mgr_reset_csid_res(struct cam_sbi_hw_mgr_res *hw_mgr_res)
+{
+	int rc = -1;
+	struct cam_csid_reset_cfg_args  csid_reset_args;
+	struct cam_isp_resource_node *custom_rsrc_node = NULL;
+	struct cam_hw_intf *hw_intf = NULL;
+
+	custom_rsrc_node =
+		(struct cam_isp_resource_node *)hw_mgr_res->rsrc_node;
+	if (!custom_rsrc_node) {
+		CAM_ERR(CAM_SBI, "Invalid args");
+		return -EINVAL;
+	}
+
+	csid_reset_args.reset_type = CAM_IFE_CSID_RESET_PATH;
+	csid_reset_args.node_res = custom_rsrc_node;
+	hw_intf = custom_rsrc_node->hw_intf;
+	if (hw_intf->hw_ops.reset) {
+		CAM_DBG(CAM_SBI, "RESET HW for res_id:%u", hw_mgr_res->res_id);
+		rc = hw_intf->hw_ops.reset(hw_intf->hw_priv,
+			&csid_reset_args,
+			sizeof(struct cam_csid_reset_cfg_args));
+		if (rc)
+			goto err;
+	}
+
+	return 0;
+
+err:
+	CAM_ERR(CAM_SBI, "RESET HW failed for res_id:%u", hw_mgr_res->res_id);
+	return rc;
+}
+
+
+static int cam_sbi_hw_mgr_reset(void *hw_mgr_priv, void *hw_reset_args)
+{
+	struct cam_hw_reset_args         *reset_args = hw_reset_args;
+	struct cam_sbi_hw_mgr *hw_mgr = hw_mgr_priv;
+	struct cam_sbi_device *hw_device = NULL;
+	struct cam_sbi_hw_reset_args reset_cmd = { 0, };
+	uint32_t device_index;
+	struct cam_sbi_hw_mgr_ctx        *ctx;
+	struct cam_sbi_hw_mgr_res        *hw_mgr_res;
+	int                               rc = 0;
+
+	if (!hw_mgr_priv || !hw_reset_args) {
+		CAM_ERR(CAM_SBI, "Invalid arguments");
+		return -EINVAL;
+	}
+
+	ctx = (struct cam_sbi_hw_mgr_ctx *)reset_args->ctxt_to_hw_map;
+	if (!ctx || !ctx->ctx_in_use) {
+		CAM_ERR(CAM_SBI, "Invalid context is used");
+		return -EPERM;
+	}
+
+	device_index = ctx->device_index;
+	if (device_index >= hw_mgr->device_count) {
+		CAM_ERR(CAM_SBI, "Invalid device index %d", device_index);
+		return -EPERM;
+	}
+
+	rc = cam_sbi_mgr_util_get_device(hw_mgr, device_index, &hw_device);
+	if (rc) {
+		CAM_ERR(CAM_SBI, "Failed to get hw device");
+		return rc;
+	}
+
+	CAM_DBG(CAM_SBI, "Reset SBI CSID and SBI core");
+	list_for_each_entry(hw_mgr_res, &ctx->res_list_custom_csid, list) {
+		rc = cam_sbi_hw_mgr_reset_csid_res(hw_mgr_res);
+		if (rc) {
+			CAM_ERR(CAM_SBI, "Failed to reset CSID:%d rc: %d",
+				hw_mgr_res->res_id, rc);
+			goto end;
+		}
+	}
+
+	/* Reset SBI HW */
+	if (hw_device->hw_intf.hw_ops.reset) {
+		reset_cmd.reset_type = CAM_SBI_HW_RESET_TYPE_ALL_RESET;// no meaning
+		rc = hw_device->hw_intf.hw_ops.reset(hw_device->hw_intf.hw_priv,
+			&reset_cmd, sizeof(struct cam_sbi_hw_reset_args));
+		if (rc) {
+			CAM_ERR(CAM_SBI, "Failed in HW stop %d", rc);
+			goto end;
+		}
+	}
+
+end:
 	return rc;
 }
 
@@ -2490,6 +2603,7 @@ int cam_sbi_hw_mgr_init(struct cam_hw_mgr_intf *hw_mgr_intf,
 	hw_mgr_intf->hw_stop = cam_sbi_hw_mgr_stop;
 	hw_mgr_intf->hw_prepare_update = cam_sbi_hw_mgr_prepare_update;
 	hw_mgr_intf->hw_config = cam_sbi_hw_mgr_config;
+	hw_mgr_intf->hw_reset = cam_sbi_hw_mgr_reset;
 	hw_mgr_intf->hw_read = NULL;
 	hw_mgr_intf->hw_write = NULL;
 	hw_mgr_intf->hw_close = NULL;
