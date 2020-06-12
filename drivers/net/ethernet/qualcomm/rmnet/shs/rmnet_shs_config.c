@@ -100,7 +100,7 @@ static int rmnet_shs_dev_notify_cb(struct notifier_block *nb,
 		 */
 		if (!rmnet_vnd_total && rmnet_shs_cfg.rmnet_shs_init_complete) {
 			unsigned int cpu_switch;
-			
+
 			pr_info("rmnet_shs deinit %s going down ", dev->name);
 			RCU_INIT_POINTER(rmnet_shs_skb_entry, NULL);
 			qmi_rmnet_ps_ind_deregister(rmnet_shs_cfg.port,

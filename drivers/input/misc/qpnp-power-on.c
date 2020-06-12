@@ -2534,8 +2534,14 @@ static int qpnp_pon_configure_s3_reset(struct qpnp_pon *pon)
 
 static void __ref smpl_panic(struct work_struct *work)
 {
-	if (is_smpl)
-		panic("SMPL Occured\n");
+	if (is_smpl) {
+		char buf[1024];
+		int offset;
+
+		offset = scnprintf(buf, sizeof(buf), "SMPL Occurred ");
+		sec_get_pwrsrc(buf + offset);
+		panic("%s", buf);
+	}
 }
 
 static int qpnp_pon_read_hardware_info(struct qpnp_pon *pon, bool sys_reset)

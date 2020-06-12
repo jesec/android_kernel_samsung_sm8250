@@ -732,6 +732,12 @@ static void __init rkp_init(void)
 #define VERITY_PARAM_LENGTH 20
 static char verifiedbootstate[VERITY_PARAM_LENGTH];
 int __check_verifiedboot __kdp_ro = 0;
+
+#if (defined CONFIG_KDP_CRED && defined CONFIG_SAMSUNG_PRODUCT_SHIP)
+extern int selinux_enforcing __kdp_ro;
+extern int ss_initialized __kdp_ro;
+#endif
+
 static int __init verifiedboot_state_setup(char *str)
 {
 	strlcpy(verifiedbootstate, str, sizeof(verifiedbootstate));
@@ -768,6 +774,10 @@ void kdp_init(void)
 	cred.comm_task 		= offsetof(struct task_struct,comm);
 	cred.bp_cred_secptr 	= rkp_get_offset_bp_cred();
 	cred.verifiedbootstate	= (u64)verifiedbootstate;
+#ifdef CONFIG_SAMSUNG_PRODUCT_SHIP
+	cred.selinux.selinux_enforcing_va  = (u64)&selinux_enforcing;
+	cred.selinux.ss_initialized_va	= (u64)&ss_initialized;
+#endif
 	uh_call(UH_APP_RKP, RKP_KDP_X40, (u64)&cred, 0, 0, 0);
 }
 #endif

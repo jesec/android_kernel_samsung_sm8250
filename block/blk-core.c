@@ -413,6 +413,14 @@ void blk_queue_io_vol_merge(struct request_queue *q, int opf, int rqs, long long
 #endif /* CONFIG_BLK_IO_VOLUME */
 
 #ifdef CONFIG_BLK_TURBO_WRITE
+#define set_tw_state(tw, s) ({(tw)->state = (s); (tw)->state_ts = jiffies;})
+#define tw_may_on(tw, write_bytes, write_rqs) \
+	((write_bytes) > (tw)->up_threshold_bytes || \
+	(write_rqs) > (tw)->up_threshold_rqs)
+#define tw_may_off(tw, write_bytes, write_rqs) \
+	((write_bytes) < (tw)->down_threshold_bytes && \
+	(write_rqs) < (tw)->down_threshold_rqs)
+
 int blk_alloc_turbo_write(struct request_queue *q)
 {
 	struct blk_turbo_write	*new;
@@ -421,13 +429,17 @@ int blk_alloc_turbo_write(struct request_queue *q)
 	if (!new)
 		return -ENOMEM;
 
-	new->state = TW_OFF;
-	new->state_ts = jiffies;
+	set_tw_state(new, TW_OFF);
 
-	new->up_threshold_bytes = (20 * 1024 * 1024);
-	new->down_threshold_bytes = (4 * 1024);
-	new->on_delay_ms = 10;
-	new->off_delay_ms = 7000;
+	new->up_threshold_bytes = (12 * 1024 * 1024);
+	new->up_threshold_rqs = 50;
+	new->down_threshold_bytes = (10 * 1024 * 1024);
+	new->down_threshold_rqs= 40;
+	new->on_delay = msecs_to_jiffies(20);
+	new->off_delay = msecs_to_jiffies(5000);
+
+	new->prev_on_ready_ts = 0;
+	new->on_interval = msecs_to_jiffies(200);
 
 	new->try_on = NULL;
 	new->try_off = NULL;
@@ -501,8 +513,7 @@ int blk_reset_tw_state(struct request_queue *q)
 		return -ENODEV;
 	}
 
-	q->tw->state = TW_OFF;
-	q->tw->state_ts = jiffies;
+	set_tw_state(q->tw, TW_OFF);
 	spin_unlock_irq(q->queue_lock);
 
 	return 0;
@@ -530,7 +541,7 @@ static void blk_update_tw_stats(struct blk_turbo_write *tw)
 }
 
 /* should be called with queue_lock held */
-void blk_update_tw_state(struct request_queue *q, long long write_bytes)
+void blk_update_tw_state(struct request_queue *q, int write_rqs, long long write_bytes)
 {
 	struct blk_turbo_write	*tw = q->tw;
 
@@ -540,65 +551,51 @@ void blk_update_tw_state(struct request_queue *q, long long write_bytes)
 		return;
 
 	switch (tw->state) {
-		case TW_OFF:
-		{
-			if (write_bytes > tw->up_threshold_bytes) {
-				tw->state = TW_ON_READY;
-				tw->state_ts = jiffies;
-			}
-			break;
+	case TW_OFF:
+		if (tw_may_on(tw, write_bytes, write_rqs)) {
+			set_tw_state(tw, TW_ON_READY);
 		}
+		break;
 
-		case TW_ON_READY:
-		{
-			if (write_bytes < tw->down_threshold_bytes) {
-				tw->state = TW_OFF;
-				tw->state_ts = jiffies;
-			} else if (write_bytes > tw->up_threshold_bytes &&
-					jiffies_to_msecs(jiffies - tw->state_ts) >= tw->on_delay_ms) {
-				tw->state = TW_ON;
-				tw->state_ts = jiffies;
-				if (tw->try_on) {
-					spin_unlock_irq(q->queue_lock);
-					tw->try_on(q);
-					spin_lock_irq(q->queue_lock);
-				}
+	case TW_ON_READY:
+		if (tw_may_off(tw, write_bytes, write_rqs)) {
+			tw->prev_on_ready_ts = tw->state_ts;
+			set_tw_state(tw, TW_OFF);
+		} else if (time_after_eq(jiffies, tw->state_ts + tw->on_delay) ||
+			   time_after_eq(tw->prev_on_ready_ts + tw->on_interval, tw->state_ts)) {
+			tw->prev_on_ready_ts = tw->state_ts;
+			set_tw_state(tw, TW_ON);
+			if (tw->try_on) {
+				spin_unlock_irq(q->queue_lock);
+				tw->try_on(q);
+				spin_lock_irq(q->queue_lock);
 			}
-			break;
 		}
+		break;
 
-		case TW_OFF_READY:
-		{
-			if (write_bytes > tw->up_threshold_bytes) {
-				tw->state = TW_ON;
-				tw->state_ts = jiffies;
-			} else if (jiffies_to_msecs(jiffies - tw->state_ts) >= tw->off_delay_ms) {
-				tw->state = TW_OFF;
-				tw->state_ts = jiffies;
-				if (tw->try_off) {
-					spin_unlock_irq(q->queue_lock);
-					tw->try_off(q);
-					spin_lock_irq(q->queue_lock);
-				}
-				blk_update_tw_stats(tw);
+	case TW_OFF_READY:
+		if (tw_may_on(tw, write_bytes, write_rqs)) {
+			set_tw_state(tw, TW_ON);
+		} else if (time_after_eq(jiffies, tw->state_ts + tw->off_delay)) {
+			set_tw_state(tw, TW_OFF);
+			if (tw->try_off) {
+				spin_unlock_irq(q->queue_lock);
+				tw->try_off(q);
+				spin_lock_irq(q->queue_lock);
 			}
-			break;
+			blk_update_tw_stats(tw);
 		}
+		break;
 
-		case TW_ON:
-		{
-			if (write_bytes < tw->down_threshold_bytes) {
-				tw->state = TW_OFF_READY;
-				tw->state_ts = jiffies;
-			}
-			break;
+	case TW_ON:
+		if (tw_may_off(tw, write_bytes, write_rqs)) {
+			set_tw_state(tw, TW_OFF_READY);
 		}
+		break;
 
-		default:
-		{
-			BUG();
-			break;
-		}
+	default:
+		BUG();
+		break;
 	}
 }
 
@@ -2374,7 +2371,9 @@ static blk_qc_t blk_queue_bio(struct request_queue *q, struct bio *bio)
 
 	spin_lock_irq(q->queue_lock);
 
-	blk_update_tw_state(q, blk_io_vol_bytes(q, REQ_OP_WRITE));
+	blk_update_tw_state(q,
+			blk_io_vol_rqs(q, REQ_OP_WRITE),
+			blk_io_vol_bytes(q, REQ_OP_WRITE));
 
 	switch (elv_merge(q, &req, bio)) {
 	case ELEVATOR_BACK_MERGE:

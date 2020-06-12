@@ -47,6 +47,7 @@ enum __KDP_CMD_ID{
 	RKP_KDP_X54 = 0x54,
 	RKP_KDP_X55 = 0x55,
 	RKP_KDP_X56 = 0x56,
+	RKP_KDP_X60 = 0x60,
 };
 
 typedef struct kdp_init_struct {
@@ -70,6 +71,10 @@ typedef struct kdp_init_struct {
 	u32 bp_cred_secptr;
 	u32 task_threadinfo;
 	u64 verifiedbootstate;
+	struct {
+		u64 selinux_enforcing_va;
+		u64 ss_initialized_va;
+	}selinux;
 } kdp_init_t;
 
 /*Check whether the address belong to Cred Area*/

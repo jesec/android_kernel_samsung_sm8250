@@ -1243,9 +1243,6 @@ static int sec_errp_extra_show(struct seq_file *m, void *v)
 	if (!__is_valid_reset_reason(reset_reason))
 		goto out;
 
-	if (reset_reason == USER_UPLOAD_CAUSE_SMPL)
-		goto out;
-
 	p_rst_exinfo = kmalloc(sizeof(rst_exinfo_t), GFP_KERNEL);
 	if (!p_rst_exinfo)
 		goto out;
@@ -1259,6 +1256,14 @@ static int sec_errp_extra_show(struct seq_file *m, void *v)
 
 	offset += scnprintf((char*)(buf + offset), EXTEND_RR_SIZE - offset,
 			"RWC:%d", sec_debug_get_reset_write_cnt());
+
+	if (reset_reason == USER_UPLOAD_CAUSE_SMPL) {
+		if (strstr(p_kinfo->panic_buf, "SMPL")) {
+			offset += scnprintf((char*)(buf + offset), EXTEND_RR_SIZE - offset,
+				" PANIC:%s", p_kinfo->panic_buf);
+		}
+		goto out;
+	}
 
 	sec_debug_upload_cause_str(p_kinfo->upload_cause,
 			upload_cause_str, sizeof(upload_cause_str));

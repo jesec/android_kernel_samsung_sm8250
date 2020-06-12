@@ -1081,6 +1081,7 @@ struct mfc_charger_data {
 	struct device					*dev;
 	mfc_charger_platform_data_t 	*pdata;
 	struct mutex io_lock;
+	struct mutex wpc_en_lock;
 	const struct firmware *firm_data_bin;
 
 	int wc_w_state;
@@ -1171,5 +1172,6 @@ struct mfc_charger_data {
 	unsigned long gear_start_time;
 	int input_current;
 	int duty_min;
+	int wpc_en_flag;
 };
 #endif /* __WIRELESS_CHARGER_MFC_H */

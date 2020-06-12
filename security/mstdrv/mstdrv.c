@@ -316,6 +316,11 @@ static int mfc_get_property(union power_supply_propval *val) {
         u8 mst_mode, reg_data;
 
         psy = get_power_supply_by_name("mfc-charger");
+	if (psy == NULL) {
+		pr_err("%s cannot get power supply!\n", __func__);
+		return -1;
+	}
+
         charger = power_supply_get_drvdata(psy);
         if (charger == NULL) {
                 pr_err("%s cannot get charger drvdata!\n", __func__);
@@ -382,6 +387,10 @@ extern void mst_ctrl_of_mst_hw_onoff(bool on)
                 value.intval = MST_MODE_OFF;
                 psy_do_property("mfc-charger", set, POWER_SUPPLY_PROP_TECHNOLOGY, value);
                 printk("%s : MST_MODE_OFF notify : %d\n", __func__, value.intval);
+
+                value.intval = 0;
+                psy_do_property("mfc-charger", set, POWER_SUPPLY_EXT_PROP_WPC_EN_MST, value);
+                printk("%s : MFC_IC Disable notify : %d\n", __func__, value.intval);
 #endif
                 /* Boost Disable */
                 printk("%s : boost disable to back to Normal", __func__);
@@ -433,9 +442,13 @@ static void of_mst_hw_onoff(bool on)
 
         if (on) {
 #if defined(CONFIG_MFC_CHARGER)
+                printk("%s : MFC_IC Enable notify start\n", __func__);
+                value.intval = 1;
+                psy_do_property("mfc-charger", set, POWER_SUPPLY_EXT_PROP_WPC_EN_MST, value);
+                printk("%s : MFC_IC Enable notified : %d\n", __func__, value.intval);
+
                 printk("%s : MST_MODE_ON notify start\n", __func__);
                 value.intval = MST_MODE_ON;
-
                 psy_do_property("mfc-charger", set, POWER_SUPPLY_PROP_TECHNOLOGY, value);
                 printk("%s : MST_MODE_ON notified : %d\n", __func__, value.intval);
 #endif
@@ -505,6 +518,10 @@ static void of_mst_hw_onoff(bool on)
                 value.intval = MST_MODE_OFF;
                 psy_do_property("mfc-charger", set, POWER_SUPPLY_PROP_TECHNOLOGY, value);
                 printk("%s : MST_MODE_OFF notify : %d\n", __func__, value.intval);
+
+                value.intval = 0;
+                psy_do_property("mfc-charger", set, POWER_SUPPLY_EXT_PROP_WPC_EN_MST, value);
+                printk("%s : MFC_IC Disable notify : %d\n", __func__, value.intval);
 #endif
 
                 /* Boost Disable */
@@ -766,6 +783,11 @@ static int mfc_get_chip_id()
         struct mfc_charger_data *charger;
         
 	psy = get_power_supply_by_name("mfc-charger");
+	if (psy == NULL) {
+		pr_err("%s cannot get power supply!\n", __func__);
+		return -1;
+	}
+
 	charger = power_supply_get_drvdata(psy);
 
 	if (charger == NULL) {
@@ -794,9 +816,10 @@ static int mfc_get_chip_id()
 static int sec_mst_gpio_init(struct device *dev)
 {
 #if defined(CONFIG_MFC_CHARGER)
+        union power_supply_propval value;        /* power_supply prop */
         struct device_node *np;
         enum of_gpio_flags irq_gpio_flags;
-	int ret = 0;
+        int ret = 0;
 #endif
 
         mst_pwr_en =
@@ -833,7 +856,11 @@ static int sec_mst_gpio_init(struct device *dev)
         }
 
 	if (wpc_det && (gpio_get_value(wpc_det) != 1)) {
-		pr_info("%s: Not wireless charging, set mst-pwr-en to HIGH\n", __func__);
+		pr_info("%s: Not wireless charging! MFC IC Enable notify start.\n", __func__);
+		value.intval = 1;
+		psy_do_property("mfc-charger", set, POWER_SUPPLY_EXT_PROP_WPC_EN_MST, value);
+
+		pr_info("%s: Set mst-pwr-en to HIGH\n", __func__);
 		gpio_set_value(mst_pwr_en, 1);
 	}
 	msleep(200);
@@ -853,6 +880,10 @@ static int sec_mst_gpio_init(struct device *dev)
 	if (wpc_det && (gpio_get_value(wpc_det) != 1)) {
 		pr_info("%s: Not wireless charging, set mst-pwr-en to LOW\n", __func__);
 		gpio_set_value(mst_pwr_en, 0);
+
+		value.intval = 0;
+		psy_do_property("mfc-charger", set, POWER_SUPPLY_EXT_PROP_WPC_EN_MST, value);
+		printk("%s : MFC_IC Disable notify : %d\n", __func__, value.intval);
 	}
 #endif
 
@@ -887,6 +918,11 @@ static ssize_t show_mst_switch_test(struct device *dev,
         int ret = 0;
 
         psy = get_power_supply_by_name("mfc-charger");
+	if (psy == NULL) {
+		pr_err("%s cannot get power supply!\n", __func__);
+		return -1;
+	}
+
         charger = power_supply_get_drvdata(psy);
         if (charger == NULL) {
                 pr_err("%s cannot get charger drvdata!\n", __func__);
