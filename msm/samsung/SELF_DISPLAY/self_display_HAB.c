@@ -1253,6 +1253,8 @@ static long self_display_ioctl(struct file *file, unsigned int cmd, unsigned lon
 		return -EINVAL;
 	}
 
+	mutex_lock(&vdd->self_disp.vdd_self_display_ioctl_lock);
+
 	LCD_INFO("cmd = %s\n", cmd == IOCTL_SELF_MOVE_EN ? "IOCTL_SELF_MOVE_EN" :
 				cmd == IOCTL_SELF_MOVE_OFF ? "IOCTL_SELF_MOVE_OFF" :
 				cmd == IOCTL_SET_ICON ? "IOCTL_SET_ICON" :
@@ -1337,7 +1339,7 @@ static long self_display_ioctl(struct file *file, unsigned int cmd, unsigned lon
 		break;
 	}
 error:
-
+	mutex_unlock(&vdd->self_disp.vdd_self_display_ioctl_lock);
 	return ret;
 }
 
@@ -1504,6 +1506,7 @@ int self_display_init_HAB(struct samsung_display_driver_data *vdd)
 	}
 
 	mutex_init(&vdd->self_disp.vdd_self_display_lock);
+	mutex_init(&vdd->self_disp.vdd_self_display_ioctl_lock);
 
 	if (vdd->ndx == PRIMARY_DISPLAY_NDX)
 		snprintf(devname, DEV_NAME_SIZE, "self_display");

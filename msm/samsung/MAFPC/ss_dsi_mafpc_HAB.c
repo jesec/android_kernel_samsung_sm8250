@@ -272,6 +272,8 @@ static void ss_mafpc_img_write(struct samsung_display_driver_data *vdd, bool is_
 
 	LCD_ERR("++(%d)\n", is_instant);
 
+	mutex_lock(&vdd->self_disp.vdd_self_display_ioctl_lock);
+
 	if (is_instant) {
 		buf_1 = buf_2 = buf_3 = 0;
 		ss_panel_data_read(vdd, RX_MAFPC_READ_1, &buf_1, LEVEL1_KEY | LEVEL2_KEY); /* 0x97 */
@@ -330,6 +332,15 @@ static void ss_mafpc_img_write(struct samsung_display_driver_data *vdd, bool is_
 	else
 		ss_send_cmd(vdd, TX_MAFPC_IMAGE);
 
+	pcmds = ss_get_cmds(vdd, TX_MAFPC_SET_POST);
+	if (vdd->self_disp.sd_info.en | vdd->self_disp.sa_info.en) {
+		LCD_INFO("AOD Analog(Digital) Clock is enabled!\n");
+		pcmds->cmds[0].msg.tx_buf[1] = 0x00;
+	} else {
+		LCD_INFO("AOD Analog(Digital) Clock is disabled!\n");
+		pcmds->cmds[0].msg.tx_buf[1] = 0x01;
+	}
+
 	ss_send_cmd(vdd, TX_MAFPC_SET_POST);
 	if (is_instant)
 		ss_send_cmd(vdd, TX_MAFPC_SET_POST_FOR_INSTANT);
@@ -358,6 +369,7 @@ static void ss_mafpc_img_write(struct samsung_display_driver_data *vdd, bool is_
 	   (HAB DDI Only)
 	 */
 	ss_brightness_dcs(vdd, USE_CURRENT_BL_LEVEL, BACKLIGHT_NORMAL);
+	mutex_unlock(&vdd->self_disp.vdd_self_display_ioctl_lock);
 
 	LCD_ERR("--(%d)\n", is_instant);
 }
