@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2016-2019, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2016-2020, The Linux Foundation. All rights reserved.
  */
 
 #define pr_fmt(fmt)	"[drm:%s:%d] " fmt, __func__, __LINE__
@@ -802,13 +802,10 @@ int sde_connector_pre_kickoff(struct drm_connector *connector)
 	 * in pre-kickoff. This flag must be reset at the
 	 * end of display pre-kickoff.
 	 */
-	display = (struct dsi_display *)c_conn->display;
-
-#if defined(CONFIG_DISPLAY_SAMSUNG)
-	display->queue_cmd_waits = true;
-#else
-	display->queue_cmd_waits = true;
-#endif
+	if (c_conn->connector_type == DRM_MODE_CONNECTOR_DSI) {
+		display = (struct dsi_display *)c_conn->display;
+		display->queue_cmd_waits = true;
+	}
 
 	rc = _sde_connector_update_dirty_properties(connector);
 	if (rc) {
@@ -825,21 +822,24 @@ int sde_connector_pre_kickoff(struct drm_connector *connector)
 	SDE_EVT32_VERBOSE(connector->base.id);
 
 #if defined(CONFIG_DISPLAY_SAMSUNG)
-	/* SAMSUNG_FINGERPRINT */
-	vdd = display->panel->panel_private;
-	finger_mask_state = sde_connector_get_property(c_conn->base.state,
-			CONNECTOR_PROP_FINGERPRINT_MASK);
-	vdd->finger_mask_updated = false;
-	if (finger_mask_state != vdd->finger_mask) {
-		SDE_ERROR("[FINGER MASK]updated finger mask mode %d\n", finger_mask_state);
-		vdd->finger_mask_updated = true;
-		vdd->finger_mask = finger_mask_state;
+	if (c_conn->connector_type == DRM_MODE_CONNECTOR_DSI) {
+		/* SAMSUNG_FINGERPRINT */
+		vdd = display->panel->panel_private;
+		finger_mask_state = sde_connector_get_property(c_conn->base.state,
+				CONNECTOR_PROP_FINGERPRINT_MASK);
+		vdd->finger_mask_updated = false;
+		if (finger_mask_state != vdd->finger_mask) {
+			SDE_ERROR("[FINGER MASK]updated finger mask mode %d\n", finger_mask_state);
+			vdd->finger_mask_updated = true;
+			vdd->finger_mask = finger_mask_state;
+		}
 	}
 #endif
 
 	rc = c_conn->ops.pre_kickoff(connector, c_conn->display, &params);
 
-	display->queue_cmd_waits = false;
+	if (c_conn->connector_type == DRM_MODE_CONNECTOR_DSI)
+		display->queue_cmd_waits = false;
 end:
 	return rc;
 }

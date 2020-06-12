@@ -528,6 +528,7 @@ struct self_display {
 	struct self_partial_hlpm_scan sphs_info;
 
 	struct mutex vdd_self_display_lock;
+	struct mutex vdd_self_display_ioctl_lock;
 	struct self_display_op operation[FLAG_SELF_DISP_MAX];
 
 	struct self_display_debug debug;
