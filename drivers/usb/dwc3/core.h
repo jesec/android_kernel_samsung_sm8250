@@ -1135,6 +1135,7 @@ struct dwc3_scratchpad_array {
  * @bh_completion_time: time taken for taklet completion
  * @bh_handled_evt_cnt: no. of events handled by tasklet per interrupt
  * @bh_dbg_index: index for capturing bh_completion_time and bh_handled_evt_cnt
+ * @last_run_stop: timestamp denoting the last run_stop update
  */
 struct dwc3 {
 	struct work_struct	drd_work;
@@ -1370,6 +1371,7 @@ struct dwc3 {
 	u32			gen2_tx_de_emph1;
 	u32			gen2_tx_de_emph2;
 	u32			gen2_tx_de_emph3;
+	ktime_t			last_run_stop;
 #if IS_ENABLED(CONFIG_USB_CHARGING_EVENT)
 	struct work_struct      set_vbus_current_work;
 	int			vbus_current; /* 0 : 100mA, 1 : 500mA, 2: 900mA */
