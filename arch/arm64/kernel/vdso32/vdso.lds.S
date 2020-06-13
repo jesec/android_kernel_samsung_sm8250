@@ -68,6 +68,7 @@ VERSION
 		__kernel_sigreturn_thumb;
 		__kernel_rt_sigreturn_arm;
 		__kernel_rt_sigreturn_thumb;
+		__vdso_clock_gettime64;
 	local: *;
 	};
 }
