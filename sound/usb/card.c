@@ -769,7 +769,7 @@ static int usb_audio_probe(struct usb_interface *intf,
 	mutex_unlock(&register_mutex);
 	return 0;
 
- __error
+ __error:
 	pr_info("%s : card probe fail.\n", __func__);
 	if (chip) {
 		set_usb_audio_cardnum(chip->card->number, 0, 0);
