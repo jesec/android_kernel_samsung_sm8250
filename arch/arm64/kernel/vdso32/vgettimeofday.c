@@ -12,13 +12,11 @@ int __vdso_clock_gettime(clockid_t clock,
 	return __cvdso_clock_gettime32(clock, ts);
 }
 
-#if 0
 int __vdso_clock_gettime64(clockid_t clock,
 			   struct __kernel_timespec *ts)
 {
 	return __cvdso_clock_gettime(clock, ts);
 }
-#endif
 
 int __vdso_gettimeofday(struct __kernel_old_timeval *tv,
 			struct timezone *tz)
@@ -32,9 +30,9 @@ int __vdso_clock_getres(clockid_t clock_id,
 	return __cvdso_clock_getres_time32(clock_id, res);
 }
 
-time_t __vdso_time(time_t *t)
+time_t __vdso_time(time_t *time)
 {
-        return __cvdso_time(t);
+	return __cvdso_time(time);
 }
 
 /* Avoid unresolved references emitted by GCC */

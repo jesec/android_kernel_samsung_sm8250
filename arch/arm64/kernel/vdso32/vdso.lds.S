@@ -64,11 +64,12 @@ VERSION
 		__vdso_clock_gettime;
 		__vdso_gettimeofday;
 		__vdso_clock_getres;
-		__vdso_time;
 		__kernel_sigreturn_arm;
 		__kernel_sigreturn_thumb;
 		__kernel_rt_sigreturn_arm;
 		__kernel_rt_sigreturn_thumb;
+		__vdso_clock_gettime64;
+		__vdso_time;
 	local: *;
 	};
 }
