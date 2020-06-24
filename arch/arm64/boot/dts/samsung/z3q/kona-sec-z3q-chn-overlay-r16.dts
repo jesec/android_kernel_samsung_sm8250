@@ -7916,6 +7916,7 @@
 				reg = <0x1 0x10000000 0x0 0x40000000>;
 				ion,recyclable;
 				phandle = <0x7f>;
+				rbin_size = <0x22F00000>;
 			};
 		};
 	};
