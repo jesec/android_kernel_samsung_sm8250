@@ -415,9 +415,6 @@ static int __check_block_validity(struct inode *inode, const char *func,
 		return 0;
 	if (!ext4_data_block_valid(EXT4_SB(inode->i_sb), map->m_pblk,
 				   map->m_len)) {
-		printk(KERN_ERR "printing inode..\n");
-		print_block_data(inode->i_sb, 0, (unsigned char *)inode, 0,
-				EXT4_INODE_SIZE(inode->i_sb));
 		ext4_error_inode(inode, func, line, map->m_pblk,
 				 "lblock %lu mapped to illegal pblock %llu "
 				 "(length %d)", (unsigned long) map->m_lblk,
@@ -1187,9 +1184,6 @@ static int ext4_block_write_begin(struct page *page, loff_t pos, unsigned len,
 	unsigned bbits;
 	struct buffer_head *bh, *head, *wait[2], **wait_bh = wait;
 	bool decrypt = false;
-#ifdef CONFIG_DDAR
-	bool dd_decrypt = false;
-#endif
 
 	BUG_ON(!PageLocked(page));
 	BUG_ON(from > PAGE_SIZE);
@@ -1247,10 +1241,6 @@ static int ext4_block_write_begin(struct page *page, loff_t pos, unsigned len,
 			ll_rw_block(REQ_OP_READ, (decrypt ? REQ_NOENCRYPT : 0),
 				    1, &bh);
 			*wait_bh++ = bh;
-
-#ifdef CONFIG_DDAR
-			dd_decrypt = fscrypt_dd_encrypted_inode(inode);
-#endif
 		}
 	}
 	/*
@@ -1266,12 +1256,6 @@ static int ext4_block_write_begin(struct page *page, loff_t pos, unsigned len,
 	else if (decrypt)
 		err = fscrypt_decrypt_page(page->mapping->host, page,
 				PAGE_SIZE, 0, page->index);
-
-#ifdef CONFIG_DDAR
-	if (dd_decrypt)
-		err = fscrypt_dd_decrypt_page(inode, page);
-#endif
-
 	return err;
 }
 #endif
@@ -1633,9 +1617,7 @@ static int ext4_da_reserve_space(struct inode *inode)
 		return ret;
 
 	spin_lock(&ei->i_block_reservation_lock);
-	if (ext4_claim_free_clusters(sbi, 1,
-			ext4_test_inode_flag(inode, EXT4_INODE_CORE_FILE) ?
-			EXT4_MB_USE_EXTRA_ROOT_BLOCKS : 0)) {
+	if (ext4_claim_free_clusters(sbi, 1, 0)) {
 		spin_unlock(&ei->i_block_reservation_lock);
 		dquot_release_reservation_block(inode, EXT4_C2B(sbi, 1));
 		return -ENOSPC;
@@ -2224,8 +2206,6 @@ static int ext4_writepage(struct page *page,
 		return -ENOMEM;
 	}
 	ret = ext4_bio_write_page(&io_submit, page, len, wbc, keep_towrite);
-
-	if (ext4_io_submit_to_dd(inode, &io_submit) == -EOPNOTSUPP)
 		ext4_io_submit(&io_submit);
 	/* Drop io_end reference we got from init */
 	ext4_put_io_end_defer(io_submit.io_end);
@@ -2861,9 +2841,7 @@ retry:
 	}
 	ret = mpage_prepare_extent_to_map(&mpd);
 	/* Submit prepared bio */
-	if (ext4_io_submit_to_dd(inode, &mpd.io_submit) == -EOPNOTSUPP)
 		ext4_io_submit(&mpd.io_submit);
-
 	ext4_put_io_end_defer(mpd.io_submit.io_end);
 	mpd.io_submit.io_end = NULL;
 	/* Unlock pages we didn't use */
@@ -2936,9 +2914,7 @@ retry:
 			mpd.do_map = 0;
 		}
 		/* Submit prepared bio */
-		if (ext4_io_submit_to_dd(inode, &mpd.io_submit) == -EOPNOTSUPP)
 			ext4_io_submit(&mpd.io_submit);
-
 		/* Unlock pages we didn't use */
 		mpage_release_unused_pages(&mpd, give_up_on_write);
 		/*
@@ -4173,11 +4149,6 @@ static int __ext4_block_zero_page_range(handle_t *handle,
 			BUG_ON(blocksize != PAGE_SIZE);
 			WARN_ON_ONCE(fscrypt_decrypt_page(page->mapping->host,
 						page, PAGE_SIZE, 0, page->index));
-
-#ifdef CONFIG_DDAR
-			if (fscrypt_dd_encrypted_inode(inode))
-				WARN_ON_ONCE(fscrypt_dd_decrypt_page(page->mapping->host, page));
-#endif
 		}
 	}
 	if (ext4_should_journal_data(inode)) {
@@ -4987,7 +4958,6 @@ struct inode *__ext4_iget(struct super_block *sb, unsigned long ino,
 	raw_inode = ext4_raw_inode(&iloc);
 
 	if ((ino == EXT4_ROOT_INO) && (raw_inode->i_links_count == 0)) {
-		print_iloc_info(sb, iloc);
 		ext4_error_inode(inode, function, line, 0,
 				 "iget: root inode unallocated");
 		ret = -EFSCORRUPTED;
@@ -5005,7 +4975,6 @@ struct inode *__ext4_iget(struct super_block *sb, unsigned long ino,
 		if (EXT4_GOOD_OLD_INODE_SIZE + ei->i_extra_isize >
 			EXT4_INODE_SIZE(inode->i_sb) ||
 		    (ei->i_extra_isize & 3)) {
-			print_iloc_info(sb, iloc);
 			ext4_error_inode(inode, function, line, 0,
 					 "iget: bad extra_isize %u "
 					 "(inode size %u)",
@@ -5030,7 +4999,6 @@ struct inode *__ext4_iget(struct super_block *sb, unsigned long ino,
 	}
 
 	if (!ext4_inode_csum_verify(inode, raw_inode, ei)) {
-		print_iloc_info(sb, iloc);
 		ext4_error_inode(inode, function, line, 0,
 				 "iget: checksum invalid");
 		ret = -EFSBADCRC;
@@ -5071,7 +5039,6 @@ struct inode *__ext4_iget(struct super_block *sb, unsigned long ino,
 		    ino != EXT4_BOOT_LOADER_INO) {
 			/* this inode is deleted */
 			ret = -ESTALE;
-			print_iloc_info(sb, iloc);
 			goto bad_inode;
 		}
 		/* The only unlinked inodes we let through here have
@@ -5090,7 +5057,6 @@ struct inode *__ext4_iget(struct super_block *sb, unsigned long ino,
 			((__u64)le16_to_cpu(raw_inode->i_file_acl_high)) << 32;
 	inode->i_size = ext4_isize(sb, raw_inode);
 	if ((size = i_size_read(inode)) < 0) {
-		print_iloc_info(sb, iloc);
 		ext4_error_inode(inode, function, line, 0,
 				 "iget: bad i_size value: %lld", size);
 		ret = -EFSCORRUPTED;
@@ -5180,7 +5146,6 @@ struct inode *__ext4_iget(struct super_block *sb, unsigned long ino,
 	ret = 0;
 	if (ei->i_file_acl &&
 	    !ext4_data_block_valid(EXT4_SB(sb), ei->i_file_acl, 1)) {
-		print_iloc_info(sb, iloc);
 		ext4_error_inode(inode, function, line, 0,
 				 "iget: bad extended attribute block %llu",
 				 ei->i_file_acl);
@@ -5197,10 +5162,8 @@ struct inode *__ext4_iget(struct super_block *sb, unsigned long ino,
 				ret = ext4_ind_check_inode(inode);
 		}
 	}
-	if (ret) {
-		print_iloc_info(sb, iloc);
+	if (ret)
 		goto bad_inode;
-	}
 
 	if (S_ISREG(inode->i_mode)) {
 		inode->i_op = &ext4_file_inode_operations;
@@ -5212,7 +5175,6 @@ struct inode *__ext4_iget(struct super_block *sb, unsigned long ino,
 	} else if (S_ISLNK(inode->i_mode)) {
 		/* VFS does not allow setting these so must be corruption */
 		if (IS_APPEND(inode) || IS_IMMUTABLE(inode)) {
-			print_iloc_info(sb, iloc);
 			ext4_error_inode(inode, function, line, 0,
 					 "iget: immutable or append flags "
 					 "not allowed on symlinks");
@@ -5245,7 +5207,6 @@ struct inode *__ext4_iget(struct super_block *sb, unsigned long ino,
 		make_bad_inode(inode);
 	} else {
 		ret = -EFSCORRUPTED;
-		print_iloc_info(sb, iloc);
 		ext4_error_inode(inode, function, line, 0,
 				 "iget: bogus i_mode (%o)", inode->i_mode);
 		goto bad_inode;

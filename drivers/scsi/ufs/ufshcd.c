@@ -308,9 +308,6 @@ static void SEC_UFS_TW_info_get_diff(struct SEC_UFS_TW_info *target,
 		_ret;                                                   \
 	})
 
-/* Called by FS */
-extern void (*ufs_debug_func)(void *);
-
 static void ufshcd_hex_dump(struct ufs_hba *hba, const char * const str,
 			    const void *buf, size_t len)
 
@@ -13277,7 +13274,6 @@ int ufshcd_init(struct ufs_hba *hba, void __iomem *mmio_base, unsigned int irq)
 
 	/* init ufs_sec_debug function */
 	ufs_sec_send_errinfo(hba);
-	ufs_debug_func = ufs_sec_send_errinfo;
 
 	/* Hold auto suspend until async scan completes */
 	pm_runtime_get_sync(dev);
