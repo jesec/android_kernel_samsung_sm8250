@@ -4,9 +4,8 @@
  *
  * Copyright (C) 2015, Google, Inc.
  *
- * This contains encryption key functions.
- *
- * Written by Michael Halcrow, Ildar Muslukhov, and Uday Savagaonkar, 2015.
+ * Originally written by Michael Halcrow, Ildar Muslukhov, and Uday Savagaonkar.
+ * Heavily modified since then.
  */
 
 #ifndef _FSCRYPT_PRIVATE_H
@@ -44,7 +43,7 @@ struct fscrypt_context {
 	u8 contents_encryption_mode;
 	u8 filenames_encryption_mode;
 	u8 flags;
-	u8 master_key_descriptor[FS_KEY_DESCRIPTOR_SIZE];
+	u8 master_key_descriptor[FSCRYPT_KEY_DESCRIPTOR_SIZE];
 	u8 nonce[FS_KEY_DERIVATION_NONCE_SIZE];
 } __packed;
 
@@ -83,21 +82,23 @@ struct fscrypt_info {
 	 */
 	struct fscrypt_mode *ci_mode;
 
+	/* Back-pointer to the inode */
+	struct inode *ci_inode;
+
 	/*
-	 * If non-NULL, then this inode uses a master key directly rather than a
-	 * derived key, and ci_ctfm will equal ci_master_key->mk_ctfm.
-	 * Otherwise, this inode uses a derived key.
+	 * If non-NULL, then encryption is done using the master key directly
+	 * and ci_ctfm will equal ci_direct_key->dk_ctfm.
 	 */
-	struct fscrypt_master_key *ci_master_key;
+	struct fscrypt_direct_key *ci_direct_key;
 
 	/* fields from the fscrypt_context */
 
 	u8 ci_data_mode;
 	u8 ci_filename_mode;
 	u8 ci_flags;
-	u8 ci_master_key_descriptor[FS_KEY_DESCRIPTOR_SIZE];
+	u8 ci_master_key_descriptor[FSCRYPT_KEY_DESCRIPTOR_SIZE];
 	u8 ci_nonce[FS_KEY_DERIVATION_NONCE_SIZE];
-	u8 ci_raw_key[FS_MAX_KEY_SIZE];
+	u8 ci_raw_key[FSCRYPT_MAX_KEY_SIZE];
 };
 
 typedef enum {
@@ -110,20 +111,20 @@ typedef enum {
 static inline bool fscrypt_valid_enc_modes(u32 contents_mode,
 					   u32 filenames_mode)
 {
-	if (contents_mode == FS_ENCRYPTION_MODE_AES_128_CBC &&
-	    filenames_mode == FS_ENCRYPTION_MODE_AES_128_CTS)
+	if (contents_mode == FSCRYPT_MODE_AES_128_CBC &&
+	    filenames_mode == FSCRYPT_MODE_AES_128_CTS)
 		return true;
 
-	if (contents_mode == FS_ENCRYPTION_MODE_AES_256_XTS &&
-	    filenames_mode == FS_ENCRYPTION_MODE_AES_256_CTS)
+	if (contents_mode == FSCRYPT_MODE_AES_256_XTS &&
+	    filenames_mode == FSCRYPT_MODE_AES_256_CTS)
 		return true;
 
-	if (contents_mode == FS_ENCRYPTION_MODE_ADIANTUM &&
-	    filenames_mode == FS_ENCRYPTION_MODE_ADIANTUM)
+	if (contents_mode == FSCRYPT_MODE_ADIANTUM &&
+	    filenames_mode == FSCRYPT_MODE_ADIANTUM)
 		return true;
 
-	if (contents_mode == FS_ENCRYPTION_MODE_PRIVATE &&
-	    filenames_mode == FS_ENCRYPTION_MODE_AES_256_CTS)
+	if (contents_mode == FSCRYPT_MODE_PRIVATE &&
+	    filenames_mode == FSCRYPT_MODE_AES_256_CTS)
 		return true;
 
 	return false;
@@ -141,12 +142,12 @@ extern struct page *fscrypt_alloc_bounce_page(gfp_t gfp_flags);
 extern const struct dentry_operations fscrypt_d_ops;
 
 extern void __printf(3, 4) __cold
-fscrypt_msg(struct super_block *sb, const char *level, const char *fmt, ...);
+fscrypt_msg(const struct inode *inode, const char *level, const char *fmt, ...);
 
-#define fscrypt_warn(sb, fmt, ...)		\
-	fscrypt_msg(sb, KERN_WARNING, fmt, ##__VA_ARGS__)
-#define fscrypt_err(sb, fmt, ...)		\
-	fscrypt_msg(sb, KERN_ERR, fmt, ##__VA_ARGS__)
+#define fscrypt_warn(inode, fmt, ...)		\
+	fscrypt_msg((inode), KERN_WARNING, fmt, ##__VA_ARGS__)
+#define fscrypt_err(inode, fmt, ...)		\
+	fscrypt_msg((inode), KERN_ERR, fmt, ##__VA_ARGS__)
 
 #define FSCRYPT_MAX_IV_SIZE	32
 
@@ -183,6 +184,10 @@ struct fscrypt_mode {
 	bool inline_encryption;
 };
 
-extern void __exit fscrypt_essiv_cleanup(void);
+static inline bool
+fscrypt_mode_supports_direct_key(const struct fscrypt_mode *mode)
+{
+	return mode->ivsize >= offsetofend(union fscrypt_iv, nonce);
+}
 
 #endif /* _FSCRYPT_PRIVATE_H */
