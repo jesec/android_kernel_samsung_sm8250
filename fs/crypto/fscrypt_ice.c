@@ -1,6 +1,13 @@
-// SPDX-License-Identifier: GPL-2.0-only
-/*
- * Copyright (c) 2018-2019, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2018, The Linux Foundation. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  */
 
 #include "fscrypt_ice.h"
@@ -9,8 +16,7 @@ int fscrypt_using_hardware_encryption(const struct inode *inode)
 {
 	struct fscrypt_info *ci = inode->i_crypt_info;
 
-	return S_ISREG(inode->i_mode) && ci &&
-		ci->ci_data_mode == FS_ENCRYPTION_MODE_PRIVATE;
+	return ci && is_private_mode(ci->ci_mode);
 }
 EXPORT_SYMBOL(fscrypt_using_hardware_encryption);
 
@@ -58,7 +64,7 @@ int fscrypt_is_aes_xts_cipher(const struct inode *inode)
 	if (!ci)
 		return 0;
 
-	return (ci->ci_data_mode == FS_ENCRYPTION_MODE_PRIVATE);
+	return fscrypt_policy_contents_mode(&ci->ci_policy) == FSCRYPT_MODE_PRIVATE;
 }
 
 /*

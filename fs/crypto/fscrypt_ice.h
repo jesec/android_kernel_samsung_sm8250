@@ -1,6 +1,13 @@
-/* SPDX-License-Identifier: GPL-2.0-only */
-/*
- * Copyright (c) 2018-2019, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2018, The Linux Foundation. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  */
 
 #ifndef _FSCRYPT_ICE_H
@@ -13,9 +20,10 @@
 static inline int fscrypt_should_be_processed_by_ice(const struct inode *inode)
 {
 	if (!inode->i_sb->s_cop)
-		return false;
+		return 0;
+
 	if (!IS_ENCRYPTED((struct inode *)inode))
-		return false;
+		return 0;
 
 	return fscrypt_using_hardware_encryption(inode);
 }
@@ -47,12 +55,12 @@ static inline size_t fscrypt_get_ice_encryption_salt_size(
 #else
 static inline int fscrypt_should_be_processed_by_ice(const struct inode *inode)
 {
-	return false;
+	return 0;
 }
 
 static inline int fscrypt_is_ice_capable(const struct super_block *sb)
 {
-	return false;
+	return 0;
 }
 
 static inline char *fscrypt_get_ice_encryption_key(const struct inode *inode)
@@ -86,7 +94,7 @@ static inline bool fscrypt_is_ice_encryption_info_equal(
 					const struct inode *inode1,
 					const struct inode *inode2)
 {
-	return false;
+	return 0;
 }
 
 static inline int fscrypt_is_aes_xts_cipher(const struct inode *inode)
