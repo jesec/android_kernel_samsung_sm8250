@@ -495,10 +495,16 @@ static int __maybe_unused xhci_plat_runtime_resume(struct device *dev)
 	if (ret)
 		return ret;
 
-	ret = xhci_resume(xhci, false);
+	ret = xhci_resume(xhci, 0);
 	pm_runtime_mark_last_busy(dev);
+	if (ret)
+		return ret;
 
-	return ret;
+	pm_runtime_disable(dev);
+	pm_runtime_set_active(dev);
+	pm_runtime_enable(dev);
+
+	return 0;
 }
 
 static const struct dev_pm_ops xhci_plat_pm_ops = {
