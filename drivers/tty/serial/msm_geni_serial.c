@@ -191,8 +191,7 @@ struct msm_geni_serial_port {
 			unsigned int rx_fifo_wc,
 			unsigned int rx_last_byte_valid,
 			unsigned int rx_last,
-			bool drop_rx,
-			unsigned long *flags);
+			bool drop_rx);
 	struct device *wrapper_dev;
 	struct se_geni_rsc serial_rsc;
 	dma_addr_t tx_dma;
@@ -233,12 +232,12 @@ static int handle_rx_console(struct uart_port *uport,
 			unsigned int rx_fifo_wc,
 			unsigned int rx_last_byte_valid,
 			unsigned int rx_last,
-			bool drop_rx, unsigned long *flags);
+			bool drop_rx);
 static int handle_rx_hs(struct uart_port *uport,
 			unsigned int rx_fifo_wc,
 			unsigned int rx_last_byte_valid,
 			unsigned int rx_last,
-			bool drop_rx, unsigned long *flags);
+			bool drop_rx);
 unsigned int msm_geni_serial_tx_empty(struct uart_port *port);
 static int msm_geni_serial_power_on(struct uart_port *uport, bool force);
 static void msm_geni_serial_power_off(struct uart_port *uport, bool force);
@@ -258,7 +257,7 @@ static int uart_line_id;
 static struct msm_geni_serial_port msm_geni_console_port;
 static struct msm_geni_serial_port msm_geni_serial_ports[GENI_UART_NR_PORTS];
 static void msm_geni_serial_handle_isr(struct uart_port *uport,
-				unsigned long *flags);
+				unsigned long *flags, bool is_irq_masked);
 
 /*
  * The below API is required to check if uport->lock (spinlock)
@@ -371,7 +370,6 @@ bool geni_wait_for_cmd_done(struct uart_port *uport, bool is_irq_masked)
 {
 	struct msm_geni_serial_port *msm_port = GET_DEV_PORT(uport);
 	unsigned long timeout = POLL_ITERATIONS;
-	unsigned long ret;
 	unsigned long flags = 0;
 
 	/*
@@ -386,13 +384,13 @@ bool geni_wait_for_cmd_done(struct uart_port *uport, bool is_irq_masked)
 		 */
 		if (msm_port->m_cmd) {
 			while (!msm_port->m_cmd_done && timeout > 0) {
-				msm_geni_serial_handle_isr(uport, &flags);
+				msm_geni_serial_handle_isr(uport, &flags, true);
 				timeout--;
 				udelay(100);
 			}
 		} else if (msm_port->s_cmd) {
 			while (!msm_port->s_cmd_done && timeout > 0) {
-				msm_geni_serial_handle_isr(uport, &flags);
+				msm_geni_serial_handle_isr(uport, &flags, true);
 				timeout--;
 				udelay(100);
 			}
@@ -400,16 +398,16 @@ bool geni_wait_for_cmd_done(struct uart_port *uport, bool is_irq_masked)
 	} else {
 		/* Waiting for 10 milli second for interrupt to be fired */
 		if (msm_port->m_cmd)
-			ret = wait_for_completion_timeout
+			timeout = wait_for_completion_timeout
 					(&msm_port->m_cmd_timeout,
 				msecs_to_jiffies(POLL_WAIT_TIMEOUT_MSEC));
 		else if (msm_port->s_cmd)
-			ret = wait_for_completion_timeout
+			timeout = wait_for_completion_timeout
 					(&msm_port->s_cmd_timeout,
 				msecs_to_jiffies(POLL_WAIT_TIMEOUT_MSEC));
 	}
 
-	return ret ? 0 : 1;
+	return timeout ? 0 : 1;
 }
 
 static void msm_geni_serial_config_port(struct uart_port *uport, int cfg_flags)
@@ -678,7 +676,8 @@ static unsigned int msm_geni_serial_get_mctrl(struct uart_port *uport)
 	geni_ios = geni_read_reg_nolog(uport->membase, SE_GENI_IOS);
 	if (!(geni_ios & IO2_DATA_IN))
 		mctrl |= TIOCM_CTS;
-
+	IPC_LOG_MSG(port->ipc_log_misc, "%s: geni_ios:0x%x, mctrl:0x%x\n",
+			__func__, geni_ios, mctrl);
 	return mctrl;
 }
 
@@ -1106,13 +1105,12 @@ static int handle_rx_console(struct uart_port *uport,
 			unsigned int rx_fifo_wc,
 			unsigned int rx_last_byte_valid,
 			unsigned int rx_last,
-			bool drop_rx, unsigned long *flags)
+			bool drop_rx)
 {
 	int i, c;
 	unsigned char *rx_char;
 	struct tty_port *tport;
 	struct msm_geni_serial_port *msm_port = GET_DEV_PORT(uport);
-	bool locked;
 
 	tport = &uport->state->port;
 	for (i = 0; i < rx_fifo_wc; i++) {
@@ -1138,23 +1136,6 @@ static int handle_rx_console(struct uart_port *uport,
 				tty_insert_flip_char(tport, rx_char[c], flag);
 		}
 	}
-	if (!drop_rx) {
-		/*
-		 * Driver acquiring port->lock in isr function and calling
-		 * tty_flip_buffer_push() which in turn will wait for
-		 * another lock from framework __queue_work function.
-		 * release the port lock before calling tty_flip_buffer_push()
-		 * to avoid deadlock scenarios.
-		 */
-		locked = msm_geni_serial_spinlocked(uport);
-		if (locked) {
-			spin_unlock_irqrestore(&uport->lock, *flags);
-			tty_flip_buffer_push(tport);
-			spin_lock_irqsave(&uport->lock, *flags);
-		} else {
-			tty_flip_buffer_push(tport);
-		}
-	}
 	return 0;
 }
 #else
@@ -1162,7 +1143,7 @@ static int handle_rx_console(struct uart_port *uport,
 			unsigned int rx_fifo_wc,
 			unsigned int rx_last_byte_valid,
 			unsigned int rx_last,
-			bool drop_rx, unsigned long *flags)
+			bool drop_rx)
 {
 	return -EPERM;
 }
@@ -1599,7 +1580,7 @@ static void stop_rx_sequencer(struct uart_port *uport)
 			    "%s cancel failed is_rx_active:%d 0x%x\n",
 			    __func__, is_rx_active, geni_status);
 		if (uart_console(uport) && !is_rx_active) {
-			msm_geni_serial_handle_isr(uport, &flags);
+			msm_geni_serial_handle_isr(uport, &flags, true);
 			goto exit_rx_seq;
 		}
 		port->s_cmd_done = false;
@@ -1648,7 +1629,7 @@ static int handle_rx_hs(struct uart_port *uport,
 			unsigned int rx_fifo_wc,
 			unsigned int rx_last_byte_valid,
 			unsigned int rx_last,
-			bool drop_rx, unsigned long *flags)
+			bool drop_rx)
 {
 	unsigned char *rx_char;
 	struct tty_port *tport;
@@ -1680,8 +1661,7 @@ static int handle_rx_hs(struct uart_port *uport,
 	return ret;
 }
 
-static int msm_geni_serial_handle_rx(struct uart_port *uport, bool drop_rx,
-				     unsigned long *flags)
+static int msm_geni_serial_handle_rx(struct uart_port *uport, bool drop_rx)
 {
 	int ret = 0;
 	unsigned int rx_fifo_status;
@@ -1700,7 +1680,7 @@ static int msm_geni_serial_handle_rx(struct uart_port *uport, bool drop_rx,
 	rx_last = rx_fifo_status & RX_LAST;
 	if (rx_fifo_wc)
 		ret = port->handle_rx(uport, rx_fifo_wc, rx_last_byte_valid,
-						rx_last, drop_rx, flags);
+						rx_last, drop_rx);
 	return ret;
 }
 
@@ -1892,7 +1872,8 @@ static int msm_geni_serial_handle_dma_tx(struct uart_port *uport)
 }
 
 static void msm_geni_serial_handle_isr(struct uart_port *uport,
-				       unsigned long *flags)
+				       unsigned long *flags,
+				       bool is_irq_masked)
 {
 	unsigned int m_irq_status;
 	unsigned int s_irq_status;
@@ -1980,8 +1961,16 @@ static void msm_geni_serial_handle_isr(struct uart_port *uport,
 		}
 
 		if (s_irq_status & (S_RX_FIFO_WATERMARK_EN |
-							S_RX_FIFO_LAST_EN))
-			msm_geni_serial_handle_rx(uport, drop_rx, flags);
+							S_RX_FIFO_LAST_EN)) {
+			msm_geni_serial_handle_rx(uport, drop_rx);
+			if (!drop_rx && !is_irq_masked) {
+				spin_unlock_irqrestore(&uport->lock, *flags);
+				tty_flip_buffer_push(tport);
+				spin_lock_irqsave(&uport->lock, *flags);
+			} else if (!drop_rx) {
+				tty_flip_buffer_push(tport);
+			}
+		}
 	} else {
 		dma_tx_status = geni_read_reg_nolog(uport->membase,
 							SE_DMA_TX_IRQ_STAT);
@@ -1993,15 +1982,15 @@ static void msm_geni_serial_handle_isr(struct uart_port *uport,
 			geni_write_reg_nolog(dma_tx_status, uport->membase,
 						SE_DMA_TX_IRQ_CLR);
 
-			if (dma_tx_status & TX_DMA_DONE)
-				msm_geni_serial_handle_dma_tx(uport);
-
 			if (dma_tx_status & (TX_RESET_DONE |
 						TX_GENI_CANCEL_IRQ))
 				m_cmd_done = true;
 
 			if (m_irq_status & (M_CMD_CANCEL_EN | M_CMD_ABORT_EN))
 				m_cmd_done = true;
+
+			if ((dma_tx_status & TX_DMA_DONE) && !m_cmd_done)
+				msm_geni_serial_handle_dma_tx(uport);
 		}
 
 		if (dma_rx_status) {
@@ -2077,7 +2066,7 @@ static irqreturn_t msm_geni_serial_isr(int isr, void *dev)
 	unsigned long flags;
 
 	spin_lock_irqsave(&uport->lock, flags);
-	msm_geni_serial_handle_isr(uport, &flags);
+	msm_geni_serial_handle_isr(uport, &flags, false);
 	spin_unlock_irqrestore(&uport->lock, flags);
 	return IRQ_HANDLED;
 }
