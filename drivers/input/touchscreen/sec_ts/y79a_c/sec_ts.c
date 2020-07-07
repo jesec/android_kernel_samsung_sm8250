@@ -3484,6 +3484,12 @@ out:
 	if (ts->lowpower_mode)
 		reinit_completion(&ts->resume_done);
 
+	mutex_lock(&ts->modechange);
+	if (ts->input_closed && ts->lowpower_mode && ts->power_status == SEC_TS_STATE_LPM) {
+		sec_ts_stop_device(ts);
+	}
+	mutex_unlock(&ts->modechange);
+
 	return 0;
 }
 
@@ -3493,6 +3499,13 @@ static int sec_ts_pm_resume(struct device *dev)
 
 	if (ts->lowpower_mode)
 		complete_all(&ts->resume_done);
+
+	mutex_lock(&ts->modechange);
+	if (ts->input_closed && ts->lowpower_mode && ts->power_status == SEC_TS_STATE_POWER_OFF) {
+		sec_ts_start_device(ts);
+		sec_ts_set_lowpowermode(ts, TO_LOWPOWER_MODE);
+	}
+	mutex_unlock(&ts->modechange);
 
 	return 0;
 }
