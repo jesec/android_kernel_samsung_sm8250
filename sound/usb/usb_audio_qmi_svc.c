@@ -1163,7 +1163,7 @@ static void handle_uaudio_stream_req(struct qmi_handle *handle,
 
 response:
 	pr_info("%s : response : ret = %d\n", __func__, ret);
-	if (!req_msg->enable && (ret != -EINVAL || ret != -ENODEV)) {
+	if (!req_msg->enable && ret != -EINVAL && ret != -ENODEV) {
 		mutex_lock(&chip->dev_lock);
 		if (info_idx >= 0) {
 			info = &uadev[pcm_card_num].info[info_idx];
