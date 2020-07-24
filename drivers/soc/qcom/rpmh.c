@@ -175,27 +175,20 @@ static struct cache_req *cache_rpm_request(struct rpmh_ctrlr *ctrlr,
 existing:
 	switch (state) {
 	case RPMH_ACTIVE_ONLY_STATE:
-		if (req->sleep_val != UINT_MAX) {
+		if (req->sleep_val != UINT_MAX)
 			req->wake_val = cmd->data;
-			ctrlr->dirty = true;
-		}
 		break;
 	case RPMH_WAKE_ONLY_STATE:
-		if (req->wake_val != cmd->data) {
-			req->wake_val = cmd->data;
-			ctrlr->dirty = true;
-		}
+		req->wake_val = cmd->data;
 		break;
 	case RPMH_SLEEP_STATE:
-		if (req->sleep_val != cmd->data) {
-			req->sleep_val = cmd->data;
-			ctrlr->dirty = true;
-		}
+		req->sleep_val = cmd->data;
 		break;
 	default:
 		break;
 	}
 
+	ctrlr->dirty = true;
 unlock:
 	spin_unlock(&ctrlr->cache_lock);
 
