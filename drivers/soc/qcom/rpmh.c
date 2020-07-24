@@ -155,6 +155,7 @@ static struct cache_req *cache_rpm_request(struct rpmh_ctrlr *ctrlr,
 					   struct tcs_cmd *cmd)
 {
 	struct cache_req *req;
+	u32 old_sleep_val, old_wake_val;
 
 	spin_lock(&ctrlr->cache_lock);
 	req = __find_req(ctrlr, cmd->addr);
@@ -169,26 +170,27 @@ static struct cache_req *cache_rpm_request(struct rpmh_ctrlr *ctrlr,
 
 	req->addr = cmd->addr;
 	req->sleep_val = req->wake_val = UINT_MAX;
-	INIT_LIST_HEAD(&req->list);
 	list_add_tail(&req->list, &ctrlr->cache);
 
 existing:
+	old_sleep_val = req->sleep_val;
+	old_wake_val = req->wake_val;
+
 	switch (state) {
 	case RPMH_ACTIVE_ONLY_STATE:
-		if (req->sleep_val != UINT_MAX)
-			req->wake_val = cmd->data;
-		break;
 	case RPMH_WAKE_ONLY_STATE:
 		req->wake_val = cmd->data;
 		break;
 	case RPMH_SLEEP_STATE:
 		req->sleep_val = cmd->data;
 		break;
-	default:
-		break;
 	}
 
-	ctrlr->dirty = true;
+	ctrlr->dirty = (req->sleep_val != old_sleep_val ||
+			req->wake_val != old_wake_val) &&
+			req->sleep_val != UINT_MAX &&
+			req->wake_val != UINT_MAX;
+
 unlock:
 	spin_unlock(&ctrlr->cache_lock);
 
@@ -342,6 +344,7 @@ static void cache_batch(struct rpmh_ctrlr *ctrlr, struct batch_cache_req *req)
 
 	spin_lock(&ctrlr->cache_lock);
 	list_add_tail(&req->list, &ctrlr->batch_cache);
+	ctrlr->dirty = true;
 	spin_unlock(&ctrlr->cache_lock);
 }
 
@@ -366,19 +369,6 @@ static int flush_batch(struct rpmh_ctrlr *ctrlr)
 	spin_unlock(&ctrlr->cache_lock);
 
 	return ret;
-}
-
-static void invalidate_batch(struct rpmh_ctrlr *ctrlr)
-{
-	struct batch_cache_req *req, *tmp;
-
-	spin_lock(&ctrlr->cache_lock);
-	list_for_each_entry_safe(req, tmp, &ctrlr->batch_cache, list) {
-		list_del(&req->list);
-		kfree(req);
-	}
-	INIT_LIST_HEAD(&ctrlr->batch_cache);
-	spin_unlock(&ctrlr->cache_lock);
 }
 
 /**
@@ -562,9 +552,12 @@ int rpmh_flush(const struct device *dev)
 		return 0;
 	}
 
+	/* Invalidate the TCSes first to avoid stale data */
 	do {
 		ret = rpmh_rsc_invalidate(ctrlr_to_drv(ctrlr));
 	} while (ret == -EAGAIN);
+	if (ret)
+		return ret;
 
 	/* First flush the cached batch requests */
 	ret = flush_batch(ctrlr);
@@ -597,29 +590,28 @@ int rpmh_flush(const struct device *dev)
 EXPORT_SYMBOL(rpmh_flush);
 
 /**
- * rpmh_invalidate: Invalidate all sleep and active sets
- * sets.
+ * rpmh_invalidate: Invalidate sleep and wake sets in batch_cache
  *
  * @dev: The device making the request
  *
- * Invalidate the sleep and active values in the TCS blocks.
+ * Invalidate the sleep and wake values in batch_cache.
  */
 int rpmh_invalidate(const struct device *dev)
 {
 	struct rpmh_ctrlr *ctrlr = get_rpmh_ctrlr(dev);
-	int ret;
+	struct batch_cache_req *req, *tmp;
 
 	if (rpmh_standalone)
 		return 0;
 
-	invalidate_batch(ctrlr);
+	spin_lock(&ctrlr->cache_lock);
+	list_for_each_entry_safe(req, tmp, &ctrlr->batch_cache, list)
+		kfree(req);
+	INIT_LIST_HEAD(&ctrlr->batch_cache);
 	ctrlr->dirty = true;
+	spin_unlock(&ctrlr->cache_lock);
 
-	do {
-		ret = rpmh_rsc_invalidate(ctrlr_to_drv(ctrlr));
-	} while (ret == -EAGAIN);
-
-	return ret;
+	return 0;
 }
 EXPORT_SYMBOL(rpmh_invalidate);
 
