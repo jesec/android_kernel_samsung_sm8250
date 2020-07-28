@@ -1625,7 +1625,6 @@ err0:
 
 	return ret;
 }
-
 static int dwc3_remove(struct platform_device *pdev)
 {
 	struct dwc3	*dwc = platform_get_drvdata(pdev);
