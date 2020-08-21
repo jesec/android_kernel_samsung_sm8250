@@ -546,11 +546,14 @@
  *
  * TEXT_MAIN here will match .text.fixup and .text.unlikely if dead
  * code elimination is enabled, so these sections should be converted
- * to use ".." first.
+* to use ".." first.
  */
 #define TEXT_TEXT							\
 		ALIGN_FUNCTION();					\
-		*(.text.hot TEXT_MAIN .text.fixup .text.unlikely)	\
+		*(.text.hot .text.hot.*)				\
+		*(TEXT_MAIN .text.fixup)				\
+		*(.text.unlikely .text.unlikely.*)			\
+		*(.text.unknown .text.unknown.*)			\
 		*(TEXT_CFI_MAIN) 					\
 		*(.text..refcount)					\
 		*(.text..ftrace)					\
