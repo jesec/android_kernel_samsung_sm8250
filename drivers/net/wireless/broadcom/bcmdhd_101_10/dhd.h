@@ -4,7 +4,7 @@
  * Provides type definitions and function prototypes used to link the
  * DHD OS, bus, and protocol modules.
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -160,11 +160,12 @@ enum dhd_bus_devreset_type {
 #define DHD_BUS_BUSY_RPM_ALL                 (DHD_BUS_BUSY_RPM_SUSPEND_DONE | \
 		DHD_BUS_BUSY_RPM_SUSPEND_IN_PROGRESS | \
 		DHD_BUS_BUSY_RPM_RESUME_IN_PROGRESS)
-#define DHD_BUS_BUSY_IN_CHECKDIED            0x800
-#define DHD_BUS_BUSY_IN_MEMDUMP				 0x1000
-#define DHD_BUS_BUSY_IN_SSSRDUMP			 0x2000
-#define DHD_BUS_BUSY_IN_LOGDUMP				 0x4000
-#define DHD_BUS_BUSY_IN_HALDUMP				 0x8000
+#define DHD_BUS_BUSY_IN_CHECKDIED		0x800
+#define DHD_BUS_BUSY_IN_MEMDUMP			0x1000
+#define DHD_BUS_BUSY_IN_SSSRDUMP		0x2000
+#define DHD_BUS_BUSY_IN_LOGDUMP			0x4000
+#define DHD_BUS_BUSY_IN_HALDUMP			0x8000
+#define DHD_BUS_BUSY_IN_NAPI			0x10000
 
 #define DHD_BUS_BUSY_SET_IN_TX(dhdp) \
 	(dhdp)->dhd_bus_busy_state |= DHD_BUS_BUSY_IN_TX
@@ -198,6 +199,8 @@ enum dhd_bus_devreset_type {
 	(dhdp)->dhd_bus_busy_state |= DHD_BUS_BUSY_IN_LOGDUMP
 #define DHD_BUS_BUSY_SET_IN_HALDUMP(dhdp) \
 	(dhdp)->dhd_bus_busy_state |= DHD_BUS_BUSY_IN_HALDUMP
+#define DHD_BUS_BUSY_SET_IN_NAPI(dhdp) \
+	(dhdp)->dhd_bus_busy_state |= DHD_BUS_BUSY_IN_NAPI
 
 #define DHD_BUS_BUSY_CLEAR_IN_TX(dhdp) \
 	(dhdp)->dhd_bus_busy_state &= ~DHD_BUS_BUSY_IN_TX
@@ -231,6 +234,8 @@ enum dhd_bus_devreset_type {
 	(dhdp)->dhd_bus_busy_state &= ~DHD_BUS_BUSY_IN_LOGDUMP
 #define DHD_BUS_BUSY_CLEAR_IN_HALDUMP(dhdp) \
 	(dhdp)->dhd_bus_busy_state &= ~DHD_BUS_BUSY_IN_HALDUMP
+#define DHD_BUS_BUSY_CLEAR_IN_NAPI(dhdp) \
+	(dhdp)->dhd_bus_busy_state &= ~DHD_BUS_BUSY_IN_NAPI
 
 #define DHD_BUS_BUSY_CHECK_IN_TX(dhdp) \
 	((dhdp)->dhd_bus_busy_state & DHD_BUS_BUSY_IN_TX)
@@ -514,7 +519,8 @@ enum dhd_dongledump_type {
 	DUMP_TYPE_SEQUENTIAL_PRIVCMD_ERROR	= 28,
 	DUMP_TYPE_PROXD_TIMEOUT			= 29,
 	DUMP_TYPE_INBAND_DEVICE_WAKE_FAILURE	= 30,
-	DUMP_TYPE_PKTID_POOL_DEPLETED		= 31
+	DUMP_TYPE_PKTID_POOL_DEPLETED		= 31,
+	DUMP_TYPE_ESCAN_SYNCID_MISMATCH		= 32
 };
 
 enum dhd_hang_reason {
@@ -536,6 +542,7 @@ enum dhd_hang_reason {
 	HANG_REASON_BSS_UP_FAILURE			= 0x8010,
 	HANG_REASON_BSS_DOWN_FAILURE			= 0x8011,
 	HANG_REASON_IOCTL_SUSPEND_ERROR			= 0x8012,
+	HANG_REASON_ESCAN_SYNCID_MISMATCH		= 0x8013,
 	HANG_REASON_PCIE_LINK_DOWN_RC_DETECT		= 0x8805,
 	HANG_REASON_INVALID_EVENT_OR_DATA		= 0x8806,
 	HANG_REASON_UNKNOWN				= 0x8807,
@@ -1054,7 +1061,6 @@ typedef struct dhd_pub {
 	bool is_blob;			/* Checking for existance of Blob file */
 #endif /* DHD_BLOB_EXISTENCE_CHECK */
 	bool force_country_change;
-	char eventmask[WL_EVENTING_MASK_LEN];
 	int	op_mode;				/* STA, HostAPD, WFD, SoftAP */
 
 	struct mutex wl_start_stop_lock; /* lock/unlock for Android start/stop */
@@ -1450,10 +1456,20 @@ typedef struct dhd_pub {
 	dhd_db7_info_t db7_trap;
 	bool fw_preinit;
 	bool ring_attached;
+#ifdef DHD_PCIE_RUNTIMEPM
+	bool rx_pending_due_to_rpm;
+#endif /* DHD_PCIE_RUNTIMEPM */
 	bool disable_dtim_in_suspend;	/* Disable set bcn_li_dtim in suspend */
 	union {
 		wl_roam_stats_v1_t v1;
 	} roam_evt;
+	bool arpoe_enable;
+	bool arpol_configured;
+#ifdef DHD_TX_PROFILE
+	bool tx_profile_enab;
+	uint8 num_profiles;
+	dhd_tx_profile_protocol_t *protocol_filters;
+#endif /* defined(DHD_TX_PROFILE) */
 } dhd_pub_t;
 
 #if defined(__linux__)
@@ -1620,6 +1636,8 @@ extern void dhd_pm_wake_lock_timeout(dhd_pub_t *pub, int val);
 extern void dhd_pm_wake_unlock(dhd_pub_t *pub);
 extern void dhd_txfl_wake_lock_timeout(dhd_pub_t *pub, int val);
 extern void dhd_txfl_wake_unlock(dhd_pub_t *pub);
+extern void dhd_nan_wake_lock_timeout(dhd_pub_t *pub, int val);
+extern void dhd_nan_wake_unlock(dhd_pub_t *pub);
 extern int dhd_os_wake_lock_timeout(dhd_pub_t *pub);
 extern int dhd_os_wake_lock_rx_timeout_enable(dhd_pub_t *pub, int val);
 extern int dhd_os_wake_lock_ctrl_timeout_enable(dhd_pub_t *pub, int val);
@@ -1693,6 +1711,16 @@ inline static void MUTEX_UNLOCK_SOFTAP_SET(dhd_pub_t * dhdp)
 		printf("call pm_wake unlock\n"); \
 		dhd_txfl_wake_unlock(pub); \
 	} while (0)
+#define DHD_NAN_WAKE_LOCK_TIMEOUT(pub, val) \
+	do { \
+		printf("call pm_wake_timeout enable\n"); \
+		dhd_nan_wake_lock_timeout(pub, val); \
+	} while (0)
+#define DHD_NAN_WAKE_UNLOCK(pub) \
+	do { \
+		printf("call pm_wake unlock\n"); \
+		dhd_nan_wake_unlock(pub); \
+	} while (0)
 #define DHD_OS_WAKE_LOCK_TIMEOUT(pub) \
 	do { \
 		printf("call wake_lock_timeout: %s %d\n", \
@@ -1750,6 +1778,8 @@ inline static void MUTEX_UNLOCK_SOFTAP_SET(dhd_pub_t * dhdp)
 #define DHD_PM_WAKE_UNLOCK(pub) 			dhd_pm_wake_unlock(pub)
 #define DHD_TXFL_WAKE_LOCK_TIMEOUT(pub, val)	dhd_txfl_wake_lock_timeout(pub, val)
 #define DHD_TXFL_WAKE_UNLOCK(pub) 			dhd_txfl_wake_unlock(pub)
+#define DHD_NAN_WAKE_LOCK_TIMEOUT(pub, val)	dhd_nan_wake_lock_timeout(pub, val)
+#define DHD_NAN_WAKE_UNLOCK(pub)		dhd_nan_wake_unlock(pub)
 #define DHD_OS_WAKE_LOCK_TIMEOUT(pub)		dhd_os_wake_lock_timeout(pub)
 #define DHD_OS_WAKE_LOCK_RX_TIMEOUT_ENABLE(pub, val) \
 	dhd_os_wake_lock_rx_timeout_enable(pub, val)
@@ -2266,6 +2296,9 @@ extern void dhd_sendup_log(dhd_pub_t *dhdp, void *data, int len);
 #if defined(SHOW_LOGTRACE) && defined(EWP_EDL)
 void dhd_sendup_info_buf(dhd_pub_t *dhdp, uint8 *msg);
 #endif
+#if defined(WIFI_TURNON_USE_HALINIT)
+extern int dhd_open(struct net_device *net);
+#endif /* WIFI_TURNON_USE_HALINIT */
 extern int dhd_bus_devreset(dhd_pub_t *dhdp, uint8 flag);
 extern uint dhd_bus_status(dhd_pub_t *dhdp);
 extern int  dhd_bus_start(dhd_pub_t *dhdp);
@@ -2337,7 +2370,7 @@ extern struct net_device *dhd_linux_get_primary_netdev(dhd_pub_t *dhdp);
 
 extern bool dhd_is_concurrent_mode(dhd_pub_t *dhd);
 int dhd_iovar(dhd_pub_t *pub, int ifidx, char *name, char *param_buf, uint param_len,
-		char *res_buf, uint res_len, int set);
+		char *res_buf, uint res_len, bool set);
 extern int dhd_getiovar(dhd_pub_t *pub, int ifidx, char *name, char *cmd_buf,
 		uint cmd_len, char **resptr, uint resp_len);
 
@@ -2391,9 +2424,6 @@ extern uint dhd_poll;
 
 /* ARP offload agent mode */
 extern uint dhd_arp_mode;
-
-/* ARP offload enable */
-extern uint dhd_arp_enable;
 
 /* Pkt filte enable control */
 extern uint dhd_pkt_filter_enable;
@@ -3026,11 +3056,26 @@ int dhd_parse_map_file(osl_t *osh, void *file, uint32 *ramstart,
 int dhd_event_logtrace_infobuf_pkt_process(dhd_pub_t *dhdp, void *pktbuf,
 		dhd_event_log_t *event_data);
 #endif /* PCIE_FULL_DONGLE */
-#ifdef CUSTOM_CONTROL_LOGTRACE
-/* By default logstr parsing is disabled */
-extern uint8 control_logtrace;
-#endif /* CUSTOM_CONTROL_LOGTRACE */
 #endif /* SHOW_LOGTRACE */
+
+/*
+ * control_logtrace:
+ * "0" -> do not print event log messages in any form
+ * "1" -> print event log messages as EL
+ * "2" -> print event log messages as formatted CONSOLE_E if logstrs.bin etc. files are available
+ */
+typedef enum logtrace_ctrl {
+	LOGTRACE_DISABLE = 0,
+	LOGTRACE_RAW_FMT = 1,
+	LOGTRACE_PARSED_FMT = 2
+} logtrace_ctrl_t;
+
+#define DEFAULT_CONTROL_LOGTRACE	LOGTRACE_PARSED_FMT
+#ifndef CUSTOM_CONTROL_LOGTRACE
+#define CUSTOM_CONTROL_LOGTRACE		DEFAULT_CONTROL_LOGTRACE
+#endif
+
+extern uint8 control_logtrace;
 
 #define dhd_is_device_removed(x) FALSE
 #define dhd_os_ind_firmware_stall(x)
@@ -3186,6 +3231,15 @@ extern void dhd_pktid_logging_dump(dhd_pub_t *dhdp);
 #endif /* DHD_MAP_PKTID_LOGGING */
 
 #ifdef DHD_PCIE_RUNTIMEPM
+#define DEFAULT_DHD_RUNTIME_MS 100
+#ifndef CUSTOM_DHD_RUNTIME_MS
+#define CUSTOM_DHD_RUNTIME_MS DEFAULT_DHD_RUNTIME_MS
+#endif /* CUSTOM_DHD_RUNTIME_MS */
+
+#ifndef MAX_IDLE_COUNT
+#define MAX_IDLE_COUNT 11
+#endif /* MAX_IDLE_COUNT */
+
 extern bool dhd_runtimepm_state(dhd_pub_t *dhd);
 extern bool dhd_runtime_bus_wake(struct dhd_bus *bus, bool wait, void *func_addr);
 extern bool dhdpcie_runtime_bus_wake(dhd_pub_t *dhdp, bool wait, void *func_addr);
@@ -3574,4 +3628,10 @@ extern void dhd_sdtc_etb_init(dhd_pub_t *dhd);
 extern void dhd_sdtc_etb_deinit(dhd_pub_t *dhd);
 extern void dhd_sdtc_etb_dump(dhd_pub_t *dhd);
 #endif /* DHD_SDTC_ETB_DUMP */
+
+#ifdef DHD_TX_PROFILE
+int dhd_tx_profile_attach(dhd_pub_t *dhdp);
+int dhd_tx_profile_detach(dhd_pub_t *dhdp);
+#endif /* defined (DHD_TX_PROFILE) */
+
 #endif /* _dhd_h_ */

@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
  * include/linux/external_notify.h
  *
@@ -22,7 +23,7 @@
  *
  */
 
-  /* usb notify layer v3.3 */
+  /* usb notify layer v3.4 */
 
 #ifndef __EXTERNAL_NOTIFY_H__
 #define __EXTERNAL_NOTIFY_H__

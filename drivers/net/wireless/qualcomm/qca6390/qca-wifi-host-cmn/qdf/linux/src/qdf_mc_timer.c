@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014-2019 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2014-2020 The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -30,6 +30,7 @@
 #include "qdf_mem.h"
 #include <qdf_module.h>
 #include "qdf_timer.h"
+#include <linux/time64.h>
 
 /* Preprocessor definitions and constants */
 #define LINUX_TIMER_COOKIE 0x12341234
@@ -99,21 +100,27 @@ qdf_export_symbol(qdf_try_allowing_sleep);
  */
 QDF_TIMER_STATE qdf_mc_timer_get_current_state(qdf_mc_timer_t *timer)
 {
+	QDF_TIMER_STATE timer_state = QDF_TIMER_STATE_UNUSED;
+
 	if (!timer) {
 		QDF_ASSERT(0);
-		return QDF_TIMER_STATE_UNUSED;
+		return timer_state;
 	}
+
+	qdf_spin_lock_irqsave(&timer->platform_info.spinlock);
 
 	switch (timer->state) {
 	case QDF_TIMER_STATE_STOPPED:
 	case QDF_TIMER_STATE_STARTING:
 	case QDF_TIMER_STATE_RUNNING:
 	case QDF_TIMER_STATE_UNUSED:
-		return timer->state;
+		timer_state = timer->state;
+		break;
 	default:
 		QDF_ASSERT(0);
-		return QDF_TIMER_STATE_UNUSED;
 	}
+	qdf_spin_unlock_irqrestore(&timer->platform_info.spinlock);
+	return timer_state;
 }
 qdf_export_symbol(qdf_mc_timer_get_current_state);
 
@@ -670,8 +677,8 @@ QDF_STATUS qdf_mc_timer_start(qdf_mc_timer_t *timer, uint32_t expiration_time)
 	if (QDF_TIMER_STATE_STOPPED != timer->state) {
 		qdf_spin_unlock_irqrestore(&timer->platform_info.spinlock);
 		QDF_TRACE(QDF_MODULE_ID_QDF, QDF_TRACE_LEVEL_ERROR,
-			  "%s: Cannot start timer in state = %d ", __func__,
-			  timer->state);
+			  "%s: Cannot start timer in state = %d %ps",
+			  __func__, timer->state, (void *)timer->callback);
 		return QDF_STATUS_E_ALREADY;
 	}
 
@@ -717,16 +724,16 @@ QDF_STATUS qdf_mc_timer_stop(qdf_mc_timer_t *timer)
 {
 	/* check for invalid pointer */
 	if (!timer) {
-		QDF_TRACE(QDF_MODULE_ID_QDF, QDF_TRACE_LEVEL_ERROR,
-			  "%s Null timer pointer being passed", __func__);
+		QDF_TRACE_DEBUG_RL(QDF_MODULE_ID_QDF,
+				   "%s Null timer pointer", __func__);
 		QDF_ASSERT(0);
 		return QDF_STATUS_E_INVAL;
 	}
 
 	/* check if timer refers to an uninitialized object */
 	if (LINUX_TIMER_COOKIE != timer->platform_info.cookie) {
-		QDF_TRACE(QDF_MODULE_ID_QDF, QDF_TRACE_LEVEL_ERROR,
-			  "%s: Cannot stop uninitialized timer", __func__);
+		QDF_TRACE_DEBUG_RL(QDF_MODULE_ID_QDF,
+				   "%s: Cannot stop uninit timer", __func__);
 		QDF_ASSERT(0);
 
 		return QDF_STATUS_E_INVAL;
@@ -737,17 +744,16 @@ QDF_STATUS qdf_mc_timer_stop(qdf_mc_timer_t *timer)
 
 	if (QDF_TIMER_STATE_RUNNING != timer->state) {
 		qdf_spin_unlock_irqrestore(&timer->platform_info.spinlock);
-		QDF_TRACE(QDF_MODULE_ID_QDF, QDF_TRACE_LEVEL_INFO_HIGH,
-			  "%s: Cannot stop timer in state = %d",
-			  __func__, timer->state);
 		return QDF_STATUS_SUCCESS;
 	}
-
-	timer->state = QDF_TIMER_STATE_STOPPED;
 
 	qdf_spin_unlock_irqrestore(&timer->platform_info.spinlock);
 
 	del_timer(&(timer->platform_info.timer));
+
+	qdf_spin_lock_irqsave(&timer->platform_info.spinlock);
+	timer->state = QDF_TIMER_STATE_STOPPED;
+	qdf_spin_unlock_irqrestore(&timer->platform_info.spinlock);
 
 	qdf_try_allowing_sleep(timer->type);
 
@@ -759,16 +765,16 @@ QDF_STATUS qdf_mc_timer_stop_sync(qdf_mc_timer_t *timer)
 {
 	/* check for invalid pointer */
 	if (!timer) {
-		QDF_TRACE(QDF_MODULE_ID_QDF, QDF_TRACE_LEVEL_ERROR,
-			  "%s Null timer pointer being passed", __func__);
+		QDF_TRACE_DEBUG_RL(QDF_MODULE_ID_QDF,
+				   "%s Null timer pointer", __func__);
 		QDF_ASSERT(0);
 		return QDF_STATUS_E_INVAL;
 	}
 
 	/* check if timer refers to an uninitialized object */
 	if (LINUX_TIMER_COOKIE != timer->platform_info.cookie) {
-		QDF_TRACE(QDF_MODULE_ID_QDF, QDF_TRACE_LEVEL_ERROR,
-			  "%s: Cannot stop uninitialized timer", __func__);
+		QDF_TRACE_DEBUG_RL(QDF_MODULE_ID_QDF,
+				   "%s: Cannot stop uninit timer", __func__);
 		QDF_ASSERT(0);
 
 		return QDF_STATUS_E_INVAL;
@@ -779,9 +785,6 @@ QDF_STATUS qdf_mc_timer_stop_sync(qdf_mc_timer_t *timer)
 
 	if (QDF_TIMER_STATE_RUNNING != timer->state) {
 		qdf_spin_unlock_irqrestore(&timer->platform_info.spinlock);
-		QDF_TRACE(QDF_MODULE_ID_QDF, QDF_TRACE_LEVEL_INFO_HIGH,
-			  "%s: Cannot stop timer in state = %d",
-			  __func__, timer->state);
 		return QDF_STATUS_SUCCESS;
 	}
 
@@ -822,6 +825,17 @@ qdf_export_symbol(qdf_mc_timer_get_system_ticks);
  * Return:
  * The current system time in milliseconds
  */
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 0, 0))
+unsigned long qdf_mc_timer_get_system_time(void)
+{
+	struct timespec64 tv;
+
+	ktime_get_real_ts64(&tv);
+	return tv.tv_sec * 1000 + tv.tv_nsec / 1000000;
+}
+qdf_export_symbol(qdf_mc_timer_get_system_time);
+
+#else
 unsigned long qdf_mc_timer_get_system_time(void)
 {
 	struct timeval tv;
@@ -830,17 +844,32 @@ unsigned long qdf_mc_timer_get_system_time(void)
 	return tv.tv_sec * 1000 + tv.tv_usec / 1000;
 }
 qdf_export_symbol(qdf_mc_timer_get_system_time);
+#endif
 
 s64 qdf_get_monotonic_boottime_ns(void)
 {
-	struct timespec ts;
-
-	get_monotonic_boottime(&ts);
-
-	return timespec_to_ns(&ts);
+	return ktime_to_ns(ktime_get_boottime());
 }
 qdf_export_symbol(qdf_get_monotonic_boottime_ns);
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 0, 0))
+qdf_time_t qdf_get_time_of_the_day_ms(void)
+{
+	struct timespec64 tv;
+	qdf_time_t local_time;
+	struct rtc_time tm;
+
+	ktime_get_real_ts64(&tv);
+	local_time = (qdf_time_t)(tv.tv_sec - (sys_tz.tz_minuteswest * 60));
+	rtc_time_to_tm(local_time, &tm);
+
+	return (tm.tm_hour * 60 * 60 * 1000) +
+		(tm.tm_min * 60 * 1000) + (tm.tm_sec * 1000) +
+		(tv.tv_nsec / 1000000);
+}
+qdf_export_symbol(qdf_get_time_of_the_day_ms);
+
+#else
 qdf_time_t qdf_get_time_of_the_day_ms(void)
 {
 	struct timeval tv;
@@ -856,6 +885,7 @@ qdf_time_t qdf_get_time_of_the_day_ms(void)
 		(tv.tv_usec / 1000);
 }
 qdf_export_symbol(qdf_get_time_of_the_day_ms);
+#endif
 
 /**
  * qdf_timer_module_deinit() - Deinitializes a QDF timer module.
@@ -871,6 +901,25 @@ void qdf_timer_module_deinit(void)
 }
 qdf_export_symbol(qdf_timer_module_deinit);
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 0, 0))
+void qdf_get_time_of_the_day_in_hr_min_sec_usec(char *tbuf, int len)
+{
+	struct timespec64 tv;
+	struct rtc_time tm;
+	unsigned long local_time;
+
+	/* Format the Log time R#: [hr:min:sec.microsec] */
+	ktime_get_real_ts64(&tv);
+	/* Convert rtc to local time */
+	local_time = (u32)(tv.tv_sec - (sys_tz.tz_minuteswest * 60));
+	rtc_time_to_tm(local_time, &tm);
+	scnprintf(tbuf, len,
+		  "[%02d:%02d:%02d.%06lu]",
+		  tm.tm_hour, tm.tm_min, tm.tm_sec, tv.tv_nsec / 1000);
+}
+qdf_export_symbol(qdf_get_time_of_the_day_in_hr_min_sec_usec);
+
+#else
 void qdf_get_time_of_the_day_in_hr_min_sec_usec(char *tbuf, int len)
 {
 	struct timeval tv;
@@ -887,3 +936,4 @@ void qdf_get_time_of_the_day_in_hr_min_sec_usec(char *tbuf, int len)
 		tm.tm_hour, tm.tm_min, tm.tm_sec, tv.tv_usec);
 }
 qdf_export_symbol(qdf_get_time_of_the_day_in_hr_min_sec_usec);
+#endif

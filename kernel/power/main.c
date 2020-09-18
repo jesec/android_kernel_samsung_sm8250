@@ -1033,7 +1033,11 @@ power_attr_ro(rtc_status);
 static char fota_limit_str[] =
 #if defined(CONFIG_ARCH_KONA)
 	"[START]\n"
+#if defined(CONFIG_SEC_BLOOMXQ_PROJECT)
+	"/sys/power/cpufreq_max_limit 1401600\n"
+#else
 	"/sys/power/cpufreq_max_limit 1516800\n"
+#endif
 	"[STOP]\n"
 	"/sys/power/cpufreq_max_limit -1\n"
 	"[END]\n";

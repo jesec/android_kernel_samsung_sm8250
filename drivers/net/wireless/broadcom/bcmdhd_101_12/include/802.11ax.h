@@ -19,13 +19,14 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #ifndef _802_11ax_h_
 #define _802_11ax_h_
 
 #include <typedefs.h>
+#include <802.11.h>
 #include <bcmtlv.h>
 
 /* This marks the start of a packed structure section. */

@@ -273,7 +273,6 @@ typedef enum {
 	max77705_State_PE_Initial_detach	= 0,
 	max77705_State_PE_SRC_Send_Capabilities = 3,
 	max77705_State_PE_SNK_Wait_for_Capabilities = 17,
-	max77705_State_PE_SNK_Ready = 21,
 } max77705_pd_state_t;
 
 typedef enum {

@@ -9,13 +9,18 @@
 #include "dp_power.h"
 #include "dp_catalog.h"
 #include "dp_debug.h"
+
 #ifdef CONFIG_SEC_DISPLAYPORT
 #include <linux/regulator/consumer.h>
 #include <linux/delay.h>
 #include "secdp.h"
-#ifdef CONFIG_COMBO_REDRIVER_PTN36502
+
+#if defined(CONFIG_COMBO_REDRIVER_PTN36502)
 #include <linux/combo_redriver/ptn36502.h>
+#elif defined(CONFIG_COMBO_REDRIVER_PS5169)
+#include <linux/combo_redriver/ps5169.h>
 #endif
+
 #endif
 
 #define DP_CLIENT_NAME_SIZE	20
@@ -36,11 +41,23 @@ struct dp_power_private {
 	bool strm1_clks_on;
 #ifdef CONFIG_SEC_DISPLAYPORT
 	bool aux_pullup_on;
+
+	void (*redrv_onoff)(bool enable, int lane);
+	void (*redrv_aux_ctrl)(int cross);
 #endif
 };
 
 #ifdef CONFIG_SEC_DISPLAYPORT
 struct dp_power_private *g_secdp_power;
+
+#define DP_ENUM_STR(x)	#x
+
+enum redriver_switch_t {
+	REDRIVER_SWITCH_UNKNOWN = -1,
+	REDRIVER_SWITCH_RESET   =  0,
+	REDRIVER_SWITCH_CROSS,
+	REDRIVER_SWITCH_THROU,
+};
 #endif
 
 static int dp_power_regulator_init(struct dp_power_private *power)
@@ -148,14 +165,15 @@ static int secdp_aux_pullup_vreg_enable(bool on)
 			DP_ERR("Unable to disable vdda33: %d\n", rc);
 
 unset_vdd33:
-		rc = regulator_set_voltage(aux_pu_vreg, 0, QUSB2PHY_3P3_VOL_MAX);
+		rc = regulator_set_voltage(aux_pu_vreg, 0,
+				QUSB2PHY_3P3_VOL_MAX);
 		if (rc)
-			DP_ERR("Unable to set (0) voltage for vdda33: %d\n", rc);
+			DP_ERR("Unable to set 0 voltage for vdda33: %d\n", rc);
 
 put_vdda33_lpm:
 		rc = regulator_set_load(aux_pu_vreg, 0);
 		if (rc < 0)
-			DP_ERR("Unable to set (0) HPM of vdda33: %d\n", rc);
+			DP_ERR("Unable to set 0 HPM of vdda33: %d\n", rc);
 
 		if (!rc)
 			DP_INFO("off success\n");
@@ -573,8 +591,46 @@ exit:
 	return rc;
 }
 
-#ifdef CONFIG_COMBO_REDRIVER_PTN36502
-void secdp_redriver_onoff(bool enable, int lane)
+#if defined(CONFIG_COMBO_REDRIVER_PTN36502) || defined(CONFIG_COMBO_REDRIVER_PS5169)
+static inline char *secdp_redriver_switch_to_string(int event)
+{
+	switch (event) {
+	case REDRIVER_SWITCH_UNKNOWN:
+		return DP_ENUM_STR(REDRIVER_SWITCH_UNKNOWN);
+	case REDRIVER_SWITCH_RESET:
+		return DP_ENUM_STR(REDRIVER_SWITCH_RESET);
+	case REDRIVER_SWITCH_CROSS:
+		return DP_ENUM_STR(REDRIVER_SWITCH_CROSS);
+	case REDRIVER_SWITCH_THROU:
+		return DP_ENUM_STR(REDRIVER_SWITCH_THROU);
+	default:
+		return "unknown";
+	}
+}
+#endif
+
+#if defined(CONFIG_COMBO_REDRIVER_PTN36502)
+static void secdp_ptn36502_aux_ctrl(int cross)
+{
+	DP_DEBUG("+++ cross: %s\n", secdp_redriver_switch_to_string(cross));
+
+	switch (cross) {
+	case REDRIVER_SWITCH_CROSS:
+		ptn36502_config(AUX_CROSS_MODE, 0);
+		break;
+	case REDRIVER_SWITCH_THROU:
+		ptn36502_config(AUX_THRU_MODE, 0);
+		break;
+	case REDRIVER_SWITCH_RESET:
+		ptn36502_config(SAFE_STATE, 0);
+		break;
+	default:
+		DP_INFO("unknown: %d\n", cross);
+		break;
+	}
+}
+
+static void secdp_ptn36502_onoff(bool enable, int lane)
 {
 	DP_DEBUG("+++ enable(%d), lane(%d)\n", enable, lane);
 
@@ -592,10 +648,8 @@ void secdp_redriver_onoff(bool enable, int lane)
 
 		val = ptn36502_i2c_read(Chip_ID);
 		DP_INFO("Chip_ID:  0x%x\n", val);
-
 		val = ptn36502_i2c_read(Chip_Rev);
 		DP_INFO("Chip_Rev: 0x%x\n", val);
-
 	} else {
 		ptn36502_config(SAFE_STATE, 0);
 	}
@@ -603,49 +657,90 @@ void secdp_redriver_onoff(bool enable, int lane)
 exit:
 	return;
 }
-
-#define DP_ENUM_STR(x)	#x
-
-enum redriver_switch_t
+#elif defined(CONFIG_COMBO_REDRIVER_PS5169)
+static void secdp_ps5169_aux_ctrl(int cross)
 {
-	REDRIVER_SWITCH_UNKNOWN = -1,
-	REDRIVER_SWITCH_RESET = 0,
-	REDRIVER_SWITCH_CROSS,
-	REDRIVER_SWITCH_THROU,
-};
+	/*
+	 * ps5169 does not support AUX switching function.
+	 * It needs to be done by AUX switch IC
+	 */
+	DP_DEBUG("+++ cross: %s, do nothing!\n",
+		secdp_redriver_switch_to_string(cross));
+}
 
-static inline char *secdp_redriver_switch_to_string(int event)
+static void secdp_ps5169_onoff(bool enable, int lane)
 {
-	switch (event) {
-	case REDRIVER_SWITCH_UNKNOWN:	return DP_ENUM_STR(REDRIVER_SWITCH_UNKNOWN);
-	case REDRIVER_SWITCH_RESET:		return DP_ENUM_STR(REDRIVER_SWITCH_RESET);
-	case REDRIVER_SWITCH_CROSS:		return DP_ENUM_STR(REDRIVER_SWITCH_CROSS);
-	case REDRIVER_SWITCH_THROU:		return DP_ENUM_STR(REDRIVER_SWITCH_THROU);
-	default:						return "unknown";
+	DP_DEBUG("+++ enable(%d), lane(%d)\n", enable, lane);
+
+	if (enable) {
+		if (lane == 2)
+			ps5169_config(DP2_LANE_USB_MODE, 1);
+		else if (lane == 4)
+			ps5169_config(DP_ONLY_MODE, 1);
+		else {
+			DP_ERR("error! unknown lane: %d\n", lane);
+			goto exit;
+		}
+
+		DP_INFO("Chip_ID1:  0x%x, Chip_Rev1: 0x%x\n",
+			ps5169_i2c_read(Chip_ID1), ps5169_i2c_read(Chip_Rev1));
+		DP_INFO("Chip_ID2:  0x%x, Chip_Rev2: 0x%x\n",
+			ps5169_i2c_read(Chip_ID2), ps5169_i2c_read(Chip_Rev2));
+	} else {
+		ps5169_config(CLEAR_STATE, 0);
 	}
+
+exit:
+	return;
+}
+#endif
+
+void secdp_redriver_onoff(bool enable, int lane)
+{
+	struct dp_power_private *power = g_secdp_power;
+
+	if (power && power->redrv_onoff)
+		power->redrv_onoff(enable, lane);
 }
 
 static void secdp_redriver_aux_ctrl(int cross)
 {
-	DP_DEBUG("+++ cross: %s\n", secdp_redriver_switch_to_string(cross));
+	struct dp_power_private *power = g_secdp_power;
 
-	switch (cross)
-	{
-	case REDRIVER_SWITCH_CROSS:
-		ptn36502_config(AUX_CROSS_MODE, 0);
-		break;
-	case REDRIVER_SWITCH_THROU:
-		ptn36502_config(AUX_THRU_MODE, 0);
-		break;
-	case REDRIVER_SWITCH_RESET:
-		ptn36502_config(SAFE_STATE, 0);
-		break;
-	default:
-		DP_INFO("unknown: %d\n", cross);
-		break;
-	}
+	if (power && power->redrv_aux_ctrl)
+		power->redrv_aux_ctrl(cross);
 }
+
+static void secdp_redriver_register(struct dp_power_private *power)
+{
+	int use_redrv;
+
+	if (!power || !power->parser) {
+		DP_ERR("invalid power!\n");
+		goto end;
+	}
+
+	use_redrv = power->parser->use_redrv;
+	DP_DEBUG("++ use_redrv(%d)\n", use_redrv);
+
+	if (!use_redrv) {
+		DP_INFO("nothing registered!\n");
+		goto end;
+	}
+
+#if defined(CONFIG_COMBO_REDRIVER_PTN36502)
+	power->redrv_onoff = secdp_ptn36502_onoff;
+	power->redrv_aux_ctrl = secdp_ptn36502_aux_ctrl;
+	DP_INFO("ptn36502 API registered!\n");
+#elif defined (CONFIG_COMBO_REDRIVER_PS5169)
+	power->redrv_onoff = secdp_ps5169_onoff;
+	power->redrv_aux_ctrl = secdp_ps5169_aux_ctrl;
+	DP_INFO("ps5169 API registered!\n");
 #endif
+
+end:
+	return;
+}
 
 /* turn on EDP_AUX switch
  * ===================================================
@@ -667,39 +762,25 @@ static void secdp_power_set_gpio(bool flip)
 
 	parser = power->parser;
 
-	DP_DEBUG("+++, flip(%d), aux_sel_inv(%d), aux_sw_redrv(%d)\n", flip,
-		parser->aux_sel_inv, parser->aux_sw_redrv);
+	DP_DEBUG("flip(%d), aux_sel_inv(%d), use_redrv(%d)\n",
+		flip, parser->aux_sel_inv, parser->use_redrv);
 
 	if (parser->aux_sel_inv)
 		sel_val = true;
-
-#if 0 /*use flip instead*/
-	config = mp->gpio_config;
-	for (i = 0; i < mp->num_gpio; i++) {
-		if (gpio_is_valid(config->gpio)) {
-			if (dp_power_find_gpio(config->gpio_name, "usbplug-cc")) {
-				dir = gpio_get_value(config->gpio);
-				DP_INFO("%s -> dir: %d\n", config->gpio_name, dir);
-				break;
-			}
-		}
-		config++;
-	}
-
-	usleep_range(100, 120);
-#endif
 
 	config = mp->gpio_config;
 	for (i = 0; i < mp->num_gpio; i++) {
 		if (gpio_is_valid(config->gpio)) {
 			if (dp_power_find_gpio(config->gpio_name, "aux-sel")) {
-				if (!parser->aux_sw_redrv)
-					gpio_direction_output(config->gpio, (!flip ? sel_val : !sel_val));
-				else
+				if (parser->use_redrv == SECDP_REDRV_PTN36502)
 					gpio_direction_output(config->gpio, 0);
+				else /* SECDP_REDRV_PS5169 or SECDP_REDRV_NONE */
+					gpio_direction_output(config->gpio,
+						(!flip ? sel_val : !sel_val));
 
 				usleep_range(100, 120);
-				DP_INFO("%s -> set %d\n", config->gpio_name, gpio_get_value(config->gpio));
+				DP_INFO("%s -> set %d\n", config->gpio_name,
+					gpio_get_value(config->gpio));
 				break;
 			}
 		}
@@ -712,7 +793,8 @@ static void secdp_power_set_gpio(bool flip)
 		if (gpio_is_valid(config->gpio)) {
 			if (dp_power_find_gpio(config->gpio_name, "aux-en")) {
 				gpio_direction_output(config->gpio, 0);
-				DP_INFO("%s -> %d\n", config->gpio_name, gpio_get_value(config->gpio));
+				DP_INFO("%s -> %d\n", config->gpio_name,
+					gpio_get_value(config->gpio));
 				break;
 			}
 		}
@@ -771,18 +853,14 @@ void secdp_config_gpios_factory(int aux_sel, bool on)
 		secdp_aux_pullup_vreg_enable(true);
 		secdp_power_set_gpio(aux_sel);
 
-#ifdef CONFIG_COMBO_REDRIVER_PTN36502
 		if (aux_sel == 1)
 			secdp_redriver_aux_ctrl(REDRIVER_SWITCH_CROSS);
 		else if (aux_sel == 0)
 			secdp_redriver_aux_ctrl(REDRIVER_SWITCH_THROU);
 		else
 			DP_ERR("unknown <%d>\n", aux_sel);
-#endif
 	} else {
-#ifdef CONFIG_COMBO_REDRIVER_PTN36502
 		secdp_redriver_aux_ctrl(REDRIVER_SWITCH_RESET);
-#endif
 		secdp_power_unset_gpio();
 		secdp_aux_pullup_vreg_enable(false);
 	}
@@ -801,11 +879,13 @@ enum plug_orientation secdp_get_plug_orientation(void)
 
 	for (i = 0; i < mp->num_gpio; i++) {
 		if (gpio_is_valid(config->gpio)) {
-			if (dp_power_find_gpio(config->gpio_name, "usbplug-cc")) {
+			if (dp_power_find_gpio(config->gpio_name,
+					"usbplug-cc")) {
 				dir = gpio_get_value(config->gpio);
 				if (parser->cc_dir_inv)
 					dir = !dir;
-				DP_INFO("orientation: %s\n", !dir ? "CC1" : "CC2");
+				DP_INFO("orientation: %s\n",
+					!dir ? "CC1" : "CC2");
 				if (dir == 0)
 					return ORIENTATION_CC1;
 				else /* if (dir == 1) */
@@ -1133,6 +1213,7 @@ struct dp_power *dp_power_get(struct dp_parser *parser)
 	dp_power->power_client_deinit = dp_power_client_deinit;
 
 #ifdef CONFIG_SEC_DISPLAYPORT
+	secdp_redriver_register(power);
 	g_secdp_power = power;
 #endif
 

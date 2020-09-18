@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2019 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2020 The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -58,9 +58,6 @@ struct scheduler_msg;
 #define nan_nofl_debug(params...) \
 	QDF_TRACE_DEBUG_NO_FL(QDF_MODULE_ID_NAN, params)
 
-/* Maximum number of NDP instances supported on each NAN Peer */
-#define MAX_NDP_INSTANCES_PER_PEER 1
-
 /**
  * enum nan_disc_state - NAN Discovery states
  * @NAN_DISC_DISABLED: NAN Discovery is disabled
@@ -80,11 +77,25 @@ enum nan_disc_state {
  * @enable: NAN feature enable
  * @dp_enable: NAN Datapath feature enable
  * @ndi_mac_randomize: Randomize NAN datapath interface MAC
+ * @ndp_inactivity_timeout: NDP inactivity timeout
+ * @nan_separate_iface_support: To supports separate iface creation for NAN
+ * @ndp_keep_alive_period: To configure duration of how many seconds to
+ * wait to kickout peer if peer is not reachable
+ * @support_mp0_discovery: To support discovery of NAN cluster with Master
+ * Preference (MP) as 0 when a new device is enabling NAN
+ * @max_ndp_sessions: max ndp sessions host supports
+ * @max_ndi: max number of ndi host supports
  */
 struct nan_cfg_params {
 	bool enable;
 	bool dp_enable;
 	bool ndi_mac_randomize;
+	uint16_t ndp_inactivity_timeout;
+	bool nan_separate_iface_support;
+	uint16_t ndp_keep_alive_period;
+	bool support_mp0_discovery;
+	uint32_t max_ndp_sessions;
+	uint32_t max_ndi;
 };
 
 /**
@@ -96,12 +107,12 @@ struct nan_cfg_params {
  * @tx_ops: Tx ops registered with Target IF interface
  * @rx_ops: Rx  ops registered with Target IF interface
  * @disc_state: Present NAN Discovery state
- * @nan_social_ch_2g: NAN 2G Social channel for discovery
- * @nan_social_ch_5g: NAN 5G Social channel for discovery
+ * @nan_social_ch_2g_freq: NAN 2G Social channel for discovery
+ * @nan_social_ch_5g_freq: NAN 5G Social channel for discovery
  * @nan_disc_mac_id: MAC id used for NAN Discovery
  * @is_explicit_disable: Flag to indicate that NAN is being explicitly
- * disabled by driver
- * @disable_context: Explicit disable context
+ * disabled by driver or user-space
+ * @request_context: NAN enable/disable request context
  */
 struct nan_psoc_priv_obj {
 	qdf_spinlock_t lock;
@@ -111,11 +122,11 @@ struct nan_psoc_priv_obj {
 	struct wlan_nan_tx_ops tx_ops;
 	struct wlan_nan_rx_ops rx_ops;
 	enum nan_disc_state disc_state;
-	uint8_t nan_social_ch_2g;
-	uint8_t nan_social_ch_5g;
+	uint32_t nan_social_ch_2g_freq;
+	uint32_t nan_social_ch_5g_freq;
 	uint8_t nan_disc_mac_id;
 	bool is_explicit_disable;
-	void *disable_context;
+	void *request_context;
 };
 
 /**
@@ -129,6 +140,8 @@ struct nan_psoc_priv_obj {
  * @ndi_delete_rsp_status: status for ndi_delete rsp
  * @primary_peer_mac: Primary NDP Peer mac address for the vdev
  * @disable_context: Disable all NDP's operation context
+ * @ndp_init_done: Flag to indicate NDP initialization complete after first peer
+ *		   connection.
  */
 struct nan_vdev_priv_obj {
 	qdf_spinlock_t lock;
@@ -140,6 +153,7 @@ struct nan_vdev_priv_obj {
 	uint32_t ndi_delete_rsp_status;
 	struct qdf_mac_addr primary_peer_mac;
 	void *disable_context;
+	bool ndp_init_done;
 };
 
 /**
@@ -218,12 +232,12 @@ QDF_STATUS nan_set_discovery_state(struct wlan_objmgr_psoc *psoc,
 /*
  * nan_discovery_pre_enable: Takes steps before sending NAN Enable to Firmware
  * @psoc: PSOC object
- * @nan_social_channel: Primary social channel for NAN Discovery
+ * @nan_ch_freq: Primary social channel for NAN Discovery
  *
  * Return: status of operation
  */
 QDF_STATUS nan_discovery_pre_enable(struct wlan_objmgr_psoc *psoc,
-				    uint8_t nan_social_channel);
+				    uint32_t nan_ch_freq);
 
 /*
  * nan_get_discovery_state: Returns the current NAN Discovery state
@@ -236,11 +250,19 @@ enum nan_disc_state nan_get_discovery_state(struct wlan_objmgr_psoc *psoc);
 /*
  * nan_is_enable_allowed: Queries whether NAN Discovery is allowed
  * @psoc: PSOC object
- * @nan_chan: Possible primary social channel for NAN Discovery
+ * @nan_ch_freq: Possible primary social channel for NAN Discovery
  *
  * Return: True if NAN Enable is allowed on given channel, False otherwise
  */
-bool nan_is_enable_allowed(struct wlan_objmgr_psoc *psoc, uint8_t nan_chan);
+bool nan_is_enable_allowed(struct wlan_objmgr_psoc *psoc, uint32_t nan_ch_freq);
+
+/*
+ * nan_is_disc_active: Queries whether NAN Discovery is active
+ * @psoc: PSOC object
+ *
+ * Return: True if NAN Disc is active, False otherwise
+ */
+bool nan_is_disc_active(struct wlan_objmgr_psoc *psoc);
 
 /*
  * nan_get_connection_info: Gets connection info of the NAN Discovery interface

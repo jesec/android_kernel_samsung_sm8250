@@ -303,7 +303,7 @@
 		 * *************************************************************
 		 */
 
-		samsung,support_poc_driver;
+/*		samsung,support_poc_driver;*/
 
 #if 0
 		samsung,poc_image_size = <310846>;		/* 310,846 bytes */
@@ -578,40 +578,10 @@
 		samsung,elvss_size = <3>;
 		samsung,irc_size = <28>;
 
-		samsung,flash_table_hbm_aor_offset = <0x098A>;
-		samsung,flash_table_hbm_vint_offset = <0x0A36>;
-		samsung,flash_table_hbm_elvss_offset = <0x0A8C>;
-		samsung,flash_table_hbm_irc_offset = <0x0B8E>;
-
-		samsung,flash_table_normal_gamma_offset = <0x0000>;
-		samsung,flash_table_normal_aor_offset = <0x09A2>;
-		samsung,flash_table_normal_vint_offset = <0x0A42>;
-		samsung,flash_table_normal_elvss_offset = <0xAB0>;
-		samsung,flash_table_normal_irc_offset = <0x0CDE>;
-
 		/*
 		 *  Below is only for flash
 		 */
-		samsung,support_flash_gamma;
-		samsung,flash_gamma_data_read_addr = <6 7 8>;
-
-		/* FLASH WRITE CHECK */
-		samsung,flash_gamma_write_check_addr = <0x0714F8>;
-
-		/* Here is bank base address */
-		samsung,flash_gamma_start_bank = <0x070000>;
-		samsung,flash_gamma_end_bank = <0x0714F5>;
-
-		/* Below is offset address of base bank */
-		samsung,flash_gamma_check_sum_start_offset = <0x14F6>;
-		samsung,flash_gamma_check_sum_end_offset = <0x14F7>;
-
-		/* 0xC8 register */
-		samsung,flash_gamma_0xc8_start_offset = <0x2000>;
-		samsung,flash_gamma_0xc8_end_offset = <0x201F>;
-		samsung,flash_gamma_0xc8_size = <32>;
-		samsung,flash_gamma_0xc8_check_sum_start_offset = <0x2020>;
-		samsung,flash_gamma_0xc8_check_sum_end_offset = <0x2021>;
+/*		samsung,flash_gamma_type = "flash";*/
 
 		samsung,flash_gamma_pre_tx_cmds1_revA = [
 		/* pre-condition for reading flash gamma data */
@@ -1856,7 +1826,46 @@
 			29 00 00 00 00 00 05 2B 00 00 04 FF
 			29 01 00 00 00 00 03 FC A5 A5		/* TEST KEY Disable */
 		];
+		samsung,br_tables {
+			vrr60@0 {
+				samsung,refresh_rate = <60>;
 
+				samsung,ddi_vfp = <6>;
+				samsung,ddi_vbp = <12>;
+				samsung,ddi_vactive = <1280>;
+
+				samsung,flash_gamma_data_read_addr = <6 7 8>;
+
+				/* FLASH WRITE CHECK */
+				samsung,flash_gamma_write_check_addr = <0x0714F8>;
+
+				/* Here is bank base address */
+				samsung,flash_gamma_start_bank = <0x070000>;
+				samsung,flash_gamma_end_bank = <0x0714F5>;
+
+				samsung,flash_table_hbm_aor_offset = <0x098A>;
+				samsung,flash_table_hbm_vint_offset = <0x0A36>;
+				samsung,flash_table_hbm_elvss_offset = <0x0A8C>;
+				samsung,flash_table_hbm_irc_offset = <0x0B8E>;
+
+				samsung,flash_table_normal_gamma_offset = <0x0000>;
+				samsung,flash_table_normal_aor_offset = <0x09A2>;
+				samsung,flash_table_normal_vint_offset = <0x0A42>;
+				samsung,flash_table_normal_elvss_offset = <0xAB0>;
+				samsung,flash_table_normal_irc_offset = <0x0CDE>;
+
+				/* Below is offset address of base bank */
+				samsung,flash_gamma_check_sum_start_offset = <0x14F6>;
+				samsung,flash_gamma_check_sum_end_offset = <0x14F7>;
+
+				/* 0xC8 register */
+				samsung,flash_gamma_0xc8_start_offset = <0x2000>;
+				samsung,flash_gamma_0xc8_end_offset = <0x201F>;
+				samsung,flash_gamma_0xc8_size = <32>;
+				samsung,flash_gamma_0xc8_check_sum_start_offset = <0x2020>;
+				samsung,flash_gamma_0xc8_check_sum_end_offset = <0x2021>;
+			};
+		};
 		/*
 		* ************************************************************************************************************************
 		* MULTI_RESOLUTION (DSC configs were moved all to below timing set)
@@ -1876,6 +1885,7 @@
 				qcom,mdss-dsi-t-clk-pre = <0x19>;
 				qcom,mdss-dsi-t-clk-post = <0x18>;
 				qcom,mdss-dsi-panel-framerate = <60>;
+				qcom,mdss-mdp-transfer-time-us = <15866>;
 				qcom,mdss-dsi-panel-phy-timings = [00 1E 08 08 24 22 08 08 05 03 04 00 19 18];
 
 				qcom,mdss-dsi-h-pulse-width = <100>;

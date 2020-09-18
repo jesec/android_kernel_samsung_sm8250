@@ -540,8 +540,7 @@ static ssize_t diag_dbgfs_read_socketinfo(struct file *file, char __user *ubuf,
 			"bytes written\t:\t%lu\n"
 			"fwd inited\t:\t%d\n"
 			"fwd opened\t:\t%d\n"
-			"fwd ch_open\t:\t%d\n"
-			"read fail\t:\t%d\n\n",
+			"fwd ch_open\t:\t%d\n\n",
 			info->name,
 			info->hdl,
 			info->inited,
@@ -560,8 +559,7 @@ static ssize_t diag_dbgfs_read_socketinfo(struct file *file, char __user *ubuf,
 			(fwd_ctxt) ? fwd_ctxt->inited : -1,
 			(fwd_ctxt) ?
 			atomic_read(&fwd_ctxt->opened) : -1,
-			(fwd_ctxt) ? fwd_ctxt->ch_open : -1,
-			info->pkt_read);
+			(fwd_ctxt) ? fwd_ctxt->ch_open : -1);
 
 		bytes_in_buffer += bytes_written;
 

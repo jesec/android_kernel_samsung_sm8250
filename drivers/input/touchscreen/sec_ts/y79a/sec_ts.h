@@ -206,6 +206,7 @@
 #define SEC_TS_CMD_SIP_MODE			0xB5
 #define SET_TS_CMD_SET_LOWTEMPERATURE_MODE	0xBE
 #define SET_TS_CMD_ELVSS_TEST	0xD7
+#define SET_TS_CMD_SRAM_TEST			0x9D
 
 #define SEC_TS_CMD_LPM_AOD_OFF	0x01
 #define SEC_TS_CMD_LPM_AOD_ON	0x02
@@ -902,6 +903,8 @@ struct sec_ts_data {
 
 	u8 lp_sensitivity;
 
+	u8 fod_vi_tx;
+	u8 fod_vi_rx;
 	u8 fod_vi_size;
 	u8 press_prop;
 /* thermistor */
@@ -1080,5 +1083,6 @@ void sec_ts_ioctl_remove(struct sec_ts_data *ts);
 
 int sec_ts_set_press_property(struct sec_ts_data *ts);
 int get_aod_active_area(struct sec_ts_data *ts);
+void get_fod_info(struct sec_ts_data *ts);
 
 #endif

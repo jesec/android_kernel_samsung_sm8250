@@ -1,7 +1,7 @@
 /*
  * Linux DHD Bus Module for PCIE
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -58,6 +58,10 @@
 #ifdef DHD_PCIE_NATIVE_RUNTIMEPM
 #include <linux/pm_runtime.h>
 #endif /* DHD_PCIE_NATIVE_RUNTIMEPM */
+
+#if defined(CONFIG_SOC_EXYNOS9830)
+#include <linux/exynos-pci-ctrl.h>
+#endif /* CONFIG_SOC_EXYNOS9830 */
 
 #ifdef DHD_PCIE_NATIVE_RUNTIMEPM
 #ifndef AUTO_SUSPEND_TIMEOUT
@@ -968,16 +972,16 @@ dhdpcie_suspend_dump_cfgregs(struct dhd_bus *bus, char *suspend_state)
 		"PCI_BAR1_WIN(0x%x)=(0x%x)\n",
 		suspend_state,
 		PCIECFGREG_BASEADDR0,
-		dhd_pcie_config_read(bus->osh,
+		dhd_pcie_config_read(bus,
 			PCIECFGREG_BASEADDR0, sizeof(uint32)),
 		PCIECFGREG_BASEADDR1,
-		dhd_pcie_config_read(bus->osh,
+		dhd_pcie_config_read(bus,
 			PCIECFGREG_BASEADDR1, sizeof(uint32)),
 		PCIE_CFG_PMCSR,
-		dhd_pcie_config_read(bus->osh,
+		dhd_pcie_config_read(bus,
 			PCIE_CFG_PMCSR, sizeof(uint32)),
 		PCI_BAR1_WIN,
-		dhd_pcie_config_read(bus->osh,
+		dhd_pcie_config_read(bus,
 			PCI_BAR1_WIN, sizeof(uint32))));
 }
 
@@ -994,6 +998,10 @@ static int dhdpcie_suspend_dev(struct pci_dev *dev)
 	}
 #endif /* OEM_ANDROID && LINUX_VERSION_CODE >= KERNEL_VERSION(3, 0, 0) */
 	DHD_ERROR(("%s: Enter\n", __FUNCTION__));
+#if defined(CONFIG_SOC_EXYNOS9830)
+	DHD_ERROR(("%s: Disable L1ss EP side\n", __FUNCTION__));
+	exynos_pcie_l1ss_ctrl(0, PCIE_L1SS_CTRL_WIFI);
+#endif /* CONFIG_SOC_EXYNOS9830 */
 	dhdpcie_suspend_dump_cfgregs(bus, "BEFORE_EP_SUSPEND");
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 0, 0))
 	dhd_dpc_tasklet_kill(bus->dhd);
@@ -1073,6 +1081,10 @@ static int dhdpcie_resume_dev(struct pci_dev *dev)
 	}
 	BCM_REFERENCE(pch);
 	dhdpcie_suspend_dump_cfgregs(pch->bus, "AFTER_EP_RESUME");
+#if defined(CONFIG_SOC_EXYNOS9830)
+	DHD_ERROR(("%s: Enable L1ss EP side\n", __FUNCTION__));
+	exynos_pcie_l1ss_ctrl(1, PCIE_L1SS_CTRL_WIFI);
+#endif /* CONFIG_SOC_EXYNOS9830 */
 out:
 	return err;
 }
@@ -1080,15 +1092,8 @@ out:
 static int dhdpcie_resume_host_dev(dhd_bus_t *bus)
 {
 	int bcmerror = 0;
-#ifdef USE_EXYNOS_PCIE_RC_PMPATCH
-	bcmerror = exynos_pcie_pm_resume(SAMSUNG_PCIE_CH_NUM);
-#endif /* USE_EXYNOS_PCIE_RC_PMPATCH */
-#ifdef CONFIG_ARCH_MSM
-	bcmerror = dhdpcie_start_host_pcieclock(bus);
-#endif /* CONFIG_ARCH_MSM */
-#ifdef CONFIG_ARCH_TEGRA
-	bcmerror = tegra_pcie_pm_resume();
-#endif /* CONFIG_ARCH_TEGRA */
+
+	bcmerror = dhdpcie_start_host_dev(bus);
 	if (bcmerror < 0) {
 		DHD_ERROR(("%s: PCIe RC resume failed!!! (%d)\n",
 			__FUNCTION__, bcmerror));
@@ -1106,26 +1111,21 @@ static int dhdpcie_resume_host_dev(dhd_bus_t *bus)
 static int dhdpcie_suspend_host_dev(dhd_bus_t *bus)
 {
 	int bcmerror = 0;
-#ifdef USE_EXYNOS_PCIE_RC_PMPATCH
+#ifdef CONFIG_ARCH_EXYNOS
 	/*
 	 * XXX : SWWLAN-82173, SWWLAN-82183 WAR for SS PCIe RC
 	 * SS PCIe RC/EP is 1 to 1 mapping using different channel
 	 * RC0 - LTE, RC1 - WiFi RC0-1 is working independently
 	 */
+
 	if (bus->rc_dev) {
 		pci_save_state(bus->rc_dev);
 	} else {
 		DHD_ERROR(("%s: RC %x:%x handle is NULL\n",
 			__FUNCTION__, PCIE_RC_VENDOR_ID, PCIE_RC_DEVICE_ID));
 	}
-	exynos_pcie_pm_suspend(SAMSUNG_PCIE_CH_NUM);
-#endif	/* USE_EXYNOS_PCIE_RC_PMPATCH */
-#ifdef CONFIG_ARCH_MSM
-	bcmerror = dhdpcie_stop_host_pcieclock(bus);
-#endif	/* CONFIG_ARCH_MSM */
-#ifdef CONFIG_ARCH_TEGRA
-	bcmerror = tegra_pcie_pm_suspend();
-#endif /* CONFIG_ARCH_TEGRA */
+#endif /* CONFIG_ARCH_EXYNOS */
+	bcmerror = dhdpcie_stop_host_dev(bus);
 	return bcmerror;
 }
 
@@ -1452,16 +1452,9 @@ dhdpcie_pci_remove(struct pci_dev *pdev)
 #ifdef CONFIG_ARCH_MSM
 		msm_pcie_deregister_event(&bus->pcie_event);
 #endif /* CONFIG_ARCH_MSM */
-#ifdef EXYNOS_PCIE_LINKDOWN_RECOVERY
-#if defined(CONFIG_SOC_EXYNOS8890) || defined(CONFIG_SOC_EXYNOS8895) || \
-	defined(CONFIG_SOC_EXYNOS9810) || defined(CONFIG_SOC_EXYNOS9820) || \
-	defined(CONFIG_SOC_EXYNOS9830)
+#ifdef CONFIG_ARCH_EXYNOS
 		exynos_pcie_deregister_event(&bus->pcie_event);
-#endif /* CONFIG_SOC_EXYNOS8890 || CONFIG_SOC_EXYNOS8895 ||
-	* CONFIG_SOC_EXYNOS9810 || CONFIG_SOC_EXYNOS9820 ||
-	* CONFIG_SOC_EXYNOS9830
-	*/
-#endif /* EXYNOS_PCIE_LINKDOWN_RECOVERY */
+#endif /* CONFIG_ARCH_EXYNOS */
 #endif /* SUPPORT_LINKDOWN_RECOVERY */
 
 		bus->rc_dev = NULL;
@@ -1748,10 +1741,7 @@ void dhdpcie_dump_resource(dhd_bus_t *bus)
 }
 
 #ifdef SUPPORT_LINKDOWN_RECOVERY
-#if defined(CONFIG_ARCH_MSM) || (defined(EXYNOS_PCIE_LINKDOWN_RECOVERY) && \
-	(defined(CONFIG_SOC_EXYNOS8890) || defined(CONFIG_SOC_EXYNOS8895) || \
-	defined(CONFIG_SOC_EXYNOS9810) || defined(CONFIG_SOC_EXYNOS9820) || \
-	defined(CONFIG_SOC_EXYNOS9830)))
+#if defined(CONFIG_ARCH_MSM) || defined(CONFIG_ARCH_EXYNOS)
 void dhdpcie_linkdown_cb(struct_pcie_notify *noti)
 {
 	struct pci_dev *pdev = (struct pci_dev *)noti->user;
@@ -1790,11 +1780,7 @@ void dhdpcie_linkdown_cb(struct_pcie_notify *noti)
 	}
 
 }
-#endif /* CONFIG_ARCH_MSM || (EXYNOS_PCIE_LINKDOWN_RECOVERY &&
-	* (CONFIG_SOC_EXYNOS8890 || CONFIG_SOC_EXYNOS8895 ||
-	*  CONFIG_SOC_EXYNOS9810 || CONFIG_SOC_EXYNOS9820 ||
-	*  CONFIG_SOC_EXYNOS9830))
-	*/
+#endif /* CONFIG_ARCH_MSM || CONFIG_ARCH_EXYNOS */
 #endif /* SUPPORT_LINKDOWN_RECOVERY */
 
 int dhdpcie_init(struct pci_dev *pdev)
@@ -1946,26 +1932,20 @@ int dhdpcie_init(struct pci_dev *pdev)
 		msm_pcie_register_event(&bus->pcie_event);
 		bus->no_cfg_restore = FALSE;
 #endif /* CONFIG_ARCH_MSM */
-#ifdef EXYNOS_PCIE_LINKDOWN_RECOVERY
-#if defined(CONFIG_SOC_EXYNOS8890) || defined(CONFIG_SOC_EXYNOS8895) || \
-	defined(CONFIG_SOC_EXYNOS9810) || defined(CONFIG_SOC_EXYNOS9820) || \
-	defined(CONFIG_SOC_EXYNOS9830)
+#ifdef CONFIG_ARCH_EXYNOS
 		bus->pcie_event.events = EXYNOS_PCIE_EVENT_LINKDOWN;
 		bus->pcie_event.user = pdev;
 		bus->pcie_event.mode = EXYNOS_PCIE_TRIGGER_CALLBACK;
 		bus->pcie_event.callback = dhdpcie_linkdown_cb;
 		exynos_pcie_register_event(&bus->pcie_event);
-#endif /* CONFIG_SOC_EXYNOS8890 || CONFIG_SOC_EXYNOS8895 ||
-	* CONFIG_SOC_EXYNOS9810 || CONFIG_SOC_EXYNOS9820 ||
-	* CONFIG_SOC_EXYNOS9830
-	*/
-#endif /* EXYNOS_PCIE_LINKDOWN_RECOVERY */
+#endif /* CONFIG_ARCH_EXYNOS */
 		bus->read_shm_fail = FALSE;
 #endif /* SUPPORT_LINKDOWN_RECOVERY */
 
 		if (bus->intr) {
 			/* Register interrupt callback, but mask it (not operational yet). */
 			DHD_INTR(("%s: Registering and masking interrupts\n", __FUNCTION__));
+			bus->intr_enabled = FALSE;
 			dhdpcie_bus_intr_disable(bus);
 
 			if (dhdpcie_request_irq(dhdpcie_info)) {
@@ -1988,6 +1968,9 @@ int dhdpcie_init(struct pci_dev *pdev)
 
 		/* set private data for pci_dev */
 		pci_set_drvdata(pdev, dhdpcie_info);
+
+		/* Ensure BAR1 switch feature enable if needed before FW download */
+		dhdpcie_bar1_window_switch_enab(bus);
 
 		if (dhd_download_fw_on_driverload) {
 			if (dhd_bus_start(bus->dhd)) {
@@ -2164,7 +2147,7 @@ dhdpcie_irq_disabled(dhd_bus_t *bus)
 }
 
 int
-dhdpcie_start_host_pcieclock(dhd_bus_t *bus)
+dhdpcie_start_host_dev(dhd_bus_t *bus)
 {
 	int ret = 0;
 #ifdef CONFIG_ARCH_MSM
@@ -2182,6 +2165,9 @@ dhdpcie_start_host_pcieclock(dhd_bus_t *bus)
 		return BCME_ERROR;
 	}
 
+#ifdef CONFIG_ARCH_EXYNOS
+	exynos_pcie_pm_resume(SAMSUNG_PCIE_CH_NUM);
+#endif /* CONFIG_ARCH_EXYNOS */
 #ifdef CONFIG_ARCH_MSM
 #ifdef SUPPORT_LINKDOWN_RECOVERY
 	if (bus->no_cfg_restore) {
@@ -2197,19 +2183,23 @@ dhdpcie_start_host_pcieclock(dhd_bus_t *bus)
 	ret = msm_pcie_pm_control(MSM_PCIE_RESUME, bus->dev->bus->number,
 		bus->dev, NULL, 0);
 #endif /* SUPPORT_LINKDOWN_RECOVERY */
+#endif /* CONFIG_ARCH_MSM */
+#ifdef CONFIG_ARCH_TEGRA
+	ret = tegra_pcie_pm_resume();
+#endif /* CONFIG_ARCH_TEGRA */
+
 	if (ret) {
 		DHD_ERROR(("%s Failed to bring up PCIe link\n", __FUNCTION__));
 		goto done;
 	}
 
 done:
-#endif /* CONFIG_ARCH_MSM */
 	DHD_TRACE(("%s Exit:\n", __FUNCTION__));
 	return ret;
 }
 
 int
-dhdpcie_stop_host_pcieclock(dhd_bus_t *bus)
+dhdpcie_stop_host_dev(dhd_bus_t *bus)
 {
 	int ret = 0;
 #ifdef CONFIG_ARCH_MSM
@@ -2228,6 +2218,9 @@ dhdpcie_stop_host_pcieclock(dhd_bus_t *bus)
 		return BCME_ERROR;
 	}
 
+#ifdef CONFIG_ARCH_EXYNOS
+	exynos_pcie_pm_suspend(SAMSUNG_PCIE_CH_NUM);
+#endif /* CONFIG_ARCH_EXYNOS */
 #ifdef CONFIG_ARCH_MSM
 #ifdef SUPPORT_LINKDOWN_RECOVERY
 	if (bus->no_cfg_restore) {
@@ -2240,12 +2233,15 @@ dhdpcie_stop_host_pcieclock(dhd_bus_t *bus)
 	ret = msm_pcie_pm_control(MSM_PCIE_SUSPEND, bus->dev->bus->number,
 		bus->dev, NULL, 0);
 #endif /* SUPPORT_LINKDOWN_RECOVERY */
+#endif /* CONFIG_ARCH_MSM */
+#ifdef CONFIG_ARCH_TEGRA
+	ret = tegra_pcie_pm_suspend();
+#endif /* CONFIG_ARCH_TEGRA */
 	if (ret) {
 		DHD_ERROR(("Failed to stop PCIe link\n"));
 		goto done;
 	}
 done:
-#endif /* CONFIG_ARCH_MSM */
 	DHD_TRACE(("%s Exit:\n", __FUNCTION__));
 	return ret;
 }
@@ -2464,6 +2460,7 @@ dhdpcie_bus_request_irq(struct dhd_bus *bus)
 	if (bus->intr) {
 		/* Register interrupt callback, but mask it (not operational yet). */
 		DHD_INTR(("%s: Registering and masking interrupts\n", __FUNCTION__));
+		bus->intr_enabled = FALSE;
 		dhdpcie_bus_intr_disable(bus);
 		ret = dhdpcie_request_irq(dhdpcie_info);
 		if (ret) {
@@ -2766,14 +2763,14 @@ bool dhd_runtimepm_state(dhd_pub_t *dhd)
 		bus->idlecount = 0;
 		if (DHD_BUS_BUSY_CHECK_IDLE(dhd) && !DHD_BUS_CHECK_DOWN_OR_DOWN_IN_PROGRESS(dhd) &&
 			!DHD_CHECK_CFG_IN_PROGRESS(dhd)) {
+			DHD_ERROR(("%s: DHD Idle state!! -  idletime :%d, wdtick :%d \n",
+					__FUNCTION__, bus->idletime, dhd_runtimepm_ms));
 			bus->bus_wake = 0;
 			DHD_BUS_BUSY_SET_RPM_SUSPEND_IN_PROGRESS(dhd);
 			bus->runtime_resume_done = FALSE;
 			/* stop all interface network queue. */
 			dhd_bus_stop_queue(bus);
 			DHD_GENERAL_UNLOCK(dhd, flags);
-			DHD_ERROR(("%s: DHD Idle state!! -  idletime :%d, wdtick :%d \n",
-					__FUNCTION__, bus->idletime, dhd_runtimepm_ms));
 			/* RPM suspend is failed, return FALSE then re-trying */
 			if (dhdpcie_set_suspend_resume(bus, TRUE)) {
 				DHD_ERROR(("%s: exit with wakelock \n", __FUNCTION__));
@@ -2784,6 +2781,18 @@ bool dhd_runtimepm_state(dhd_pub_t *dhd)
 				/* It can make stuck NET TX Queue without below */
 				dhd_bus_start_queue(bus);
 				DHD_GENERAL_UNLOCK(dhd, flags);
+				if (bus->dhd->rx_pending_due_to_rpm) {
+					/* Reschedule tasklet to process Rx frames */
+					DHD_ERROR(("%s: Schedule DPC to process pending"
+						" Rx packets\n", __FUNCTION__));
+					dhd_sched_dpc(bus->dhd);
+				}
+				/* enabling host irq deferred from system suspend */
+				if (dhdpcie_irq_disabled(bus)) {
+					dhdpcie_enable_irq(bus);
+					/* increasing intrrupt count when it enabled */
+					bus->resume_intr_enable_count++;
+				}
 				smp_wmb();
 				wake_up(&bus->rpm_queue);
 				return FALSE;
@@ -2813,6 +2822,21 @@ bool dhd_runtimepm_state(dhd_pub_t *dhd)
 			/* For making sure NET TX Queue active  */
 			dhd_bus_start_queue(bus);
 			DHD_GENERAL_UNLOCK(dhd, flags);
+
+			if (bus->dhd->rx_pending_due_to_rpm) {
+				/* Reschedule tasklet to process Rx frames */
+				DHD_ERROR(("%s: Schedule DPC to process pending Rx packets\n",
+					__FUNCTION__));
+				bus->rpm_sched_dpc_time = OSL_LOCALTIME_NS();
+				dhd_sched_dpc(bus->dhd);
+			}
+
+			/* enabling host irq deferred from system suspend */
+			if (dhdpcie_irq_disabled(bus)) {
+				dhdpcie_enable_irq(bus);
+				/* increasing intrrupt count when it enabled */
+				bus->resume_intr_enable_count++;
+			}
 
 			smp_wmb();
 			wake_up(&bus->rpm_queue);

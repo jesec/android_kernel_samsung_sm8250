@@ -46,6 +46,11 @@ struct s2mpb02_data {
 #endif
 };
 
+#if defined(CONFIG_SEC_FACTORY) && defined(CONFIG_SEC_F2Q_PROJECT)
+struct s2mpb02_data *local_rdata[TYPE_S2MPB02_REG_MAX];
+int recovery_id[TYPE_S2MPB02_REG_MAX];
+#endif
+
 static int s2m_enable(struct regulator_dev *rdev)
 {
 	struct s2mpb02_data *info = rdev_get_drvdata(rdev);
@@ -344,6 +349,103 @@ static struct regulator_desc regulators[S2MPB02_REGULATOR_MAX] = {
 		  _BUCK(_STEP2), _REG(_BB1CTRL2), _REG(_BB1CTRL1), _TIME(_BB)),
 };
 
+#if defined(CONFIG_SEC_FACTORY) && defined(CONFIG_SEC_F2Q_PROJECT)
+/*
+ * Recovery logic for S2MPB02 detach test (TOP display pretest)
+ */
+int s2mpb02_recovery(int pmic_id)
+{
+	struct regulator_dev *rdev;
+	int i, ret = 0;
+	u8 val;
+	unsigned int vol, reg;
+
+	if (!local_rdata[pmic_id]) {
+		pr_info("%s: There is no local rdev data\n", __func__);
+		return -ENODEV;
+	}
+
+	// Skip recovery if register value is not reset
+	if (recovery_id[pmic_id] >= 0) {
+		rdev = local_rdata[pmic_id]->rdev[recovery_id[pmic_id]];
+		ret = s2mpb02_read_reg(local_rdata[pmic_id]->iodev->i2c, rdev->desc->enable_reg, &val);
+		if (val & 0x80) {
+			pr_info("%s: No need to recovery, recovery_id[%d]:%d\n", __func__, pmic_id, recovery_id[pmic_id]);
+			return 0;
+		}
+	}
+
+	pr_info("%s: Start recovery\n", __func__);
+
+	// S2MPB02 Recovery
+	for (i = 0; i < local_rdata[pmic_id]->num_regulators; i++) {
+		if (local_rdata[pmic_id]->rdev[i]) {
+			pr_debug("%s: local_rdata[%d]->rdev[%d]->desc->name(%s)\n",
+					__func__, pmic_id, i, local_rdata[pmic_id]->rdev[i]->desc->name);
+
+			rdev = local_rdata[pmic_id]->rdev[i];
+
+			// Make sure enabled registers are cleared
+			s2m_disable_regmap(rdev);
+
+			// Get and calculate voltage from regulator framework
+			vol = (rdev->constraints->min_uV - rdev->desc->min_uV) / rdev->desc->uV_step;
+			reg = s2m_get_voltage_sel_regmap(rdev);
+
+			// Set proper voltage according to regulator type
+			if (rdev->desc->vsel_mask == S2MPB02_BUCK_VSEL_MASK)
+				ret = s2m_set_voltage_sel_regmap_buck(rdev, vol);
+			else if (S2MPB02_LDO_VSEL_MASK)
+				ret = s2m_set_voltage_sel_regmap(rdev, vol);
+
+			if (ret < 0)
+				return ret;
+
+			if (rdev->constraints->always_on) {
+				ret = s2mpb02_read_reg(local_rdata[pmic_id]->iodev->i2c, rdev->desc->enable_reg, &val);
+				if (ret < 0)
+					return ret;
+
+				if (!(val & 0x80)) {
+					ret = s2m_enable(rdev);
+					if (ret < 0)
+						return ret;
+				}
+			} else {
+				if (rdev->use_count > 0) {
+					ret = s2m_enable(rdev);
+					if (ret < 0)
+						return ret;
+				}
+			}
+		}
+	}
+
+	pr_info("%s: S2MPB02 is successfully recovered!\n", __func__);
+
+	return ret;
+}
+
+#if defined(CONFIG_PM)
+static int s2mpb02_regulator_resume(struct device *dev)
+{
+	struct platform_device *pdev = container_of(dev, struct platform_device, dev);
+	int id_num;
+
+	id_num = platform_get_device_id(pdev)->driver_data;
+
+	if (id_num == TYPE_S2MPB02_REG_SUB)
+		s2mpb02_recovery(TYPE_S2MPB02_REG_SUB);
+
+	return 0;
+}
+
+const struct dev_pm_ops s2mpb02_regulator_pm = {
+	.resume = s2mpb02_regulator_resume,
+};
+#endif /* CONFIG_PM */
+#endif /* CONFIG_SEC_FACTORY && CONFIG_SEC_F2Q_PROJECT */
+
 #ifdef CONFIG_OF
 static int s2mpb02_pmic_dt_parse_pdata(struct s2mpb02_dev *iodev,
 					struct s2mpb02_platform_data *pdata)
@@ -430,7 +532,7 @@ static ssize_t s2mpb02_read_store(struct device *dev,
 	if (ret < 0)
 		pr_info("%s: fail to read i2c address\n", __func__);
 
-	pr_info("%s: reg(0x%02x) data(0x%02x)\n", __func__, reg_addr, val);
+	pr_info("%s: reg(0x%02hhx) data(0x%02hhx)\n", __func__, reg_addr, val);
 	s2mpb02->read_addr = reg_addr;
 	s2mpb02->read_val = val;
 
@@ -442,7 +544,7 @@ static ssize_t s2mpb02_read_show(struct device *dev,
 				 char *buf)
 {
 	struct s2mpb02_data *s2mpb02 = dev_get_drvdata(dev);
-	return sprintf(buf, "0x%02x: 0x%02x\n", s2mpb02->read_addr,
+	return sprintf(buf, "0x%02hhx: 0x%02hhx\n", s2mpb02->read_addr,
 		       s2mpb02->read_val);
 }
 
@@ -452,20 +554,20 @@ static ssize_t s2mpb02_write_store(struct device *dev,
 {
 	struct s2mpb02_data *s2mpb02 = dev_get_drvdata(dev);
 	int ret;
-	unsigned int reg, data;
+	u8 reg = 0, data = 0;
 
 	if (buf == NULL) {
 		pr_info("%s: empty buffer\n", __func__);
 		return size;
 	}
 
-	ret = sscanf(buf, "%x %x", &reg, &data);
+	ret = sscanf(buf, "0x%02hhx 0x%02hhx", &reg, &data);
 	if (ret != 2) {
 		pr_info("%s: input error\n", __func__);
 		return size;
 	}
 
-	pr_info("%s: reg(0x%02x) data(0x%02x)\n", __func__, reg, data);
+	pr_info("%s: reg(0x%02hhx) data(0x%02hhx)\n", __func__, reg, data);
 
 	ret = s2mpb02_write_reg(s2mpb02->iodev->i2c, reg, data);
 	if (ret < 0)
@@ -564,6 +666,15 @@ static int s2mpb02_pmic_probe(struct platform_device *pdev)
 	struct i2c_client *i2c;
 	int i, ret;
 
+#if defined(CONFIG_SEC_FACTORY) && defined(CONFIG_SEC_F2Q_PROJECT)
+/*
+	pdev_id: s2mpb02 pdev id
+	id_num : s2mpb02 index (0: Main FPCB, 1: Sub FPCB)
+*/
+	const struct platform_device_id *pdev_id;
+	int id_num;
+#endif
+
 	dev_info(&pdev->dev, "%s start\n", __func__);
 	if (!pdata) {
 		pr_info("[%s:%d] !pdata\n", __FILE__, __LINE__);
@@ -589,6 +700,14 @@ static int s2mpb02_pmic_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, s2mpb02);
 	i2c = s2mpb02->iodev->i2c;
 
+#if defined(CONFIG_SEC_FACTORY) && defined(CONFIG_SEC_F2Q_PROJECT)
+	pdev_id = platform_get_device_id(pdev);
+	id_num = pdev_id->driver_data;
+	local_rdata[id_num] = s2mpb02;
+	recovery_id[id_num] = -1;
+	pr_debug("%s: pdev_id->name(%s), id_num(%d)\n", __func__, pdev_id->name, id_num);
+#endif
+
 	for (i = 0; i < pdata->num_regulators; i++) {
 		int id = pdata->regulators[i].id;
 		config.dev = &pdev->dev;
@@ -604,6 +723,10 @@ static int s2mpb02_pmic_probe(struct platform_device *pdev)
 			s2mpb02->rdev[i] = NULL;
 			goto err_s2mpb02_data;
 		}
+#if defined(CONFIG_SEC_FACTORY) && defined(CONFIG_SEC_F2Q_PROJECT)
+		if ((recovery_id[id_num] < 0) && s2mpb02->rdev[i]->constraints->always_on)
+			recovery_id[id_num] = id;
+#endif
 	}
 #ifdef CONFIG_DRV_SAMSUNG_PMIC
 	/* create sysfs */
@@ -632,7 +755,8 @@ static int s2mpb02_pmic_remove(struct platform_device *pdev)
 }
 
 static const struct platform_device_id s2mpb02_pmic_id[] = {
-	{"s2mpb02-regulator", 0},
+	{"s2mpb02-regulator", TYPE_S2MPB02_REG_MAIN},
+	{"s2mpb02-sub-reg", TYPE_S2MPB02_REG_SUB},
 	{},
 };
 MODULE_DEVICE_TABLE(platform, s2mpb02_pmic_id);
@@ -641,6 +765,9 @@ static struct platform_driver s2mpb02_pmic_driver = {
 	.driver = {
 		   .name = "s2mpb02-regulator",
 		   .owner = THIS_MODULE,
+#if defined(CONFIG_SEC_FACTORY) && defined(CONFIG_SEC_F2Q_PROJECT) && defined(CONFIG_PM)
+		   .pm = &s2mpb02_regulator_pm,
+#endif
 		   .suppress_bind_attrs = true,
 		   },
 	.probe = s2mpb02_pmic_probe,

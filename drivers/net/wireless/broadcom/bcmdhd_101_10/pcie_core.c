@@ -3,7 +3,7 @@
  * Contains PCIe related functions that are shared between different driver models (e.g. firmware
  * builds, DHD builds, BMAC builds), in order to avoid code duplication.
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -20,7 +20,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #include <typedefs.h>
@@ -32,6 +32,7 @@
 #include <sbchipc.h>
 #include <pcicfg.h>
 #include "pcie_core.h"
+#include <bcmdevs.h>
 
 /* local prototypes */
 
@@ -51,15 +52,6 @@
 #define USEC_PER_MSEC	1000
 #endif
 
-/**
- * XXX: WAR for CRWLPCIEGEN2-163, needed for all the chips at this point.
- * The PCIe core contains a 'snoop bus', that allows the logic in the PCIe core to read and write
- * to the PCIe configuration registers. When chip backplane reset hits, e.g. on driver unload, the
- * pcie snoop out will reset to default values and may get out of sync with pcie config registers.
- * This is causing failures because the LTR enable bit on the snoop bus gets out of sync. Also on
- * the snoop bus are the device power state, MSI info, L1subenable which may potentially cause
- * problems.
- */
 /* wd_mask/wd_val is only for chipc_corerev >= 65 */
 void pcie_watchdog_reset(osl_t *osh, si_t *sih, uint32 wd_mask, uint32 wd_val)
 {

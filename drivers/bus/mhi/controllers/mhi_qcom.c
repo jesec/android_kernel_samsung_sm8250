@@ -534,14 +534,10 @@ static int mhi_qcom_power_up(struct mhi_controller *mhi_cntrl)
 
 static int mhi_runtime_get(struct mhi_controller *mhi_cntrl, void *priv)
 {
-	int ret;
 	struct mhi_dev *mhi_dev = priv;
 	struct device *dev = &mhi_dev->pci_dev->dev;
 
-	ret = pm_runtime_get(dev);
-	pm_runtime_mark_last_busy(dev); 
-
-	return ret;
+	return pm_runtime_get(dev);
 }
 
 static void mhi_runtime_put(struct mhi_controller *mhi_cntrl, void *priv)

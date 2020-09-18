@@ -14,6 +14,18 @@
 
 #include "cam_ois_dev.h"
 
+#define INIT_X_TARGET		(800)
+#define STEP_VALUE			(300)
+#define STEP_COUNT			(10)
+#define RUMBA_WRITE_UILD	(0x48)
+#define RUMBA_READ_UILD 	(0x49)
+
+#define CAMERA_OIS_EXT_CLK_12MHZ 0xB71B00
+#define CAMERA_OIS_EXT_CLK_17MHZ 0x1036640
+#define CAMERA_OIS_EXT_CLK_19P2MHZ 0x124F800
+#define CAMERA_OIS_EXT_CLK_24MHZ   0x16E3600
+#define CAMERA_OIS_EXT_CLK_26MHZ   0x18CBA80
+
 struct cam_ois_sinewave_t
 {
     int sin_x;
@@ -47,13 +59,24 @@ int cam_ois_set_ggfadedown(struct cam_ois_ctrl_t *o_ctrl, uint16_t value);
 int cam_ois_fixed_aperture(struct cam_ois_ctrl_t *o_ctrl);
 int cam_ois_write_xgg_ygg(struct cam_ois_ctrl_t *o_ctrl);
 #if defined(CONFIG_SAMSUNG_REAR_TRIPLE)
+#if defined(CONFIG_SEC_C2Q_PROJECT)
+bool cam_ois_write_efs_tele_center_shift(struct cam_ois_ctrl_t *o_ctrl);
+#endif
 int cam_ois_write_dual_cal(struct cam_ois_ctrl_t *o_ctrl);
 #endif
 int cam_ois_write_gyro_orientation(struct cam_ois_ctrl_t *o_ctrl);
 int cam_ois_mcu_init(struct cam_ois_ctrl_t *o_ctrl);
-void cam_ois_reset_mcu(void *ctrl);
+void cam_ois_reset(void *ctrl);
 int cam_ois_read_hall_position(struct cam_ois_ctrl_t *o_ctrl,
 	uint32_t* targetPosition, uint32_t* hallPosition);
+#if defined(CONFIG_SAMSUNG_OIS_TAMODE_CONTROL)
+int ps_notifier_cb(struct notifier_block *nb, unsigned long event, void *data);
+int cam_ois_add_tamode_msg(struct cam_ois_ctrl_t *o_ctrl);
+int cam_ois_set_ta_mode(struct cam_ois_ctrl_t *o_ctrl);
+#endif
+int cam_ois_check_tele_cross_talk(struct cam_ois_ctrl_t *o_ctrl, uint16_t *result);
+uint32_t cam_ois_check_ext_clk(struct cam_ois_ctrl_t *o_ctrl);
+int32_t cam_ois_set_ext_clk(struct cam_ois_ctrl_t *o_ctrl, uint32_t clk);
 
 /*
 *Below code add for MCU sysboot cmd operation

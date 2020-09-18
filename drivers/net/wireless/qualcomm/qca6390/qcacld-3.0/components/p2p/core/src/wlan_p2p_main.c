@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2019 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2017-2020 The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -500,10 +500,9 @@ static QDF_STATUS process_peer_for_noa(struct wlan_objmgr_vdev *vdev,
 	}
 	p2p_vdev_obj = wlan_objmgr_vdev_get_comp_private_obj(vdev,
 						WLAN_UMAC_COMP_P2P);
-	if (!p2p_vdev_obj) {
-		p2p_err("p2p_vdev_obj:%pK", p2p_vdev_obj);
+	if (!p2p_vdev_obj)
 		return QDF_STATUS_E_INVAL;
-	}
+
 	mode = wlan_vdev_mlme_get_opmode(vdev);
 
 	peer_type = wlan_peer_get_peer_type(peer);
@@ -734,12 +733,6 @@ QDF_STATUS p2p_psoc_object_open(struct wlan_objmgr_psoc *soc)
 	qdf_list_create(&p2p_soc_obj->tx_q_roc, MAX_QUEUE_LENGTH);
 	qdf_list_create(&p2p_soc_obj->tx_q_ack, MAX_QUEUE_LENGTH);
 
-	status = qdf_event_create(&p2p_soc_obj->cancel_roc_done);
-	if (status != QDF_STATUS_SUCCESS) {
-		p2p_err("failed to create cancel roc done event");
-		goto fail_cancel_roc;
-	}
-
 	status = qdf_event_create(&p2p_soc_obj->cleanup_roc_done);
 	if (status != QDF_STATUS_SUCCESS) {
 		p2p_err("failed to create cleanup roc done event");
@@ -764,9 +757,6 @@ fail_cleanup_tx:
 	qdf_event_destroy(&p2p_soc_obj->cleanup_roc_done);
 
 fail_cleanup_roc:
-	qdf_event_destroy(&p2p_soc_obj->cancel_roc_done);
-
-fail_cancel_roc:
 	qdf_list_destroy(&p2p_soc_obj->tx_q_ack);
 	qdf_list_destroy(&p2p_soc_obj->tx_q_roc);
 	qdf_list_destroy(&p2p_soc_obj->roc_q);
@@ -794,7 +784,6 @@ QDF_STATUS p2p_psoc_object_close(struct wlan_objmgr_psoc *soc)
 	qdf_runtime_lock_deinit(&p2p_soc_obj->roc_runtime_lock);
 	qdf_event_destroy(&p2p_soc_obj->cleanup_tx_done);
 	qdf_event_destroy(&p2p_soc_obj->cleanup_roc_done);
-	qdf_event_destroy(&p2p_soc_obj->cancel_roc_done);
 	qdf_list_destroy(&p2p_soc_obj->tx_q_ack);
 	qdf_list_destroy(&p2p_soc_obj->tx_q_roc);
 	qdf_list_destroy(&p2p_soc_obj->roc_q);
@@ -1085,8 +1074,8 @@ QDF_STATUS p2p_event_flush_callback(struct scheduler_msg *msg)
 		break;
 	case P2P_EVENT_MGMT_TX_ACK_CNF:
 		tx_conf_event = (struct p2p_tx_conf_event *)msg->bodyptr;
-		qdf_mem_free(tx_conf_event);
 		qdf_nbuf_free(tx_conf_event->nbuf);
+		qdf_mem_free(tx_conf_event);
 		break;
 	case P2P_EVENT_LO_STOPPED:
 		lo_stop_event = (struct p2p_lo_stop_event *)msg->bodyptr;
@@ -1099,6 +1088,89 @@ QDF_STATUS p2p_event_flush_callback(struct scheduler_msg *msg)
 	}
 
 	return QDF_STATUS_SUCCESS;
+}
+
+bool p2p_check_oui_and_force_1x1(uint8_t *assoc_ie, uint32_t assoc_ie_len)
+{
+	const uint8_t *vendor_ie, *p2p_ie, *pos;
+	uint8_t rem_len, attr;
+	uint16_t attr_len;
+
+	vendor_ie = (uint8_t *)p2p_get_p2pie_ptr(assoc_ie, assoc_ie_len);
+	if (!vendor_ie) {
+		p2p_debug("P2P IE not found");
+		return false;
+	}
+
+	rem_len = vendor_ie[1];
+	if (rem_len < (2 + OUI_SIZE_P2P) || rem_len > WLAN_MAX_IE_LEN) {
+		p2p_err("Invalid IE len %d", rem_len);
+		return false;
+	}
+
+	p2p_ie = vendor_ie + HEADER_LEN_P2P_IE;
+	rem_len -= OUI_SIZE_P2P;
+
+	while (rem_len) {
+		attr = p2p_ie[0];
+		attr_len = LE_READ_2(&p2p_ie[1]);
+		if (attr_len > rem_len)  {
+			p2p_err("Invalid len %d for elem:%d", attr_len, attr);
+			return false;
+		}
+
+		switch (attr) {
+		case P2P_ATTR_CAPABILITY:
+		case P2P_ATTR_DEVICE_ID:
+		case P2P_ATTR_GROUP_OWNER_INTENT:
+		case P2P_ATTR_STATUS:
+		case P2P_ATTR_LISTEN_CHANNEL:
+		case P2P_ATTR_OPERATING_CHANNEL:
+		case P2P_ATTR_GROUP_INFO:
+		case P2P_ATTR_MANAGEABILITY:
+		case P2P_ATTR_CHANNEL_LIST:
+			break;
+
+		case P2P_ATTR_DEVICE_INFO:
+			if (attr_len < (QDF_MAC_ADDR_SIZE +
+					MAX_CONFIG_METHODS_LEN + 8 +
+					DEVICE_CATEGORY_MAX_LEN)) {
+				p2p_err("Invalid Device info attr len %d",
+					attr_len);
+				return false;
+			}
+
+			/* move by attr id and 2 bytes of attr len */
+			pos = p2p_ie + 3;
+
+			/*
+			 * the P2P Device info is of format:
+			 * attr_id - 1 byte
+			 * attr_len - 2 bytes
+			 * device mac addr - 6 bytes
+			 * config methods - 2 bytes
+			 * primary device type - 8bytes
+			 *  -primary device type category - 1 byte
+			 *  -primary device type oui - 4bytes
+			 * number of secondary device type - 2 bytes
+			 */
+			pos += ETH_ALEN + MAX_CONFIG_METHODS_LEN +
+			       DEVICE_CATEGORY_MAX_LEN;
+
+			if (!qdf_mem_cmp(pos, P2P_1X1_WAR_OUI,
+					 P2P_1X1_OUI_LEN))
+				return true;
+
+			break;
+		default:
+			p2p_err("Invalid P2P attribute");
+			break;
+		}
+		p2p_ie += (3 + attr_len);
+		rem_len -= (3 + attr_len);
+	}
+
+	return false;
 }
 
 #ifdef FEATURE_P2P_LISTEN_OFFLOAD
@@ -1230,10 +1302,9 @@ void p2p_peer_authorized(struct wlan_objmgr_vdev *vdev, uint8_t *mac_addr)
 	status = process_peer_for_noa(vdev, psoc, peer);
 	wlan_objmgr_peer_release_ref(peer, WLAN_P2P_ID);
 
-	if (status != QDF_STATUS_SUCCESS) {
-		p2p_err("status:%u", status);
+	if (status != QDF_STATUS_SUCCESS)
 		return;
-	}
+
 	p2p_debug("peer is authorized");
 }
 
@@ -1316,10 +1387,8 @@ QDF_STATUS p2p_status_connect(struct wlan_objmgr_vdev *vdev)
 	}
 
 	mode = wlan_vdev_mlme_get_opmode(vdev);
-	if (mode != QDF_P2P_CLIENT_MODE) {
-		p2p_debug("this is not P2P CLIENT, mode:%d", mode);
+	if (mode != QDF_P2P_CLIENT_MODE)
 		return QDF_STATUS_SUCCESS;
-	}
 
 	p2p_debug("connection status:%d", p2p_soc_obj->connection_status);
 	switch (p2p_soc_obj->connection_status) {
@@ -1358,10 +1427,8 @@ QDF_STATUS p2p_status_disconnect(struct wlan_objmgr_vdev *vdev)
 	}
 
 	mode = wlan_vdev_mlme_get_opmode(vdev);
-	if (mode != QDF_P2P_CLIENT_MODE) {
-		p2p_debug("this is not P2P CLIENT, mode:%d", mode);
+	if (mode != QDF_P2P_CLIENT_MODE)
 		return QDF_STATUS_SUCCESS;
-	}
 
 	p2p_debug("connection status:%d", p2p_soc_obj->connection_status);
 	switch (p2p_soc_obj->connection_status) {
@@ -1442,4 +1509,5 @@ QDF_STATUS p2p_status_stop_bss(struct wlan_objmgr_vdev *vdev)
 
 	return QDF_STATUS_SUCCESS;
 }
+
 #endif /* WLAN_FEATURE_P2P_DEBUG */

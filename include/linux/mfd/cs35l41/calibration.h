@@ -23,8 +23,8 @@
 #define CS35L41_CAL_CHECKSUM	0x02800230
 #define CS35L41_CAL_SET_STATUS	0x02800234
 #define CS35L41_YM_CONFIG_ADDR	0x0340002c
-#define CIRRUS_PWR_CSPL_I_PEAK	0x028003c0
-#define CIRRUS_PWR_CSPL_V_PEAK	0x028003c4
+#define CIRRUS_PWR_CSPL_I_PEAK	0x0280039c
+#define CIRRUS_PWR_CSPL_V_PEAK	0x028003a0
 
 #define CS35L41_HALO_STATE			0x02800050
 #define CS35L41_HALO_HEARTBEAT			0x02800054
@@ -101,8 +101,10 @@ int cirrus_cal_component_add(struct snd_soc_component *component, const char *mf
 #endif /* CS35L41_FACTORY_RECOVERY_SYSFS */
 
 int cirrus_cal_amp_add(struct regmap *regmap_new, const char *mfd_suffix,
-					const char *dsp_part_name);
+					const char *dsp_part_name,
+					bool calibration_disable);
 int cirrus_cal_init(struct class *cirrus_amp_class, int num_amps,
-					const char **mfd_suffixes);
+					const char **mfd_suffixes,
+					bool *v_val_separate);
 void cirrus_cal_exit(void);
 

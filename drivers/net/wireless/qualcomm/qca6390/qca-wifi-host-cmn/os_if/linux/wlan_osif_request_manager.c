@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2019 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2017-2020 The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -83,7 +83,7 @@ struct osif_request *osif_request_alloc(const struct osif_request_params *params
 	struct osif_request *request;
 
 	if (!is_initialized) {
-		cfg80211_err("invoked when not initialized");
+		osif_err("invoked when not initialized");
 		return NULL;
 	}
 
@@ -99,8 +99,6 @@ struct osif_request *osif_request_alloc(const struct osif_request_params *params
 	request->cookie = cookie++;
 	qdf_list_insert_back(&requests, &request->node);
 	qdf_spin_unlock_bh(&spinlock);
-	cfg80211_debug("request %pK, cookie %pK",
-		       request, request->cookie);
 
 	return request;
 }
@@ -121,7 +119,7 @@ struct osif_request *osif_request_get(void *cookie)
 	struct osif_request *request;
 
 	if (!is_initialized) {
-		cfg80211_err("invoked when not initialized");
+		osif_err("invoked when not initialized");
 		return NULL;
 	}
 	qdf_spin_lock_bh(&spinlock);
@@ -129,8 +127,6 @@ struct osif_request *osif_request_get(void *cookie)
 	if (request)
 		request->reference_count++;
 	qdf_spin_unlock_bh(&spinlock);
-	cfg80211_debug("cookie %pK, request %pK",
-		       cookie, request);
 
 	return request;
 }
@@ -139,8 +135,6 @@ void osif_request_put(struct osif_request *request)
 {
 	bool unlinked = false;
 
-	cfg80211_debug("request %pK, cookie %pK",
-		       request, request->cookie);
 	qdf_spin_lock_bh(&spinlock);
 	request->reference_count--;
 	if (0 == request->reference_count) {

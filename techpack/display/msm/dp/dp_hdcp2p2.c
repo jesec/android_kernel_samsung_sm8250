@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2016-2019, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2016-2020, The Linux Foundation. All rights reserved.
  */
 
 #include <linux/delay.h>
@@ -35,6 +35,7 @@ struct dp_hdcp2p2_ctrl {
 	DECLARE_KFIFO(cmd_q, enum hdcp_transport_wakeup_cmd, 8);
 	wait_queue_head_t wait_q;
 	atomic_t auth_state;
+	atomic_t abort;
 	enum dp_hdcp2p2_sink_status sink_status; /* Is sink connected */
 	struct dp_hdcp2p2_interrupts *intr;
 	struct sde_hdcp_init_data init_data;
@@ -154,6 +155,9 @@ static void dp_hdcp2p2_set_interrupts(struct dp_hdcp2p2_ctrl *ctrl, bool enable)
 {
 	void __iomem *base = ctrl->init_data.dp_ahb->base;
 	struct dp_hdcp2p2_interrupts *intr = ctrl->intr;
+
+	if (atomic_read(&ctrl->abort))
+		return;
 
 	while (intr && intr->reg) {
 		struct dp_hdcp2p2_int_set *int_set = intr->int_set;
@@ -350,11 +354,6 @@ static void dp_hdcp2p2_min_level_change(void *client_ctx,
 		return;
 	}
 
-	if (!dp_hdcp2p2_is_valid_state(ctrl)) {
-		DP_ERR("invalid state\n");
-		return;
-	}
-
 	cdata.context = ctrl->lib_ctx;
 	cdata.min_enc_level = min_enc_level;
 	dp_hdcp2p2_wakeup_lib(ctrl, &cdata);
@@ -404,7 +403,7 @@ static int dp_hdcp2p2_aux_read_message(struct dp_hdcp2p2_ctrl *ctrl)
 	diff_ms = ktime_ms_delta(finish_read, start_read);
 
 	if (ctrl->transaction_timeout && diff_ms > ctrl->transaction_timeout) {
-		DP_ERR("HDCP read timeout exceeded (%dms > %dms)\n", diff_ms,
+		DP_ERR("HDCP read timeout exceeded (%llums > %ums)\n", diff_ms,
 				ctrl->transaction_timeout);
 		rc = -ETIMEDOUT;
 	}
@@ -766,6 +765,7 @@ static bool dp_hdcp2p2_supported(void *input)
 #ifdef CONFIG_SEC_DISPLAYPORT
 {
 	u32 i;
+
 	for (i = 0; i < DP_HDCP_RXCAPS_LENGTH; i++)
 		DP_DEBUG("rxcaps[%d] 0x%x\n", i, buf[i]);
 }
@@ -906,6 +906,13 @@ static int dp_hdcp2p2_main(void *data)
 	return 0;
 }
 
+static void dp_hdcp2p2_abort(void *input, bool abort)
+{
+	struct dp_hdcp2p2_ctrl *ctrl = input;
+
+	atomic_set(&ctrl->abort, abort);
+}
+
 void *sde_dp_hdcp2p2_init(struct sde_hdcp_init_data *init_data)
 {
 	int rc;
@@ -920,6 +927,7 @@ void *sde_dp_hdcp2p2_init(struct sde_hdcp_init_data *init_data)
 		.set_mode = dp_hdcp2p2_register,
 		.on = dp_hdcp2p2_on,
 		.off = dp_hdcp2p2_off,
+		.abort = dp_hdcp2p2_abort,
 		.cp_irq = dp_hdcp2p2_cp_irq,
 		.register_streams = dp_hdcp2p2_register_streams,
 		.deregister_streams = dp_hdcp2p2_deregister_streams,

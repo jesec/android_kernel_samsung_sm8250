@@ -31,4 +31,10 @@ extern unsigned long *bitmap_zalloc(unsigned int nbits, gfp_t flags);
 	
 #endif /* KERNEL_VERSION(4,19,0) */
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5,4,0)
+
+void qcom_scm_disable_sdi(void);
+
+#endif /* KERNEL_VERSION(5,4,0) */
+
 #endif /* __SEC_KCOMPAT_H__ */

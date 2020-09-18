@@ -5,6 +5,14 @@
 
 # Each configuration option enables a list of files.
 
+
+# Object files in subdirectories 
+CFLAGS_hall_ic.o = -Wformat
+CFLAGS_certify_hall_ic.o = -Wformat
+CFLAGS_folder_hall_ic.o = -Wformat
+CFLAGS_hall_ic_wacom.o = -Wformat
+CFLAGS_hall_ic_logical.o = -Wformat
+
 obj-$(CONFIG_KEYBOARD_ADC)		+= adc-keys.o
 obj-$(CONFIG_KEYBOARD_ADP5520)		+= adp5520-keys.o
 obj-$(CONFIG_KEYBOARD_ADP5588)		+= adp5588-keys.o
@@ -73,3 +81,6 @@ obj-$(CONFIG_KEYBOARD_XTKBD)		+= xtkbd.o
 obj-$(CONFIG_KEYBOARD_W90P910)		+= w90p910_keypad.o
 obj-$(CONFIG_KEYBOARD_STM_FSR)		+= stm/fsr1ad04/
 obj-$(CONFIG_LOGICAL_HALL)		+= hall_ic_logical.o
+
+CFLAGS_gpio_keys.o = -Wformat
+obj-$(CONFIG_KEYBOARD_STM32_POGO)	+= stm/stm32l0/

@@ -2060,6 +2060,12 @@ static int venus_hfi_core_init(void *device)
 	rc = call_venus_op(dev, boot_firmware, dev, DEFAULT_SID);
 	if (rc) {
 		d_vpr_e("Failed to start core\n");
+
+// Add kernel panic to detect venus f/w booting fail issue (P200303-00945)
+#ifdef CONFIG_SEC_FACTORY
+		panic("[vidc] venus f/w booting fail issue : Failed to start core\n");
+#endif
+
 		rc = -ENODEV;
 		goto err_core_init;
 	}

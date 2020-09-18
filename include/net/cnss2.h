@@ -21,7 +21,8 @@ enum cnss_bus_width_type {
 	CNSS_BUS_WIDTH_LOW,
 	CNSS_BUS_WIDTH_MEDIUM,
 	CNSS_BUS_WIDTH_HIGH,
-	CNSS_BUS_WIDTH_VERY_HIGH
+	CNSS_BUS_WIDTH_VERY_HIGH,
+	CNSS_BUS_WIDTH_LOW_LATENCY
 };
 
 enum cnss_platform_cap_flag {
@@ -238,4 +239,8 @@ extern int cnss_athdiag_write(struct device *dev, uint32_t offset,
 			      uint8_t *input);
 extern int cnss_set_fw_log_mode(struct device *dev, uint8_t fw_log_mode);
 extern int cnss_set_pcie_gen_speed(struct device *dev, u8 pcie_gen_speed);
+
+extern int cnss_sysfs_get_pm_info(void);
+extern void cnss_sysfs_update_driver_status(int32_t new_status, void *version, void *softap);
+
 #endif /* _NET_CNSS2_H */

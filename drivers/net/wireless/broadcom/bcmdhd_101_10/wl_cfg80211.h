@@ -1,7 +1,7 @@
 /*
  * Linux cfg80211 driver
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,7 +18,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 /**
@@ -151,7 +151,7 @@ extern char *dhd_log_dump_get_timestamp(void);
 #endif /* !_DHD_LOG_DUMP_DEFINITIONS_ */
 #endif /* DHD_LOG_DUMP */
 
-/* XXX On some MSM platform, it uses different version
+/* On some MSM platform, it uses different version
  * of linux kernel and cfg code as not synced.
  * MSM defined CFG80211_DISCONNECTED_V2 as the flag
  * when they uses different kernel/cfg version.
@@ -170,7 +170,7 @@ extern char *dhd_log_dump_get_timestamp(void);
 #define WL_DBG_LEVEL 0xFF
 
 #define CFG80211_INFO_TEXT		"CFG80211-INFO) "
-/* XXX Samsung want to print INFO2 instead of ERROR
+/* Samsung want to print INFO2 instead of ERROR
  * because most of case, ERROR message is not a real ERROR.
  * but it can be regarded as real error case for Tester
  */
@@ -364,7 +364,7 @@ do {									\
 #define WL_SCAN_IE_LEN_MAX  2048
 #define WL_BSS_INFO_MAX     2048
 #define WL_ASSOC_INFO_MAX   512
-/* XXX the length of pmkid_info iovar is 1416
+/* the length of pmkid_info iovar is 1416
  * It exceed the original 1024 limitation
  * so change WL_EXTRA_LEN_MAX to 2048
  */
@@ -393,6 +393,10 @@ do {									\
 #ifdef WL_NAN
 #define WL_SCAN_TIMER_INTERVAL_MS_NAN	15000 /* Scan timeout */
 #endif /* WL_NAN */
+#ifdef WL_6G_BAND
+/* additional scan timeout for 6GHz, 15*110msec, rounded to 3000msec */
+#define WL_SCAN_TIMER_INTERVAL_MS_6G	3000
+#endif /* WL_6G_BAND */
 #define WL_CHANNEL_SYNC_RETRY	5
 #define WL_INVALID		-1
 
@@ -767,6 +771,10 @@ struct wl_security {
 	u32 cipher_group;
 	u32 wpa_auth;
 	u32 auth_assoc_res_status;
+	u32 fw_wpa_auth;
+	u32 fw_auth;
+	u32 fw_wsec;
+	u32 fw_mfp;
 };
 
 /* ibss information for currently joined ibss network */
@@ -994,6 +1002,9 @@ struct escan_info {
 #endif /* DUAL_ESCAN_RESULT_BUFFER */
 	struct wiphy *wiphy;
 	struct net_device *ndev;
+#ifdef DHD_SEND_HANG_ESCAN_SYNCID_MISMATCH
+	bool prev_escan_aborted;
+#endif /* DHD_SEND_HANG_ESCAN_SYNCID_MISMATCH */
 };
 
 #ifdef ESCAN_BUF_OVERFLOW_MGMT
@@ -1516,6 +1527,9 @@ struct bcm_cfg80211 {
 #ifdef SUPPORT_AP_BWCTRL
 	u32 bw_cap_5g;
 #endif /* SUPPORT_AP_BWCTRL */
+#ifdef WL_6G_BAND
+	bool band_6g_supported;
+#endif /* WL_6G_BAND */
 	wl_loc_info_t loc;    /* listen on channel state info */
 	int roamscan_mode;
 	int wes_mode;
@@ -1529,9 +1543,11 @@ struct bcm_cfg80211 {
 	struct wl_pmk_list *spmk_info_list;	/* single pmk info list */
 };
 
-#define WL_DS_SKIP_THRESHOLD_MSECS  30000
-#define WL_DS_SKIP_THRESHOLD_USECS  (30000 * 1000)
-#define WL_DS_SKIP_THRESHOLD_CNT    30
+/* Max auth timeout allowed in case of EAP is 70sec, additional 5 sec for
+* inter-layer overheads
+*/
+#define WL_DS_SKIP_THRESHOLD_USECS  (75000 * 1000)
+
 enum wl_state_type {
 	WL_STATE_IDLE,
 	WL_STATE_SCANNING,
@@ -2073,6 +2089,10 @@ wl_iftype_to_str(int wl_iftype)
 
 #define is_discovery_iface(iface) (((iface == WL_IF_TYPE_P2P_DISC) || \
 	(iface == WL_IF_TYPE_NAN_NMI)) ? 1 : 0)
+#define IS_P2P_GC(wdev) \
+		((wdev->iftype == NL80211_IFTYPE_P2P_CLIENT) ? 1 : 0)
+#define IS_P2P_GO(wdev) \
+		((wdev->iftype == NL80211_IFTYPE_P2P_GO) ? 1 : 0)
 #define is_p2p_group_iface(wdev) (((wdev->iftype == NL80211_IFTYPE_P2P_GO) || \
 		(wdev->iftype == NL80211_IFTYPE_P2P_CLIENT)) ? 1 : 0)
 #define bcmcfg_to_wiphy(cfg) (cfg->wdev->wiphy)
@@ -2346,54 +2366,6 @@ extern int wl_cfg80211_wips_event_ext(wl_wips_event_info_t *wips_event);
 #define SCAN_BUF_NEXT	1
 #define WL_SCANTYPE_LEGACY	0x1
 #define WL_SCANTYPE_P2P		0x2
-#ifdef DUAL_ESCAN_RESULT_BUFFER
-#define wl_escan_set_sync_id(a, b) ((a) = (b)->escan_info.cur_sync_id)
-#define wl_escan_set_type(a, b) ((a)->escan_info.escan_type\
-		[((a)->escan_info.cur_sync_id)%SCAN_BUF_CNT] = (b))
-static inline wl_scan_results_t *wl_escan_get_buf(struct bcm_cfg80211 *cfg, bool aborted)
-{
-	u8 index;
-	if (aborted) {
-		if (cfg->escan_info.escan_type[0] == cfg->escan_info.escan_type[1])
-			index = (cfg->escan_info.cur_sync_id + 1)%SCAN_BUF_CNT;
-		else
-			index = (cfg->escan_info.cur_sync_id)%SCAN_BUF_CNT;
-	}
-	else
-		index = (cfg->escan_info.cur_sync_id)%SCAN_BUF_CNT;
-
-	return (wl_scan_results_t *)cfg->escan_info.escan_buf[index];
-}
-static inline int wl_escan_check_sync_id(s32 status, u16 result_id, u16 wl_id)
-{
-	if (result_id != wl_id) {
-		WL_ERR(("ESCAN sync id mismatch :status :%d "
-			"cur_sync_id:%d coming sync_id:%d\n",
-			status, wl_id, result_id));
-		return -1;
-	}
-	else
-		return 0;
-}
-static inline void wl_escan_print_sync_id(s32 status, u16 result_id, u16 wl_id)
-{
-	if (result_id != wl_id) {
-		WL_ERR(("ESCAN sync id mismatch :status :%d "
-			"cur_sync_id:%d coming sync_id:%d\n",
-			status, wl_id, result_id));
-	}
-}
-#define wl_escan_increment_sync_id(a, b) ((a)->escan_info.cur_sync_id += b)
-#define wl_escan_init_sync_id(a) ((a)->escan_info.cur_sync_id = 0)
-#else
-#define wl_escan_set_sync_id(a, b) ((a) = htod16((b)->escan_sync_id_cntr++))
-#define wl_escan_set_type(a, b)
-#define wl_escan_get_buf(a, b) ((wl_scan_results_t *) (a)->escan_info.escan_buf)
-#define wl_escan_check_sync_id(a, b, c) 0
-#define wl_escan_print_sync_id(a, b, c)
-#define wl_escan_increment_sync_id(a, b)
-#define wl_escan_init_sync_id(a)
-#endif /* DUAL_ESCAN_RESULT_BUFFER */
 extern void wl_cfg80211_ibss_vsie_set_buffer(struct net_device *dev, vndr_ie_setbuf_t *ibss_vsie,
 	int ibss_vsie_len);
 extern s32 wl_cfg80211_ibss_vsie_delete(struct net_device *dev);
@@ -2513,7 +2485,7 @@ do {                                    \
 } while (0)
 
 #ifdef QOS_MAP_SET
-extern uint8 *wl_get_up_table(void);
+extern uint8 *wl_get_up_table(dhd_pub_t * dhdp, int idx);
 #endif /* QOS_MAP_SET */
 
 #define P2PO_COOKIE     65535
@@ -2587,7 +2559,6 @@ extern int wl_features_set(u8 *array, uint8 len, u32 ftidx);
 extern void *wl_read_prof(struct bcm_cfg80211 *cfg, struct net_device *ndev, s32 item);
 extern s32 wl_cfg80211_sup_event_handler(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
         const wl_event_msg_t *event, void *data);
-extern s32 wl_inform_bss(struct bcm_cfg80211 *cfg);
 extern void wl_cfg80211_cancel_scan(struct bcm_cfg80211 *cfg);
 extern s32 wl_notify_escan_complete(struct bcm_cfg80211 *cfg,
 	struct net_device *ndev, bool aborted, bool fw_abort);
@@ -2614,9 +2585,6 @@ extern int wl_set_ap_bw(struct net_device *dev, u32 bw, char *ifname);
 extern int wl_get_ap_bw(struct net_device *dev, char* command, char *ifname, int total_len);
 #endif /* SUPPORT_AP_BWCTRL */
 bool wl_cfg80211_check_in_progress(struct net_device *dev);
-#ifdef WL_GET_RCC
-extern int wl_android_get_roam_scan_chanlist(struct bcm_cfg80211 *cfg);
-#endif /* WL_GET_RCC */
 #ifdef WES_SUPPORT
 extern int wl_android_set_ncho_mode(struct net_device *dev, int mode);
 #endif /* WES_SUPPORT */
@@ -2627,6 +2595,9 @@ extern int wl_cfg80211_start_mkeep_alive(struct bcm_cfg80211 *cfg, uint8 mkeep_a
 extern int wl_cfg80211_stop_mkeep_alive(struct bcm_cfg80211 *cfg, uint8 mkeep_alive_id);
 #endif /* KEEP_ALIVE */
 
+extern s32 wl_cfg80211_handle_macaddr_change(struct net_device *dev, u8 *macaddr);
+extern int wl_cfg80211_handle_hang_event(struct net_device *ndev,
+	uint16 hang_reason, uint32 memdump_type);
 bool wl_cfg80211_is_dpp_frame(void *frame, u32 frame_len);
 const char *get_dpp_pa_ftype(enum wl_dpp_ftype ftype);
 bool wl_cfg80211_is_dpp_gas_action(void *frame, u32 frame_len);
@@ -2635,6 +2606,10 @@ extern bool wl_cfg80211_find_gas_subtype(u8 subtype, u16 adv_id, u8* data, u32 l
 extern void wl_update_rcc_list(struct net_device *dev);
 #endif /* ESCAN_CHANNEL_CACHE */
 
+#ifdef WL_SAE
+extern s32 wl_cfg80211_set_wsec_info(struct net_device *dev, uint32 *data,
+	uint16 data_len, int tag);
+#endif /* WL_SAE */
 #define WL_CHANNEL_ARRAY_INIT(band_chan_arr)	\
 do {	\
 	u32 arr_size, k;	\
@@ -2643,4 +2618,25 @@ do {	\
 		band_chan_arr[k].flags = IEEE80211_CHAN_DISABLED;	\
 	}	\
 } while (0)
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 9, 0))
+#define CFG80211_PUT_BSS(wiphy, bss) cfg80211_put_bss(wiphy, bss);
+#else
+#define CFG80211_PUT_BSS(wiphy, bss) cfg80211_put_bss(bss);
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 9, 0) */
+
+#ifdef RSSI_OFFSET
+static inline s32 wl_rssi_offset(s32 rssi)
+{
+	rssi += RSSI_OFFSET;
+	if (rssi > 0)
+		rssi = 0;
+	return rssi;
+}
+#else
+#define wl_rssi_offset(x)	x
+#endif
+extern int wl_channel_to_frequency(u32 chan, chanspec_band_t band);
+extern int wl_cfg80211_config_rsnxe_ie(struct bcm_cfg80211 *cfg, struct net_device *dev,
+		const u8 *parse, u32 len);
 #endif /* _wl_cfg80211_h_ */

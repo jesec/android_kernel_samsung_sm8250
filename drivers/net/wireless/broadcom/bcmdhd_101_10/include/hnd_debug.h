@@ -1,7 +1,7 @@
 /*
  * HND Run Time Environment debug info area
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,7 +18,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #ifndef	_HND_DEBUG_H
@@ -129,8 +129,8 @@ typedef struct hnd_debug {
 	uint32	fwid;			/* 4 bytes of fw info */
 	char	epivers[HND_DEBUG_EPIVERS_MAX_STR_LEN];
 
-	_HD_TRAP_P trap_ptr;		/* trap_t data struct */
-	_HD_CONS_P console;		/* Console  */
+	_HD_TRAP_P PHYS_ADDR_N(trap_ptr);	/* trap_t data struct physical address. */
+	_HD_CONS_P PHYS_ADDR_N(console);	/* Console physical address. */
 
 	uint32	ram_base;
 	uint32	ram_size;
@@ -138,7 +138,7 @@ typedef struct hnd_debug {
 	uint32	rom_base;
 	uint32	rom_size;
 
-	_HD_EVLOG_P event_log_top;
+	_HD_EVLOG_P PHYS_ADDR_N(event_log_top);	/* EVENT_LOG physical address. */
 
 	/* To populated fields below,
 	 * INCLUDE_BUILD_SIGNATURE_IN_SOCRAM needs to be enabled

@@ -23,7 +23,7 @@ config SEC_PARAM
 	default n
 	help
 	  Samsung TN Param Feature.
-	  
+
 config SEC_PARAM_SIZE
 	hex "Param Partition Size default 10MB"
 	default 0xA00000
@@ -47,6 +47,10 @@ config SEC_FACTORY_INTERPOSER
 	default n
 	help
 	  Samsung Factory interposer binary.
+
+config SEC_EXT
+	bool "Samsung TN extension Feature"
+	default y
 
 menu "Samsung Factory Feature"
 config SEC_FACTORY

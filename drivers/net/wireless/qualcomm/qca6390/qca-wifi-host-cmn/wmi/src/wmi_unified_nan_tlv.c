@@ -1,6 +1,6 @@
 
 /*
- * Copyright (c) 2013-2019 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2013-2020 The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -90,6 +90,7 @@ extract_nan_event_rsp_tlv(wmi_unified_t wmi_handle, void *evt_buf,
 		evt_params->evt_type = nan_event_id_enable_rsp;
 		evt_params->mac_id = nan_evt_info->mac_id;
 		evt_params->is_nan_enable_success = (nan_evt_info->status == 0);
+		evt_params->vdev_id = nan_evt_info->vdev_id;
 		break;
 	case NAN_MSG_ID_DISABLE_IND:
 		evt_params->evt_type = nan_event_id_disable_ind;
@@ -234,7 +235,8 @@ static QDF_STATUS send_nan_req_cmd_tlv(wmi_unified_t wmi_handle,
 	QDF_STATUS ret;
 	wmi_nan_cmd_param *cmd;
 	wmi_buf_t buf;
-	uint16_t len = sizeof(*cmd);
+	wmi_nan_host_config_param *cfg;
+	uint16_t len = sizeof(*cmd) + sizeof(*cfg) + 2 * WMI_TLV_HDR_SIZE;
 	uint16_t nan_data_len, nan_data_len_aligned;
 	uint8_t *buf_ptr;
 
@@ -243,6 +245,11 @@ static QDF_STATUS send_nan_req_cmd_tlv(wmi_unified_t wmi_handle,
 	 *    +------------+----------+-----------------------+--------------+
 	 *    | tlv_header | data_len | WMITLV_TAG_ARRAY_BYTE | nan_msg_data |
 	 *    +------------+----------+-----------------------+--------------+
+	 *
+	 *    <-- WMI_TLV_HDR_SIZE --><------nan host config params-------->
+	 *    +-----------------------+------------------------------------+
+	 *    | WMITLV_TAG_ARRAY_STRUC| tlv_header | disable flags | flags |
+	 *    +-----------------------+------------------------------------+
 	 */
 	if (!nan_msg) {
 		WMI_LOGE("%s:nan req is not valid", __func__);
@@ -263,7 +270,7 @@ static QDF_STATUS send_nan_req_cmd_tlv(wmi_unified_t wmi_handle,
 		return QDF_STATUS_E_FAILURE;
 	}
 
-	len += WMI_TLV_HDR_SIZE + nan_data_len_aligned;
+	len += nan_data_len_aligned;
 	buf = wmi_buf_alloc(wmi_handle, len);
 	if (!buf)
 		return QDF_STATUS_E_NOMEM;
@@ -274,18 +281,30 @@ static QDF_STATUS send_nan_req_cmd_tlv(wmi_unified_t wmi_handle,
 		       WMITLV_TAG_STRUC_wmi_nan_cmd_param,
 		       WMITLV_GET_STRUCT_TLVLEN(wmi_nan_cmd_param));
 	cmd->data_len = nan_msg->request_data_len;
-	WMI_LOGD("%s: The data len value is %u",  __func__,
-		 nan_msg->request_data_len);
 	buf_ptr += sizeof(wmi_nan_cmd_param);
 	WMITLV_SET_HDR(buf_ptr, WMITLV_TAG_ARRAY_BYTE, nan_data_len_aligned);
 	buf_ptr += WMI_TLV_HDR_SIZE;
 	qdf_mem_copy(buf_ptr, nan_msg->request_data, cmd->data_len);
+	buf_ptr += nan_data_len_aligned;
+
+	WMITLV_SET_HDR(buf_ptr, WMITLV_TAG_ARRAY_STRUC,
+		       sizeof(wmi_nan_host_config_param));
+	buf_ptr += WMI_TLV_HDR_SIZE;
+
+	cfg = (wmi_nan_host_config_param *)buf_ptr;
+	WMITLV_SET_HDR(&cfg->tlv_header,
+		       WMITLV_TAG_STRUC_wmi_nan_host_config_param,
+		       WMITLV_GET_STRUCT_TLVLEN(wmi_nan_host_config_param));
+
+	WMI_NAN_SET_RANGING_INITIATOR_ROLE(cfg->flags, !!(nan_msg->rtt_cap &
+					   WMI_FW_NAN_RTT_INITR));
+	WMI_NAN_SET_RANGING_RESPONDER_ROLE(cfg->flags, !!(nan_msg->rtt_cap &
+					   WMI_FW_NAN_RTT_RESPR));
 
 	wmi_mtrace(WMI_NAN_CMDID, NO_SESSION, 0);
-	ret = wmi_unified_cmd_send(wmi_handle, buf, len,
-				   WMI_NAN_CMDID);
+	ret = wmi_unified_cmd_send(wmi_handle, buf, len, WMI_NAN_CMDID);
 	if (QDF_IS_STATUS_ERROR(ret)) {
-		WMI_LOGE("%s Failed to send set param command ret = %d",
+		WMI_LOGE("%s Failed to send NAN req command ret = %d",
 			 __func__, ret);
 		wmi_buf_free(buf);
 	}
@@ -431,42 +450,18 @@ static QDF_STATUS nan_ndp_initiator_req_tlv(wmi_unified_t wmi_handle,
 		qdf_mem_copy(tcp_ip_param->ipv6_intf_addr,
 			     ndp_req->ipv6_addr, WMI_NDP_IPV6_INTF_ADDR_LEN);
 	}
-	WMI_LOGD(FL("IPv6 addr present: %d, addr: %pI6"),
+	WMI_LOGD("IPv6 addr present: %d, addr: %pI6",
 		 ndp_req->is_ipv6_addr_present, ndp_req->ipv6_addr);
 
-	WMI_LOGD("vdev_id = %d, transaction_id: %d, service_instance_id: %d, ch: %d, ch_cfg: %d, csid: %d",
+	WMI_LOGD("vdev_id = %d, transaction_id: %d, service_instance_id: %d, ch: %d, ch_cfg: %d, csid: %d peer mac addr: mac_addr31to0: 0x%x, mac_addr47to32: 0x%x",
 		 cmd->vdev_id, cmd->transaction_id, cmd->service_instance_id,
-		 ch_tlv->mhz, cmd->ndp_channel_cfg, cmd->nan_csid);
-	WMI_LOGD("peer mac addr: mac_addr31to0: 0x%x, mac_addr47to32: 0x%x",
+		 ch_tlv->mhz, cmd->ndp_channel_cfg, cmd->nan_csid,
 		 cmd->peer_discovery_mac_addr.mac_addr31to0,
 		 cmd->peer_discovery_mac_addr.mac_addr47to32);
 
-	WMI_LOGD("ndp_config len: %d", cmd->ndp_cfg_len);
-	QDF_TRACE_HEX_DUMP(QDF_MODULE_ID_WMI, QDF_TRACE_LEVEL_DEBUG,
-			   ndp_req->ndp_config.ndp_cfg,
-			   ndp_req->ndp_config.ndp_cfg_len);
-
-	WMI_LOGD("ndp_app_info len: %d", cmd->ndp_app_info_len);
-	QDF_TRACE_HEX_DUMP(QDF_MODULE_ID_WMI, QDF_TRACE_LEVEL_DEBUG,
-			   ndp_req->ndp_info.ndp_app_info,
-			   ndp_req->ndp_info.ndp_app_info_len);
-
-	WMI_LOGD("pmk len: %d", cmd->nan_pmk_len);
-	QDF_TRACE_HEX_DUMP(QDF_MODULE_ID_WMI, QDF_TRACE_LEVEL_DEBUG,
-			   ndp_req->pmk.pmk, cmd->nan_pmk_len);
-
-	WMI_LOGD("pass phrase len: %d", cmd->nan_passphrase_len);
-	QDF_TRACE_HEX_DUMP(QDF_MODULE_ID_WMI, QDF_TRACE_LEVEL_DEBUG,
-			   ndp_req->passphrase.passphrase,
-			   cmd->nan_passphrase_len);
-
-	WMI_LOGD("service name len: %d", cmd->nan_servicename_len);
-	QDF_TRACE_HEX_DUMP(QDF_MODULE_ID_WMI, QDF_TRACE_LEVEL_DEBUG,
-			   ndp_req->service_name.service_name,
-			   cmd->nan_servicename_len);
-
-	WMI_LOGD("sending WMI_NDP_INITIATOR_REQ_CMDID(0x%X)",
-		 WMI_NDP_INITIATOR_REQ_CMDID);
+	WMI_LOGD("ndp_config len: %d ndp_app_info len: %d pmk len: %d pass phrase len: %d service name len: %d",
+		 cmd->ndp_cfg_len, cmd->ndp_app_info_len, cmd->nan_pmk_len,
+		 cmd->nan_passphrase_len, cmd->nan_servicename_len);
 
 	wmi_mtrace(WMI_NDP_INITIATOR_REQ_CMDID, cmd->vdev_id, 0);
 	status = wmi_unified_cmd_send(wmi_handle, buf, len,
@@ -584,43 +579,12 @@ static QDF_STATUS nan_ndp_responder_req_tlv(wmi_unified_t wmi_handle,
 		tcp_ip_param->trans_proto_present = req->is_protocol_present;
 		tcp_ip_param->transport_protocol = req->protocol;
 	}
-	WMI_LOGD(FL("IPv6 addr present: %d, addr: %pI6"),
-		 req->is_ipv6_addr_present, req->ipv6_addr);
-	WMI_LOGD(FL("port: %d present: %d"), req->is_port_present, req->port);
-	WMI_LOGD(FL("protocol: %d present: %d"),
-		 req->is_protocol_present, req->protocol);
 
-	WMI_LOGD("vdev_id = %d, transaction_id: %d, csid: %d",
-		 cmd->vdev_id, cmd->transaction_id, cmd->nan_csid);
+	WMI_LOGD("ndp_config len: %d ndp_app_info len: %d pmk len: %d pass phrase len: %d service name len: %d",
+		 req->ndp_config.ndp_cfg_len, req->ndp_info.ndp_app_info_len,
+		 cmd->nan_pmk_len, cmd->nan_passphrase_len,
+		 cmd->nan_servicename_len);
 
-	WMI_LOGD("ndp_config len: %d",
-		 req->ndp_config.ndp_cfg_len);
-	QDF_TRACE_HEX_DUMP(QDF_MODULE_ID_WMI, QDF_TRACE_LEVEL_DEBUG,
-			   req->ndp_config.ndp_cfg,
-			   req->ndp_config.ndp_cfg_len);
-
-	WMI_LOGD("ndp_app_info len: %d",
-		 req->ndp_info.ndp_app_info_len);
-	QDF_TRACE_HEX_DUMP(QDF_MODULE_ID_WMI, QDF_TRACE_LEVEL_DEBUG,
-			   req->ndp_info.ndp_app_info,
-			   req->ndp_info.ndp_app_info_len);
-
-	WMI_LOGD("pmk len: %d", cmd->nan_pmk_len);
-	QDF_TRACE_HEX_DUMP(QDF_MODULE_ID_WMI, QDF_TRACE_LEVEL_DEBUG,
-			   req->pmk.pmk, cmd->nan_pmk_len);
-
-	WMI_LOGD("pass phrase len: %d", cmd->nan_passphrase_len);
-	QDF_TRACE_HEX_DUMP(QDF_MODULE_ID_WMI, QDF_TRACE_LEVEL_DEBUG,
-			   req->passphrase.passphrase,
-			   cmd->nan_passphrase_len);
-
-	WMI_LOGD("service name len: %d", cmd->nan_servicename_len);
-	QDF_TRACE_HEX_DUMP(QDF_MODULE_ID_WMI, QDF_TRACE_LEVEL_DEBUG,
-			   req->service_name.service_name,
-			   cmd->nan_servicename_len);
-
-	WMI_LOGD("sending WMI_NDP_RESPONDER_REQ_CMDID(0x%X)",
-		 WMI_NDP_RESPONDER_REQ_CMDID);
 	wmi_mtrace(WMI_NDP_RESPONDER_REQ_CMDID, cmd->vdev_id, 0);
 	status = wmi_unified_cmd_send(wmi_handle, buf, len,
 				      WMI_NDP_RESPONDER_REQ_CMDID);
@@ -671,7 +635,6 @@ static QDF_STATUS nan_ndp_end_req_tlv(wmi_unified_t wmi_handle,
 		ndp_end_req_lst[i].ndp_instance_id = req->ndp_ids[i];
 	}
 
-	WMI_LOGD("Sending WMI_NDP_END_REQ_CMDID to FW");
 	wmi_mtrace(WMI_NDP_END_REQ_CMDID, NO_SESSION, 0);
 	status = wmi_unified_cmd_send(wmi_handle, buf, len,
 				      WMI_NDP_END_REQ_CMDID);
@@ -730,6 +693,29 @@ static QDF_STATUS extract_ndp_initiator_rsp_tlv(wmi_unified_t wmi_handle,
 	rsp->ndp_instance_id = fixed_params->ndp_instance_id;
 	rsp->status = fixed_params->rsp_status;
 	rsp->reason = fixed_params->reason_code;
+
+	return QDF_STATUS_SUCCESS;
+}
+
+#define MAX_NAN_MSG_LEN                 200
+
+static QDF_STATUS extract_nan_msg_tlv(uint8_t *data,
+				      struct nan_dump_msg *msg)
+{
+	WMI_NAN_DMESG_EVENTID_param_tlvs *event;
+	wmi_nan_dmesg_event_fixed_param *fixed_params;
+
+	event = (WMI_NAN_DMESG_EVENTID_param_tlvs *)data;
+	fixed_params = (wmi_nan_dmesg_event_fixed_param *)event->fixed_param;
+	if (!fixed_params->msg_len ||
+	    fixed_params->msg_len > MAX_NAN_MSG_LEN ||
+	    fixed_params->msg_len > event->num_msg)
+		return QDF_STATUS_E_FAILURE;
+
+	msg->data_len = fixed_params->msg_len;
+	msg->msg = event->msg;
+
+	msg->msg[fixed_params->msg_len - 1] = (uint8_t)'\0';
 
 	return QDF_STATUS_SUCCESS;
 }
@@ -801,40 +787,39 @@ static QDF_STATUS extract_ndp_ind_tlv(wmi_unified_t wmi_handle,
 	WMI_MAC_ADDR_TO_CHAR_ARRAY(&fixed_params->peer_discovery_mac_addr,
 				rsp->peer_discovery_mac_addr.bytes);
 
-	WMI_LOGD("WMI_NDP_INDICATION_EVENTID(0x%X) received. vdev %d,\n"
-		"service_instance %d, ndp_instance %d, role %d, policy %d,\n"
-		"csid: %d, scid_len: %d, peer_addr: %pM, peer_disc_addr: %pM",
+	WMI_LOGD("WMI_NDP_INDICATION_EVENTID(0x%X) received. vdev %d service_instance %d, ndp_instance %d, role %d, policy %d csid: %d, scid_len: %d, peer_addr: %pM, peer_disc_addr: %pM ndp_cfg - %d bytes ndp_app_info - %d bytes",
 		 WMI_NDP_INDICATION_EVENTID, fixed_params->vdev_id,
 		 fixed_params->service_instance_id,
 		 fixed_params->ndp_instance_id, fixed_params->self_ndp_role,
-		 fixed_params->accept_policy,
-		 fixed_params->nan_csid, fixed_params->nan_scid_len,
-		 rsp->peer_mac_addr.bytes,
-		 rsp->peer_discovery_mac_addr.bytes);
-
-	WMI_LOGD("ndp_cfg - %d bytes", fixed_params->ndp_cfg_len);
-
-	WMI_LOGD("ndp_app_info - %d bytes",
+		 fixed_params->accept_policy, fixed_params->nan_csid,
+		 fixed_params->nan_scid_len, rsp->peer_mac_addr.bytes,
+		 rsp->peer_discovery_mac_addr.bytes, fixed_params->ndp_cfg_len,
 		 fixed_params->ndp_app_info_len);
 
-	rsp->ndp_config.ndp_cfg_len = fixed_params->ndp_cfg_len;
-	rsp->ndp_info.ndp_app_info_len = fixed_params->ndp_app_info_len;
 	rsp->ncs_sk_type = fixed_params->nan_csid;
-	rsp->scid.scid_len = fixed_params->nan_scid_len;
+	if (event->ndp_cfg) {
+		rsp->ndp_config.ndp_cfg_len = fixed_params->ndp_cfg_len;
+		if (rsp->ndp_config.ndp_cfg_len > NDP_QOS_INFO_LEN)
+			rsp->ndp_config.ndp_cfg_len = NDP_QOS_INFO_LEN;
+		qdf_mem_copy(rsp->ndp_config.ndp_cfg, event->ndp_cfg,
+			     rsp->ndp_config.ndp_cfg_len);
+	}
 
-	if (rsp->ndp_config.ndp_cfg_len > NDP_QOS_INFO_LEN)
-		rsp->ndp_config.ndp_cfg_len = NDP_QOS_INFO_LEN;
-	qdf_mem_copy(rsp->ndp_config.ndp_cfg, event->ndp_cfg,
-		     rsp->ndp_config.ndp_cfg_len);
+	if (event->ndp_app_info) {
+		rsp->ndp_info.ndp_app_info_len = fixed_params->ndp_app_info_len;
+		if (rsp->ndp_info.ndp_app_info_len > NDP_APP_INFO_LEN)
+			rsp->ndp_info.ndp_app_info_len = NDP_APP_INFO_LEN;
+		qdf_mem_copy(rsp->ndp_info.ndp_app_info, event->ndp_app_info,
+			     rsp->ndp_info.ndp_app_info_len);
+	}
 
-	if (rsp->ndp_info.ndp_app_info_len > NDP_APP_INFO_LEN)
-		rsp->ndp_info.ndp_app_info_len = NDP_APP_INFO_LEN;
-	qdf_mem_copy(rsp->ndp_info.ndp_app_info, event->ndp_app_info,
-		     rsp->ndp_info.ndp_app_info_len);
-
-	if (rsp->scid.scid_len > NDP_SCID_BUF_LEN)
-		rsp->scid.scid_len = NDP_SCID_BUF_LEN;
-	qdf_mem_copy(rsp->scid.scid, event->ndp_scid, rsp->scid.scid_len);
+	if (event->ndp_scid) {
+		rsp->scid.scid_len = fixed_params->nan_scid_len;
+		if (rsp->scid.scid_len > NDP_SCID_BUF_LEN)
+			rsp->scid.scid_len = NDP_SCID_BUF_LEN;
+		qdf_mem_copy(rsp->scid.scid, event->ndp_scid,
+			     rsp->scid.scid_len);
+	}
 
 	if (event->ndp_transport_ip_param &&
 	    event->num_ndp_transport_ip_param) {
@@ -864,20 +849,18 @@ static QDF_STATUS extract_ndp_confirm_tlv(wmi_unified_t wmi_handle,
 
 	event = (WMI_NDP_CONFIRM_EVENTID_param_tlvs *) data;
 	fixed_params = (wmi_ndp_confirm_event_fixed_param *)event->fixed_param;
-	WMI_LOGD("WMI_NDP_CONFIRM_EVENTID(0x%X) received. vdev %d, ndp_instance %d, rsp_code %d, reason_code: %d, num_active_ndps_on_peer: %d",
+	WMI_LOGD("WMI_NDP_CONFIRM_EVENTID(0x%X) received. vdev %d, ndp_instance %d, rsp_code %d, reason_code: %d, num_active_ndps_on_peer: %d num_ch: %d",
 		 WMI_NDP_CONFIRM_EVENTID, fixed_params->vdev_id,
 		 fixed_params->ndp_instance_id, fixed_params->rsp_code,
 		 fixed_params->reason_code,
-		 fixed_params->num_active_ndps_on_peer);
-	WMI_LOGE("num_ch: %d", fixed_params->num_ndp_channels);
+		 fixed_params->num_active_ndps_on_peer,
+		 fixed_params->num_ndp_channels);
 
 	if (fixed_params->ndp_cfg_len > event->num_ndp_cfg) {
 		WMI_LOGE("FW message ndp cfg length %d larger than TLV hdr %d",
 			 fixed_params->ndp_cfg_len, event->num_ndp_cfg);
 		return QDF_STATUS_E_INVAL;
 	}
-
-	WMI_LOGD("ndp_cfg - %d bytes", fixed_params->ndp_cfg_len);
 
 	if (fixed_params->ndp_app_info_len > event->num_ndp_app_info) {
 		WMI_LOGE("FW message ndp app info length %d more than TLV hdr %d",
@@ -886,8 +869,8 @@ static QDF_STATUS extract_ndp_confirm_tlv(wmi_unified_t wmi_handle,
 		return QDF_STATUS_E_INVAL;
 	}
 
-	WMI_LOGD("ndp_app_info - %d bytes",
-		 fixed_params->ndp_app_info_len);
+	WMI_LOGD("ndp_cfg - %d bytes, ndp_app_info - %d bytes",
+		 fixed_params->ndp_cfg_len, fixed_params->ndp_app_info_len);
 
 	if (fixed_params->ndp_cfg_len >
 			(WMI_SVC_MSG_MAX_SIZE - sizeof(*fixed_params))) {
@@ -953,14 +936,15 @@ static QDF_STATUS extract_ndp_confirm_tlv(wmi_unified_t wmi_handle,
 		ch_mode = WMI_GET_CHANNEL_MODE(&event->ndp_channel_list[i]);
 		rsp->ch[i].ch_width = wmi_get_ch_width_from_phy_mode(wmi_handle,
 								     ch_mode);
-		WMI_LOGD(FL("Freq: %d, ch_mode: %d, nss: %d"),
-			 rsp->ch[i].freq,
-			 rsp->ch[i].ch_width,
-			 rsp->ch[i].nss);
-
 		if (ndi_dbs) {
 			rsp->ch[i].mac_id = event->ndp_channel_info[i].mac_id;
-			WMI_LOGD("mac_id: %d", rsp->ch[i].mac_id);
+			WMI_LOGD("Freq: %d, ch_mode: %d, nss: %d mac_id: %d",
+				 rsp->ch[i].freq, rsp->ch[i].ch_width,
+				 rsp->ch[i].nss, rsp->ch[i].mac_id);
+		} else {
+			WMI_LOGD("Freq: %d, ch_mode: %d, nss: %d",
+				 rsp->ch[i].freq, rsp->ch[i].ch_width,
+				 rsp->ch[i].nss);
 		}
 	}
 
@@ -985,11 +969,9 @@ static QDF_STATUS extract_ndp_confirm_tlv(wmi_unified_t wmi_handle,
 			    event->ndp_transport_ip_param->transport_protocol;
 		}
 	}
-	WMI_LOGD(FL("IPv6 addr present: %d, addr: %pI6"),
-		 rsp->is_ipv6_addr_present, rsp->ipv6_addr);
-	WMI_LOGD(FL("port: %d present: %d"), rsp->port, rsp->is_port_present);
-	WMI_LOGD(FL("protocol: %d present: %d"),
-		 rsp->protocol, rsp->is_protocol_present);
+	WMI_LOGD("IPv6 addr present: %d, addr: %pI6 port: %d present: %d protocol: %d present: %d",
+		 rsp->is_ipv6_addr_present, rsp->ipv6_addr, rsp->port,
+		 rsp->is_port_present, rsp->protocol, rsp->is_protocol_present);
 
 	return QDF_STATUS_SUCCESS;
 }
@@ -1002,11 +984,6 @@ static QDF_STATUS extract_ndp_responder_rsp_tlv(wmi_unified_t wmi_handle,
 
 	event = (WMI_NDP_RESPONDER_RSP_EVENTID_param_tlvs *)data;
 	fixed_params = event->fixed_param;
-
-	WMI_LOGD("WMI_NDP_RESPONDER_RSP_EVENTID(0x%X) received. vdev_id: %d, peer_mac_addr: %pM,transaction_id: %d, status_code %d, reason_code: %d, create_peer: %d",
-		 WMI_NDP_RESPONDER_RSP_EVENTID, fixed_params->vdev_id,
-		 rsp->peer_mac_addr.bytes, rsp->transaction_id,
-		 rsp->status, rsp->reason, rsp->create_peer);
 
 	rsp->vdev =
 		wlan_objmgr_get_vdev_by_id_from_psoc(wmi_handle->soc->wmi_psoc,
@@ -1022,6 +999,10 @@ static QDF_STATUS extract_ndp_responder_rsp_tlv(wmi_unified_t wmi_handle,
 	rsp->create_peer = fixed_params->create_peer;
 	WMI_MAC_ADDR_TO_CHAR_ARRAY(&fixed_params->peer_ndi_mac_addr,
 				   rsp->peer_mac_addr.bytes);
+	WMI_LOGD("WMI_NDP_RESPONDER_RSP_EVENTID(0x%X) received. vdev_id: %d, peer_mac_addr: %pM,transaction_id: %d, status_code %d, reason_code: %d, create_peer: %d",
+		 WMI_NDP_RESPONDER_RSP_EVENTID, fixed_params->vdev_id,
+		 rsp->peer_mac_addr.bytes, rsp->transaction_id,
+		 rsp->status, rsp->reason, rsp->create_peer);
 
 	return QDF_STATUS_SUCCESS;
 }
@@ -1181,14 +1162,15 @@ static QDF_STATUS extract_ndp_sch_update_tlv(wmi_unified_t wmi_handle,
 		ch_mode = WMI_GET_CHANNEL_MODE(&event->ndl_channel_list[i]);
 		ind->ch[i].ch_width = wmi_get_ch_width_from_phy_mode(wmi_handle,
 								     ch_mode);
-		WMI_LOGD(FL("Freq: %d, ch_mode: %d, nss: %d"),
-			 ind->ch[i].freq,
-			 ind->ch[i].ch_width,
-			 ind->ch[i].nss);
-
 		if (ndi_dbs) {
 			ind->ch[i].mac_id = event->ndp_channel_info[i].mac_id;
-			WMI_LOGD("mac_id: %d", ind->ch[i].mac_id);
+			WMI_LOGD(FL("Freq: %d, ch_mode: %d, nss: %d mac_id: %d"),
+				 ind->ch[i].freq, ind->ch[i].ch_width,
+				 ind->ch[i].nss, ind->ch[i].mac_id);
+		} else {
+			WMI_LOGD(FL("Freq: %d, ch_mode: %d, nss: %d"),
+				 ind->ch[i].freq, ind->ch[i].ch_width,
+				 ind->ch[i].nss);
 		}
 	}
 
@@ -1212,6 +1194,7 @@ void wmi_nan_attach_tlv(wmi_unified_t wmi_handle)
 	ops->send_ndp_end_req_cmd = nan_ndp_end_req_tlv;
 	ops->extract_ndp_initiator_rsp = extract_ndp_initiator_rsp_tlv;
 	ops->extract_ndp_ind = extract_ndp_ind_tlv;
+	ops->extract_nan_msg = extract_nan_msg_tlv,
 	ops->extract_ndp_confirm = extract_ndp_confirm_tlv;
 	ops->extract_ndp_responder_rsp = extract_ndp_responder_rsp_tlv;
 	ops->extract_ndp_end_rsp = extract_ndp_end_rsp_tlv;

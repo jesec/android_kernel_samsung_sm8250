@@ -26,6 +26,9 @@
 extern struct device *sec_key;
 
 struct hall_drvdata {
+#ifdef CONFIG_WACOM_HALL_SUPPORT_COVER_DETECT
+	struct input_dev *input;
+#endif
 	struct device *dev;
 	struct work_struct work;
 	struct delayed_work wacom_cover_dwork;
@@ -58,6 +61,11 @@ static void wacom_cover_work(struct work_struct *work)
 	hall_wacom_status = gpio_get_value(ddata->gpio_wacom_cover);
 
 	pr_info("keys:%s #1 : %d\n", __func__, hall_wacom_status);
+#ifdef CONFIG_WACOM_HALL_SUPPORT_COVER_DETECT
+	input_report_switch(ddata->input,
+			SW_CERTIFYHALL, !hall_wacom_status);
+	input_sync(ddata->input);
+#endif
 }
 
 static void __wacom_cover_detect(struct hall_drvdata *ddata, bool wacom_status)
@@ -76,7 +84,6 @@ static void __wacom_cover_detect(struct hall_drvdata *ddata, bool wacom_status)
 #endif
 }
 
-
 static irqreturn_t wacom_cover_detect(int irq, void *dev_id)
 {
 	bool wacom_status;
@@ -88,12 +95,27 @@ static irqreturn_t wacom_cover_detect(int irq, void *dev_id)
 	pr_info("keys:%s wacom_status : %d\n",
 		 __func__, wacom_status);
 
-
 	__wacom_cover_detect(ddata, wacom_status);
 
 	return IRQ_HANDLED;
 }
 
+#ifdef CONFIG_WACOM_HALL_SUPPORT_COVER_DETECT
+static int wacom_hall_open(struct input_dev *input)
+{
+	struct hall_drvdata *ddata = input_get_drvdata(input);
+	/* update the current status */
+	schedule_delayed_work(&ddata->wacom_cover_dwork, HZ / 2);
+	/* Report current state of buttons that are connected to GPIOs */
+	input_sync(input);
+
+	return 0;
+}
+
+static void wacom_hall_close(struct input_dev *input)
+{
+}
+#endif
 
 static void init_hall_ic_wacom_irq(struct hall_drvdata *ddata)
 {
@@ -143,6 +165,9 @@ static int hall_wacom_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 	struct hall_drvdata *ddata;
+#ifdef CONFIG_WACOM_HALL_SUPPORT_COVER_DETECT
+	struct input_dev *input;
+#endif
 	int error;
 	int wakeup = 0;
 
@@ -163,6 +188,38 @@ static int hall_wacom_probe(struct platform_device *pdev)
 	}
 #endif
 
+#ifdef CONFIG_WACOM_HALL_SUPPORT_COVER_DETECT
+	input = input_allocate_device();
+	if (!input) {
+		dev_err(dev, "failed to allocate state\n");
+		error = -ENOMEM;
+		goto fail1;
+	}
+
+	ddata->input = input;
+
+	input_set_drvdata(input, ddata);
+
+	input->name = "wacom_hall";
+	input->phys = "wacom_hall";
+	input->dev.parent = &pdev->dev;
+
+	input->evbit[0] |= BIT_MASK(EV_SW);
+	input_set_capability(input, EV_SW, SW_CERTIFYHALL);
+
+	input->open = wacom_hall_open;
+	input->close = wacom_hall_close;
+
+	/* Enable auto repeat feature of Linux input subsystem */
+	__set_bit(EV_REP, input->evbit);
+
+	error = input_register_device(input);
+	if (error) {
+		dev_err(dev, "Unable to register input device, error: %d\n",
+			error);
+		goto fail1;
+	}
+#endif
 	wake_lock_init(&ddata->wacom_wake_lock, WAKE_LOCK_SUSPEND,
 		"hall wacom wake lock");
 
@@ -170,13 +227,11 @@ static int hall_wacom_probe(struct platform_device *pdev)
 
 	init_hall_ic_wacom_irq(ddata);
 
-
 	error = device_create_file(sec_key, &dev_attr_hall_wacom_detect);
 	if (error < 0) {
 		pr_err("Failed to create device file(%s)!, error: %d\n",
 		dev_attr_hall_wacom_detect.attr.name, error);
 	}
-
 
 	device_init_wakeup(&pdev->dev, wakeup);
 
@@ -192,12 +247,17 @@ fail1:
 static int hall_wacom_remove(struct platform_device *pdev)
 {
 	struct hall_drvdata *ddata = platform_get_drvdata(pdev);
-
+#ifdef CONFIG_WACOM_HALL_SUPPORT_COVER_DETECT
+	struct input_dev *input = ddata->input;
+#endif
 	pr_info("%s start\n", __func__);
 
 	device_init_wakeup(&pdev->dev, 0);
 
 	wake_lock_destroy(&ddata->wacom_wake_lock);
+#ifdef CONFIG_WACOM_HALL_SUPPORT_COVER_DETECT
+	input_unregister_device(input);
+#endif
 	kfree(ddata);
 
 	return 0;
@@ -215,17 +275,38 @@ MODULE_DEVICE_TABLE(of, hall_wacom_dt_ids);
 static int hall_wacom_suspend(struct device *dev)
 {
 	struct hall_drvdata *ddata = dev_get_drvdata(dev);
-
+#ifdef CONFIG_WACOM_HALL_SUPPORT_COVER_DETECT
+	struct input_dev *input = ddata->input;
+#endif
 	pr_info("%s start\n", __func__);
 
+#ifdef CONFIG_WACOM_HALL_SUPPORT_COVER_DETECT
+	if (device_may_wakeup(dev)) {
+		enable_irq_wake(ddata->irq_wacom_cover);
+	} else {
+		mutex_lock(&input->mutex);
+		if (input->users)
+			wacom_hall_close(input);
+		mutex_unlock(&input->mutex);
+	}
+#else
 	enable_irq_wake(ddata->irq_wacom_cover);
+#endif
 
 	return 0;
 }
 
 static int hall_wacom_resume(struct device *dev)
 {
+#ifdef CONFIG_WACOM_HALL_SUPPORT_COVER_DETECT
+	struct hall_drvdata *ddata = dev_get_drvdata(dev);
+	struct input_dev *input = ddata->input;
+#endif
+
 	pr_info("%s start\n", __func__);
+#ifdef CONFIG_WACOM_HALL_SUPPORT_COVER_DETECT
+	input_sync(input);
+#endif
 	return 0;
 }
 #endif

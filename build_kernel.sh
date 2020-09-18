@@ -4,11 +4,11 @@ CHIPSET_NAME=kona
 VARIANT=$1
 
 export ARCH=arm64
-mkdir out
+mkdir -p out
 
 DTS_DIR=$(pwd)/out/arch/$ARCH/boot/dts
 DTBO_FILES=$(find ${DTS_DIR}/samsung/ -name ${CHIPSET_NAME}-sec-*-r*.dtbo)
-rm ${DTS_DIR}/vendor/qcom/*.dtb ${DTBO_FILES}
+rm -rf ${DTS_DIR}/vendor/qcom/*.dtb ${DTBO_FILES}
 
 BUILD_CROSS_COMPILE=aarch64-linux-gnu-
 BUILD_CROSS_COMPILE_COMPAT=arm-linux-gnueabi-

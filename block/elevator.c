@@ -562,8 +562,11 @@ void elv_bio_merged(struct request_queue *q, struct request *rq,
 #ifdef CONFIG_PM
 static void blk_pm_requeue_request(struct request *rq)
 {
-	if (rq->q->dev && !(rq->rq_flags & RQF_PM))
+	if (rq->q->dev && !(rq->rq_flags & RQF_PM)) {
 		rq->q->nr_pending--;
+		if (!rq->q->nr_pending)
+			pm_runtime_mark_last_busy(rq->q->dev);
+	}
 }
 
 static void blk_pm_add_request(struct request_queue *q, struct request *rq)

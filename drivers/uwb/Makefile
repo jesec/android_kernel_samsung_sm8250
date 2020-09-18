@@ -32,3 +32,4 @@ umc-objs :=		\
 	umc-drv.o
 
 obj-$(CONFIG_UWB_SR100)		+= sr100.o
+obj-y				+= uwb_logger/

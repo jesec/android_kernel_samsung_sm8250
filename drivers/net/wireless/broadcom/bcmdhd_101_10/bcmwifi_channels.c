@@ -3,7 +3,7 @@
  * Contents are wifi-specific, used by any kernel or app-level
  * software that might want wifi things as it grows.
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -20,7 +20,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #include <typedefs.h>
@@ -35,9 +35,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
-/* XXX Why isn't ASSERT always available as part of a non BCMDRIVER build?
- * It seems like there ought to be a non BCMDRIVER osl.
- */
 #ifndef ASSERT
 #define ASSERT(exp)
 #endif
@@ -46,7 +43,7 @@
 #include <bcmwifi_channels.h>
 
 #if defined(WIN32) && (defined(BCMDLL) || defined(WLMDLL))
-#include <bcmstdlib.h> 	/* For wlexe/Makefile.wlm_dll */
+#include <bcmstdlib.h>	/* For wlexe/Makefile.wlm_dll */
 #endif
 
 #include <802.11.h>
@@ -1815,7 +1812,7 @@ wf_chspec_primary20_chspec(chanspec_t chspec)
 
 /* return chanspec given primary 20MHz channel and bandwidth
  * return 0 on error
- * XXX: does not support 6G
+ * does not support 6G
  */
 uint16
 wf_channel2chspec(uint pri_ch, uint bw)
@@ -2068,7 +2065,7 @@ static const uint16 sidebands[] = {
  *
  * returns INVCHANSPEC in case of error
  *
- * XXX: does not support 6G
+ * does not support 6G
  */
 chanspec_t
 wf_chspec_80(uint8 center_channel, uint8 primary_channel)
@@ -2107,7 +2104,7 @@ wf_chspec_80(uint8 center_channel, uint8 primary_channel)
  *
  * Refer to 802.11-2016 section 22.3.14 "Channelization".
  *
- * XXX: does not support 6G
+ * does not support 6G
  */
 chanspec_t
 wf_chspec_get8080_chspec(uint8 primary_20mhz, uint8 chan0, uint8 chan1)

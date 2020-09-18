@@ -342,7 +342,8 @@ void ss_store_xlog_panic_dbg(void)
 	char err_buf[SS_XLOG_PANIC_DBG_LENGTH] = {0,};
 	struct ss_tlog *log;
 	struct ss_dbg_xlog *xlog = &ss_dbg_xlog;
-	struct samsung_display_driver_data *vdd = ss_get_vdd(PRIMARY_DISPLAY_NDX);
+	struct samsung_display_driver_data *vdd_primary = ss_get_vdd(PRIMARY_DISPLAY_NDX);
+	struct samsung_display_driver_data *vdd_secondary = ss_get_vdd(SECONDARY_DISPLAY_NDX);
 
 	last = xlog->last;
 	if (last)
@@ -366,9 +367,10 @@ void ss_store_xlog_panic_dbg(void)
 end:
 	pr_info("%s:%s\n", __func__, err_buf);
 
-	if (gpio_is_valid(vdd->ub_con_det.gpio))
-		LCD_ERR("ub con gpio = %d\n", gpio_get_value(vdd->ub_con_det.gpio));
-	
+	if (vdd_primary && gpio_is_valid(vdd_primary->ub_con_det.gpio))
+		LCD_ERR("ub con gpio for primary = %d\n", gpio_get_value(vdd_primary->ub_con_det.gpio));
+	if (vdd_secondary && gpio_is_valid(vdd_secondary->ub_con_det.gpio))
+		LCD_ERR("ub con gpio for secondary = %d\n", gpio_get_value(vdd_secondary->ub_con_det.gpio));
 /*
  * #ifdef CONFIG_SEC_DEBUG
  *	sec_debug_store_additional_dbg(DBG_2_DISPLAY_ERR, 0, "%s", err_buf);
@@ -510,6 +512,68 @@ int ss_read_self_diag(struct samsung_display_driver_data *vdd)
 	return 0;
 }
 
+int ss_read_mipi_protocol_err(struct samsung_display_driver_data *vdd)
+{
+	u16 err_status = 0;
+	u8 rbuf[2];
+	int ret;
+
+	ret = ss_panel_data_read(vdd, RX_LDI_DEBUG6, rbuf, LEVEL_KEY_NONE);
+	if (ret) {
+		LCD_ERR("fail to read protocol_err(ret=%d)\n", ret);
+		return ret;
+	}
+
+	err_status = (rbuf[0] << 8) | rbuf[1];
+
+	/* E9h mipi protocol error status register
+	 * ERR[15] : DSI Protocol violation
+	 * ERR[14] : DATA P lane contention detection
+	 * ERR[13] : Invalid Transmission Length
+	 * ERR[12] : DSI VC ID Invalid
+	 * ERR[11] : DSI Data Type Not Recognized
+	 * ERR[10] : Checksum Error
+	 * ERR[9] : ECC Error, multi_bit (detected, not corrected)
+	 * ERR[8] : ECC Error, single−bit (detected and corrected)
+	 * ERR[7] : Data Lane contention detection
+	 * ERR[6] : False Control Error
+	 * ERR[5] : HS RX Timeout
+	 * ERR[4] : Low−Power Transmit Sync Error
+	 * ERR[3] : Escape Mode Entry Command Error
+	 * ERR[2] : EoT Sync Error
+	 * ERR[1] : SoT Sync Error
+	 * ERR[0] : SoT Error
+         */
+	if (err_status) {
+		LCD_ERR("MIPI protocol error: 0x%x\n", err_status);
+	}
+
+	LCD_DEBUG("========== SHOW PANEL [E9h: MIPI PROTOCOL ERROR] INFO ==========\n");
+	LCD_DEBUG("* Reg Value : 0x%02x, Result : %s\n",
+			err_status, (err_status & 0x00) ? "GOOD" : "NG");
+
+	LCD_DEBUG("* DSI Protocol violation : %s\n", (err_status & BIT(15)) ? "ERROR" : "OK");
+	LCD_DEBUG("* DATA P lane contention detection : %s\n", (err_status & BIT(14)) ? "ERROR" : "OK");
+	LCD_DEBUG("* Invalid Transmission Length : %s\n", (err_status & BIT(13)) ? "ERROR" : "OK");
+	LCD_DEBUG("* DSI VC ID Invalid : %s\n", (err_status & BIT(12)) ? "ERROR" : "OK");
+	LCD_DEBUG("* DSI Data Type Not Recognized : %s\n", (err_status & BIT(11)) ? "ERROR" : "OK");
+	LCD_DEBUG("* Checksum Error : %s\n", (err_status & BIT(10)) ? "ERROR" : "OK");
+	LCD_DEBUG("* ECC Error, multi_bit : %s\n", (err_status & BIT(9)) ? "ERROR" : "OK");
+	LCD_DEBUG("* ECC Error, single−bit : %s\n", (err_status & BIT(8)) ? "ERROR" : "OK");
+	LCD_DEBUG("* Data Lane contention detection : %s\n", (err_status & BIT(7)) ? "ERROR" : "OK");
+	LCD_DEBUG("* False Control Error : %s\n", (err_status & BIT(6)) ? "ERROR" : "OK");
+	LCD_DEBUG("* HS RX Timeout : %s\n", (err_status & BIT(5)) ? "ERROR" : "OK");
+	LCD_DEBUG("* Low−Power Transmit Sync Error : %s\n", (err_status & BIT(4)) ? "ERROR" : "OK");
+	LCD_DEBUG("* Escape Mode Entry Command Error : %s\n", (err_status & BIT(3)) ? "ERROR" : "OK");
+	LCD_DEBUG("* EoT Sync Error : %s\n", (err_status & BIT(2)) ? "ERROR" : "OK");
+	LCD_DEBUG("* SoT Sync Error : %s\n", (err_status & BIT(1)) ? "ERROR" : "OK");
+	LCD_DEBUG("* SoT Error : %s\n", (err_status & BIT(0)) ? "ERROR" : "OK");
+	LCD_DEBUG("=====================================================\n");
+
+	return err_status;
+}
+
+
 /* DDI CMD log buffer max size is 512 bytes.
  * But, qct display driver limit max read size to 255 bytes (0xFF)
  * due to panel dtsi. panel dtsi determines length with one byte.
@@ -543,7 +607,11 @@ char bootloader_pps2_data[SZ_64]; /* 0xA2 : PPS data (0x2d ~ 0x58)*/
 int ss_read_pps_data(struct samsung_display_driver_data *vdd)
 {
 	int ret;
-
+#if defined(CONFIG_SEC_F2Q_PROJECT)
+	LCD_ERR("temp block ss_read_pps_data\n");
+	//Temporally blocked because of null pointer error.
+	return 0;
+#endif
 	ret = ss_panel_data_read(vdd, RX_LDI_DEBUG_PPS1, bootloader_pps1_data, LEVEL1_KEY);
 	if (ret) {
 		LCD_ERR("fail to read pps_data(ret=%d)\n", ret);
@@ -812,14 +880,11 @@ int ss_panel_debug_init(struct samsung_display_driver_data *vdd)
 	if (IS_ERR_OR_NULL(vdd))
 		return -ENODEV;
 
-	if (vdd->ndx != PRIMARY_DISPLAY_NDX) {
-		struct samsung_display_driver_data *vdd_primary =
-					ss_get_vdd(PRIMARY_DISPLAY_NDX);
-
-		vdd->debug_data = vdd_primary->debug_data;
-
-		LCD_INFO("skip.. create debugfs for only primary vdd(ndx=%d)\n",
-				vdd->ndx);
+	if (vdd->ndx != COMMON_DISPLAY_NDX) {
+		struct samsung_display_driver_data *vdd_common = ss_get_vdd(COMMON_DISPLAY_NDX);
+		vdd->debug_data = vdd_common->debug_data;
+		LCD_INFO("vdd->ndx = %d Skip.. creat debugfs for only primary vdd & copy those from common\n",
+			vdd->ndx);
 		return 0;
 	}
 
@@ -960,7 +1025,7 @@ init_fail:
 
 void ss_smmu_debug_map(enum ss_smmu_type type, struct sg_table *table)
 {
-	struct samsung_display_driver_data *vdd = ss_get_vdd(PRIMARY_DISPLAY_NDX);
+	struct samsung_display_driver_data *vdd = ss_get_vdd(COMMON_DISPLAY_NDX);
 
 	spinlock_t *smmu_lock = NULL;
 	struct list_head *smmu_list = NULL;
@@ -994,7 +1059,7 @@ void ss_smmu_debug_map(enum ss_smmu_type type, struct sg_table *table)
 		INIT_LIST_HEAD(&smmu_debug->list);
 		list_add(&smmu_debug->list, smmu_list);
 
-		LCD_DEBUG("addr : 0x%x size : 0x%x \n", table->sgl->dma_address, table->sgl->dma_length);
+		LCD_DEBUG("addr : 0x%llx size : 0x%x \n", table->sgl->dma_address, table->sgl->dma_length);
 	}
 
 	spin_unlock(smmu_lock);
@@ -1002,7 +1067,7 @@ void ss_smmu_debug_map(enum ss_smmu_type type, struct sg_table *table)
 
 void ss_smmu_debug_unmap(enum ss_smmu_type type, struct sg_table *table)
 {
-	struct samsung_display_driver_data *vdd = ss_get_vdd(PRIMARY_DISPLAY_NDX);
+	struct samsung_display_driver_data *vdd = ss_get_vdd(COMMON_DISPLAY_NDX);
 
 	spinlock_t *smmu_lock = NULL;
 	struct list_head *smmu_list = NULL;
@@ -1026,7 +1091,7 @@ void ss_smmu_debug_unmap(enum ss_smmu_type type, struct sg_table *table)
 
 	list_for_each_entry(smmu_debug, smmu_list, list) {
 		if (smmu_debug->table == table) {
-			LCD_DEBUG("addr : 0x%x size : 0x%x \n", table->sgl->dma_address, table->sgl->dma_length);
+			LCD_DEBUG("addr : 0x%llx size : 0x%x \n", table->sgl->dma_address, table->sgl->dma_length);
 			list_del(&smmu_debug->list);
 			kmem_cache_free(vdd->ss_debug_smmu_cache, smmu_debug);
 			break;
@@ -1044,7 +1109,7 @@ void ss_smmu_debug_log(void)
 #else
 void ss_smmu_debug_log(void)
 {
-	struct samsung_display_driver_data *vdd = ss_get_vdd(PRIMARY_DISPLAY_NDX);
+	struct samsung_display_driver_data *vdd = ss_get_vdd(COMMON_DISPLAY_NDX);
 
 	enum ss_smmu_type type = SMMU_MAX_DEBUG;
 	spinlock_t *smmu_lock = NULL;
@@ -1066,13 +1131,13 @@ void ss_smmu_debug_log(void)
 
 		list_for_each_entry(smmu_debug, smmu_list, list) {
 #if defined(CONFIG_NEED_SG_DMA_LENGTH)
-			LCD_INFO("type : %s time : %d.%6d dma_address : 0x%x dma_length : %d\n",
+			LCD_INFO("type : %s time : %lld.%6lld dma_address : 0x%llx dma_length : %d\n",
 				type == SMMU_RT_DISPLAY_DEBUG ? "SMMU_RT_DISPLAY_DEBUG" : "SMMU_NRT_ROTATOR_DEBUG",
 				smmu_debug->time / NSEC_PER_SEC, smmu_debug->time - ((smmu_debug->time / NSEC_PER_SEC) * NSEC_PER_SEC),
 				smmu_debug->table->sgl->dma_address,
 				smmu_debug->table->sgl->dma_length);
 #else
-			LCD_INFO("type : %s time : %d.%6d dma_address : 0x%x\n",
+			LCD_INFO("type : %s time : %d.%6d dma_address : 0x%llx\n",
 				type == SMMU_RT_DISPLAY_DEBUG ? "SMMU_RT_DISPLAY_DEBUG" : "SMMU_NRT_ROTATOR_DEBUG",
 				smmu_debug->time / NSEC_PER_SEC, smmu_debug->time - ((smmu_debug->time / NSEC_PER_SEC) * NSEC_PER_SEC),
 				smmu_debug->table->sgl->dma_address);
@@ -1112,14 +1177,16 @@ void ss_xlog_vrr_change_in_drm_ioctl(int vrefresh, int sot_hs_mode)
 {
 	struct samsung_display_driver_data *vdd = ss_get_vdd(PRIMARY_DISPLAY_NDX);
 
-	if (vdd->vrr.target_refresh_rate != vrefresh || vdd->vrr.target_sot_hs_mode != sot_hs_mode) {
-		LCD_INFO("switch mode: drm_ioctl: %dhz%s -> %dhz%s\n",
-				vdd->vrr.target_refresh_rate,
-				vdd->vrr.target_sot_hs_mode ? "HS" : "NM",
+	if (vdd->vrr.adjusted_refresh_rate != 0 &&
+			(vdd->vrr.adjusted_refresh_rate != vrefresh ||
+			 vdd->vrr.adjusted_sot_hs_mode != sot_hs_mode)) {
+		LCD_INFO("switch mode: drm_ioctl: %d%s -> %d%s\n",
+				vdd->vrr.adjusted_refresh_rate,
+				vdd->vrr.adjusted_sot_hs_mode ? "HS" : "NM",
 				vrefresh,
 				sot_hs_mode ? "HS" : "NM");
-		SS_XLOG(vdd->vrr.target_refresh_rate,
-				vdd->vrr.target_sot_hs_mode,
+		SS_XLOG(vdd->vrr.adjusted_refresh_rate,
+				vdd->vrr.adjusted_sot_hs_mode,
 				vrefresh, sot_hs_mode);
 	}
 }

@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2015-2019, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2015-2020, The Linux Foundation. All rights reserved.
  */
 
 #ifndef _DSI_CTRL_H_
@@ -569,7 +569,7 @@ int dsi_ctrl_set_tpg_state(struct dsi_ctrl *dsi_ctrl, bool on);
  */
 int dsi_ctrl_cmd_transfer(struct dsi_ctrl *dsi_ctrl,
 			  const struct mipi_dsi_msg *msg,
-			  u32 flags);
+			  u32 *flags);
 
 /**
  * dsi_ctrl_cmd_tx_trigger() - Trigger a deferred command.
@@ -866,4 +866,6 @@ void dsi_ctrl_set_continuous_clk(struct dsi_ctrl *dsi_ctrl, bool enable);
  * @dsi_ctrl:                      DSI controller handle.
  */
 int dsi_ctrl_wait4dynamic_refresh_done(struct dsi_ctrl *ctrl);
+void dsi_ctrl_mask_overflow(struct dsi_ctrl *dsi_ctrl, bool enable);
+int dsi_ctrl_cmd_clear_interrupt(struct dsi_ctrl *dsi_ctrl, u32 flags);
 #endif /* _DSI_CTRL_H_ */

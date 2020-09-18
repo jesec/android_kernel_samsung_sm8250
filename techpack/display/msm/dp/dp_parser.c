@@ -305,7 +305,8 @@ static int dp_parser_gpio(struct dp_parser *parser)
 
 #ifdef CONFIG_SEC_DISPLAYPORT
 	for (i = 0; i < ARRAY_SIZE(dp_gpios); i++) {
-		DP_INFO("name(%s) gpio(%u) value(%u)\n", mp->gpio_config[i].gpio_name,
+		DP_INFO("name(%s) gpio(%u) value(%u)\n",
+			mp->gpio_config[i].gpio_name,
 			mp->gpio_config[i].gpio, mp->gpio_config[i].value);
 	}
 #endif
@@ -791,6 +792,10 @@ static void dp_parser_dsc(struct dp_parser *parser)
 	if (rc || !parser->max_dp_dsc_input_width_pixs)
 		parser->dsc_feature_enable = false;
 
+#ifdef CONFIG_SEC_DISPLAYPORT
+	parser->dsc_feature_enable = false;
+#endif
+
 	DP_DEBUG("dsc parsing successful. dsc:%d, blks:%d, width:%d\n",
 			parser->dsc_feature_enable,
 			parser->max_dp_dsc_blks,
@@ -803,6 +808,10 @@ static void dp_parser_fec(struct dp_parser *parser)
 
 	parser->fec_feature_enable = of_property_read_bool(dev->of_node,
 			"qcom,fec-feature-enable");
+
+#ifdef CONFIG_SEC_DISPLAYPORT
+	parser->fec_feature_enable = false;
+#endif
 
 	DP_DEBUG("fec parsing successful. fec:%d\n",
 			parser->fec_feature_enable);
@@ -824,19 +833,28 @@ static void secdp_parse_misc(struct dp_parser *parser)
 {
 	struct device *dev = &parser->pdev->dev;
 	struct device_node *of_node = dev->of_node;
-	const char* data;
+	const char *data;
 	int len = 0;
 
-	parser->cc_dir_inv = of_property_read_bool(dev->of_node, "secdp,cc-dir-inv");
+	parser->cc_dir_inv = of_property_read_bool(dev->of_node,
+			"secdp,cc-dir-inv");
 	DP_DEBUG("secdp,cc-dir-inv: %d\n", parser->cc_dir_inv);
 
 	parser->aux_sel_inv = of_property_read_bool(dev->of_node,
 			"secdp,aux-sel-inv");
 	DP_DEBUG("secdp,aux-sel-inv: %d\n", parser->aux_sel_inv);
 
-	parser->aux_sw_redrv = of_property_read_bool(dev->of_node,
-			"secdp,aux-sw-redrv");
-	DP_DEBUG("secdp,aux-sw-redrv: %d\n", parser->aux_sw_redrv);
+	data = of_get_property(of_node, "secdp,redrv", &len);
+	if (data) {
+		if (!strncmp(data, "ptn36502", len))
+			parser->use_redrv = SECDP_REDRV_PTN36502;
+		else if (!strncmp(data, "ps5169", len))
+			parser->use_redrv = SECDP_REDRV_PS5169;
+		else
+			parser->use_redrv = SECDP_REDRV_NONE;
+	}
+	DP_DEBUG("secdp,redrv: %s, %s\n", data,
+		secdp_redrv_to_string(parser->use_redrv));
 
 	data = of_get_property(of_node, "secdp,dex-dft-res", &len);
 	if (data) {
@@ -849,8 +867,6 @@ static void secdp_parse_misc(struct dp_parser *parser)
 	parser->prefer_res = of_property_read_bool(dev->of_node,
 			"secdp,prefer-res");
 	DP_DEBUG("secdp,prefer-res: %d\n", parser->prefer_res);
-
-	return;
 }
 #endif
 
@@ -863,7 +879,7 @@ static int dp_parser_parse(struct dp_parser *parser)
 		rc = -EINVAL;
 		goto err;
 	}
-	
+
 	DP_DEBUG("+++\n");
 
 	rc = dp_parser_reg(parser);

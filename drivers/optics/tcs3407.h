@@ -136,6 +136,7 @@ typedef struct _amsAlsResult {
 	uint32_t irrBlue;
 	uint32_t IR;
 	uint32_t irrWideband;
+	uint32_t irrIR;
 	uint32_t mLux;
 	uint32_t mMaxLux;
 	uint32_t mLux_ave;
@@ -356,7 +357,7 @@ typedef enum _deviceIdentifier_e {
 #define AMS_ALS_REG_TO_PERS(x)		(x >> 0)
 
 typedef enum _deviceRegisters {
-	DEVREG_RAM_START, 
+	DEVREG_RAM_START,
 	DEVREG_SMUX13_PRX_TO_FLICKER,
 
 	DEVREG_ENABLE,
@@ -869,7 +870,7 @@ typedef struct _deviceInfo {
 } ams_deviceInfo_t;
 
 
-// #define ALS_DBG 
+// #define ALS_DBG
 // #define ALS_INFO
 
 #ifndef ALS_dbg
@@ -952,6 +953,11 @@ enum  {
 	EOL_STATE_120,
 	EOL_STATE_DONE
 };
+
+enum {
+	EOL_TORCH,
+	EOL_FLASH
+};
 #endif
 
 struct tcs3407_device_data {
@@ -980,7 +986,7 @@ struct tcs3407_device_data {
 	u32 sampling_period_ns;
 	u8 regulator_state;
 	s32 pin_als_int;
-#if !defined(CONFIG_SEC_Y2Q_PROJECT)	
+#if !defined(CONFIG_SEC_Y2Q_PROJECT)
 	s32 pin_als_en;
 #endif
 	s32 dev_irq;
@@ -1002,19 +1008,22 @@ struct tcs3407_device_data {
 	char *eol_result;
 	u8 eol_enable;
 	u8 eol_result_status;
+	s16 eol_flash_type;
 	s16 eol_state;
 	u32 eol_count;
 	u32 eol_awb;
 	u32 eol_clear;
+	u32 eol_wideband;
 	u32 eol_flicker;
 	u8 eol_flicker_count;
-	u32 eol_flicker_awb[6][3];
+	u32 eol_flicker_awb[6][4];
 	u32 eol_pulse_duty[2];
 	u32 eol_pulse_count;
 	u32 eol_ir_spec[4];
 	u32 eol_clear_spec[4];
 	u32 eol_icratio_spec[4];
-	s32 pin_led_en;
+	s32 pin_torch_en;
+	s32 pin_flash_en;
 	struct pinctrl_state *pinctrl_pwm;
 	struct pinctrl_state *pinctrl_out;
 	struct pwm_device *pwm;

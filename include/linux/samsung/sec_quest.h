@@ -25,7 +25,7 @@
 #define QUEST_BUFF_SIZE		10
 #define QUEST_CMD_LIST		3
 #define QUEST_MAIN_CMD_LIST	2
-#define STEP_MAIN_HLOS_TIMEOUT 	2400
+#define STEP_MAIN_HLOS_TIMEOUT 	3000
 #define BUFF_SZ 			256
 #define MAX_DDR_ERR_ADDR_CNT 64
 
@@ -35,11 +35,15 @@ It is better to keep QUEST DONE popup if we complete to run all items of STEP_SM
  although we do not run ITEM_QUESTHLOS in STEP_SMDDL.
 So, let's call proper shell script as concept of STEP_SDMDL
 1) no ITEM_QUESTHLOS in STEP_SMDDL => call quest_dummy.sh which send nad_end after 5 seconds
-2) ITEM_QUESTHLOS in STEP_SMDDL => call quest.sh which execute ITEM_QUESTHLOS     
+2) ITEM_QUESTHLOS in STEP_SMDDL => call quest.sh which execute ITEM_QUESTHLOS
+3) ITEM_QUESTHLOSNATURESCENE in STEP_SMDDL => call quest_naturescene.sh which execute ITEM_QUESTHLOSNATURESCENE
 */
 #if defined(CONFIG_SEC_QUEST_HLOS_DUMMY_SMD)
 #define QUESTHLOS_HLOS_ITEM_SMD			ITEM_QUESTHLOSDUMMY
 #define QUESTHLOS_PROG_SMD				"/system/bin/quest/quest_dummy.sh"
+#elif defined(CONFIG_SEC_QUEST_HLOS_NATURESCENE_SMD)
+#define QUESTHLOS_HLOS_ITEM_SMD			ITEM_QUESTHLOSNATURESCENE
+#define QUESTHLOS_PROG_SMD				"/system/bin/quest/quest_naturescene.sh"
 #else
 #define QUESTHLOS_HLOS_ITEM_SMD			ITEM_QUESTHLOS
 #define QUESTHLOS_PROG_SMD				"/system/bin/quest/quest.sh"
@@ -49,6 +53,9 @@ So, let's call proper shell script as concept of STEP_SDMDL
 #if defined(CONFIG_SEC_QUEST_HLOS_DUMMY_MAIN_CAL)
 #define QUESTHLOS_HLOS_ITEM_MAIN_CAL	ITEM_QUESTHLOSDUMMY
 #define QUESTHLOS_PROG_MAIN_CAL			"/system/bin/quest/quest_dummy.sh"
+#elif defined(CONFIG_SEC_QUEST_USE_SS_HLOS_SH_MAIN_CAL)
+#define QUESTHLOS_HLOS_ITEM_MAIN_CAL	ITEM_QUESTHLOS
+#define QUESTHLOS_PROG_MAIN_CAL			"/system/bin/quest/quest_ss.sh"
 #else
 #define QUESTHLOS_HLOS_ITEM_MAIN_CAL	ITEM_QUESTHLOS
 #define QUESTHLOS_PROG_MAIN_CAL			"/system/bin/quest/quest.sh"
@@ -80,7 +87,7 @@ So, let's call proper shell script as concept of STEP_SDMDL
 #define TEST_QMESADDR(x) (!strcmp((x), "QMESADDRTEST"))
 #define TEST_QMESACACHE(x) (!strcmp((x), "QMESACACHETEST"))
 #define TEST_UFS(x) (!strcmp((x), "UFSTEST"))
-#define TEST_GFX(x) (!strcmp((x), "GFXTEST"))
+#define TEST_NATURESCENE(x) (!strcmp((x), "NATURESCENE"))
 #define TEST_SENSOR(x) (!strcmp((x), "SENSORTEST"))
 #define TEST_SENSORPROBE(x) (!strcmp((x), "SENSORPROBETEST"))
 #define TEST_DDR_SCAN(x) (!strcmp((x), "DDRSCANTEST"))
@@ -91,6 +98,8 @@ So, let's call proper shell script as concept of STEP_SDMDL
 #define TEST_DUMMY(x)(!strcmp((x), "DUMMY")) 
 #define TEST_PASS(x) (!strcmp((x), "PASS"))
 #define TEST_FAIL(x) (!strcmp((x), "FAIL"))
+#define TEST_NA(x) (!strcmp((x), "NA"))
+
 
 
 #define QUEST_PRINT(format, ...) printk(KERN_ERR "[QUEST] " format, ##__VA_ARGS__)
@@ -114,7 +123,11 @@ So, let's call proper shell script as concept of STEP_SDMDL
 enum quest_enum_item {
 	ITEM_NONE = 0,
 	ITEM_QUESTHLOS,
+#if defined(CONFIG_SEC_QUEST_HLOS_DUMMY_SMD)	
 	ITEM_QUESTHLOSDUMMY,
+#elif defined(CONFIG_SEC_QUEST_HLOS_NATURESCENE_SMD)	
+	ITEM_QUESTHLOSNATURESCENE,
+#endif
 	ITEM_QUESTFUSION,
 	ITEM_QUESTQUEFI,
 	ITEM_QUESTSUEFILIGHT,
@@ -137,6 +150,8 @@ enum quest_enum_smd_subitem {
 	SUBITEM_QUESTSUEFILIGHTCOMPLEX,
 #if defined(CONFIG_SEC_QUEST_HLOS_DUMMY_SMD)
 	SUBITEM_QUESTHLOSDUMMY,
+#elif defined(CONFIG_SEC_QUEST_HLOS_NATURESCENE_SMD)
+	SUBITEM_QUESTHLOSNATURESCENE,
 #else
 	SUBITEM_QUESTHLOSCRYPTO,
 	SUBITEM_QUESTHLOSICACHE,
@@ -150,7 +165,9 @@ enum quest_enum_smd_subitem {
 	SUBITEM_QUESTFUSIONA75G,
 	SUBITEM_QUESTFUSIONQ65G,
 #endif
-	SUBITEM_SMDDLQDAF,	
+#if defined(CONFIG_SEC_QUEST_HLOS_DUMMY_SMD)
+	SUBITEM_SMDDLQDAF,
+#endif	
 	//
 	SUBITEM_ITEMSCOUNT,
 };
@@ -161,6 +178,7 @@ enum quest_enum_step {
 	STEP_CAL1,
 	STEP_CALX,
 	STEP_MAIN,
+	STEP_TESTMODE,
 //	STEP_SKP,
 	//
 	STEP_STEPSCOUNT,
@@ -220,15 +238,56 @@ struct param_quest_t {
 	uint64_t smd_subitem_result;
 	uint64_t cal_item_result;	
 	uint64_t main_item_result;
+
 	uint32_t curr_step; 
+
 	uint32_t hlos_remained_count;
 	uint32_t quefi_remained_count;
 	uint32_t suefi_remained_count;
 	uint32_t ddrscan_remained_count;
+
 	uint32_t thermal;
 	uint32_t tested_clock;
 	uint64_t err_codes;
+
+	uint32_t main_quefi_init_thermal;
+	uint32_t main_quefi_end_thermal;
+	uint32_t main_suefi_init_thermal;
+	uint32_t main_suefi_end_thermal;
 	
+	uint32_t smd_ddrscan_elapsed_time;
+	uint32_t smd_quefi_elapsed_time;
+	uint32_t smd_suefi_elapsed_time;
+	
+	char     smd_boot_reason[5];
+	uint32_t smd_hlos_start_time;
+	uint32_t smd_hlos_elapsed_time;
+	uint32_t smd_hlos_init_thermal;
+	uint32_t smd_hlos_max_thermal;
+	uint32_t smd_ns_repeats;
+
+	/* smddl information */
+	uint64_t smd_subitem_result_first;
+
+	uint32_t smd_quefi_init_thermal_first;
+	uint32_t smd_quefi_end_thermal_first;
+	uint32_t smd_suefi_init_thermal_first;
+	uint32_t smd_suefi_end_thermal_first;	
+
+	uint32_t smd_ddrscan_elapsed_time_first;
+	uint32_t smd_quefi_elapsed_time_first;
+	uint32_t smd_suefi_elapsed_time_first;
+
+	char     smd_boot_reason_first[5];
+	uint32_t smd_hlos_start_time_first;
+	uint32_t smd_hlos_elapsed_time_first;
+	uint32_t smd_hlos_init_thermal_first;
+	uint32_t smd_hlos_max_thermal_first;
+	uint32_t smd_ns_repeats_first;
+	uint32_t smd_quefi_rework;
+	uint32_t smd_suefi_rework;
+	/* smddl information */
+
 };
 
 struct param_quest_ddr_result_t {

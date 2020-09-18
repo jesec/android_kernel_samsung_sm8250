@@ -74,3 +74,14 @@ config MOTOR_DRV_ISA1000A
 	default n
 	help
 	  Say Y to enable MOTOR_CS40L2X
+
+config 1030LRA_MOTOR
+	tristate "feature to distinguish haptic engine support"
+	default n
+	depends on MOTOR_DRV_CS40L2X
+	help
+	 Say Y to include support for haptic engine node
+	 in cs40l2x driver.
+	 If you use 1030LRA motor, this can't support multi frequency
+	 so you should enable this.
+

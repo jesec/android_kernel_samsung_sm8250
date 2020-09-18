@@ -1,7 +1,7 @@
 /*
  * DHD debugability support
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -42,6 +42,8 @@
 #if defined(DHD_EVENT_LOG_FILTER)
 #include <dhd_event_log_filter.h>
 #endif /* DHD_EVENT_LOG_FILTER */
+
+uint8 control_logtrace = CUSTOM_CONTROL_LOGTRACE;
 
 struct map_table {
 	uint16 fw_id;
@@ -615,7 +617,7 @@ dhd_dbg_verboselog_printf(dhd_pub_t *dhdp, prcd_event_log_hdr_t *plog_hdr,
 
 #endif /* DHD_LOG_PRINT_RATE_LIMIT */
 	/* print the message out in a logprint  */
-	if (!(raw_event->fmts)) {
+	if ((control_logtrace == LOGTRACE_RAW_FMT) || !(raw_event->fmts)) {
 		if (dhdp->dbg) {
 			log_level = dhdp->dbg->dbg_rings[FW_VERBOSE_RING_ID].log_level;
 			for (id = 0; id < ARRAYSIZE(fw_verbose_level_map); id++) {

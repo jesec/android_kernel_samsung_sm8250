@@ -24,7 +24,13 @@
 #include <linux/ccic/max77705_usbc.h>
 #include <linux/ccic/max77705_pass3.h>
 #include <linux/ccic/max77705_pass4.h>
+#if defined(CONFIG_SEC_BLOOMXQ_PROJECT)
+#include <linux/ccic/max77705C_pass2_PID07.h>
+#elif defined(CONFIG_SEC_F2Q_PROJECT) || defined(CONFIG_SEC_GTS7XL_PROJECT) || defined(CONFIG_SEC_GTS7L_PROJECT)
+#include <linux/ccic/max77705C_pass2_PID05.h>
+#else
 #include <linux/ccic/max77705C_pass2_PID03.h>
+#endif
 #include <linux/ccic/max77705_extra.h>
 
 #include <linux/usb_notify.h>
@@ -528,15 +534,48 @@ static int max77705_fuelgauge_read_vcell(struct max77705_dev *max77705)
 
 static void max77705_wc_control(struct max77705_dev *max77705, bool enable)
 {
+#if defined(CONFIG_DISABLE_MFC_IC)
+	struct power_supply *psy = NULL;
 	union power_supply_propval value = {0, };
 	char wpc_en_status[2];
 
-	wpc_en_status[0] = WPC_EN_CCIC;
-	wpc_en_status[1] = enable ? true : false;
-	value.strval= wpc_en_status;
-	psy_do_property(max77705->pdata->wireless_charger_name, set,
-			POWER_SUPPLY_EXT_PROP_WPC_EN, value);
-	pr_info("%s: WC CONTROL: %s", __func__, wpc_en_status[1] ? "Enable" : "Disable");
+	psy = get_power_supply_by_name(max77705->pdata->wireless_charger_name);
+
+	if (psy) {
+		wpc_en_status[0] = WPC_EN_CCIC;
+		wpc_en_status[1] = enable ? true : false;
+		value.strval= wpc_en_status;
+		if ((psy->desc->set_property != NULL) &&
+			(psy->desc->set_property(psy, (enum power_supply_property)POWER_SUPPLY_EXT_PROP_WPC_EN, &value) >= 0))
+			pr_info("%s: WC CONTROL: %s\n", __func__, wpc_en_status[1] ? "Enable" : "Disable");
+		power_supply_put(psy);
+	} else {
+		if (max77705->pdata->wpc_en) {
+			if (enable) {
+				gpio_direction_output(max77705->pdata->wpc_en, 0);
+				pr_info("%s: WC CONTROL: ENABLE\n", __func__);
+			} else {
+				gpio_direction_output(max77705->pdata->wpc_en, 1);
+				pr_info("%s: WC CONTROL: DISABLE\n", __func__);
+			}
+		} else {
+			pr_info("%s : no wpc_en\n", __func__);
+		}
+	}
+#else
+	if (max77705->pdata->wpc_en) {
+		if (enable) {
+			gpio_direction_output(max77705->pdata->wpc_en, 0);
+			pr_info("%s: WC CONTROL: ENABLE\n", __func__);
+		} else {
+			gpio_direction_output(max77705->pdata->wpc_en, 1);
+			pr_info("%s: WC CONTROL: DISABLE\n", __func__);
+		}
+	} else {
+		pr_info("%s : no wpc_en\n", __func__);
+		return;
+	}
+#endif
 	pr_info("%s: wpc_en(%d)\n", __func__, gpio_get_value(max77705->pdata->wpc_en));
 }
 
@@ -559,6 +598,9 @@ int max77705_usbc_fw_update(struct max77705_dev *max77705,
 	bool wpc_en_changed = 0;
 	int vcell = 0;
 	u8 vbvolt = 0;
+	u8 wcin_dtls = 0;
+	u8 chg_curr = 0;
+	u8 vchgin = 0;
 	int error = 0;
 
 
@@ -600,7 +642,8 @@ retry:
 	store_ccic_bin_version(&fw_header->major, &sw_boot);
 
 #ifdef CONFIG_SEC_FACTORY
-	if ((max77705->FW_Revision != fw_header->major) || (max77705->FW_Minor_Revision != fw_header->minor)) {
+	if ((max77705->FW_Revision != fw_header->major) || (max77705->FW_Minor_Revision != fw_header->minor) ||
+                (max77705->FW_Product_ID != fw_header->product_id)) {
 #else
 	if ((max77705->FW_Revision == 0xff) || (max77705->FW_Revision < fw_header->major) ||
 		((max77705->FW_Revision == fw_header->major) && (max77705->FW_Minor_Revision < fw_header->minor)) ||
@@ -617,7 +660,7 @@ retry:
 			/* change chg_mode during FW update */
 			vcell = max77705_fuelgauge_read_vcell(max77705);
 
-			if (vcell < 3300) {
+			if (vcell < 3600) {
 				pr_info("%s: keep chg_mode(0x%x), vcell(%dmv)\n",
 					__func__, chg_cnfg_00 & 0x0F, vcell);
 				error = -EAGAIN;
@@ -625,14 +668,18 @@ retry:
 			}
 		}
 
+		max77705_read_reg(max77705->charger, MAX77705_CHG_REG_DETAILS_00, &wcin_dtls);
+		wcin_dtls = (wcin_dtls & 0x18) >> 3;
+
 		wpc_en_changed = true;
 		max77705_wc_control(max77705, false);
 
 		max77705_read_reg(max77705->muic, MAX77705_USBC_REG_BC_STATUS, &vbvolt);
-		pr_info("%s: BC:0x%02x, vbvolt:0x%x\n",
-			__func__, vbvolt, (vbvolt & 0x80) >> 7);
 
-		if (!(vbvolt & 0x80)) {
+		pr_info("%s: BC:0x%02x, vbvolt:0x%x, wcin_dtls:0x%x\n",
+			__func__, vbvolt, ((vbvolt & 0x80) >> 7), wcin_dtls);
+
+		if (!(vbvolt & 0x80) && (wcin_dtls != 0x3)) {
 			chg_mode_changed = true;
 					/* Switching Frequency : 3MHz */
 			max77705_update_reg(max77705->charger,
@@ -649,6 +696,16 @@ retry:
 			pr_info("%s: +change chg_mode(0x9), vcell(%dmv)\n",
 						__func__, vcell);
 		} else {
+			max77705_update_reg(max77705->charger,
+				MAX77705_CHG_REG_CNFG_12, 0x18, 0x18);
+			max77705_read_reg(max77705->charger, MAX77705_CHG_REG_CNFG_12, &vchgin);
+			pr_info("%s: -set aicl, (0x%02x)\n", __func__, vchgin);
+
+			max77705_update_reg(max77705->charger,
+				MAX77705_CHG_REG_CNFG_02, 0x0, 0x3F);
+			max77705_read_reg(max77705->charger, MAX77705_CHG_REG_CNFG_02, &chg_curr);
+			pr_info("%s: -set charge curr 100mA, (0x%02x)\n", __func__, chg_curr);
+
 			if (chg_mode_changed) {
 				chg_mode_changed = false;
 				/* Auto skip mode */
@@ -1052,9 +1109,7 @@ static int max77705_suspend(struct device *dev)
 					(!max77705->doing_irq) && (!max77705->is_usbc_queue), 1*HZ);
 
 	pr_info("%s:%s -\n", MFD_DEV_NAME, __func__);
-#if !defined(CONFIG_SEC_FACTORY)
-	disable_irq(max77705->irq);
-#endif
+
 	return 0;
 }
 
@@ -1067,9 +1122,7 @@ static int max77705_resume(struct device *dev)
 
 	if (device_may_wakeup(dev))
 		disable_irq_wake(max77705->irq);
-#if !defined(CONFIG_SEC_FACTORY)
-	enable_irq(max77705->irq);
-#endif
+
 	return 0;
 }
 #else

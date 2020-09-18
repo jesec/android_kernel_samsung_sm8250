@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011-2012, 2014-2019 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2011-2012, 2014-2020 The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -31,10 +31,19 @@
 
 #define RRM_BCN_RPT_NO_BSS_INFO    0
 #define RRM_BCN_RPT_MIN_RPT        1
+#define RRM_CH_BUF_LEN             45
 
 QDF_STATUS rrm_initialize(struct mac_context *mac);
 
-QDF_STATUS rrm_cleanup(struct mac_context *mac);
+/**
+ * rrm_cleanup  - cleanup RRM measurement related data for the measurement
+ * index
+ * @mac: Pointer to mac context
+ * @idx: Measurement index
+ *
+ * Return: None
+ */
+void rrm_cleanup(struct mac_context *mac, uint8_t idx);
 
 QDF_STATUS rrm_process_link_measurement_request(struct mac_context *mac,
 						uint8_t *pRxPacketInfo,

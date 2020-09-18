@@ -249,3 +249,7 @@ obj-$(CONFIG_MFD_ROHM_BD718XX)	+= rohm-bd718x7.o
 
 obj-$(CONFIG_MFD_S2MPB02)       += s2mpb02-core.o s2mpb02-irq.o
 obj-$(CONFIG_SEC_PM)		+= sec_ap_pmic.o
+
+CFLAGS_s2mpb02-core.o = -Wformat
+CFLAGS_s2mpb02-irq.o = -Wformat
+CFLAGS_sec_ap_pmic.o = -Wformat

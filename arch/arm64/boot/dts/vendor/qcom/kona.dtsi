@@ -350,6 +350,11 @@
 			qcom,skip-enable-check;
 
 			#freq-domain-cells = <2>;
+
+			cpu7_notify: cpu7-notify {
+				qcom,cooling-cpu = <&CPU7>;
+				#cooling-cells = <2>;
+			};
 		};
 	};
 
@@ -643,9 +648,9 @@
 		/* Slimbus Slave DT for QCA6390 */
 		btfmslim_codec: qca6390 {
 			compatible = "qcom,btfmslim_slave";
-			elemental-addr = [00 01 20 02 17 02];
+			elemental-addr = [00 01 21 02 17 02];
 			qcom,btfm-slim-ifd = "btfmslim_slave_ifd";
-			qcom,btfm-slim-ifd-elemental-addr = [00 00 20 02 17 02];
+			qcom,btfm-slim-ifd-elemental-addr = [00 00 21 02 17 02];
 		};
 	};
 
@@ -2764,6 +2769,7 @@
 		regulator-name = "gpu_cx_gdsc";
 		hw-ctrl-addr = <&gpu_cx_hw_ctrl>;
 		parent-supply = <&VDD_CX_LEVEL>;
+		vdd_parent-supply = <&VDD_CX_LEVEL>;
 		qcom,no-status-check-on-disable;
 		qcom,clk-dis-wait-val = <8>;
 		qcom,gds-timeout = <500>;
@@ -3984,7 +3990,7 @@
 			label = "cdsprpc-smd";
 			iommus = <&apps_smmu 0x1001 0x0460>;
 			qcom,iommu-dma-addr-pool = <0x80000000 0x78000000>;
-			qcom,iommu-faults = "stall-disable";
+			qcom,iommu-faults = "stall-disable", "HUPCF";
 			dma-coherent;
 		};
 
@@ -3993,7 +3999,7 @@
 			label = "cdsprpc-smd";
 			iommus = <&apps_smmu 0x1002 0x0460>;
 			qcom,iommu-dma-addr-pool = <0x80000000 0x78000000>;
-			qcom,iommu-faults = "stall-disable";
+			qcom,iommu-faults = "stall-disable", "HUPCF";
 			dma-coherent;
 		};
 
@@ -4002,7 +4008,7 @@
 			label = "cdsprpc-smd";
 			iommus = <&apps_smmu 0x1003 0x0460>;
 			qcom,iommu-dma-addr-pool = <0x80000000 0x78000000>;
-			qcom,iommu-faults = "stall-disable";
+			qcom,iommu-faults = "stall-disable", "HUPCF";
 			dma-coherent;
 		};
 
@@ -4011,7 +4017,7 @@
 			label = "cdsprpc-smd";
 			iommus = <&apps_smmu 0x1004 0x0460>;
 			qcom,iommu-dma-addr-pool = <0x80000000 0x78000000>;
-			qcom,iommu-faults = "stall-disable";
+			qcom,iommu-faults = "stall-disable", "HUPCF";
 			dma-coherent;
 		};
 
@@ -4020,7 +4026,7 @@
 			label = "cdsprpc-smd";
 			iommus = <&apps_smmu 0x1005 0x0460>;
 			qcom,iommu-dma-addr-pool = <0x80000000 0x78000000>;
-			qcom,iommu-faults = "stall-disable";
+			qcom,iommu-faults = "stall-disable", "HUPCF";
 			dma-coherent;
 		};
 
@@ -4029,7 +4035,7 @@
 			label = "cdsprpc-smd";
 			iommus = <&apps_smmu 0x1006 0x0460>;
 			qcom,iommu-dma-addr-pool = <0x80000000 0x78000000>;
-			qcom,iommu-faults = "stall-disable";
+			qcom,iommu-faults = "stall-disable", "HUPCF";
 			dma-coherent;
 		};
 
@@ -4038,7 +4044,7 @@
 			label = "cdsprpc-smd";
 			iommus = <&apps_smmu 0x1007 0x0460>;
 			qcom,iommu-dma-addr-pool = <0x80000000 0x78000000>;
-			qcom,iommu-faults = "stall-disable";
+			qcom,iommu-faults = "stall-disable", "HUPCF";
 			dma-coherent;
 		};
 
@@ -4047,7 +4053,7 @@
 			label = "cdsprpc-smd";
 			iommus = <&apps_smmu 0x1008 0x0460>;
 			qcom,iommu-dma-addr-pool = <0x80000000 0x78000000>;
-			qcom,iommu-faults = "stall-disable";
+			qcom,iommu-faults = "stall-disable", "HUPCF";
 			dma-coherent;
 		};
 
@@ -4057,7 +4063,7 @@
 			qcom,secure-context-bank;
 			iommus = <&apps_smmu 0x1009 0x0460>;
 			qcom,iommu-dma-addr-pool = <0x60000000 0x78000000>;
-			qcom,iommu-faults = "stall-disable";
+			qcom,iommu-faults = "stall-disable", "HUPCF";
 			qcom,iommu-vmid = <0xA>;	/* VMID_CP_PIXEL */
 			dma-coherent;
 		};
@@ -4067,7 +4073,7 @@
 			label = "adsprpc-smd";
 			iommus = <&apps_smmu 0x1803 0x0>;
 			qcom,iommu-dma-addr-pool = <0x80000000 0x78000000>;
-			qcom,iommu-faults = "stall-disable";
+			qcom,iommu-faults = "stall-disable", "HUPCF";
 			dma-coherent;
 		};
 
@@ -4076,7 +4082,7 @@
 			label = "adsprpc-smd";
 			iommus = <&apps_smmu 0x1804 0x0>;
 			qcom,iommu-dma-addr-pool = <0x80000000 0x78000000>;
-			qcom,iommu-faults = "stall-disable";
+			qcom,iommu-faults = "stall-disable", "HUPCF";
 			dma-coherent;
 		};
 
@@ -4085,7 +4091,7 @@
 			label = "adsprpc-smd";
 			iommus = <&apps_smmu 0x1805 0x0>;
 			qcom,iommu-dma-addr-pool = <0x80000000 0x78000000>;
-			qcom,iommu-faults = "stall-disable";
+			qcom,iommu-faults = "stall-disable", "HUPCF";
 			dma-coherent;
 		};
 
@@ -4094,7 +4100,7 @@
 			label = "sdsprpc-smd";
 			iommus = <&apps_smmu 0x0541 0x0>;
 			qcom,iommu-dma-addr-pool = <0x80000000 0x78000000>;
-			qcom,iommu-faults = "stall-disable";
+			qcom,iommu-faults = "stall-disable", "HUPCF";
 			dma-coherent;
 		};
 
@@ -4103,7 +4109,7 @@
 			label = "sdsprpc-smd";
 			iommus = <&apps_smmu 0x0542 0x0>;
 			qcom,iommu-dma-addr-pool = <0x80000000 0x78000000>;
-			qcom,iommu-faults = "stall-disable";
+			qcom,iommu-faults = "stall-disable", "HUPCF";
 			dma-coherent;
 		};
 
@@ -4112,7 +4118,7 @@
 			label = "sdsprpc-smd";
 			iommus = <&apps_smmu 0x0543 0x0>;
 			qcom,iommu-dma-addr-pool = <0x80000000 0x78000000>;
-			qcom,iommu-faults = "stall-disable";
+			qcom,iommu-faults = "stall-disable", "HUPCF";
 			shared-cb = <4>;
 			dma-coherent;
 		};
@@ -4738,8 +4744,8 @@
 		status = "ok";
 	};
 
-	cnss_qca6390: qcom,cnss-qca6390@b0000000 {
-		compatible = "qcom,cnss-qca6390";
+	wlan: qcom,cnss-qca6490@b0000000 {
+		compatible = "qcom,cnss-qca6490";
 		reg = <0xb0000000 0x10000>,
 		      <0xb2e5510 0x5c0>;
 		reg-names = "smmu_iova_ipa", "tcs_cmd";
@@ -4748,13 +4754,14 @@
 		pinctrl-0 = <&cnss_wlan_en_active>;
 		pinctrl-1 = <&cnss_wlan_en_sleep>;
 		qcom,wlan-rc-num = <0>;
-		qcom,wlan-ramdump-dynamic = <0x400000>;
+		qcom,wlan-ramdump-dynamic = <0x420000>;
 		qcom,smmu-s1-enable;
 		cnss-daemon-support;
 		qcom,cmd_db_name = "smpf2";
+		qcom,set-wlaon-pwr-ctrl;
 
 		qcom,msm-bus,name = "msm-cnss";
-		qcom,msm-bus,num-cases = <6>;
+		qcom,msm-bus,num-cases = <7>;
 		qcom,msm-bus,num-paths = <1>;
 		qcom,msm-bus,vectors-KBps =
 		/* no vote */
@@ -4768,7 +4775,9 @@
 		/* high: 240 - 800 Mbps, ddr freq: 451.2 MHz */
 		<MSM_BUS_MASTER_PCIE MSM_BUS_SLAVE_FIRST 100000 1804800>,
 		/* very high: 800 - 1400 Mbps, ddr freq: 1555.2 MHz */
-		<MSM_BUS_MASTER_PCIE MSM_BUS_SLAVE_FIRST 175000 6220800>;
+		<MSM_BUS_MASTER_PCIE MSM_BUS_SLAVE_FIRST 175000 6220800>,
+		/* low (latency critical): 18 - 60 Mbps, ddr freq: 547.2 MHz */
+		<MSM_BUS_MASTER_PCIE MSM_BUS_SLAVE_FIRST 7500 2188800>; 
 
 		vdd-wlan-aon-supply = <&pm8150_s6>;
 		qcom,vdd-wlan-aon-config = <950000 950000 0 0 1>;
@@ -4879,6 +4888,15 @@
 				mhi,priority = <1>;
 				mhi,brstmode = <2>;
 			};
+
+			mhi_event@2 {
+				mhi,num-elements = <32>;
+				mhi,intmod = <1>;
+				mhi,msi = <0>;
+				mhi,priority = <2>;
+				mhi,brstmode = <2>;
+				mhi,data-type = <3>;
+                        };
 		};
 
 		mhi_devices {
@@ -4985,6 +5003,11 @@
 		gpu_lm_efuse: gpu_lm_efuse@5c8 {
 			reg = <0x5c8 0x4>;
 		};
+
+		gpu_speed_bin: gpu_speed_bin@19b {
+			reg = <0x19b 0x1>;
+			bits = <5 3>;
+		};
 	};
 };
 
@@ -5010,7 +5033,7 @@
 			qcom,iommu-dma-addr-pool = <0xa0000000 0x10000000>;
 			qcom,iommu-dma = "fastmap";
 			qcom,iommu-pagetable = "coherent";
-			qcom,iommu-faults = "stall-disable", "no-CFRE",
+			qcom,iommu-faults = "stall-disable", "HUPCF", "no-CFRE",
 					    "non-fatal";
 		};
 	};

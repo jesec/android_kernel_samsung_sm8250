@@ -1,7 +1,7 @@
 /*
  * Linux cfgp2p driver
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,7 +18,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 #ifndef _wl_cfgp2p_h_
 #define _wl_cfgp2p_h_
@@ -128,10 +128,6 @@ enum wl_cfgp2p_status {
 /* dword align allocation */
 #define WLC_IOCTL_MAXLEN 8192
 
-/* XXX Samsung want to print INFO2 instead of ERROR
- * because most of case, ERROR message is not a real ERROR.
- * but it can be regarded as real error case for Tester
- */
 #ifdef CUSTOMER_HW4_DEBUG
 #define CFGP2P_ERROR_TEXT		"CFGP2P-INFO2) "
 #else
@@ -249,7 +245,7 @@ enum wl_cfgp2p_status {
 #define bcm_struct_cfgdev	struct net_device
 #endif /* WL_CFG80211_P2P_DEV_IF */
 
-/* XXX: If we take 10 or 30 as count value, operation
+/* If we take 10 or 30 as count value, operation
  * may failed due to full scan and noisy environments.
  * So, we choose 50 as the optimum value for P2P ECSA.
  */
@@ -457,7 +453,7 @@ wl_cfgp2p_is_p2p_specific_scan(struct cfg80211_scan_request *request);
 							(subtype == P2P_PAF_PROVDIS_RSP)))
 #define IS_P2P_SOCIAL(ch) ((ch == SOCIAL_CHAN_1) || (ch == SOCIAL_CHAN_2) || (ch == SOCIAL_CHAN_3))
 #define IS_P2P_SSID(ssid, len) (!memcmp(ssid, WL_P2P_WILDCARD_SSID, WL_P2P_WILDCARD_SSID_LEN) && \
-					(len == WL_P2P_WILDCARD_SSID_LEN))
+					(len >= WL_P2P_WILDCARD_SSID_LEN))
 
 /* Min FW ver required to support chanspec
  * instead of channel in actframe iovar.

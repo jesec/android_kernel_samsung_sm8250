@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2019, Broadcom.
+# Copyright (C) 2020, Broadcom.
 #
 #      Unless you and Broadcom execute a separate written software license
 # agreement governing use of this software, this software is licensed to you
@@ -73,6 +73,13 @@ config BCM43012
 	---help---
 	  This module adds support for wireless adapters based on
 	  Broadcom 43012 chipset.
+
+config BCM43013
+	tristate "Broadcom 43013 wireless cards support"
+	depends on BROADCOM_WIFI
+	---help---
+	  This module adds support for wireless adapters based on
+	  Broadcom 43013 chipset.
 
 config BCM4358
 	tristate "Broadcom 4358 wireless cards support"
@@ -160,7 +167,7 @@ config BROADCOM_WIFI_RESERVED_MEM
 
 config WIFI_BROADCOM_COB
         bool "BROADCOM WIFI COB"
-        depends on (BCM43455 || BCM4343 || BCM43454 || BCM43012)
+        depends on (BCM43455 || BCM4343 || BCM43454 || BCM43012 || BCM43013)
         ---help---
           This is a configuration for Broadcom WIFI COB Type.
 

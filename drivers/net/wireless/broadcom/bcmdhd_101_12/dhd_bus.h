@@ -276,6 +276,10 @@ extern bool dhd_bus_check_driver_up(void);
 extern int dhd_bus_get_cto(dhd_pub_t *dhdp);
 extern void dhd_bus_set_linkdown(dhd_pub_t *dhdp, bool val);
 extern int dhd_bus_get_linkdown(dhd_pub_t *dhdp);
+#ifdef CONFIG_ARCH_MSM
+extern void dhd_bus_inform_ep_loaded_to_rc(dhd_pub_t *dhdp, bool up);
+#endif /* CONFIG_ARCH_MSM */
+extern int dhd_bus_checkdied(struct dhd_bus *bus, char *data, uint size);
 #else
 #define dhd_bus_dump_console_buffer(x)
 static INLINE void dhd_bus_intr_count_dump(dhd_pub_t *dhdp) { UNUSED_PARAMETER(dhdp); }
@@ -285,6 +289,7 @@ static INLINE bool dhd_bus_check_driver_up(void) { return FALSE; }
 extern INLINE void dhd_bus_set_linkdown(dhd_pub_t *dhdp, bool val) { }
 extern INLINE int dhd_bus_get_linkdown(dhd_pub_t *dhdp) { return 0; }
 static INLINE int dhd_bus_get_cto(dhd_pub_t *dhdp) { return 0; }
+extern INLINE int dhd_bus_checkdied(struct dhd_bus *bus, char *data, uint size) { return 0; }
 #endif /* BCMPCIE */
 
 #if defined(BCMPCIE) && defined(EWP_ETD_PRSRV_LOGS)

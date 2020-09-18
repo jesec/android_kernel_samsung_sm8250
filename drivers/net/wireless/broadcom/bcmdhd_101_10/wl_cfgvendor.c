@@ -1,7 +1,7 @@
 /*
  * Linux cfg80211 Vendor Extension Code
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,7 +18,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 /*
@@ -41,6 +41,7 @@
 #include <asm/uaccess.h>
 
 #include <dngl_stats.h>
+#include "wifi_stats.h"
 #include <dhd.h>
 #include <dhd_debug.h>
 #include <dhdioctl.h>
@@ -1515,8 +1516,39 @@ wl_cfgvendor_set_hal_started(struct wiphy *wiphy,
 #ifdef WL_STA_ASSOC_RAND
 	struct ether_addr primary_mac;
 	dhd_pub_t *dhd = (dhd_pub_t *)(cfg->pub);
-	int ret;
 #endif /* WL_STA_ASSOC_RAND */
+	int ret = BCME_OK;
+#if defined(WIFI_TURNON_USE_HALINIT)
+	struct net_device *ndev = wdev_to_wlc_ndev(wdev, cfg);
+	uint32 type;
+
+	if (!data) {
+		WL_DBG(("%s,data is not available\n", __FUNCTION__));
+	} else {
+		if (len > 0) {
+			type = nla_type(data);
+			WL_INFORM(("%s,type: %xh\n", __FUNCTION__, type));
+			if (type == SET_HAL_START_ATTRIBUTE_PRE_INIT) {
+				if (nla_len(data)) {
+					WL_INFORM(("%s, HAL version: %s\n", __FUNCTION__,
+							(char*)nla_data(data)));
+				}
+				WL_INFORM(("%s, dhd_open start\n", __FUNCTION__));
+				ret = dhd_open(ndev);
+				if (ret != BCME_OK) {
+					WL_INFORM(("%s, dhd_open failed\n", __FUNCTION__));
+					return ret;
+				} else {
+					WL_INFORM(("%s, dhd_open succeeded\n", __FUNCTION__));
+				}
+				return ret;
+			}
+		} else {
+			WL_ERR(("invalid len %d\n", len));
+		}
+	}
+#endif /* WIFI_TURNON_USE_HALINIT */
+	RETURN_EIO_IF_NOT_UP(cfg);
 	WL_INFORM(("%s,[DUMP] HAL STARTED\n", __FUNCTION__));
 
 	cfg->hal_started = true;
@@ -1535,7 +1567,7 @@ wl_cfgvendor_set_hal_started(struct wiphy *wiphy,
 		}
 	}
 #endif /* WL_STA_ASSOC_RAND */
-	return BCME_OK;
+	return ret;
 }
 
 static int
@@ -2339,8 +2371,8 @@ wl_cfgvendor_set_bssid_blacklist(struct wiphy *wiphy,
 					goto exit;
 				}
 				if (!blacklist) {
-					mem_needed = OFFSETOF(maclist_t, ea) +
-						sizeof(struct ether_addr) * (num);
+					mem_needed = (uint32) (OFFSETOF(maclist_t, ea) +
+						sizeof(struct ether_addr) * (num));
 					blacklist = (maclist_t *)
 						MALLOCZ(cfg->osh, mem_needed);
 					if (!blacklist) {
@@ -2766,6 +2798,121 @@ wl_cfgvendor_get_ndev(struct bcm_cfg80211 *cfg, struct wireless_dev *wdev,
 }
 
 #ifdef WL_SAE
+static int wl_cfgvendor_map_supp_sae_pwe_to_fw(u32 sup_value, u32 *sae_pwe)
+{
+	s32 ret = BCME_OK;
+	switch (sup_value) {
+		case SUPP_SAE_PWE_LOOP:
+			*sae_pwe = SAE_PWE_LOOP;
+			break;
+		case SUPP_SAE_PWE_H2E:
+			*sae_pwe = SAE_PWE_H2E;
+			break;
+		case SUPP_SAE_PWE_TRANS:
+			*sae_pwe = SAE_PWE_LOOP | SAE_PWE_H2E;
+			break;
+		default:
+			ret = BCME_BADARG;
+	}
+	return ret;
+}
+#endif /* WL_SAE */
+
+int
+wl_cfgvendor_connect_params_handler(struct wiphy *wiphy,
+	struct wireless_dev *wdev, const void  *data, int len)
+{
+	struct net_device *net = wdev->netdev;
+	int ret = BCME_OK;
+	int attr_type;
+	int rem = len;
+	const struct nlattr *iter;
+
+	BCM_REFERENCE(net);
+
+	nla_for_each_attr(iter, data, len, rem) {
+		attr_type = nla_type(iter);
+		WL_DBG(("attr type: (%u)\n", attr_type));
+
+		switch (attr_type) {
+#ifdef WL_SAE
+		case BRCM_ATTR_SAE_PWE: {
+			u32 sae_pwe = 0;
+			if (nla_len(iter) != sizeof(uint32)) {
+				WL_ERR(("Invalid value of sae_pwe\n"));
+				ret = -EINVAL;
+				break;
+			}
+			ret = wl_cfgvendor_map_supp_sae_pwe_to_fw(nla_get_u32(iter), &sae_pwe);
+			if (unlikely(ret)) {
+				WL_ERR(("Invalid sae_pwe\n"));
+				break;
+			}
+			ret = wl_cfg80211_set_wsec_info(net, &sae_pwe,
+				sizeof(sae_pwe), WL_WSEC_INFO_BSS_SAE_PWE);
+			if (unlikely(ret)) {
+				WL_ERR(("set wsec_info_sae_pwe failed \n"));
+			}
+			break;
+		}
+#endif /* WL_SAE */
+		/* Add new attributes here */
+		default:
+			WL_DBG(("%s: Unknown type, %d\n", __FUNCTION__, attr_type));
+		}
+	}
+
+	return ret;
+}
+
+int
+wl_cfgvendor_start_ap_params_handler(struct wiphy *wiphy,
+	struct wireless_dev *wdev, const void  *data, int len)
+{
+	struct net_device *net = wdev->netdev;
+	int ret = BCME_OK;
+	int attr_type;
+	int rem = len;
+	const struct nlattr *iter;
+
+	BCM_REFERENCE(net);
+
+	nla_for_each_attr(iter, data, len, rem) {
+		attr_type = nla_type(iter);
+		WL_DBG(("attr type: (%u)\n", attr_type));
+
+		switch (attr_type) {
+#ifdef WL_SAE
+		case BRCM_ATTR_SAE_PWE: {
+			u32 sae_pwe = 0;
+			if (nla_len(iter) != sizeof(uint32)) {
+				WL_ERR(("Invalid value of sae_pwe\n"));
+				ret = -EINVAL;
+				break;
+			}
+			ret = wl_cfgvendor_map_supp_sae_pwe_to_fw(nla_get_u32(iter), &sae_pwe);
+			if (unlikely(ret)) {
+				WL_ERR(("Invalid sae_pwe\n"));
+				break;
+			}
+			ret = wl_cfg80211_set_wsec_info(net, &sae_pwe,
+				sizeof(sae_pwe), WL_WSEC_INFO_BSS_SAE_PWE);
+			if (unlikely(ret)) {
+				WL_ERR(("set wsec_info_sae_pwe failed \n"));
+			}
+			break;
+		}
+#endif /* WL_SAE */
+		/* Add new attributes here */
+		default:
+			WL_DBG(("%s: Unknown type, %d\n", __FUNCTION__, attr_type));
+		}
+	}
+
+	return ret;
+}
+
+#ifdef WL_SAE
 static int
 wl_cfgvendor_set_sae_password(struct wiphy *wiphy,
 	struct wireless_dev *wdev, const void  *data, int len)
@@ -2805,7 +2952,7 @@ wl_cfgvendor_set_sae_password(struct wiphy *wiphy,
 		WL_ERR(("\n failed to set pmk %d\n", err));
 		goto done;
 	} else {
-		WL_MEM(("sae passphrase set successfully\n"));
+		WL_INFORM_MEM(("sae passphrase set successfully\n"));
 	}
 done:
 	return err;
@@ -2965,129 +3112,251 @@ exit:
 #endif /* BCM_PRIV_CMD_SUPPORT */
 
 #ifdef WL_NAN
-static const char *nan_attr_to_str(u16 cmd)
+static const char *
+nan_attr_to_str(u16 cmd)
 {
+	const char *id2str;
+
 	switch (cmd) {
-	C2S(NAN_ATTRIBUTE_HEADER)
-	C2S(NAN_ATTRIBUTE_HANDLE)
-	C2S(NAN_ATTRIBUTE_TRANSAC_ID)
-	C2S(NAN_ATTRIBUTE_2G_SUPPORT)
-	C2S(NAN_ATTRIBUTE_SDF_2G_SUPPORT)
-	C2S(NAN_ATTRIBUTE_SDF_5G_SUPPORT)
-	C2S(NAN_ATTRIBUTE_5G_SUPPORT)
-	C2S(NAN_ATTRIBUTE_SYNC_DISC_2G_BEACON)
-	C2S(NAN_ATTRIBUTE_SYNC_DISC_5G_BEACON)
-	C2S(NAN_ATTRIBUTE_CLUSTER_LOW)
-	C2S(NAN_ATTRIBUTE_CLUSTER_HIGH)
-	C2S(NAN_ATTRIBUTE_SID_BEACON)
-	C2S(NAN_ATTRIBUTE_RSSI_CLOSE)
-	C2S(NAN_ATTRIBUTE_RSSI_MIDDLE)
-	C2S(NAN_ATTRIBUTE_RSSI_PROXIMITY)
-	C2S(NAN_ATTRIBUTE_RSSI_CLOSE_5G)
-	C2S(NAN_ATTRIBUTE_RSSI_MIDDLE_5G)
-	C2S(NAN_ATTRIBUTE_RSSI_PROXIMITY_5G)
-	C2S(NAN_ATTRIBUTE_HOP_COUNT_LIMIT)
-	C2S(NAN_ATTRIBUTE_RANDOM_TIME)
-	C2S(NAN_ATTRIBUTE_MASTER_PREF)
-	C2S(NAN_ATTRIBUTE_PERIODIC_SCAN_INTERVAL)
-	C2S(NAN_ATTRIBUTE_PUBLISH_ID)
-	C2S(NAN_ATTRIBUTE_TTL)
-	C2S(NAN_ATTRIBUTE_PERIOD)
-	C2S(NAN_ATTRIBUTE_REPLIED_EVENT_FLAG)
-	C2S(NAN_ATTRIBUTE_PUBLISH_TYPE)
-	C2S(NAN_ATTRIBUTE_TX_TYPE)
-	C2S(NAN_ATTRIBUTE_PUBLISH_COUNT)
-	C2S(NAN_ATTRIBUTE_SERVICE_NAME_LEN)
-	C2S(NAN_ATTRIBUTE_SERVICE_NAME)
-	C2S(NAN_ATTRIBUTE_SERVICE_SPECIFIC_INFO_LEN)
-	C2S(NAN_ATTRIBUTE_SERVICE_SPECIFIC_INFO)
-	C2S(NAN_ATTRIBUTE_RX_MATCH_FILTER_LEN)
-	C2S(NAN_ATTRIBUTE_RX_MATCH_FILTER)
-	C2S(NAN_ATTRIBUTE_TX_MATCH_FILTER_LEN)
-	C2S(NAN_ATTRIBUTE_TX_MATCH_FILTER)
-	C2S(NAN_ATTRIBUTE_SUBSCRIBE_ID)
-	C2S(NAN_ATTRIBUTE_SUBSCRIBE_TYPE)
-	C2S(NAN_ATTRIBUTE_SERVICERESPONSEFILTER)
-	C2S(NAN_ATTRIBUTE_SERVICERESPONSEINCLUDE)
-	C2S(NAN_ATTRIBUTE_USESERVICERESPONSEFILTER)
-	C2S(NAN_ATTRIBUTE_SSIREQUIREDFORMATCHINDICATION)
-	C2S(NAN_ATTRIBUTE_SUBSCRIBE_MATCH)
-	C2S(NAN_ATTRIBUTE_SUBSCRIBE_COUNT)
-	C2S(NAN_ATTRIBUTE_MAC_ADDR)
-	C2S(NAN_ATTRIBUTE_MAC_ADDR_LIST)
-	C2S(NAN_ATTRIBUTE_MAC_ADDR_LIST_NUM_ENTRIES)
-	C2S(NAN_ATTRIBUTE_PUBLISH_MATCH)
-	C2S(NAN_ATTRIBUTE_ENABLE_STATUS)
-	C2S(NAN_ATTRIBUTE_JOIN_STATUS)
-	C2S(NAN_ATTRIBUTE_ROLE)
-	C2S(NAN_ATTRIBUTE_MASTER_RANK)
-	C2S(NAN_ATTRIBUTE_ANCHOR_MASTER_RANK)
-	C2S(NAN_ATTRIBUTE_CNT_PEND_TXFRM)
-	C2S(NAN_ATTRIBUTE_CNT_BCN_TX)
-	C2S(NAN_ATTRIBUTE_CNT_BCN_RX)
-	C2S(NAN_ATTRIBUTE_CNT_SVC_DISC_TX)
-	C2S(NAN_ATTRIBUTE_CNT_SVC_DISC_RX)
-	C2S(NAN_ATTRIBUTE_AMBTT)
-	C2S(NAN_ATTRIBUTE_CLUSTER_ID)
-	C2S(NAN_ATTRIBUTE_INST_ID)
-	C2S(NAN_ATTRIBUTE_OUI)
-	C2S(NAN_ATTRIBUTE_STATUS)
-	C2S(NAN_ATTRIBUTE_DE_EVENT_TYPE)
-	C2S(NAN_ATTRIBUTE_MERGE)
-	C2S(NAN_ATTRIBUTE_IFACE)
-	C2S(NAN_ATTRIBUTE_CHANNEL)
-	C2S(NAN_ATTRIBUTE_24G_CHANNEL)
-	C2S(NAN_ATTRIBUTE_5G_CHANNEL)
-	C2S(NAN_ATTRIBUTE_PEER_ID)
-	C2S(NAN_ATTRIBUTE_NDP_ID)
-	C2S(NAN_ATTRIBUTE_SECURITY)
-	C2S(NAN_ATTRIBUTE_QOS)
-	C2S(NAN_ATTRIBUTE_RSP_CODE)
-	C2S(NAN_ATTRIBUTE_INST_COUNT)
-	C2S(NAN_ATTRIBUTE_PEER_DISC_MAC_ADDR)
-	C2S(NAN_ATTRIBUTE_PEER_NDI_MAC_ADDR)
-	C2S(NAN_ATTRIBUTE_IF_ADDR)
-	C2S(NAN_ATTRIBUTE_WARMUP_TIME)
-	C2S(NAN_ATTRIBUTE_RECV_IND_CFG)
-	C2S(NAN_ATTRIBUTE_CONNMAP)
-	C2S(NAN_ATTRIBUTE_DWELL_TIME)
-	C2S(NAN_ATTRIBUTE_SCAN_PERIOD)
-	C2S(NAN_ATTRIBUTE_RSSI_WINDOW_SIZE)
-	C2S(NAN_ATTRIBUTE_CONF_CLUSTER_VAL)
-	C2S(NAN_ATTRIBUTE_CIPHER_SUITE_TYPE)
-	C2S(NAN_ATTRIBUTE_KEY_TYPE)
-	C2S(NAN_ATTRIBUTE_KEY_LEN)
-	C2S(NAN_ATTRIBUTE_SCID)
-	C2S(NAN_ATTRIBUTE_SCID_LEN)
-	C2S(NAN_ATTRIBUTE_SDE_CONTROL_CONFIG_DP)
-	C2S(NAN_ATTRIBUTE_SDE_CONTROL_SECURITY)
-	C2S(NAN_ATTRIBUTE_SDE_CONTROL_DP_TYPE)
-	C2S(NAN_ATTRIBUTE_SDE_CONTROL_RANGE_SUPPORT)
-	C2S(NAN_ATTRIBUTE_NO_CONFIG_AVAIL)
-	C2S(NAN_ATTRIBUTE_2G_AWAKE_DW)
-	C2S(NAN_ATTRIBUTE_5G_AWAKE_DW)
-	C2S(NAN_ATTRIBUTE_RSSI_THRESHOLD_FLAG)
-	C2S(NAN_ATTRIBUTE_KEY_DATA)
-	C2S(NAN_ATTRIBUTE_SDEA_SERVICE_SPECIFIC_INFO_LEN)
-	C2S(NAN_ATTRIBUTE_SDEA_SERVICE_SPECIFIC_INFO)
-	C2S(NAN_ATTRIBUTE_REASON)
-	C2S(NAN_ATTRIBUTE_DISC_IND_CFG)
-	C2S(NAN_ATTRIBUTE_DWELL_TIME_5G)
-	C2S(NAN_ATTRIBUTE_SCAN_PERIOD_5G)
-	C2S(NAN_ATTRIBUTE_SVC_RESPONDER_POLICY)
-	C2S(NAN_ATTRIBUTE_EVENT_MASK)
-	C2S(NAN_ATTRIBUTE_SUB_SID_BEACON)
-	C2S(NAN_ATTRIBUTE_RANDOMIZATION_INTERVAL)
-	C2S(NAN_ATTRIBUTE_CMD_RESP_DATA)
-	C2S(NAN_ATTRIBUTE_CMD_USE_NDPE)
-	C2S(NAN_ATTRIBUTE_ENABLE_MERGE)
-	C2S(NAN_ATTRIBUTE_DISCOVERY_BEACON_INTERVAL)
-	C2S(NAN_ATTRIBUTE_NSS)
-	C2S(NAN_ATTRIBUTE_ENABLE_RANGING)
-	C2S(NAN_ATTRIBUTE_DW_EARLY_TERM)
+	C2S(NAN_ATTRIBUTE_HEADER);
+		break;
+	C2S(NAN_ATTRIBUTE_HANDLE);
+		break;
+	C2S(NAN_ATTRIBUTE_TRANSAC_ID);
+		break;
+	C2S(NAN_ATTRIBUTE_2G_SUPPORT);
+		break;
+	C2S(NAN_ATTRIBUTE_SDF_2G_SUPPORT);
+		break;
+	C2S(NAN_ATTRIBUTE_SDF_5G_SUPPORT);
+		break;
+	C2S(NAN_ATTRIBUTE_5G_SUPPORT);
+		break;
+	C2S(NAN_ATTRIBUTE_SYNC_DISC_2G_BEACON);
+		break;
+	C2S(NAN_ATTRIBUTE_SYNC_DISC_5G_BEACON);
+		break;
+	C2S(NAN_ATTRIBUTE_CLUSTER_LOW);
+		break;
+	C2S(NAN_ATTRIBUTE_CLUSTER_HIGH);
+		break;
+	C2S(NAN_ATTRIBUTE_SID_BEACON);
+		break;
+	C2S(NAN_ATTRIBUTE_RSSI_CLOSE);
+		break;
+	C2S(NAN_ATTRIBUTE_RSSI_MIDDLE);
+		break;
+	C2S(NAN_ATTRIBUTE_RSSI_PROXIMITY);
+		break;
+	C2S(NAN_ATTRIBUTE_RSSI_CLOSE_5G);
+		break;
+	C2S(NAN_ATTRIBUTE_RSSI_MIDDLE_5G);
+		break;
+	C2S(NAN_ATTRIBUTE_RSSI_PROXIMITY_5G);
+		break;
+	C2S(NAN_ATTRIBUTE_HOP_COUNT_LIMIT);
+		break;
+	C2S(NAN_ATTRIBUTE_RANDOM_TIME);
+		break;
+	C2S(NAN_ATTRIBUTE_MASTER_PREF);
+		break;
+	C2S(NAN_ATTRIBUTE_PERIODIC_SCAN_INTERVAL);
+		break;
+	C2S(NAN_ATTRIBUTE_PUBLISH_ID);
+		break;
+	C2S(NAN_ATTRIBUTE_TTL);
+		break;
+	C2S(NAN_ATTRIBUTE_PERIOD);
+		break;
+	C2S(NAN_ATTRIBUTE_REPLIED_EVENT_FLAG);
+		break;
+	C2S(NAN_ATTRIBUTE_PUBLISH_TYPE);
+		break;
+	C2S(NAN_ATTRIBUTE_TX_TYPE);
+		break;
+	C2S(NAN_ATTRIBUTE_PUBLISH_COUNT);
+		break;
+	C2S(NAN_ATTRIBUTE_SERVICE_NAME_LEN);
+		break;
+	C2S(NAN_ATTRIBUTE_SERVICE_NAME);
+		break;
+	C2S(NAN_ATTRIBUTE_SERVICE_SPECIFIC_INFO_LEN);
+		break;
+	C2S(NAN_ATTRIBUTE_SERVICE_SPECIFIC_INFO);
+		break;
+	C2S(NAN_ATTRIBUTE_RX_MATCH_FILTER_LEN);
+		break;
+	C2S(NAN_ATTRIBUTE_RX_MATCH_FILTER);
+		break;
+	C2S(NAN_ATTRIBUTE_TX_MATCH_FILTER_LEN);
+		break;
+	C2S(NAN_ATTRIBUTE_TX_MATCH_FILTER);
+		break;
+	C2S(NAN_ATTRIBUTE_SUBSCRIBE_ID);
+		break;
+	C2S(NAN_ATTRIBUTE_SUBSCRIBE_TYPE);
+		break;
+	C2S(NAN_ATTRIBUTE_SERVICERESPONSEFILTER);
+		break;
+	C2S(NAN_ATTRIBUTE_SERVICERESPONSEINCLUDE);
+		break;
+	C2S(NAN_ATTRIBUTE_USESERVICERESPONSEFILTER);
+		break;
+	C2S(NAN_ATTRIBUTE_SSIREQUIREDFORMATCHINDICATION);
+		break;
+	C2S(NAN_ATTRIBUTE_SUBSCRIBE_MATCH);
+		break;
+	C2S(NAN_ATTRIBUTE_SUBSCRIBE_COUNT);
+		break;
+	C2S(NAN_ATTRIBUTE_MAC_ADDR);
+		break;
+	C2S(NAN_ATTRIBUTE_MAC_ADDR_LIST);
+		break;
+	C2S(NAN_ATTRIBUTE_MAC_ADDR_LIST_NUM_ENTRIES);
+		break;
+	C2S(NAN_ATTRIBUTE_PUBLISH_MATCH);
+		break;
+	C2S(NAN_ATTRIBUTE_ENABLE_STATUS);
+		break;
+	C2S(NAN_ATTRIBUTE_JOIN_STATUS);
+		break;
+	C2S(NAN_ATTRIBUTE_ROLE);
+		break;
+	C2S(NAN_ATTRIBUTE_MASTER_RANK);
+		break;
+	C2S(NAN_ATTRIBUTE_ANCHOR_MASTER_RANK);
+		break;
+	C2S(NAN_ATTRIBUTE_CNT_PEND_TXFRM);
+		break;
+	C2S(NAN_ATTRIBUTE_CNT_BCN_TX);
+		break;
+	C2S(NAN_ATTRIBUTE_CNT_BCN_RX);
+		break;
+	C2S(NAN_ATTRIBUTE_CNT_SVC_DISC_TX);
+		break;
+	C2S(NAN_ATTRIBUTE_CNT_SVC_DISC_RX);
+		break;
+	C2S(NAN_ATTRIBUTE_AMBTT);
+		break;
+	C2S(NAN_ATTRIBUTE_CLUSTER_ID);
+		break;
+	C2S(NAN_ATTRIBUTE_INST_ID);
+		break;
+	C2S(NAN_ATTRIBUTE_OUI);
+		break;
+	C2S(NAN_ATTRIBUTE_STATUS);
+		break;
+	C2S(NAN_ATTRIBUTE_DE_EVENT_TYPE);
+		break;
+	C2S(NAN_ATTRIBUTE_MERGE);
+		break;
+	C2S(NAN_ATTRIBUTE_IFACE);
+		break;
+	C2S(NAN_ATTRIBUTE_CHANNEL);
+		break;
+	C2S(NAN_ATTRIBUTE_24G_CHANNEL);
+		break;
+	C2S(NAN_ATTRIBUTE_5G_CHANNEL);
+		break;
+	C2S(NAN_ATTRIBUTE_PEER_ID);
+		break;
+	C2S(NAN_ATTRIBUTE_NDP_ID);
+		break;
+	C2S(NAN_ATTRIBUTE_SECURITY);
+		break;
+	C2S(NAN_ATTRIBUTE_QOS);
+		break;
+	C2S(NAN_ATTRIBUTE_RSP_CODE);
+		break;
+	C2S(NAN_ATTRIBUTE_INST_COUNT);
+		break;
+	C2S(NAN_ATTRIBUTE_PEER_DISC_MAC_ADDR);
+		break;
+	C2S(NAN_ATTRIBUTE_PEER_NDI_MAC_ADDR);
+		break;
+	C2S(NAN_ATTRIBUTE_IF_ADDR);
+		break;
+	C2S(NAN_ATTRIBUTE_WARMUP_TIME);
+		break;
+	C2S(NAN_ATTRIBUTE_RECV_IND_CFG);
+		break;
+	C2S(NAN_ATTRIBUTE_CONNMAP);
+		break;
+	C2S(NAN_ATTRIBUTE_DWELL_TIME);
+		break;
+	C2S(NAN_ATTRIBUTE_SCAN_PERIOD);
+		break;
+	C2S(NAN_ATTRIBUTE_RSSI_WINDOW_SIZE);
+		break;
+	C2S(NAN_ATTRIBUTE_CONF_CLUSTER_VAL);
+		break;
+	C2S(NAN_ATTRIBUTE_CIPHER_SUITE_TYPE);
+		break;
+	C2S(NAN_ATTRIBUTE_KEY_TYPE);
+		break;
+	C2S(NAN_ATTRIBUTE_KEY_LEN);
+		break;
+	C2S(NAN_ATTRIBUTE_SCID);
+		break;
+	C2S(NAN_ATTRIBUTE_SCID_LEN);
+		break;
+	C2S(NAN_ATTRIBUTE_SDE_CONTROL_CONFIG_DP);
+		break;
+	C2S(NAN_ATTRIBUTE_SDE_CONTROL_SECURITY);
+		break;
+	C2S(NAN_ATTRIBUTE_SDE_CONTROL_DP_TYPE);
+		break;
+	C2S(NAN_ATTRIBUTE_SDE_CONTROL_RANGE_SUPPORT);
+		break;
+	C2S(NAN_ATTRIBUTE_NO_CONFIG_AVAIL);
+		break;
+	C2S(NAN_ATTRIBUTE_2G_AWAKE_DW);
+		break;
+	C2S(NAN_ATTRIBUTE_5G_AWAKE_DW);
+		break;
+	C2S(NAN_ATTRIBUTE_RSSI_THRESHOLD_FLAG);
+		break;
+	C2S(NAN_ATTRIBUTE_KEY_DATA);
+		break;
+	C2S(NAN_ATTRIBUTE_SDEA_SERVICE_SPECIFIC_INFO_LEN);
+		break;
+	C2S(NAN_ATTRIBUTE_SDEA_SERVICE_SPECIFIC_INFO);
+		break;
+	C2S(NAN_ATTRIBUTE_REASON);
+		break;
+	C2S(NAN_ATTRIBUTE_DISC_IND_CFG);
+		break;
+	C2S(NAN_ATTRIBUTE_DWELL_TIME_5G);
+		break;
+	C2S(NAN_ATTRIBUTE_SCAN_PERIOD_5G);
+		break;
+	C2S(NAN_ATTRIBUTE_SVC_RESPONDER_POLICY);
+		break;
+	C2S(NAN_ATTRIBUTE_EVENT_MASK);
+		break;
+	C2S(NAN_ATTRIBUTE_SUB_SID_BEACON);
+		break;
+	C2S(NAN_ATTRIBUTE_RANDOMIZATION_INTERVAL);
+		break;
+	C2S(NAN_ATTRIBUTE_CMD_RESP_DATA);
+		break;
+	C2S(NAN_ATTRIBUTE_CMD_USE_NDPE);
+		break;
+	C2S(NAN_ATTRIBUTE_ENABLE_MERGE);
+		break;
+	C2S(NAN_ATTRIBUTE_DISCOVERY_BEACON_INTERVAL);
+		break;
+	C2S(NAN_ATTRIBUTE_NSS);
+		break;
+	C2S(NAN_ATTRIBUTE_ENABLE_RANGING);
+		break;
+	C2S(NAN_ATTRIBUTE_DW_EARLY_TERM);
+		break;
 	default:
-		return "NAN_ATTRIBUTE_UNKNOWN";
+		id2str = "NAN_ATTRIBUTE_UNKNOWN";
 	}
+
+	return id2str;
 }
 
 nan_hal_status_t nan_status_reasonstr_map[] = {
@@ -4700,7 +4969,7 @@ wl_cfgvendor_nan_parse_args(struct wiphy *wiphy, const void *buf,
 				ret = -EINVAL;
 				goto exit;
 			}
-			/* XXX:run time nmi rand not supported as of now.
+			/* run time nmi rand not supported as of now.
 			* Only during nan enable/iface-create rand mac is used
 			*/
 			cmd_data->nmi_rand_intvl = nla_get_u32(iter);
@@ -5617,7 +5886,7 @@ wl_cfgvendor_nan_start_handler(struct wiphy *wiphy,
 	}
 	NAN_DBG_ENTER();
 
-	ret = wl_cfgnan_check_nan_disable_pending(cfg, false);
+	ret = wl_cfgnan_check_nan_disable_pending(cfg, false, true);
 	if (ret != BCME_OK) {
 		WL_ERR(("failed to disable nan, error[%d]\n", ret));
 		goto exit;
@@ -5669,15 +5938,19 @@ wl_cfgvendor_terminate_dp_rng_sessions(struct bcm_cfg80211 *cfg,
 	int status = BCME_ERROR;
 	nan_ranging_inst_t *ranging_inst = NULL;
 	wl_nancfg_t *nancfg = cfg->nancfg;
+	dhd_pub_t *dhdp = wl_cfg80211_get_dhdp(wdev->netdev);
 	*ssn_exists = false;
 	/* Cleanup active Data Paths If any */
 	for (i = 0; i < NAN_MAX_NDP_PEER; i++) {
 		if (nancfg->ndp_id[i]) {
-			*ssn_exists = true;
 			WL_DBG(("Found entry of ndp id = [%d], end dp associated to it\n",
 					nancfg->ndp_id[i]));
-			wl_cfgnan_data_path_end_handler(wdev->netdev, cfg,
+			ret = wl_cfgnan_data_path_end_handler(wdev->netdev, cfg,
 					nancfg->ndp_id[i], &status);
+			if ((ret == BCME_OK) && cfg->nancfg->nan_enable &&
+				dhdp->up) {
+				*ssn_exists = true;
+			}
 		}
 	}
 
@@ -5685,7 +5958,7 @@ wl_cfgvendor_terminate_dp_rng_sessions(struct bcm_cfg80211 *cfg,
 	for (i = 0; i < NAN_MAX_RANGING_INST; i++) {
 		ranging_inst = &nancfg->nan_ranging_info[i];
 		if (ranging_inst->in_use &&
-				(ranging_inst->range_status == NAN_RANGING_IN_PROGRESS)) {
+				(NAN_RANGING_IS_IN_PROG(ranging_inst->range_status))) {
 			ret = wl_cfgnan_cancel_ranging(bcmcfg_to_prmry_ndev(cfg), cfg,
 					&ranging_inst->range_id,
 					NAN_RNG_TERM_FLAG_NONE, &status);
@@ -5731,6 +6004,7 @@ wl_cfgvendor_nan_stop_handler(struct wiphy *wiphy,
 			*/
 			WL_INFORM_MEM(("Schedule Nan Disable Req with NAN_DISABLE_CMD_DELAY\n"));
 			delay_ms = NAN_DISABLE_CMD_DELAY;
+			DHD_NAN_WAKE_LOCK_TIMEOUT(cfg->pub, NAN_WAKELOCK_TIMEOUT);
 		} else {
 			delay_ms = 0;
 		}
@@ -6331,7 +6605,6 @@ static int wl_cfgvendor_lstats_get_info(struct wiphy *wiphy,
 	int err = 0, i;
 	wifi_radio_stat *radio;
 	wifi_radio_stat_h radio_h;
-	wl_wme_cnt_t *wl_wme_cnt;
 	const wl_cnt_wlc_t *wlc_cnt;
 	scb_val_t scbval;
 	char *output = NULL;
@@ -6345,7 +6618,7 @@ static int wl_cfgvendor_lstats_get_info(struct wiphy *wiphy,
 	dhd_pub_t *dhdp = (dhd_pub_t *)(cfg->pub);
 	COMPAT_STRUCT_IFACE(wifi_iface_stat, iface);
 
-	WL_INFORM_MEM(("%s: Enter \n", __func__));
+	WL_TRACE(("%s: Enter \n", __func__));
 	RETURN_EIO_IF_NOT_UP(cfg);
 
 	BCM_REFERENCE(if_stats);
@@ -6393,38 +6666,11 @@ static int wl_cfgvendor_lstats_get_info(struct wiphy *wiphy,
 	output += sizeof(wifi_radio_stat_h);
 	output += (NUM_CHAN * sizeof(wifi_channel_stat));
 
-	err = wldev_iovar_getbuf(bcmcfg_to_prmry_ndev(cfg), "wme_counters", NULL, 0,
-		iovar_buf, WLC_IOCTL_MAXLEN, NULL);
-	if (unlikely(err)) {
-		WL_ERR(("error (%d)\n", err));
-		goto exit;
-	}
-	wl_wme_cnt = (wl_wme_cnt_t *)iovar_buf;
-
 	COMPAT_BZERO_IFACE(wifi_iface_stat, iface);
 	COMPAT_ASSIGN_VALUE(iface, ac[WIFI_AC_VO].ac, WIFI_AC_VO);
-	COMPAT_ASSIGN_VALUE(iface, ac[WIFI_AC_VO].tx_mpdu, wl_wme_cnt->tx[AC_VO].packets);
-	COMPAT_ASSIGN_VALUE(iface, ac[WIFI_AC_VO].rx_mpdu, wl_wme_cnt->rx[AC_VO].packets);
-	COMPAT_ASSIGN_VALUE(iface, ac[WIFI_AC_VO].mpdu_lost,
-		wl_wme_cnt->tx_failed[WIFI_AC_VO].packets);
-
 	COMPAT_ASSIGN_VALUE(iface, ac[WIFI_AC_VI].ac, WIFI_AC_VI);
-	COMPAT_ASSIGN_VALUE(iface, ac[WIFI_AC_VI].tx_mpdu, wl_wme_cnt->tx[AC_VI].packets);
-	COMPAT_ASSIGN_VALUE(iface, ac[WIFI_AC_VI].rx_mpdu, wl_wme_cnt->rx[AC_VI].packets);
-	COMPAT_ASSIGN_VALUE(iface, ac[WIFI_AC_VI].mpdu_lost,
-		wl_wme_cnt->tx_failed[WIFI_AC_VI].packets);
-
 	COMPAT_ASSIGN_VALUE(iface, ac[WIFI_AC_BE].ac, WIFI_AC_BE);
-	COMPAT_ASSIGN_VALUE(iface, ac[WIFI_AC_BE].tx_mpdu, wl_wme_cnt->tx[AC_BE].packets);
-	COMPAT_ASSIGN_VALUE(iface, ac[WIFI_AC_BE].rx_mpdu, wl_wme_cnt->rx[AC_BE].packets);
-	COMPAT_ASSIGN_VALUE(iface, ac[WIFI_AC_BE].mpdu_lost,
-		wl_wme_cnt->tx_failed[WIFI_AC_BE].packets);
-
 	COMPAT_ASSIGN_VALUE(iface, ac[WIFI_AC_BK].ac, WIFI_AC_BK);
-	COMPAT_ASSIGN_VALUE(iface, ac[WIFI_AC_BK].tx_mpdu, wl_wme_cnt->tx[AC_BK].packets);
-	COMPAT_ASSIGN_VALUE(iface, ac[WIFI_AC_BK].rx_mpdu, wl_wme_cnt->rx[AC_BK].packets);
-	COMPAT_ASSIGN_VALUE(iface, ac[WIFI_AC_BK].mpdu_lost,
-		wl_wme_cnt->tx_failed[WIFI_AC_BK].packets);
 
 	err = wldev_iovar_getbuf(bcmcfg_to_prmry_ndev(cfg), "counters", NULL, 0,
 		iovar_buf, WLC_IOCTL_MAXLEN, NULL);
@@ -6435,7 +6681,7 @@ static int wl_cfgvendor_lstats_get_info(struct wiphy *wiphy,
 
 	CHK_CNTBUF_DATALEN(iovar_buf, WLC_IOCTL_MAXLEN);
 	/* Translate traditional (ver <= 10) counters struct to new xtlv type struct */
-	/* XXX: traditional(ver<=10)counters will use WL_CNT_XTLV_CNTV_LE10_UCODE.
+	/* traditional(ver<=10)counters will use WL_CNT_XTLV_CNTV_LE10_UCODE.
 	 * Other cases will use its xtlv type accroding to corerev
 	 */
 	err = wl_cntbuf_to_xtlv_format(NULL, iovar_buf, WLC_IOCTL_MAXLEN, revinfo.corerev);
@@ -6473,10 +6719,18 @@ static int wl_cfgvendor_lstats_get_info(struct wiphy *wiphy,
 				if_stats->version));
 			goto exit;
 		}
+		COMPAT_ASSIGN_VALUE(iface, ac[WIFI_AC_BE].tx_mpdu,
+			(uint32)(if_stats->txfrmsnt - if_stats->txmulti));
+		COMPAT_ASSIGN_VALUE(iface, ac[WIFI_AC_BE].rx_mpdu, (uint32)if_stats->rxframe);
+		COMPAT_ASSIGN_VALUE(iface, ac[WIFI_AC_BE].mpdu_lost, (uint32)if_stats->txfail);
 		COMPAT_ASSIGN_VALUE(iface, ac[WIFI_AC_BE].retries, (uint32)if_stats->txretrans);
 	} else
 #endif /* !DISABLE_IF_COUNTERS */
 	{
+		COMPAT_ASSIGN_VALUE(iface, ac[WIFI_AC_BE].tx_mpdu,
+			(wlc_cnt->txfrmsnt - wlc_cnt->txmulti));
+		COMPAT_ASSIGN_VALUE(iface, ac[WIFI_AC_BE].rx_mpdu, wlc_cnt->rxframe);
+		COMPAT_ASSIGN_VALUE(iface, ac[WIFI_AC_BE].mpdu_lost, wlc_cnt->txfail);
 		COMPAT_ASSIGN_VALUE(iface, ac[WIFI_AC_BE].retries, wlc_cnt->txretrans);
 	}
 
@@ -8240,6 +8494,22 @@ static const struct wiphy_vendor_command wl_vendor_cmds [] = {
 		.doit = wl_cfgvendor_set_sae_password
 	},
 #endif /* WL_SAE */
+	{
+		{
+			.vendor_id = OUI_BRCM,
+			.subcmd = BRCM_VENDOR_SCMD_SET_CONNECT_PARAMS
+		},
+		.flags = WIPHY_VENDOR_CMD_NEED_WDEV | WIPHY_VENDOR_CMD_NEED_NETDEV,
+		.doit = wl_cfgvendor_connect_params_handler
+	},
+	{
+		{
+			.vendor_id = OUI_BRCM,
+			.subcmd = BRCM_VENDOR_SCMD_SET_START_AP_PARAMS
+		},
+		.flags = WIPHY_VENDOR_CMD_NEED_WDEV | WIPHY_VENDOR_CMD_NEED_NETDEV,
+		.doit = wl_cfgvendor_start_ap_params_handler
+	},
 #ifdef GSCAN_SUPPORT
 	{
 		{
@@ -9009,7 +9279,7 @@ wl_cfgvendor_send_hang_event(struct net_device *dev, u16 reason, char *string, i
 			copy_debug_dump_time(dhd->debug_dump_time_str,
 					dhd->debug_dump_time_hang_str);
 		}
-		/* XXX: Fill bigdata key with */
+		/* Fill bigdata key with */
 		bytes_written += scnprintf(&hang_info[bytes_written], len,
 				"%d %d %s %08x %08x %08x %08x %08x %08x %08x",
 				reason, VENDOR_SEND_HANG_EXT_INFO_VER,

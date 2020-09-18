@@ -116,6 +116,10 @@
 #endif
 #endif
 
+#ifdef CONFIG_KUNIT
+#include <kunit/test.h>
+#endif
+
 #ifdef CONFIG_CFP
 #include <linux/cfp.h>
 #endif
@@ -776,6 +780,9 @@ void kdp_init(void)
 #ifdef CONFIG_SAMSUNG_PRODUCT_SHIP
 	cred.selinux.selinux_enforcing_va  = (u64)&selinux_enforcing;
 	cred.selinux.ss_initialized_va	= (u64)&ss_initialized;
+#else
+	cred.selinux.selinux_enforcing_va  = 0;
+	cred.selinux.ss_initialized_va	= 0;
 #endif
 	uh_call(UH_APP_RKP, RKP_KDP_X40, (u64)&cred, 0, 0, 0);
 }
@@ -1483,6 +1490,10 @@ static noinline void __init kernel_init_freeable(void)
 	page_ext_init();
 
 	do_basic_setup();
+
+#ifdef CONFIG_KUNIT
+	test_executor_init();
+#endif
 
 	/* Open the /dev/console on the rootfs, this should never fail */
 	if (ksys_open((const char __user *) "/dev/console", O_RDWR, 0) < 0)

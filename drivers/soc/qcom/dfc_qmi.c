@@ -929,7 +929,7 @@ int dfc_bearer_flow_ctl(struct net_device *dev,
 			qos->mux_id, bearer->bearer_id, bearer->grant_size,
 			enable ? "en" : "dis");
 	}
-	
+
 	if (!enable && bearer->ack_req)
 		dfc_send_ack(dev, bearer->bearer_id,
 			     bearer->seq, qos->mux_id,
@@ -1124,7 +1124,7 @@ void dfc_do_burst_flow_control(struct dfc_qmi_data *dfc,
 			net_log("I> m=%d b=%d gr=%d s=%d a=%d\n",
 				flow_status->mux_id, flow_status->bearer_id,
 				flow_status->num_bytes, flow_status->seq_num,
-				ancillary);			
+				ancillary);
 			dfc_all_bearer_flow_ctl(
 				dev, qos, ack_req, ancillary, flow_status);
 		} else
@@ -1151,7 +1151,7 @@ static void dfc_update_tx_link_status(struct net_device *dev,
 
 	net_log("Link> %s, b=%d, gr=%d, rs=%d, status %d\n", dev->name,
 		binfo->bearer_id, itm->grant_size, itm->rat_switch, tx_status);
-	
+
 	/* If no change in tx status, ignore */
 	if (itm->tx_off == !tx_status)
 		return;

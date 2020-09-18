@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2019 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2017-2020 The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -55,14 +55,25 @@ void pmo_register_wow_default_patterns(struct wlan_objmgr_vdev *vdev);
 /**
  * pmo_register_action_frame_patterns() - register action frame map to fw
  * @vdev: objmgr vdev
+ * @suspend_type: suspend mode runtime pm suspend or normal suspend.
  *
  * This is called to push action frames wow patterns from local
  * cache to firmware.
  *
- * Return: None
+ * Return: QDF_STATUS
  */
-void pmo_register_action_frame_patterns(
-		struct wlan_objmgr_vdev *vdev);
+QDF_STATUS
+pmo_register_action_frame_patterns(struct wlan_objmgr_vdev *vdev,
+				   enum qdf_suspend_type suspend_type);
+
+/**
+ * pmo_clear_action_frame_patterns() - clear the action frame
+ * pattern bitmap in firmware
+ * @vdev: objmgr vdev
+ *
+ * Return: QDF_STATUS
+ */
+QDF_STATUS pmo_clear_action_frame_patterns(struct wlan_objmgr_vdev *vdev);
 
 /**
  * pmo_set_wow_event_bitmap() - Assign bitmask with wow event
@@ -93,6 +104,22 @@ void pmo_set_sta_wow_bitmask(uint32_t *bitmask, uint32_t wow_bitmask_size);
  * Return: none
  */
 void pmo_set_sap_wow_bitmask(uint32_t *bitmask, uint32_t wow_bitmask_size);
+
+#ifdef WLAN_FEATURE_NAN
+/**
+ * pmo_set_ndp_wow_bitmask() - set predefined NDP wow wakeup events
+ * @bitmask: bitmask field
+ * @wow_bitmask_size: bitmask field size
+ *
+ * Return: none
+ */
+void pmo_set_ndp_wow_bitmask(uint32_t *bitmask, uint32_t wow_bitmask_size);
+#else
+static inline
+void pmo_set_ndp_wow_bitmask(uint32_t *bitmask, uint32_t wow_bitmask_size)
+{
+}
+#endif
 
 #endif /* WLAN_POWER_MANAGEMENT_OFFLOAD */
 

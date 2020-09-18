@@ -883,6 +883,7 @@ static void uaudio_disconnect_cb(struct snd_usb_audio *chip)
 		disconnect_ind.slot_id = dev->udev->slot_id;
 		disconnect_ind.controller_num = dev->usb_core_id;
 		disconnect_ind.controller_num_valid = 1;
+
 		ret = qmi_send_indication(svc->uaudio_svc_hdl, &svc->client_sq,
 				QMI_UADUIO_STREAM_IND_V01,
 				QMI_UAUDIO_STREAM_IND_MSG_V01_MAX_MSG_LEN,

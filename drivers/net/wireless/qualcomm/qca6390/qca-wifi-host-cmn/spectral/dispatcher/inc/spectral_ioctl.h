@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011, 2017-2019 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2011, 2017-2020 The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -51,34 +51,51 @@
 #define SPECTRAL_SET_ICM_ACTIVE          (DFS_LAST_IOCTL + 21)
 #define SPECTRAL_GET_NOMINAL_NOISEFLOOR  (DFS_LAST_IOCTL + 22)
 #define SPECTRAL_GET_DEBUG_LEVEL         (DFS_LAST_IOCTL + 23)
+#define SPECTRAL_SET_DMA_DEBUG           (DFS_LAST_IOCTL + 24)
 
 /*
  * ioctl parameter types
  */
+enum spectral_params {
+	SPECTRAL_PARAM_FFT_PERIOD,
+	SPECTRAL_PARAM_SCAN_PERIOD,
+	SPECTRAL_PARAM_SCAN_COUNT,
+	SPECTRAL_PARAM_SHORT_REPORT,
+	SPECTRAL_PARAM_SPECT_PRI,
+	SPECTRAL_PARAM_FFT_SIZE,
+	SPECTRAL_PARAM_GC_ENA,
+	SPECTRAL_PARAM_RESTART_ENA,
+	SPECTRAL_PARAM_NOISE_FLOOR_REF,
+	SPECTRAL_PARAM_INIT_DELAY,
+	SPECTRAL_PARAM_NB_TONE_THR,
+	SPECTRAL_PARAM_STR_BIN_THR,
+	SPECTRAL_PARAM_WB_RPT_MODE,
+	SPECTRAL_PARAM_RSSI_RPT_MODE,
+	SPECTRAL_PARAM_RSSI_THR,
+	SPECTRAL_PARAM_PWR_FORMAT,
+	SPECTRAL_PARAM_RPT_MODE,
+	SPECTRAL_PARAM_BIN_SCALE,
+	SPECTRAL_PARAM_DBM_ADJ,
+	SPECTRAL_PARAM_CHN_MASK,
+	SPECTRAL_PARAM_ACTIVE,
+	SPECTRAL_PARAM_STOP,
+	SPECTRAL_PARAM_ENABLE,
+	SPECTRAL_PARAM_FREQUENCY,
+	SPECTRAL_PARAM_CHAN_FREQUENCY,
+	SPECTRAL_PARAM_CHAN_WIDTH,
+	SPECTRAL_PARAM_MAX,
+};
 
-#define SPECTRAL_PARAM_FFT_PERIOD        (1)
-#define SPECTRAL_PARAM_SCAN_PERIOD       (2)
-#define SPECTRAL_PARAM_SCAN_COUNT        (3)
-#define SPECTRAL_PARAM_SHORT_REPORT      (4)
-#define SPECTRAL_PARAM_SPECT_PRI         (5)
-#define SPECTRAL_PARAM_FFT_SIZE          (6)
-#define SPECTRAL_PARAM_GC_ENA            (7)
-#define SPECTRAL_PARAM_RESTART_ENA       (8)
-#define SPECTRAL_PARAM_NOISE_FLOOR_REF   (9)
-#define SPECTRAL_PARAM_INIT_DELAY        (10)
-#define SPECTRAL_PARAM_NB_TONE_THR       (11)
-#define SPECTRAL_PARAM_STR_BIN_THR       (12)
-#define SPECTRAL_PARAM_WB_RPT_MODE       (13)
-#define SPECTRAL_PARAM_RSSI_RPT_MODE     (14)
-#define SPECTRAL_PARAM_RSSI_THR          (15)
-#define SPECTRAL_PARAM_PWR_FORMAT        (16)
-#define SPECTRAL_PARAM_RPT_MODE          (17)
-#define SPECTRAL_PARAM_BIN_SCALE         (18)
-#define SPECTRAL_PARAM_DBM_ADJ           (19)
-#define SPECTRAL_PARAM_CHN_MASK          (20)
-#define SPECTRAL_PARAM_ACTIVE            (21)
-#define SPECTRAL_PARAM_STOP              (22)
-#define SPECTRAL_PARAM_ENABLE            (23)
+/**
+ * enum spectral_scan_mode - Spectral scan mode
+ * @SPECTRAL_SCAN_MODE_NORMAL: Normal mode
+ * @SPECTRAL_SCAN_MODE_AGILE: Agile mode
+ */
+enum spectral_scan_mode {
+	SPECTRAL_SCAN_MODE_NORMAL,
+	SPECTRAL_SCAN_MODE_AGILE,
+	SPECTRAL_SCAN_MODE_MAX,
+};
 
 struct spectral_ioctl_params {
 	int16_t   spectral_fft_period;
@@ -158,6 +175,16 @@ enum spectral_cap_hw_gen {
  * @ss_nf_cal:            nf calibrated values for ctl+ext
  * @ss_nf_pwr:            nf pwr values for ctl+ext
  * @ss_nf_temp_data:      temperature data taken during nf scan
+ * @ss_frequency:         This specifies the frequency span over which Spectral
+ *                        scan would be carried out. Its value depends on the
+ *                        Spectral scan mode.
+ *                        Normal mode:-
+ *                          Not applicable. Spectral scan would happen in the
+ *                          operating span.
+ *                        Agile mode:-
+ *                          Center frequency (in MHz) of the interested span
+ *                          or center frequency (in MHz) of any WLAN channel
+ *                          in the interested span.
  */
 struct spectral_config {
 	uint16_t ss_fft_period;
@@ -184,6 +211,7 @@ struct spectral_config {
 	int8_t ss_nf_cal[AH_MAX_CHAINS * 2];
 	int8_t ss_nf_pwr[AH_MAX_CHAINS * 2];
 	int32_t ss_nf_temp_data;
+	uint32_t ss_frequency;
 };
 
 /**
@@ -199,6 +227,9 @@ struct spectral_config {
  * @high_level_offset: high_level_offset
  * @rssi_thr: rssi_thr
  * @default_agc_max_gain: default_agc_max_gain
+ * @agile_spectral_cap: agile Spectral capability for 20/40/80
+ * @agile_spectral_cap_160: agile Spectral capability for 160 MHz
+ * @agile_spectral_cap_80p80: agile Spectral capability for 80p80
  */
 struct spectral_caps {
 	uint8_t phydiag_cap;
@@ -212,12 +243,17 @@ struct spectral_caps {
 	int16_t high_level_offset;
 	int16_t rssi_thr;
 	uint8_t default_agc_max_gain;
+	bool agile_spectral_cap;
+	bool agile_spectral_cap_160;
+	bool agile_spectral_cap_80p80;
 };
 
 #define SPECTRAL_IOCTL_PARAM_NOVAL (65535)
 
-#define MAX_SPECTRAL_CHAINS          3
-#define MAX_NUM_BINS                 520
+#define MAX_SPECTRAL_CHAINS           (3)
+#define MAX_NUM_BINS                  (1024)
+#define MAX_NUM_BINS_PRI80            (1024)
+#define MAX_NUM_BINS_SEC80            (520)
 /* 5 categories x (lower + upper) bands */
 #define MAX_INTERF                   10
 
@@ -314,6 +350,37 @@ struct spectral_classifier_params {
  * @noise_floor_sec80:        Indicates the current noise floor for secondary 80
  *                            segment
  * @ch_width:                 Channel width 20/40/80/160 MHz
+ * @spectral_mode:            Spectral scan mode
+ * @spectral_pri80ind:        Indication from hardware that the sample was
+ *                            received on the primary 80 MHz segment. If this
+ *                            is set when smode = SPECTRAL_SCAN_MODE_AGILE, it
+ *                            indicates that Spectral was carried out on pri80
+ *                            instead of the Agile frequency due to a
+ *                            channel switch - Software may choose
+ *                            to ignore the sample in this case.
+ * @spectral_pri80ind_sec80:  Indication from hardware that the sample was
+ *                            received on the primary 80 MHz segment instead of
+ *                            the secondary 80 MHz segment due to a channel
+ *                            switch - Software may choose to ignore the sample
+ *                            if this is set. Applicable only if smode =
+ *                            SPECTRAL_SCAN_MODE_NORMAL and for 160/80+80 MHz
+ *                            Spectral operation.
+ * @last_raw_timestamp:       Previous FFT report's raw timestamp. In case of
+ *                            160Mhz it will be primary 80 segment's timestamp
+ *                            as both primary & secondary segment's timestamp
+ *                            are expected to be almost equal.
+ * @timestamp_war_offset:     Offset calculated based on reset_delay and
+ *                            last_raw_timestamp. It will be added to
+ *                            raw_timestamp to get spectral_tstamp.
+ * @raw_timestamp:            Actual FFT timestamp reported by HW on primary
+ *                            segment.
+ * @raw_timestamp_sec80:      Actual FFT timestamp reported by HW on sec80 MHz
+ *                            segment.
+ * @reset_delay:              Time gap between the last spectral report before
+ *                            reset and the end of reset. It is provided by FW
+ *                            via direct DMA framework.
+ * @target_reset_count:       Indicates the number of times target went through
+ *                            reset routine after spectral was enabled.
  */
 struct spectral_samp_data {
 	int16_t spectral_data_len;
@@ -360,8 +427,8 @@ struct spectral_samp_data {
 	uint8_t lb_edge_extrabins;
 	uint8_t rb_edge_extrabins;
 	uint16_t bin_pwr_count_sec80;
-	uint8_t bin_pwr[MAX_NUM_BINS];
-	uint8_t bin_pwr_sec80[MAX_NUM_BINS];
+	uint8_t bin_pwr[MAX_NUM_BINS_PRI80];
+	uint8_t bin_pwr_sec80[MAX_NUM_BINS_SEC80];
 	struct interf_src_rsp interf_list;
 	int16_t noise_floor;
 	int16_t noise_floor_sec80;
@@ -370,6 +437,16 @@ struct spectral_samp_data {
 	uint8_t spectral_agc_total_gain_sec80;
 	uint8_t spectral_gainchange;
 	uint8_t spectral_gainchange_sec80;
+	enum spectral_scan_mode spectral_mode;
+	uint8_t spectral_pri80ind;
+	uint8_t spectral_pri80ind_sec80;
+	uint32_t last_raw_timestamp;
+	uint32_t timestamp_war_offset;
+	uint32_t raw_timestamp;
+	uint32_t raw_timestamp_sec80;
+	uint32_t reset_delay;
+	uint32_t target_reset_count;
+	uint32_t agile_ch_width;
 } __packed;
 
 /**
@@ -378,6 +455,9 @@ struct spectral_samp_data {
  * @freq:               Operating frequency in MHz
  * @vhtop_ch_freq_seg1: VHT Segment 1 centre frequency in MHz
  * @vhtop_ch_freq_seg2: VHT Segment 2 centre frequency in MHz
+ * @agile_freq:         Center frequency in MHz of the entire span across which
+ *                      Agile Spectral is carried out. Applicable only for Agile
+ *                      Spectral samples.
  * @freq_loading:       How busy was the channel
  * @dcs_enabled:        Whether DCS is enabled
  * @int_type:           Interference type indicated by DCS
@@ -389,6 +469,7 @@ struct spectral_samp_msg {
 	uint16_t freq;
 	uint16_t vhtop_ch_freq_seg1;
 	uint16_t vhtop_ch_freq_seg2;
+	uint16_t agile_freq;
 	uint16_t freq_loading;
 	uint16_t dcs_enabled;
 	enum dcs_int_type int_type;

@@ -359,10 +359,9 @@ static void cpufreq_notify_transition(struct cpufreq_policy *policy,
 			srcu_notifier_call_chain(&cpufreq_transition_notifier_list,
 						 CPUFREQ_POSTCHANGE, freqs);
 		}
-		if(unlikely(cpufreq_stats_on_check(policy))){
-			cpufreq_stats_record_transition(policy, freqs->new);
-			cpufreq_times_record_transition(policy, freqs->new);
-		}
+
+		cpufreq_stats_record_transition(policy, freqs->new);
+		cpufreq_times_record_transition(policy, freqs->new);
 		policy->cur = freqs->new;
 	}
 }
@@ -1909,7 +1908,7 @@ unsigned int cpufreq_driver_fast_switch(struct cpufreq_policy *policy,
 	target_freq = clamp_val(target_freq, policy->min, policy->max);
 
 	ret = cpufreq_driver->fast_switch(policy, target_freq);
-	if (ret && unlikely(cpufreq_stats_on_check(policy))) {
+	if (ret) {
 		cpufreq_times_record_transition(policy, ret);
 		cpufreq_stats_record_transition(policy, ret);
 	}

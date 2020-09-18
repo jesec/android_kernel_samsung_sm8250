@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2019 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2020 The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -331,6 +331,18 @@ QDF_STATUS policy_mgr_psoc_open(struct wlan_objmgr_psoc *psoc)
 		return QDF_STATUS_E_FAILURE;
 	}
 
+	pm_ctx->sta_ap_intf_check_work_info = qdf_mem_malloc(
+		sizeof(struct sta_ap_intf_check_work_ctx));
+	if (!pm_ctx->sta_ap_intf_check_work_info) {
+		qdf_mutex_destroy(&pm_ctx->qdf_conc_list_lock);
+		policy_mgr_err("Failed to alloc sta_ap_intf_check_work_info");
+		return QDF_STATUS_E_FAILURE;
+	}
+	pm_ctx->sta_ap_intf_check_work_info->psoc = psoc;
+	qdf_create_work(0, &pm_ctx->sta_ap_intf_check_work,
+			policy_mgr_check_sta_ap_concurrent_ch_intf,
+			pm_ctx->sta_ap_intf_check_work_info);
+
 	return QDF_STATUS_SUCCESS;
 }
 
@@ -354,7 +366,7 @@ QDF_STATUS policy_mgr_psoc_close(struct wlan_objmgr_psoc *psoc)
 	if (pm_ctx->hw_mode.hw_mode_list) {
 		qdf_mem_free(pm_ctx->hw_mode.hw_mode_list);
 		pm_ctx->hw_mode.hw_mode_list = NULL;
-		policy_mgr_info("HW list is freed");
+		policy_mgr_debug("HW list is freed");
 	}
 
 	if (pm_ctx->sta_ap_intf_check_work_info) {
@@ -366,10 +378,39 @@ QDF_STATUS policy_mgr_psoc_close(struct wlan_objmgr_psoc *psoc)
 	return QDF_STATUS_SUCCESS;
 }
 
+/**
+ * policy_mgr_update_5g_scc_prefer() - Update pcl if 5g scc is preferred
+ * @psoc: psoc object
+ *
+ * Return: void
+ */
+static void policy_mgr_update_5g_scc_prefer(struct wlan_objmgr_psoc *psoc)
+{
+	enum policy_mgr_con_mode mode;
+
+	for (mode = PM_STA_MODE; mode < PM_MAX_NUM_OF_MODE; mode++) {
+		if (policy_mgr_get_5g_scc_prefer(psoc, mode)) {
+			(*second_connection_pcl_dbs_table)
+				[PM_STA_5_1x1][mode][PM_THROUGHPUT] =
+					PM_SCC_CH_24G;
+			policy_mgr_info("overwrite pm_second_connection_pcl_dbs_2x2_table, index %d mode %d system prefer %d new pcl %d",
+					PM_STA_5_1x1, mode,
+					PM_THROUGHPUT, PM_SCC_CH_24G);
+			(*second_connection_pcl_dbs_table)
+				[PM_STA_5_2x2][mode][PM_THROUGHPUT] =
+					PM_SCC_CH_24G;
+			policy_mgr_info("overwrite pm_second_connection_pcl_dbs_2x2_table, index %d mode %d system prefer %d new pcl %d",
+					PM_STA_5_2x2, mode,
+					PM_THROUGHPUT, PM_SCC_CH_24G);
+		}
+	}
+}
+
 QDF_STATUS policy_mgr_psoc_enable(struct wlan_objmgr_psoc *psoc)
 {
 	QDF_STATUS status;
 	struct policy_mgr_psoc_priv_obj *pm_ctx;
+	uint8_t enable_mcc_adaptive_sch = 0;
 
 	pm_ctx = policy_mgr_get_context(psoc);
 	if (!pm_ctx) {
@@ -399,6 +440,13 @@ QDF_STATUS policy_mgr_psoc_enable(struct wlan_objmgr_psoc *psoc)
 		return status;
 	}
 
+	/* init dual_mac_configuration_complete_evt */
+	status = qdf_event_create(&pm_ctx->dual_mac_configuration_complete_evt);
+	if (!QDF_IS_STATUS_SUCCESS(status)) {
+		policy_mgr_err("dual_mac_configuration_complete_evt init failed");
+		return status;
+	}
+
 	status = qdf_event_create(&pm_ctx->opportunistic_update_done_evt);
 	if (!QDF_IS_STATUS_SUCCESS(status)) {
 		policy_mgr_err("opportunistic_update_done_evt init failed");
@@ -410,6 +458,8 @@ QDF_STATUS policy_mgr_psoc_enable(struct wlan_objmgr_psoc *psoc)
 		policy_mgr_err("channel_switch_complete_evt init failed");
 		return status;
 	}
+	policy_mgr_get_mcc_adaptive_sch(psoc, &enable_mcc_adaptive_sch);
+	policy_mgr_set_dynamic_mcc_adaptive_sch(psoc, enable_mcc_adaptive_sch);
 	pm_ctx->do_hw_mode_change = false;
 	pm_ctx->hw_mode_change_in_progress = POLICY_MGR_HW_MODE_NOT_IN_PROGRESS;
 	/* reset sap mandatory channels */
@@ -420,7 +470,8 @@ QDF_STATUS policy_mgr_psoc_enable(struct wlan_objmgr_psoc *psoc)
 	}
 
 	/* init PCL table & function pointers based on HW capability */
-	if (policy_mgr_is_hw_dbs_2x2_capable(psoc))
+	if (policy_mgr_is_hw_dbs_2x2_capable(psoc) ||
+	    policy_mgr_is_hw_dbs_required_for_band(psoc, HW_MODE_MAC_BAND_2G))
 		policy_mgr_get_current_pref_hw_mode_ptr =
 		policy_mgr_get_current_pref_hw_mode_dbs_2x2;
 	else if (policy_mgr_is_2x2_1x1_dbs_capable(psoc))
@@ -431,14 +482,20 @@ QDF_STATUS policy_mgr_psoc_enable(struct wlan_objmgr_psoc *psoc)
 		policy_mgr_get_current_pref_hw_mode_dbs_1x1;
 
 	if (policy_mgr_is_hw_dbs_2x2_capable(psoc) ||
-	    policy_mgr_is_2x2_1x1_dbs_capable(psoc))
+	    policy_mgr_is_hw_dbs_required_for_band(psoc,
+						   HW_MODE_MAC_BAND_2G) ||
+	    policy_mgr_is_2x2_1x1_dbs_capable(psoc)) {
 		second_connection_pcl_dbs_table =
 		&pm_second_connection_pcl_dbs_2x2_table;
-	else
+		policy_mgr_update_5g_scc_prefer(psoc);
+	} else {
 		second_connection_pcl_dbs_table =
 		&pm_second_connection_pcl_dbs_1x1_table;
+	}
 
 	if (policy_mgr_is_hw_dbs_2x2_capable(psoc) ||
+	    policy_mgr_is_hw_dbs_required_for_band(psoc,
+						   HW_MODE_MAC_BAND_2G) ||
 	    policy_mgr_is_2x2_1x1_dbs_capable(psoc))
 		third_connection_pcl_dbs_table =
 		&pm_third_connection_pcl_dbs_2x2_table;
@@ -446,7 +503,9 @@ QDF_STATUS policy_mgr_psoc_enable(struct wlan_objmgr_psoc *psoc)
 		third_connection_pcl_dbs_table =
 		&pm_third_connection_pcl_dbs_1x1_table;
 
-	if (policy_mgr_is_hw_dbs_2x2_capable(psoc)) {
+	if (policy_mgr_is_hw_dbs_2x2_capable(psoc) ||
+	    policy_mgr_is_hw_dbs_required_for_band(psoc,
+						   HW_MODE_MAC_BAND_2G)) {
 		next_action_two_connection_table =
 		&pm_next_action_two_connection_dbs_2x2_table;
 	} else if (policy_mgr_is_2x2_1x1_dbs_capable(psoc)) {
@@ -459,7 +518,9 @@ QDF_STATUS policy_mgr_psoc_enable(struct wlan_objmgr_psoc *psoc)
 		&pm_next_action_two_connection_dbs_1x1_table;
 	}
 
-	if (policy_mgr_is_hw_dbs_2x2_capable(psoc)) {
+	if (policy_mgr_is_hw_dbs_2x2_capable(psoc) ||
+	    policy_mgr_is_hw_dbs_required_for_band(psoc,
+						   HW_MODE_MAC_BAND_2G)) {
 		next_action_three_connection_table =
 		&pm_next_action_three_connection_dbs_2x2_table;
 	} else if (policy_mgr_is_2x2_1x1_dbs_capable(psoc)) {
@@ -474,8 +535,10 @@ QDF_STATUS policy_mgr_psoc_enable(struct wlan_objmgr_psoc *psoc)
 	policy_mgr_debug("is DBS Capable %d, is SBS Capable %d",
 			 policy_mgr_is_hw_dbs_capable(psoc),
 			 policy_mgr_is_hw_sbs_capable(psoc));
-	policy_mgr_debug("is2x2 %d, is2x2+1x1 %d, is2x2_5g+1x1_2g %d, is2x2_2g+1x1_5g %d",
+	policy_mgr_debug("is2x2 %d, 2g-on-dbs %d is2x2+1x1 %d, is2x2_5g+1x1_2g %d, is2x2_2g+1x1_5g %d",
 			 policy_mgr_is_hw_dbs_2x2_capable(psoc),
+			 policy_mgr_is_hw_dbs_required_for_band(
+				psoc, HW_MODE_MAC_BAND_2G),
 			 policy_mgr_is_2x2_1x1_dbs_capable(psoc),
 			 policy_mgr_is_2x2_5G_1x1_2G_dbs_capable(psoc),
 			 policy_mgr_is_2x2_2G_1x1_5G_dbs_capable(psoc));
@@ -539,6 +602,14 @@ QDF_STATUS policy_mgr_psoc_disable(struct wlan_objmgr_psoc *psoc)
 		QDF_ASSERT(0);
 	}
 
+	/* destroy dual_mac_configuration_complete_evt */
+	if (!QDF_IS_STATUS_SUCCESS(qdf_event_destroy
+		(&pm_ctx->dual_mac_configuration_complete_evt))) {
+		policy_mgr_err("Failed to destroy dual_mac_configuration_complete_evt");
+		status = QDF_STATUS_E_FAILURE;
+		QDF_ASSERT(0);
+	}
+
 	/* deinit pm_conc_connection_list */
 	qdf_mem_zero(pm_conc_connection_list, sizeof(pm_conc_connection_list));
 
@@ -558,8 +629,6 @@ QDF_STATUS policy_mgr_register_sme_cb(struct wlan_objmgr_psoc *psoc,
 
 	pm_ctx->sme_cbacks.sme_get_nss_for_vdev =
 		sme_cbacks->sme_get_nss_for_vdev;
-	pm_ctx->sme_cbacks.sme_get_valid_channels =
-		sme_cbacks->sme_get_valid_channels;
 	pm_ctx->sme_cbacks.sme_nss_update_request =
 		sme_cbacks->sme_nss_update_request;
 	pm_ctx->sme_cbacks.sme_pdev_set_hw_mode =
@@ -612,6 +681,12 @@ QDF_STATUS policy_mgr_register_hdd_cb(struct wlan_objmgr_psoc *psoc,
 		hdd_cbacks->hdd_wapi_security_sta_exist;
 	pm_ctx->hdd_cbacks.hdd_is_chan_switch_in_progress =
 		hdd_cbacks->hdd_is_chan_switch_in_progress;
+	pm_ctx->hdd_cbacks.hdd_is_cac_in_progress =
+		hdd_cbacks->hdd_is_cac_in_progress;
+	pm_ctx->hdd_cbacks.hdd_get_ap_6ghz_capable =
+		hdd_cbacks->hdd_get_ap_6ghz_capable;
+	pm_ctx->hdd_cbacks.wlan_hdd_indicate_active_ndp_cnt =
+		hdd_cbacks->wlan_hdd_indicate_active_ndp_cnt;
 
 	return QDF_STATUS_SUCCESS;
 }
@@ -630,6 +705,9 @@ QDF_STATUS policy_mgr_deregister_hdd_cb(struct wlan_objmgr_psoc *psoc)
 	pm_ctx->hdd_cbacks.wlan_hdd_get_channel_for_sap_restart = NULL;
 	pm_ctx->hdd_cbacks.get_mode_for_non_connected_vdev = NULL;
 	pm_ctx->hdd_cbacks.hdd_get_device_mode = NULL;
+	pm_ctx->hdd_cbacks.hdd_is_chan_switch_in_progress = NULL;
+	pm_ctx->hdd_cbacks.hdd_is_cac_in_progress = NULL;
+	pm_ctx->hdd_cbacks.hdd_get_ap_6ghz_capable = NULL;
 
 	return QDF_STATUS_SUCCESS;
 }

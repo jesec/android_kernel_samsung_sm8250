@@ -792,10 +792,8 @@ static int usb_audio_probe(struct usb_interface *intf,
 static void usb_audio_disconnect(struct usb_interface *intf)
 {
 	struct snd_usb_audio *chip = usb_get_intfdata(intf);
-#if 0	
 #ifdef CONFIG_USB_AUDIO_ENHANCED_DETECT_TIME
 	struct usb_device *dev = interface_to_usbdev(intf);
-#endif
 #endif
 	struct snd_card *card;
 	struct list_head *p;
@@ -805,10 +803,9 @@ static void usb_audio_disconnect(struct usb_interface *intf)
 		return;
 
 	card = chip->card;
-#if 0
+
 #ifdef CONFIG_USB_AUDIO_ENHANCED_DETECT_TIME
 	send_usb_audio_uevent(dev, card->number, 0);
-#endif
 #endif
 	set_usb_audio_cardnum(chip->card->number, 0, 0);
 	if (chip->disconnect_cb)

@@ -162,7 +162,7 @@ static inline int __sec_last_kmsg_init(void)
 static int sec_log_store(struct notifier_block *nb,
 		unsigned long action, void *data)
 {
-	char cmd[20] = { 0, };
+	char cmd[256] = { 0, };
 
 	if (!sec_log_buf_init_done)
 		return 0;

@@ -373,12 +373,16 @@ void ss_copr_set_cmd(struct samsung_display_driver_data *vdd, struct COPR_CMD *c
 	cmd_pload = pcmds->cmds[1].msg.tx_buf;
 	cmd_len = pcmds->cmds[1].msg.tx_len;
 
-	if (vdd->copr.ver >= COPR_VER_3P0)
+	if (vdd->copr.ver == COPR_VER_3P0)
 		ss_copr_set_cmd_3P0(cmd, cmd_pload);
 	else if (vdd->copr.ver == COPR_VER_2P0)
 		ss_copr_set_cmd_2P0(cmd, cmd_pload);
 	else if (vdd->copr.ver == COPR_VER_1P0)
 		ss_copr_set_cmd_1P0(cmd, cmd_pload);
+	else {
+		LCD_ERR("Do not use copr in display driver.\n");
+		return;
+	}
 
 	for (i = 0; i < cmd_len; i++)
 		len += snprintf(buf + len, sizeof(buf) - len,
@@ -499,12 +503,16 @@ int ss_get_copr_orig_cmd(struct samsung_display_driver_data *vdd)
 	cmd_pload = pcmds->cmds[1].msg.tx_buf;
 	cmd_len = pcmds->cmds[1].msg.tx_len;
 
-	if (vdd->copr.ver >= COPR_VER_3P0)
+	if (vdd->copr.ver == COPR_VER_3P0)
 		ss_get_copr_orig_cmd_3P0(cmd, cmd_pload);
 	else if (vdd->copr.ver == COPR_VER_2P0)
 		ss_get_copr_orig_cmd_2P0(cmd, cmd_pload);
 	else if (vdd->copr.ver == COPR_VER_1P0)
 		ss_get_copr_orig_cmd_1P0(cmd, cmd_pload);
+	else {
+		LCD_ERR("Do not use copr in display driver.\n");
+		return -EINVAL;
+	}
 
 	/* init current cmd with origianl cmd */
 	memcpy(&vdd->copr.cur_cmd, cmd, sizeof(struct COPR_CMD));
@@ -654,8 +662,12 @@ int ss_copr_get_roi_opr(struct samsung_display_driver_data *vdd)
 
 	if (vdd->copr.ver < COPR_VER_3P0)
 		ret = ss_copr_get_roi_opr_2P0(vdd);
-	else /* copr ver 3.0 */
+	else if (vdd->copr.ver == COPR_VER_3P0) /* copr ver 3.0 */
 		ret = ss_copr_get_roi_opr_3P0(vdd);
+	else {
+		LCD_ERR("Do not use copr in display driver.\n");
+		return -EINVAL;
+	}
 
 	return ret;
 }
@@ -669,11 +681,20 @@ void ss_set_copr_sum(struct samsung_display_driver_data *vdd, enum COPR_CD_INDEX
 	vdd->copr.copr_cd[idx].cur_t = ktime_get();
 	delta = ktime_ms_delta(vdd->copr.copr_cd[idx].cur_t, vdd->copr.copr_cd[idx].last_t);
 	vdd->copr.copr_cd[idx].total_t += delta;
-	vdd->copr.copr_cd[idx].cd_sum += (vdd->br_info.common_br.interpolation_cd * delta);
+	if (vdd->br_info.common_br.gamma_mode2_support)
+		vdd->copr.copr_cd[idx].cd_sum += (vdd->br_info.common_br.cd_level * delta);
+	else
+		vdd->copr.copr_cd[idx].cd_sum += (vdd->br_info.common_br.interpolation_cd * delta);
 	mutex_unlock(&vdd->copr.copr_val_lock);
 
-	LCD_DEBUG("[%d ]cd(%d) delta (%lld) cd_sum (%lld) total_t (%lld)\n", idx,
-			vdd->br_info.common_br.interpolation_cd, delta, vdd->copr.copr_cd[idx].cd_sum, vdd->copr.copr_cd[idx].total_t);
+	LCD_DEBUG("[%d] cd (%d) delta (%lld) cd_sum (%lld) total_t (%lld)\n",
+			idx,
+			vdd->br_info.common_br.gamma_mode2_support ?
+				vdd->br_info.common_br.interpolation_cd :
+				vdd->br_info.common_br.cd_level,
+			delta,
+			vdd->copr.copr_cd[idx].cd_sum,
+			vdd->copr.copr_cd[idx].total_t);
 }
 
 /**
@@ -755,7 +776,7 @@ int ss_copr_read(struct samsung_display_driver_data *vdd)
 	int ret = 0;
 	int i;
 	u8 tx_buf[1];
-	
+
 	LCD_DEBUG("%s ++ \n", __func__);
 
 	if (!ss_is_panel_on(vdd)) {

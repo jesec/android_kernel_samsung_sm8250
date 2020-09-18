@@ -380,6 +380,9 @@ static int adc_gain[16] = { 0, 1, 2, 3, 4, 5, 6, 7, -8, -7, -6, -5, -4, -3, -2, 
 #define PD_MSG_TA_VOL_STEP			20000	// 20mV
 #define PD_MSG_TA_CUR_STEP			50000	// 50mA
 
+/* Step1 vfloat threshold */
+#define STEP1_VFLOAT_THRESHOLD		4200000	// 4200000uV
+
 #if defined(CONFIG_BATTERY_SAMSUNG)
 #define PCA9468_SEC_DENOM_U_M		1000 // 1000, denominator
 #define PCA9468_BATT_WDT_CONTROL_T		30000	// 30s
@@ -507,6 +510,7 @@ struct pca9468_platform_data {
 	int	irq_gpio;	/* GPIO pin that's connected to INT# */
 	unsigned int	iin_cfg;	/* Input Current Limit - uA unit */
 	unsigned int 	ichg_cfg;	/* Charging Current - uA unit */
+	unsigned int 	ta_max_vol; /* Maximum TA voltage threshold - uV unit */
 	unsigned int	v_float;	/* V_Float Voltage - uV unit */
 	unsigned int 	iin_topoff;	/* Input Topoff current -uV unit */
 	unsigned int 	v_float_max;	/* V_Float max Voltage -uV unit */
@@ -514,6 +518,7 @@ struct pca9468_platform_data {
 	unsigned int 	fsw_cfg; 	/* Switching frequency, refer to the datasheet, 0 - 833kHz, ... , 3 - 980kHz */
 	unsigned int	ntc_th;		/* NTC voltage threshold : 0~2.4V - uV unit */
 	unsigned int	ta_mode;	/* Default ta mode, 0 - No direct charging, 1 - 2:1 charging mode, 2 - 4:1 charging mode */
+	unsigned int	cv_polling;	/* CV mode polling time in step1 charging - ms unit */
 #if defined(CONFIG_BATTERY_SAMSUNG)
 	int chgen_gpio;
 	char *sec_dc_name;

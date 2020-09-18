@@ -1,17 +1,20 @@
 /*
- * Copyright (C) 2012-2014 NXP Semiconductors
+ *  Copyright (C) 2012-2020 NXP Semiconductors
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
  *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * General Public License for more details.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ *
  */
 
 #ifdef CONFIG_NFC_FEATURE_SN100U
@@ -75,10 +78,13 @@
 #define P61_SET_DWNLD_STATUS	_IOW(P61_MAGIC, 0x09, long)
 #define P61_INHIBIT_PWR_CNTRL	_IOW(P61_MAGIC, 0x0A, long)
 #ifdef CONFIG_NFC_FEATURE_SN100U
-/* SPI can call this IOCTL to perform the eSE COLD_RESET
+/*
+ * SPI can call this IOCTL to perform the eSE COLD_RESET
  * via NFC driver.
-  */
+ */
 #define ESE_PERFORM_COLD_RESET  _IOW(P61_MAGIC, 0x0C, long)
+
+#define PERFORM_RESET_PROTECTION  _IOW(P61_MAGIC, 0x0D, long)
 #endif
 
 /* only nonTZ +++++*/

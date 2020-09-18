@@ -535,6 +535,10 @@ static struct ufs_dev_fix ufs_fixups[] = {
 		UFS_DEVICE_QUIRK_PA_HIBER8TIME),
 	UFS_FIX(UFS_VENDOR_SAMSUNG, "KLUDG4UHDB-B2D1",
 		UFS_DEVICE_QUIRK_PA_HIBER8TIME),
+	UFS_FIX(UFS_VENDOR_SAMSUNG, "KLUFG8RHDA-B2D1",
+		UFS_DEVICE_QUIRK_PA_HIBER8TIME),
+	UFS_FIX(UFS_VENDOR_SAMSUNG, "KLUGGARHDA-B0D1",
+		UFS_DEVICE_QUIRK_PA_HIBER8TIME),
 	END_FIX
 };
 
@@ -777,6 +781,12 @@ static void SEC_ufs_utp_error_check(struct ufs_hba *hba, struct scsi_cmnd *cmd, 
 		} else if (tm_cmd == UFS_ABORT_TASK) {
 			if (utp_err->UTMR_abort_task_count < MAX_U8_VALUE)
 				utp_err->UTMR_abort_task_count++;
+#if defined(CONFIG_SEC_ABC)
+			if ((utp_err->UTMR_abort_task_count == 1) &&
+					(hba->dev_info.w_manufacturer_id == UFS_VENDOR_TOSHIBA)) {
+				sec_abc_send_event("MODULE=storage@ERROR=ufs_hwreset_err");
+			}
+#endif
 			utp_err->UTP_err++;
 		}
 	} else {
@@ -3133,9 +3143,9 @@ static void ufshcd_init_clk_gating(struct ufs_hba *hba)
 	gating->gate_hrtimer.function = ufshcd_clkgate_hrtimer_handler;
 
 	snprintf(wq_name, ARRAY_SIZE(wq_name), "ufs_clk_gating_%d",
-		 hba->host->host_no);
-	hba->clk_gating.clk_gating_workq = alloc_ordered_workqueue(wq_name,
-							   WQ_MEM_RECLAIM);
+			hba->host->host_no);
+	hba->clk_gating.clk_gating_workq = alloc_ordered_workqueue("%s",
+							   WQ_MEM_RECLAIM, wq_name);
 
 	gating->is_enabled = true;
 
@@ -4351,7 +4361,7 @@ static int ufshcd_queuecommand(struct Scsi_Host *host, struct scsi_cmnd *cmd)
 	int add_tag;
 	int pre_req_err = -EBUSY;
 	int lun = 0;
-	
+
 	if (cmd && cmd->device)
 		lun = ufshcd_scsi_to_upiu_lun(cmd->device->lun);
 #endif
@@ -4431,14 +4441,7 @@ static int ufshcd_queuecommand(struct Scsi_Host *host, struct scsi_cmnd *cmd)
 	}
 
 	hba->ufs_stats.clk_hold.ctx = QUEUE_CMD;
-
-	if (cmd->device->lun == 0 &&
-			cmd->request->q->rpm_status == RPM_SUSPENDING &&
-			cmd->cmnd[0] == SYNCHRONIZE_CACHE)
-		err = ufshcd_hold(hba, false);
-	else
-		err = ufshcd_hold(hba, true);
-
+	err = ufshcd_hold(hba, true);
 	if (err) {
 		err = SCSI_MLQUEUE_HOST_BUSY;
 		clear_bit_unlock(tag, &hba->lrb_in_use);
@@ -4846,8 +4849,13 @@ static inline void ufshcd_init_query(struct ufs_hba *hba,
 	ufshcd_update_query_stats(hba, opcode, idn);
 }
 
+#if defined(CONFIG_UFSFEATURE)
+int ufshcd_query_flag_retry(struct ufs_hba *hba, enum query_opcode opcode,
+                            enum flag_idn idn, bool *flag_res)
+#else
 static int ufshcd_query_flag_retry(struct ufs_hba *hba,
 	enum query_opcode opcode, enum flag_idn idn, bool *flag_res)
+#endif
 {
 	int ret;
 	int retries;
@@ -7214,7 +7222,7 @@ static void ufshcd_get_twbuf_unit(struct scsi_device *sdev)
 	if (dLUNumTurboWriteBufferAllocUnits) {
 		sdev->support_tw_lu = true;
 		dev_info(hba->dev, "%s: LU %d supports tw, twbuf unit : 0x%x\n",
-				__func__, sdev->lun, dLUNumTurboWriteBufferAllocUnits);
+				__func__, (int)sdev->lun, dLUNumTurboWriteBufferAllocUnits);
 	} else
 		sdev->support_tw_lu = false;
 }
@@ -7546,7 +7554,8 @@ ufshcd_transfer_rsp_status(struct ufs_hba *hba, struct ufshcd_lrb *lrbp)
 			 * UFS device needs urgent BKOPs.
 			 */
 			if (!hba->pm_op_in_progress &&
-			    ufshcd_is_exception_event(lrbp->ucd_rsp_ptr)) {
+			    ufshcd_is_exception_event(lrbp->ucd_rsp_ptr) &&
+			    scsi_host_in_recovery(hba->host)) {
 				/*
 				 * Prevent suspend once eeh_work is scheduled
 				 * to avoid deadlock between ufshcd_suspend
@@ -8555,6 +8564,10 @@ static void ufshcd_err_handler(struct work_struct *work)
 			spin_lock_irqsave(hba->host->host_lock, flags);
 		}
 		hba->auto_h8_err = false;
+	} else {
+		spin_unlock_irqrestore(hba->host->host_lock, flags);
+		ufshcd_print_cmd_log(hba);
+		spin_lock_irqsave(hba->host->host_lock, flags);
 	}
 
 	if ((hba->saved_err & (INT_FATAL_ERRORS | UIC_LINK_LOST))
@@ -8682,15 +8695,10 @@ static void ufshcd_rls_handler(struct work_struct *work)
 	int ret = 0;
 	u32 mode;
 
-	hba = container_of(work, struct ufs_hba, rls_work.work);
+	hba = container_of(work, struct ufs_hba, rls_work);
 
 	pm_runtime_get_sync(hba->dev);
-	if (!down_write_trylock(&hba->lock)) {
-		queue_delayed_work(hba->recovery_wq, &hba->rls_work,
-			 msecs_to_jiffies(500));
-		pm_runtime_put_sync(hba->dev);
-		return;
-	}
+	down_write(&hba->lock);
 	ufshcd_scsi_block_requests(hba);
 	if (ufshcd_is_shutdown_ongoing(hba))
 		goto out;
@@ -8789,8 +8797,7 @@ static irqreturn_t ufshcd_update_uic_error(struct ufs_hba *hba)
 				}
 			}
 			if (!hba->full_init_linereset)
-				queue_delayed_work(hba->recovery_wq,
-					 &hba->rls_work, 0);
+				queue_work(hba->recovery_wq, &hba->rls_work);
 		}
 		retval |= IRQ_HANDLED;
 	}
@@ -12004,6 +12011,12 @@ static int ufshcd_suspend(struct ufs_hba *hba, enum ufs_pm_op pm_op)
 
 disable_clks:
 	/*
+	 * Flush pending works before clock is disabled
+	 */
+	if (cancel_work_sync(&hba->eeh_work))
+		pm_runtime_put_noidle(hba->dev);
+
+	/*
 	 * Call vendor specific suspend callback. As these callbacks may access
 	 * vendor specific host controller register space call them before the
 	 * host clocks are ON.
@@ -13220,7 +13233,7 @@ int ufshcd_init(struct ufs_hba *hba, void __iomem *mmio_base, unsigned int irq)
 
 	INIT_WORK(&hba->eh_work, ufshcd_err_handler);
 	INIT_WORK(&hba->eeh_work, ufshcd_exception_event_handler);
-	INIT_DELAYED_WORK(&hba->rls_work, ufshcd_rls_handler);
+	INIT_WORK(&hba->rls_work, ufshcd_rls_handler);
 	INIT_WORK(&hba->fatal_mode_work, ufshcd_fatal_mode_handler);
 
 	/* Initialize UIC command mutex */

@@ -17,10 +17,10 @@
 #define _SECDP_AUX_CONTROL_H_
 
 int secdp_aux_dev_init(ssize_t (*secdp_i2c_write)(void *buffer, size_t size),
-			ssize_t (*secdp_i2c_read)(void *buffer, size_t size),
-			ssize_t (*secdp_dpcd_write)(unsigned int offset, void *buffer, size_t size),
-			ssize_t (*secdp_dpcd_read)(unsigned int offset,	void *buffer, size_t size),
-			int (*secdp_get_hpd_status)(void));
+	ssize_t (*secdp_i2c_read)(void *buffer, size_t size),
+	ssize_t (*secdp_dpcd_write)(unsigned int offset, void *buffer, size_t size),
+	ssize_t (*secdp_dpcd_read)(unsigned int offset, void *buffer, size_t size),
+	int (*secdp_get_hpd_status)(void));
 
 bool secdp_get_fw_update_status(void);
 #endif /* _SECDP_AUX_CONTROL_H_ */

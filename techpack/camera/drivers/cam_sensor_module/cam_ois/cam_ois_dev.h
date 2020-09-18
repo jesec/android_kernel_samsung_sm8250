@@ -21,18 +21,30 @@
 #include <cam_subdev.h>
 #include "cam_soc_util.h"
 #include "cam_context.h"
-#if defined(CONFIG_SAMSUNG_OIS_MCU_STM32)
+#if defined(CONFIG_SAMSUNG_OIS_MCU_STM32) || defined(CONFIG_SAMSUNG_OIS_RUMBA_S4)
 #include <linux/wait.h>
 #include <linux/freezer.h>
 #include <linux/slab.h>
 #include <linux/spinlock.h>
+#if defined(CONFIG_SAMSUNG_OIS_TAMODE_CONTROL)
+#include <linux/power_supply.h>
+#endif
 #endif
 
 #define DEFINE_MSM_MUTEX(mutexname) \
 	static struct mutex mutexname = __MUTEX_INITIALIZER(mutexname)
 
-#if defined(CONFIG_SAMSUNG_OIS_MCU_STM32)
+#if defined(CONFIG_SAMSUNG_OIS_MCU_STM32) || defined(CONFIG_SAMSUNG_OIS_RUMBA_S4)
+#if defined(CONFIG_SAMSUNG_OIS_RUMBA_S4)
+#define MAX_BRIDGE_COUNT (1)
+#else
+#if defined(CONFIG_SEC_C2Q_PROJECT)
+#define MAX_BRIDGE_COUNT (3)
+#else
 #define MAX_BRIDGE_COUNT (2)
+#endif
+#endif
+
 #define OIS_VER_SIZE  (8)
 #define NUM_AF_POSITION (512)
 
@@ -45,7 +57,10 @@ struct cam_ois_shift_table_t {
 enum cam_ois_thread_msg_type {
 	CAM_OIS_THREAD_MSG_START,
 	CAM_OIS_THREAD_MSG_APPLY_SETTING,
-	CAM_OIS_THREAD_MSG_RESET_MCU,
+	CAM_OIS_THREAD_MSG_RESET,
+#if defined(CONFIG_SAMSUNG_OIS_TAMODE_CONTROL)
+	CAM_OIS_THREAD_MSG_SET_TAMODE,
+#endif
 	CAM_OIS_THREAD_MSG_MAX
 };
 
@@ -57,8 +72,8 @@ struct cam_ois_thread_msg_t {
 };
 
 typedef struct sysboot_info_type_t{
-  uint32_t ver;
-  uint32_t id;
+	uint32_t ver;
+	uint32_t id;
 } sysboot_info_type;
 
 struct ois_sensor_interface {
@@ -154,7 +169,7 @@ struct cam_ois_ctrl_t {
 	enum cci_i2c_master_t cci_i2c_master;
 	enum cci_device_num cci_num;
 	struct cam_subdev v4l2_dev_str;
-#if defined(CONFIG_SAMSUNG_OIS_MCU_STM32)
+#if defined(CONFIG_SAMSUNG_OIS_MCU_STM32) || defined(CONFIG_SAMSUNG_OIS_RUMBA_S4)
 	struct cam_ois_intf_params bridge_intf[MAX_BRIDGE_COUNT];
 	int bridge_cnt;
 #else
@@ -169,7 +184,7 @@ struct cam_ois_ctrl_t {
 	uint8_t ois_fw_flag;
 	uint8_t is_ois_calib;
 	struct cam_ois_opcode opcode;
-#if defined(CONFIG_SAMSUNG_OIS_MCU_STM32)
+#if defined(CONFIG_SAMSUNG_OIS_MCU_STM32) || defined(CONFIG_SAMSUNG_OIS_RUMBA_S4)
 	int start_cnt;
 	bool is_power_up;
 	bool is_servo_on;
@@ -198,6 +213,10 @@ struct cam_ois_ctrl_t {
 	sysboot_info_type info;
 	uint32_t reset_ctrl_gpio;
 	uint32_t boot0_ctrl_gpio;
+#if defined(CONFIG_SAMSUNG_OIS_TAMODE_CONTROL)
+	struct notifier_block nb;
+	bool ois_tamode_onoff;
+#endif
 #endif
 };
 

@@ -67,6 +67,7 @@
 #if defined(CONFIG_MFC_CHARGER)
 #define MST_MODE_ON                     1                   // ON Message to MFC ic
 #define MST_MODE_OFF                    0                   // OFF Message to MFC ic
+static int mfc_get_chip_id(void);
 #if defined(CONFIG_MST_V2)
 extern int mfc_reg_read(struct i2c_client *client, u16 reg, u8 *val);
 extern int mfc_reg_write(struct i2c_client *client, u16 reg, u8 val);
@@ -211,7 +212,7 @@ static int wpc_det;
 struct workqueue_struct *cluster_freq_ctrl_wq;
 struct delayed_work dwork;
 
-static uint32_t mode_set_wait = 40;
+static uint32_t mode_set_wait = 100;
 static uint32_t idt_i2c_command = 0;
 
 DEFINE_MUTEX(mst_mutex);
@@ -775,40 +776,6 @@ static ssize_t store_mst_drv(struct device *dev,
         return count;
 }
 
-static int mfc_get_chip_id()
-{
-	u8 chip_id = 0;
-	int ret = 0;
-	struct power_supply *psy;
-        struct mfc_charger_data *charger;
-        
-	psy = get_power_supply_by_name("mfc-charger");
-	if (psy == NULL) {
-		pr_err("%s cannot get power supply!\n", __func__);
-		return -1;
-	}
-
-	charger = power_supply_get_drvdata(psy);
-
-	if (charger == NULL) {
-		pr_err("%s cannot get charger drvdata!\n", __func__);
-		return -1;
-	}
-
-	ret = mfc_reg_read(charger->client, MFC_CHIP_ID_L_REG, &chip_id);
-	if (ret >= 0) {
-		if (chip_id == MFC_CHIP_ID_S2MIW04) {
-			ret = MFC_CHIP_ID_LSI;
-			pr_info("%s: MFC IC chip vendor is LSI(0x%x)\n", __func__, chip_id);
-		} else { /* 0x20 */
-			ret = MFC_CHIP_ID_IDT;
-			pr_info("%s: MFC IC chip vendor is IDT(0x%x)\n", __func__, chip_id);
-		}
-	} else
-		return -1;
-	return ret;
-}
-
 /**
  * sec_mst_gpio_init - Initialize GPIO pins used by driver
  * @dev: driver handle
@@ -863,7 +830,7 @@ static int sec_mst_gpio_init(struct device *dev)
 		pr_info("%s: Set mst-pwr-en to HIGH\n", __func__);
 		gpio_set_value(mst_pwr_en, 1);
 	}
-	msleep(200);
+	msleep(30);
 
 	ret = mfc_get_chip_id();
 	if (ret == -1) {
@@ -891,6 +858,51 @@ static int sec_mst_gpio_init(struct device *dev)
 }
 
 #if defined(CONFIG_MFC_CHARGER)
+static int mfc_get_chip_id()
+{
+	u8 chip_id = 0;
+	int retry_cnt = 3;
+	int ret = 0;
+	struct power_supply *psy = NULL;
+	struct mfc_charger_data *charger = NULL;
+
+	while (retry_cnt-- > 0) {
+		msleep(30);
+		
+		psy = get_power_supply_by_name("mfc-charger");
+		if (psy == NULL) {
+			pr_err("%s cannot get power supply!\n", __func__);
+			continue;
+		}
+
+		charger = power_supply_get_drvdata(psy);
+		if (charger == NULL) {
+			pr_err("%s cannot get charger drvdata!\n", __func__);
+			continue;
+		} else {
+			pr_info("%s success get charger drvdata!\n", __func__);
+			break;
+		}
+	}
+	if (charger == NULL) {
+		pr_info("%s : failed to get MFC IC chip ID !!!\n", __func__);
+		return -1;
+	}
+
+	ret = mfc_reg_read(charger->client, MFC_CHIP_ID_L_REG, &chip_id);
+	if (ret >= 0) {
+		if (chip_id == MFC_CHIP_ID_S2MIW04) {
+			ret = MFC_CHIP_ID_LSI;
+			pr_info("%s: MFC IC chip vendor is LSI(0x%x)\n", __func__, chip_id);
+		} else { /* 0x20 */
+			ret = MFC_CHIP_ID_IDT;
+			pr_info("%s: MFC IC chip vendor is IDT(0x%x)\n", __func__, chip_id);
+		}
+	} else
+		return -1;
+	return ret;
+}
+
 static ssize_t show_mfc(struct device *dev,
                 struct device_attribute *attr, char *buf)
 {

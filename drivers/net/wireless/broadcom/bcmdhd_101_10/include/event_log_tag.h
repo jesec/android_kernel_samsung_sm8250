@@ -1,7 +1,7 @@
 /*
  * EVENT_LOG system definitions
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,7 +18,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #ifndef _EVENT_LOG_TAG_H_
@@ -426,14 +426,26 @@
 #define EVENT_LOG_TAG_FTM_SM			359
 #define EVENT_LOG_TAG_NAN_SM			360
 
-#define EVENT_LOG_TAG_SDTC_INFO			361
-#define EVENT_LOG_TAG_SDTC_ERR			362
-
 /* HP2P - RLLW logging */
 #define EVENT_LOG_TAG_RLLW_TRACE		361
 
+#define EVENT_LOG_TAG_SDTC_INFO			362
+#define EVENT_LOG_TAG_SDTC_ERR			363
+
+/* KEEPALIVE logging */
+#define EVENT_LOG_TAG_KEEPALIVE			364
+#define EVENT_LOG_TAG_DTIM_SCHED_LOG		365
+
+/* For printing PHY init time in the event logs for both slices. */
+#define EVENT_LOG_TAG_PHY_INIT_TM		366
+
+/* SensorC Coex logging */
+#define EVENT_LOG_TAG_SSCCX_ERR			367
+#define EVENT_LOG_TAG_SSCCX_INFO		368
+#define EVENT_LOG_TAG_SSCCX_TRACE		369
+
 /* EVENT_LOG_TAG_MAX	= Set to the same value of last tag, not last tag + 1 */
-#define EVENT_LOG_TAG_MAX			361
+#define EVENT_LOG_TAG_MAX			369
 
 typedef enum wl_el_set_type_def {
 	EVENT_LOG_SET_TYPE_DEFAULT = 0, /* flush the log buffer when it is full - Default option */

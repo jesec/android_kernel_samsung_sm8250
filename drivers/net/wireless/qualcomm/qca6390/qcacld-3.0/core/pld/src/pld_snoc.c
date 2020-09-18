@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2019 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2016-2020 The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -27,6 +27,7 @@
 
 #include "pld_internal.h"
 #include "pld_snoc.h"
+#include "osif_psoc_sync.h"
 
 #ifdef CONFIG_PLD_SNOC_ICNSS
 /**
@@ -72,15 +73,28 @@ out:
 static void pld_snoc_remove(struct device *dev)
 {
 	struct pld_context *pld_context;
+	int errno;
+	struct osif_psoc_sync *psoc_sync;
+
+	errno = osif_psoc_sync_trans_start_wait(dev, &psoc_sync);
+	if (errno)
+		return;
+
+	osif_psoc_sync_unregister(dev);
+	osif_psoc_sync_wait_for_ops(psoc_sync);
 
 	pld_context = pld_get_global_context();
 
 	if (!pld_context)
-		return;
+		goto out;
 
 	pld_context->ops->remove(dev, PLD_BUS_TYPE_SNOC);
 
 	pld_del_dev(pld_context, dev);
+
+out:
+	osif_psoc_sync_trans_stop(psoc_sync);
+	osif_psoc_sync_destroy(psoc_sync);
 }
 
 /**
@@ -226,12 +240,25 @@ static int pld_snoc_resume_noirq(struct device *dev)
 	return 0;
 }
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 19, 0))
+static int pld_update_hang_evt_data(struct icnss_uevent_hang_data *evt_data,
+				    struct pld_uevent_data *data)
+{
+	if (!evt_data || !data)
+		return -EINVAL;
+
+	data->hang_data.hang_event_data = evt_data->hang_event_data;
+	data->hang_data.hang_event_data_len = evt_data->hang_event_data_len;
+	return 0;
+}
+
 static int pld_snoc_uevent(struct device *dev,
 			   struct icnss_uevent_data *uevent)
 {
 	struct pld_context *pld_context;
-	struct icnss_uevent_fw_down_data *uevent_data = NULL;
-	struct pld_uevent_data data;
+	struct icnss_uevent_fw_down_data *fw_down_data = NULL;
+	struct icnss_uevent_hang_data *hang_data = NULL;
+	struct pld_uevent_data data = {0};
 
 	pld_context = pld_get_global_context();
 	if (!pld_context)
@@ -250,9 +277,16 @@ static int pld_snoc_uevent(struct device *dev,
 	case ICNSS_UEVENT_FW_DOWN:
 		if (!uevent->data)
 			return -EINVAL;
-		uevent_data = (struct icnss_uevent_fw_down_data *)uevent->data;
+		fw_down_data = (struct icnss_uevent_fw_down_data *)uevent->data;
 		data.uevent = PLD_FW_DOWN;
-		data.fw_down.crashed = uevent_data->crashed;
+		data.fw_down.crashed = fw_down_data->crashed;
+		break;
+	case ICNSS_UEVENT_HANG_DATA:
+		if (!uevent->data)
+			return -EINVAL;
+		hang_data = (struct icnss_uevent_hang_data *)uevent->data;
+		data.uevent = PLD_FW_HANG_EVENT;
+		pld_update_hang_evt_data(hang_data, &data);
 		break;
 	default:
 		goto out;
@@ -262,6 +296,44 @@ static int pld_snoc_uevent(struct device *dev,
 out:
 	return 0;
 }
+#else
+static int pld_snoc_uevent(struct device *dev,
+			   struct icnss_uevent_data *uevent)
+{
+	struct pld_context *pld_context;
+	struct icnss_uevent_fw_down_data *fw_down_data = NULL;
+	struct pld_uevent_data data = {0};
+
+	pld_context = pld_get_global_context();
+	if (!pld_context)
+		return -EINVAL;
+
+	if (!pld_context->ops->uevent)
+		goto out;
+
+	if (!uevent)
+		return -EINVAL;
+
+	switch (uevent->uevent) {
+	case ICNSS_UEVENT_FW_CRASHED:
+		data.uevent = PLD_FW_CRASHED;
+		break;
+	case ICNSS_UEVENT_FW_DOWN:
+		if (!uevent->data)
+			return -EINVAL;
+		fw_down_data = (struct icnss_uevent_fw_down_data *)uevent->data;
+		data.uevent = PLD_FW_DOWN;
+		data.fw_down.crashed = fw_down_data->crashed;
+		break;
+	default:
+		goto out;
+	}
+
+	pld_context->ops->uevent(dev, &data);
+out:
+	return 0;
+}
+#endif
 
 #ifdef MULTI_IF_NAME
 #define PLD_SNOC_OPS_NAME "pld_snoc_" MULTI_IF_NAME

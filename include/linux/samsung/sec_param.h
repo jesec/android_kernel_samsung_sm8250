@@ -129,6 +129,9 @@ enum sec_param_index {
 	param_index_quest,
 	param_index_quest_ddr_result,
 #endif
+#ifdef CONFIG_SEC_QUEST_BPS_CLASSIFIER
+	param_index_quest_bps_data,
+#endif
 	param_index_VrrStatus,
 #ifdef CONFIG_PD_CHARGER_HV_DISABLE
 	param_index_pd_hv_disable,
@@ -153,6 +156,12 @@ enum sec_param_index {
 #define SEC_PARAM_QUEST_OFFSET			(SEC_PARAM_FILE_OFFSET - 0x100000)
 #define SEC_PARAM_QUEST_SIZE				(0x2000) /* 8KB */
 #define SEC_PARAM_QUEST_DDR_RESULT_OFFSET	(SEC_PARAM_QUEST_OFFSET + SEC_PARAM_QUEST_SIZE) /* 8MB + 8KB */
+#endif
+
+#ifdef CONFIG_SEC_QUEST_BPS_CLASSIFIER
+/* SEC QUEST BPS region in PARAM partition */
+#define SEC_PARAM_QUEST_DDR_RESULT_SIZE				(0x2000) /* 8KB */
+#define SEC_PARAM_QUEST_BPS_DATA_OFFSET	(SEC_PARAM_QUEST_DDR_RESULT_OFFSET + SEC_PARAM_QUEST_DDR_RESULT_SIZE) /* 8MB + 8KB + 8KB*/
 #endif
 
 #ifdef CONFIG_SEC_PARAM

@@ -3,7 +3,7 @@
  * Software-specific definitions shared between device and host side
  * Explains the shared area between host and dongle
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -20,10 +20,8 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
-
-/** XXX Twiki: [PCIeFullDongleArchitecture] */
 
 #ifndef	_bcmpcie_h_
 #define	_bcmpcie_h_
@@ -263,6 +261,11 @@ enum d2hring_idx {
 #define BCMPCIE_D2H_RW_INDEX_ARRAY_SZ(rw_index_sz) \
 	((rw_index_sz) * BCMPCIE_D2H_COMMON_MSGRINGS)
 
+/* Backwards compatibility for legacy branches. */
+#if !defined(PHYS_ADDR_N)
+	#define PHYS_ADDR_N(name) name
+#endif
+
 /**
  * This type is used by a 'message buffer' (which is a FIFO for messages). Message buffers are used
  * for host<->device communication and are instantiated on both sides. ring_mem_t is instantiated
@@ -284,17 +287,17 @@ typedef struct ring_mem {
  * Perhaps this type should be renamed to make clear that it resides in device memory only.
  */
 typedef struct ring_info {
-	uint32		ringmem_ptr; /* ring mem location in dongle memory */
+	uint32		PHYS_ADDR_N(ringmem_ptr); /* ring mem location in dongle memory */
 
 	/* Following arrays are indexed using h2dring_idx and d2hring_idx, and not
 	 * by a ringid.
 	 */
 
 	/* 32bit ptr to arrays of WR or RD indices for all rings in dongle memory */
-	uint32		h2d_w_idx_ptr; /* Array of all H2D ring's WR indices */
-	uint32		h2d_r_idx_ptr; /* Array of all H2D ring's RD indices */
-	uint32		d2h_w_idx_ptr; /* Array of all D2H ring's WR indices */
-	uint32		d2h_r_idx_ptr; /* Array of all D2H ring's RD indices */
+	uint32		PHYS_ADDR_N(h2d_w_idx_ptr); /* Array of all H2D ring's WR indices */
+	uint32		PHYS_ADDR_N(h2d_r_idx_ptr); /* Array of all H2D ring's RD indices */
+	uint32		PHYS_ADDR_N(d2h_w_idx_ptr); /* Array of all D2H ring's WR indices */
+	uint32		PHYS_ADDR_N(d2h_r_idx_ptr); /* Array of all D2H ring's RD indices */
 
 	/* PCIE_DMA_INDEX feature: Dongle uses mem2mem DMA to sync arrays in host.
 	 * Host may directly fetch WR and RD indices from these host-side arrays.
@@ -314,8 +317,8 @@ typedef struct ring_info {
 	sh_addr_t	ifrm_w_idx_hostaddr; /* Array of all H2D ring's WR indices for IFRM */
 
 	/* 32bit ptr to arrays of HWA DB indices for all rings in dongle memory */
-	uint32		h2d_hwa_db_idx_ptr; /* Array of all H2D ring's HWA DB indices */
-	uint32		d2h_hwa_db_idx_ptr; /* Array of all D2H ring's HWA DB indices */
+	uint32		PHYS_ADDR_N(h2d_hwa_db_idx_ptr); /* Array of all H2D rings HWA DB indices */
+	uint32		PHYS_ADDR_N(d2h_hwa_db_idx_ptr); /* Array of all D2H rings HWA DB indices */
 
 } ring_info_t;
 
@@ -327,13 +330,13 @@ typedef struct {
 	/** shared area version captured at flags 7:0 */
 	uint32	flags;
 
-	uint32  trap_addr;
-	uint32  assert_exp_addr;
-	uint32  assert_file_addr;
+	uint32 PHYS_ADDR_N(trap_addr);
+	uint32 PHYS_ADDR_N(assert_exp_addr);
+	uint32 PHYS_ADDR_N(assert_file_addr);
 	uint32  assert_line;
-	uint32	console_addr;		/**< Address of hnd_cons_t */
+	uint32 PHYS_ADDR_N(console_addr);	/**< Address of hnd_cons_t */
 
-	uint32  msgtrace_addr;
+	uint32 PHYS_ADDR_N(msgtrace_addr);
 
 	uint32  fwid;
 
@@ -344,12 +347,12 @@ typedef struct {
 	uint32 dma_rxoffset; /* rsvd in spec */
 
 	/** these will be used for sleep request/ack, d3 req/ack */
-	uint32  h2d_mb_data_ptr;
-	uint32  d2h_mb_data_ptr;
+	uint32  PHYS_ADDR_N(h2d_mb_data_ptr);
+	uint32  PHYS_ADDR_N(d2h_mb_data_ptr);
 
 	/* information pertinent to host IPC/msgbuf channels */
 	/** location in the TCM memory which has the ring_info */
-	uint32	rings_info_ptr;
+	uint32	PHYS_ADDR_N(rings_info_ptr);
 
 	/** block of host memory for the scratch buffer */
 	uint32		host_dma_scratch_buffer_len;
@@ -381,7 +384,7 @@ typedef struct {
 	sh_addr_t       host_trap_addr;
 
 	/* location for host fatal error log buffer start address */
-	uint32		device_fatal_logbuf_start;
+	uint32 PHYS_ADDR_N(device_fatal_logbuf_start);
 
 	/* location in host memory for offloaded modules */
 	sh_addr_t	hoffload_addr;
@@ -426,6 +429,7 @@ typedef struct {
  * other trap related purposes also.
  */
 #define BCMPCIE_HOST_EXT_TRAP_DBGBUF_LEN_MIN	(64u * 1024u)
+#define BCMPCIE_HOST_EXT_TRAP_DBGBUF_LEN	(96u * 1024u)
 #define BCMPCIE_HOST_EXT_TRAP_DBGBUF_LEN_MAX	(256u * 1024u)
 
 /**
@@ -507,7 +511,7 @@ typedef struct {
 #define CHECK_NOWRITE_SPACE(r, w, d) \
 	(((uint32)(r) == (uint32)((w) + 1)) || (((r) == 0) && ((w) == ((d) - 1))))
 
-/* XXX: --- These should be moved into pciedev.h --- */
+/* These should be moved into pciedev.h --- */
 #define WRT_PEND(x)	((x)->wr_pending)
 #define DNGL_RING_WPTR(msgbuf)		(*((msgbuf)->tcm_rs_w_ptr)) /**< advanced by producer */
 #define BCMMSGBUF_RING_SET_W_PTR(msgbuf, a)	(DNGL_RING_WPTR(msgbuf) = (a))

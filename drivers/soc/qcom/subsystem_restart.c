@@ -37,6 +37,9 @@
 #include "peripheral-loader.h"
 
 #include <linux/sec_debug.h>
+#ifdef CONFIG_SUPPORT_AK0997X
+#include <linux/of_gpio.h>
+#endif
 
 #define DISABLE_SSR 0x9889deed
 /* If set to 0x9889deed, call to subsystem_restart_dev() returns immediately */
@@ -48,6 +51,24 @@ module_param(enable_debug, int, 0644);
 
 static bool silent_ssr;
 static bool adsp_silent_ssr;
+static bool cdsp_silent_ssr;
+
+/* support AP derived CP crash variation */
+enum mdm_crash_id {
+	MDM_CRASH_ID_BASE,
+	MDM_CRASH_BY_USER,
+	MDM_CRASH_BY_MNR,
+	MDM_CRASH_BY_QFULL,
+	MDM_CRASH_ID_MAX,
+};
+static char modem_crash_str[MDM_CRASH_ID_MAX][16] =
+{
+	[MDM_CRASH_ID_BASE] = "",
+	[MDM_CRASH_BY_USER] = "by User",
+	[MDM_CRASH_BY_MNR] = "by CP MNR",
+	[MDM_CRASH_BY_QFULL] = "by Req. FULL",
+};
+static int modem_crash_id;
 
 /* The maximum shutdown timeout is the product of MAX_LOOPS and DELAY_MS. */
 #define SHUTDOWN_ACK_MAX_LOOPS	100
@@ -1218,6 +1239,11 @@ static void device_restart_work_hdlr(struct work_struct *work)
 	 * sync() and fclose() on attempting the dump.
 	 */
 	msleep(100);
+
+	if (!strncmp(dev->desc->name, "esoc", 4))
+		panic("subsys-restart: Rst SoC %s - %s crashed.",
+			modem_crash_str[modem_crash_id], dev->desc->name);
+
 	panic("subsys-restart: Resetting the SoC - %s crashed.",
 							dev->desc->name);
 }
@@ -1242,7 +1268,8 @@ int subsystem_restart_dev(struct subsys_device *dev)
 	if ((sec_debug_summary_is_modem_separate_debug_ssr() ==
 	    SEC_DEBUG_MODEM_SEPARATE_EN)
 	    && strcmp(name, "slpi")
-	    && strcmp(name, "adsp")) {
+	    && strcmp(name, "adsp")
+	    && strcmp(name, "cdsp")) {
 		pr_info("SSR separated by cp magic!!\n");
 		ssr_disable = sec_debug_is_enabled_for_ssr();
 	} else
@@ -1257,11 +1284,34 @@ int subsystem_restart_dev(struct subsys_device *dev)
 	if (!strncmp(name, "esoc", 4) && silent_ssr) {
 		dev->restart_level = RESET_SUBSYS_COUPLED;
 		silent_ssr = false;
+		modem_crash_id = 0;
 	}
 	/* force adsp silent ssr */
 	if (!strncmp(name, "adsp", 4) && adsp_silent_ssr) {
 		dev->restart_level = RESET_SUBSYS_COUPLED;
 		adsp_silent_ssr = false;
+	}
+	/* force cdsp silent ssr */
+	if (!strncmp(name, "cdsp", 4) && cdsp_silent_ssr) {
+		dev->restart_level = RESET_SUBSYS_COUPLED;
+		cdsp_silent_ssr = false;
+	}
+#ifdef CONFIG_SENSORS_SSC
+	if (!strcmp(name, "slpi")) {
+#if defined(CONFIG_SEC_FACTORY) && defined(CONFIG_SUPPORT_DUAL_6AXIS)
+		if (is_pretest()) {
+			pr_info("PreTest is running. slpi ssr!!\n");
+			dev->restart_level = RESET_SUBSYS_COUPLED;
+		}
+#endif
+		if (dev->desc->run_fssr) {
+			dev->restart_level = RESET_SUBSYS_COUPLED;
+			dev->desc->run_fssr = false;
+		}
+	}
+#endif
+	if (!strncmp(name, "wlan", 4)) {
+		dev->restart_level = RESET_SUBSYS_COUPLED;
 	}
 	/*
 	 * If a system reboot/shutdown is underway, ignore subsystem errors.
@@ -1368,6 +1418,20 @@ int is_subsystem_online(const char *name)
 EXPORT_SYMBOL(is_subsystem_online);
 #endif
 
+#ifdef CONFIG_SENSORS_SSC
+void subsys_set_fssr(struct subsys_device *dev, bool value)
+{
+	dev->desc->run_fssr = value;
+}
+EXPORT_SYMBOL(subsys_set_fssr);
+#endif
+
+void subsys_set_modem_crash_id(int value)
+{
+	modem_crash_id = value;
+}
+EXPORT_SYMBOL(subsys_set_modem_crash_id);
+
 void subsys_set_modem_silent_ssr(bool value)
 {
 	silent_ssr = value;
@@ -1379,6 +1443,12 @@ void subsys_set_adsp_silent_ssr(bool value)
 	adsp_silent_ssr = value;
 }
 EXPORT_SYMBOL(subsys_set_adsp_silent_ssr);
+
+void subsys_set_cdsp_silent_ssr(bool value)
+{
+	cdsp_silent_ssr = value;
+}
+EXPORT_SYMBOL(subsys_set_cdsp_silent_ssr);
 
 void subsys_set_crash_status(struct subsys_device *dev,
 				enum crash_status crashed)
@@ -1720,6 +1790,14 @@ static int subsys_parse_devicetree(struct subsys_desc *desc)
 	ret = __get_irq(desc, "qcom,wdog", &desc->wdog_bite_irq);
 	if (ret && ret != -ENOENT)
 		return ret;
+
+#ifdef CONFIG_SUPPORT_AK0997X
+	desc->d_hall_rst_gpio = of_get_named_gpio(pdev->dev.of_node,
+		"qcom,gpio-d-hall-rst", 0);
+	if (desc->d_hall_rst_gpio > 0)
+		pr_info("%s, %s get digital hall rst success(%d)\n", __func__,
+			desc->name, desc->d_hall_rst_gpio);
+#endif
 
 	ret = __get_smem_state(desc, "qcom,force-stop", &desc->force_stop_bit);
 	if (ret && ret != -ENOENT)

@@ -9,6 +9,10 @@
 #include "cam_flash_core.h"
 #include "cam_common_util.h"
 
+#if defined(CONFIG_LEDS_PMIC_QPNP)
+struct cam_flash_ctrl *g_flash_ctrl;
+#endif
+
 #if defined(CONFIG_LEDS_S2MPB02)
 #include <cam_sensor_cmn_header.h>
 #include <cam_sensor_util.h>
@@ -569,6 +573,9 @@ static int32_t cam_flash_platform_probe(struct platform_device *pdev)
 #endif
 
 	fctrl->flash_state = CAM_FLASH_STATE_INIT;
+#if defined(CONFIG_LEDS_PMIC_QPNP)
+	g_flash_ctrl = fctrl;
+#endif
 	CAM_DBG(CAM_FLASH, "Probe success");
 	return rc;
 
@@ -656,6 +663,9 @@ static int32_t cam_flash_i2c_driver_probe(struct i2c_client *client,
 
 	mutex_init(&(fctrl->flash_mutex));
 	fctrl->flash_state = CAM_FLASH_STATE_INIT;
+#if defined(CONFIG_LEDS_PMIC_QPNP)
+	g_flash_ctrl = fctrl;
+#endif
 
 	return rc;
 

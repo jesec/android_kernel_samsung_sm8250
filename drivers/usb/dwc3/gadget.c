@@ -29,6 +29,10 @@
 #include <linux/usb_notify.h>
 #include <linux/workqueue.h>
 
+#if defined(CONFIG_REDRIVER) && defined(CONFIG_COMBO_REDRIVER_PS5169)
+#include <linux/combo_redriver/ps5169.h>
+#endif
+
 #include "debug.h"
 #include "core.h"
 #include "gadget.h"
@@ -36,9 +40,6 @@
 
 #define DWC3_ALIGN_FRAME(d)	(((d)->frame_number + (d)->interval) \
 					& ~((d)->interval - 1))
-
-#undef dev_dbg
-#define dev_dbg dev_err
 
 extern bool acc_dev_status;
 
@@ -526,7 +527,7 @@ const struct usb_endpoint_descriptor *desc = dep->endpoint.desc;
 	} while (--timeout);
 
 	spin_lock_irqsave(&dwc->lock, runstop_spinlock_flags);
-	
+
 	if (timeout == 0) {
 		ret = -ETIMEDOUT;
 		dev_err(dwc->dev, "%s command timeout for %s\n",
@@ -563,7 +564,7 @@ const struct usb_endpoint_descriptor *desc = dep->endpoint.desc;
 	}
 
 	return ret;
-}	
+}
 
 
 /**
@@ -2523,6 +2524,13 @@ static int dwc3_gadget_pullup(struct usb_gadget *g, int is_on)
 		return 0;
 	}
 
+#if defined(CONFIG_REDRIVER) && defined(CONFIG_COMBO_REDRIVER_PS5169)
+	if (is_on)
+		ps5169_config(USB_ONLY_MODE, 0);
+	else
+		ps5169_config(CLEAR_STATE, 0);
+#endif
+
 	pm_runtime_get_sync(dwc->dev);
 	dbg_event(0xFF, "Pullup gsync",
 		atomic_read(&dwc->dev->power.usage_count));
@@ -2620,8 +2628,14 @@ static void dwc3_gadget_enable_irq(struct dwc3 *dwc)
 			DWC3_DEVTEN_USBRSTEN |
 			DWC3_DEVTEN_DISCONNEVTEN);
 
+	/*
+	 * Enable SUSPENDEVENT(BIT:6) for version 230A and above
+	 * else enable USB Link change event (BIT:3) for older version
+	 */
 	if (dwc->revision < DWC3_REVISION_230A)
 		reg |= DWC3_DEVTEN_ULSTCNGEN;
+	else
+		reg |= DWC3_DEVTEN_EOPFEN;
 
 	dwc3_writel(dwc->regs, DWC3_DEVTEN, reg);
 }
@@ -2698,6 +2712,7 @@ static int dwc3_gadget_vbus_session(struct usb_gadget *_gadget, int is_active)
 	if (dwc->vbus_active == is_active) {
 		pr_err("usb: dwc3 state is same\n");
 		spin_unlock_irqrestore(&dwc->lock, runstop_spinlock_flags);
+		enable_irq(dwc->irq);
 		return 0;
 	}
 #endif
@@ -3601,7 +3616,7 @@ static void dwc3_gadget_usb_event_work(struct work_struct *work)
 	struct dwc3 *dwc = container_of(work, struct dwc3, usb_event_work.work);
 
 	pr_info("%s, event_state: %d\n", __func__, dwc->event_state);
-	
+
 	if (dwc->event_state)
 		send_usb_err_uevent(USB_ERR_ABNORMAL_RESET, NOTIFY);
 	else
@@ -3699,7 +3714,7 @@ static void dwc3_gadget_reset_interrupt(struct dwc3 *dwc)
 	if (acc_dev_status && (dwc->rst_err_noti == false)) {
 		current_time = ktime_to_ms(ktime_get_boottime());
 
-		if ((dwc->rst_err_cnt == 0) && (dwc->gadget.state < USB_STATE_CONFIGURED)) {		
+		if ((dwc->rst_err_cnt == 0) && (dwc->gadget.state < USB_STATE_CONFIGURED)) {
 			if ((current_time - dwc->rst_time_before) < 1000) {
 				dwc->rst_err_cnt++;
 				dwc->rst_time_first = dwc->rst_time_before;
@@ -3736,13 +3751,6 @@ static void dwc3_gadget_conndone_interrupt(struct dwc3 *dwc)
 	reg = dwc3_readl(dwc->regs, DWC3_DSTS);
 	speed = reg & DWC3_DSTS_CONNECTSPD;
 	dwc->speed = speed;
-
-	/* Enable SUSPENDEVENT(BIT:6) for version 230A and above */
-	if (dwc->revision >= DWC3_REVISION_230A) {
-		reg = dwc3_readl(dwc->regs, DWC3_DEVTEN);
-		reg |= DWC3_DEVTEN_EOPFEN;
-		dwc3_writel(dwc->regs, DWC3_DEVTEN, reg);
-	}
 
 	/* Reset the retry on erratic error event count */
 	dwc->retries_on_error = 0;
@@ -3885,14 +3893,16 @@ static void dwc3_gadget_wakeup_interrupt(struct dwc3 *dwc, bool remote_wakeup)
 #if defined(CONFIG_USB_CHARGING_EVENT) && defined(CONFIG_ENABLE_USB_SUSPEND_STATE)
 	if (dwc->vbus_current == USB_CURRENT_SUSPENDED) {
 		if (dwc->gadget.state == USB_STATE_CONFIGURED) {
-			if (dwc->speed >= USB_SPEED_SUPER)
+			if (dwc->gadget.speed >= USB_SPEED_SUPER)
 				dwc->vbus_current = USB_CURRENT_SUPER_SPEED;
-                        else
+			else
 				dwc->vbus_current = USB_CURRENT_HIGH_SPEED;
-                } else
+		} else
 			dwc->vbus_current = USB_CURRENT_UNCONFIGURED;
+		pr_info("usb: %s speed = %d, vbus_current = %d\n",
+				__func__, dwc->gadget.speed, dwc->vbus_current);
 		schedule_work(&dwc->set_vbus_current_work);
-        }
+	}
 #endif
 	/* Only perform resume from L2 or Early Suspend states */
 	if (perform_resume) {

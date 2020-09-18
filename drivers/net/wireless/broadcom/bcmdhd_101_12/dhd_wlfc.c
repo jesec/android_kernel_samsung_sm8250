@@ -77,6 +77,8 @@ _dhd_wlfc_thread_wakeup(dhd_pub_t *dhdp)
 }
 #endif /* DHD_WLFC_THREAD */
 
+static int _dhd_wlfc_interface_update(dhd_pub_t *dhd, uint8* value, uint8 type);
+
 static uint16
 _dhd_wlfc_adjusted_seq(void* p, uint8 current_seq)
 {
@@ -1293,6 +1295,7 @@ _dhd_wlfc_is_destination_open(athost_wl_status_info_t* ctx,
  *
  * Return value: the dequeued packet
  */
+
 static void*
 _dhd_wlfc_deque_delayedq(athost_wl_status_info_t* ctx, int prec,
 	uint8* ac_credit_spent, uint8* needs_hdr, wlfc_mac_descriptor_t** entry_out,
@@ -1303,6 +1306,11 @@ _dhd_wlfc_deque_delayedq(athost_wl_status_info_t* ctx, int prec,
 	void* p = NULL;
 	int i;
 	uint8 credit_spent = ((prec == AC_COUNT) && !ctx->bcmc_credit_supported) ? 0 : 1;
+	uint16 qlen;
+	bool change_entry = FALSE;
+
+	BCM_REFERENCE(qlen);
+	BCM_REFERENCE(change_entry);
 
 	*entry_out = NULL;
 	/* most cases a packet will count against FIFO credit */
@@ -1320,8 +1328,6 @@ _dhd_wlfc_deque_delayedq(athost_wl_status_info_t* ctx, int prec,
 			entry = ctx->requested_entry[i];
 		} else {
 			entry = ctx->active_entry_head;
-			/* move head to ensure fair round-robin */
-			ctx->active_entry_head = ctx->active_entry_head->next;
 		}
 		ASSERT(entry);
 
@@ -1361,6 +1367,26 @@ _dhd_wlfc_deque_delayedq(athost_wl_status_info_t* ctx, int prec,
 				ctx->pkt_cnt_in_q[DHD_PKTTAG_IF(PKTTAG(p))][prec]--;
 				ctx->pkt_cnt_per_ac[prec]--;
 				ctx->pkt_cnt_in_psq--;
+#ifdef BULK_DEQUEUE
+				/* Check pkts in delayq */
+				if (entry->state == WLFC_STATE_OPEN) {
+					entry->release_count[prec]++;
+					qlen = pktq_mlen(&entry->psq,
+						(1 << PSQ_SUP_IDX(prec) | 1 << PSQ_DLY_IDX(prec)));
+
+					if (entry->release_count[prec] == ctx->max_release_count ||
+						qlen == 0) {
+						change_entry = TRUE;
+						entry->release_count[prec] = 0;
+					}
+
+					if (change_entry) {
+						/* move head */
+						ctx->active_entry_head =
+							ctx->active_entry_head->next;
+					}
+				}
+#endif /* BULK_DEQUEUE */
 				_dhd_wlfc_flow_control_check(ctx, &entry->psq,
 					DHD_PKTTAG_IF(PKTTAG(p)));
 				/*
@@ -1370,6 +1396,10 @@ _dhd_wlfc_deque_delayedq(athost_wl_status_info_t* ctx, int prec,
 				_dhd_wlfc_traffic_pending_check(ctx, entry, prec);
 				return p;
 			}
+		}
+		if (!only_no_credit) {
+			/* move head */
+			ctx->active_entry_head = ctx->active_entry_head->next;
 		}
 	}
 	return NULL;
@@ -1812,6 +1842,9 @@ _dhd_wlfc_mac_entry_update(athost_wl_status_info_t* ctx, wlfc_mac_descriptor_t* 
 	f_processpkt_t fn, void *arg)
 {
 	int rc = BCME_OK;
+	uint8 i;
+
+	BCM_REFERENCE(i);
 
 	if ((action == eWLFC_MAC_ENTRY_ACTION_ADD) || (action == eWLFC_MAC_ENTRY_ACTION_UPDATE)) {
 		entry->occupied = 1;
@@ -1820,7 +1853,11 @@ _dhd_wlfc_mac_entry_update(athost_wl_status_info_t* ctx, wlfc_mac_descriptor_t* 
 		entry->interface_id = ifid;
 		entry->iftype = iftype;
 		entry->ac_bitmap = 0xff; /* update this when handling APSD */
-
+#ifdef BULK_DEQUEUE
+		for (i = 0; i < AC_COUNT + 1; i++) {
+			entry->release_count[i] = 0;
+		}
+#endif /* BULK_DEQUEUE */
 		/* for an interface entry we may not care about the MAC address */
 		if (ea != NULL)
 			memcpy(&entry->ea[0], ea, ETHER_ADDR_LEN);
@@ -2382,6 +2419,17 @@ _dhd_wlfc_compressed_txstatus_update(dhd_pub_t *dhd, uint8* pkt_info, uint8 len,
 					_dhd_wlfc_hanger_mark_suppressed(wlfc->hanger, hslot, gen);
 				}
 			}
+#if !defined(PCIE_FULL_DONGLE) && defined(P2P_IF_STATE_EVENT_CTRL)
+			/* GC only */
+			if ((entry->iftype == WLC_E_IF_ROLE_P2P_CLIENT) &&
+				(entry->state == WLFC_STATE_OPEN)) {
+				uint8 value_buf[1];
+				value_buf[0] = (uint8)DHD_PKTTAG_IF(PKTTAG(pktbuf));
+
+				_dhd_wlfc_interface_update(dhd, value_buf,
+					WLFC_CTL_TYPE_INTERFACE_CLOSE);
+			}
+#endif /* !PCIE_FULL_DONGLE && P2P_IF_STATE_EVENT_CTRL */
 		} else {
 
 			DHD_WLFC_QMON_COMPLETE(entry);
@@ -2708,6 +2756,11 @@ _dhd_wlfc_psmode_update(dhd_pub_t *dhd, uint8* value, uint8 type)
 	table = wlfc->destination_entries.nodes;
 	desc = &table[WLFC_MAC_DESC_GET_LOOKUP_INDEX(mac_handle)];
 	if (desc->occupied) {
+#ifdef BULK_DEQUEUE
+		for (i = 0; i < AC_COUNT + 1; i++) {
+			desc->release_count[i] = 0;
+		}
+#endif /* BULK_DEQUEUE */
 		if (type == WLFC_CTL_TYPE_MAC_OPEN) {
 			desc->state = WLFC_STATE_OPEN;
 			desc->ac_bitmap = 0xff;
@@ -2738,10 +2791,18 @@ _dhd_wlfc_interface_update(dhd_pub_t *dhd, uint8* value, uint8 type)
 	athost_wl_status_info_t* wlfc = (athost_wl_status_info_t*)dhd->wlfc_state;
 	wlfc_mac_descriptor_t* table;
 	uint8 if_id = value[0];
+	uint8 i;
+
+	BCM_REFERENCE(i);
 
 	if (if_id < WLFC_MAX_IFNUM) {
 		table = wlfc->destination_entries.interfaces;
 		if (table[if_id].occupied) {
+#ifdef BULK_DEQUEUE
+			for (i = 0; i < AC_COUNT + 1; i++) {
+				table->release_count[i] = 0;
+			}
+#endif /* BULK_DEQUEUE */
 			if (type == WLFC_CTL_TYPE_INTERFACE_OPEN) {
 				table[if_id].state = WLFC_STATE_OPEN;
 				/* WLFC_DBGMESG(("INTERFACE[%d] OPEN\n", if_id)); */
@@ -2866,6 +2927,16 @@ bool dhd_wlfc_is_supported(dhd_pub_t *dhd)
 	return rc;
 }
 
+#ifdef BULK_DEQUEUE
+#ifndef WLFC_MAX_RELEASE_CNT
+#ifdef CUSTOM_AMPDU_MPDU
+#define WLFC_MAX_RELEASE_CNT	CUSTOM_AMPDU_MPDU
+#else
+#define WLFC_MAX_RELEASE_CNT	16
+#endif /* CUSTOM_AMPDU_MPDU */
+#endif /* WLFC_MAX_RELEASE_CNT */
+#endif /* BULK_DEQUEUE */
+
 int dhd_wlfc_enable(dhd_pub_t *dhd)
 {
 	int i, rc = BCME_OK;
@@ -2898,7 +2969,9 @@ int dhd_wlfc_enable(dhd_pub_t *dhd)
 	/* remember osh & dhdp */
 	wlfc->osh = dhd->osh;
 	wlfc->dhdp = dhd;
-
+#ifdef BULK_DEQUEUE
+	wlfc->max_release_count = WLFC_MAX_RELEASE_CNT;
+#endif /* BULK_DEQUEUE */
 	if (!WLFC_GET_AFQ(dhd->wlfc_mode)) {
 		wlfc->hanger = _dhd_wlfc_hanger_create(dhd, WLFC_HANGER_MAXITEMS);
 		if (wlfc->hanger == NULL) {
@@ -2934,6 +3007,41 @@ exit:
 
 	return rc;
 } /* dhd_wlfc_enable */
+
+#if !defined(PCIE_FULL_DONGLE) && defined(P2P_IF_STATE_EVENT_CTRL)
+int
+dhd_wlfc_ctrl_if_state_event(dhd_pub_t *dhd, bool block)
+{
+	uint32 tlv = 0;
+	uint32 prev_tlv;
+	int ret = BCME_OK;
+
+	if (!dhd->wlfc_enabled)
+		return BCME_BADARG;
+
+	ret = dhd_wl_ioctl_get_intiovar(dhd, "tlv", &tlv, WLC_GET_VAR, FALSE, 0);
+	if (unlikely(ret)) {
+		DHD_ERROR(("%s, failed to get tlv ret =%d\n", __FUNCTION__, ret));
+		goto error;
+	}
+
+	prev_tlv = tlv;
+	if (block) {
+		tlv &= ~WLFC_FLAGS_XONXOFF_SIGNALS;
+	} else {
+		tlv |= WLFC_FLAGS_XONXOFF_SIGNALS;
+	}
+
+	DHD_ERROR(("%s, prev_tlv =0x%08x, tlv = 0x%08x\n", __FUNCTION__, prev_tlv, tlv));
+	ret = dhd_wl_ioctl_set_intiovar(dhd, "tlv", tlv, WLC_SET_VAR, TRUE, 0);
+	if (unlikely(ret)) {
+		DHD_ERROR(("%s, failed to get tlv ret =%d\n", __FUNCTION__, ret));
+	}
+
+error:
+	return ret;
+}
+#endif /* !PCIE_FULL_DONGLE & P2P_IF_STATE_EVENT_CTRL */
 
 #ifdef SUPPORT_P2P_GO_PS
 
@@ -3122,6 +3230,10 @@ dhd_wlfc_transfer_packets(void *data)
 	bool no_credit = FALSE;
 
 	int lender;
+	int pkt_bound = WLFC_PACKET_BOUND;
+	int highest_lender_ac;
+
+	BCM_REFERENCE(highest_lender_ac);
 
 #if defined(DHD_WLFC_THREAD)
 	/* wait till someone wakeup me up, will change it at running time */
@@ -3165,6 +3277,10 @@ dhd_wlfc_transfer_packets(void *data)
 	low priority packet starvation.
 	*/
 
+#ifdef BULK_DEQUEUE
+	pkt_bound = ctx->max_release_count;
+#endif
+
 	for (ac = AC_COUNT; ac >= 0; ac--) {
 		if (dhdp->wlfc_rxpkt_chk) {
 			/* check rx packet */
@@ -3184,7 +3300,7 @@ dhd_wlfc_transfer_packets(void *data)
 		single_ac = ac + 1;
 		pkt_send_per_ac = 0;
 		while ((FALSE == dhdp->proptxstatus_txoff) &&
-				(pkt_send_per_ac < WLFC_PACKET_BOUND)) {
+				(pkt_send_per_ac < pkt_bound)) {
 			/* packets from delayQ with less priority are fresh and
 			 * they'd need header and have no MAC entry
 			 */
@@ -3199,12 +3315,20 @@ dhd_wlfc_transfer_packets(void *data)
 			if (no_credit && (ac < AC_COUNT) && (tx_map >= rx_map) &&
 				dhdp->wlfc_borrow_allowed) {
 				/* try borrow from lower priority */
-				lender = _dhd_wlfc_borrow_credit(ctx, ac - 1, ac, FALSE);
+#ifdef BULK_DEQUEUE
+				/* Enable credit borrow from higher AC
+				 * to make packet chain longer
+				 */
+				highest_lender_ac = AC_COUNT;
+#else
+				highest_lender_ac = ac - 1;
+#endif /* BULK_DEQUEUE */
+				lender = _dhd_wlfc_borrow_credit(ctx, highest_lender_ac, ac, FALSE);
 				if (lender != -1) {
 					no_credit = FALSE;
 				}
 			}
-#endif
+#endif /* LIMIT_BORROW */
 			commit_info.needs_hdr = 1;
 			commit_info.mac_entry = NULL;
 			commit_info.p = _dhd_wlfc_deque_delayedq(ctx, ac,

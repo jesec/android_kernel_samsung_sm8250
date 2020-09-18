@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2019 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2018-2020 The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -187,6 +187,8 @@ QDF_STATUS pmo_psoc_object_created_notification(
 		status = QDF_STATUS_E_FAILURE;
 		goto out;
 	}
+
+	qdf_atomic_init(&psoc_ctx->wow.wow_initial_wake_up);
 	/* Register PMO tx ops*/
 	target_if_pmo_register_tx_ops(&psoc_ctx->pmo_tx_ops);
 out:
@@ -272,22 +274,17 @@ QDF_STATUS pmo_vdev_ready(struct wlan_objmgr_vdev *vdev)
 {
 	QDF_STATUS status;
 
-	pmo_enter();
-
 	status = pmo_vdev_get_ref(vdev);
 	if (QDF_IS_STATUS_ERROR(status))
 		return status;
 
 	/* Register static configuration with firmware */
 	pmo_register_wow_wakeup_events(vdev);
-	pmo_register_action_frame_patterns(vdev);
 
 	/* Register default wow patterns with firmware */
 	pmo_register_wow_default_patterns(vdev);
 
 	pmo_vdev_put_ref(vdev);
-
-	pmo_exit();
 
 	/*
 	 * The above APIs should return a status but don't.
@@ -302,8 +299,6 @@ QDF_STATUS pmo_vdev_object_destroyed_notification(
 	struct pmo_vdev_priv_obj *vdev_ctx = NULL;
 	QDF_STATUS status = QDF_STATUS_SUCCESS;
 
-	pmo_enter();
-
 	vdev_ctx = pmo_vdev_get_priv(vdev);
 
 	status = wlan_objmgr_vdev_component_obj_detach(vdev,
@@ -314,8 +309,6 @@ QDF_STATUS pmo_vdev_object_destroyed_notification(
 
 	qdf_spinlock_destroy(&vdev_ctx->pmo_vdev_lock);
 	qdf_mem_free(vdev_ctx);
-
-	pmo_exit();
 
 	return status;
 }
@@ -737,47 +730,6 @@ pmo_unregister_is_device_in_low_pwr_mode(struct wlan_objmgr_psoc *psoc)
 	}
 
 	pmo_psoc_put_ref(psoc);
-
-	return QDF_STATUS_SUCCESS;
-}
-
-QDF_STATUS pmo_register_get_vdev_dp_handle(struct wlan_objmgr_psoc *psoc,
-					   pmo_get_vdev_dp_handle handler)
-{
-	struct pmo_psoc_priv_obj *psoc_ctx;
-
-	if (!psoc) {
-		QDF_BUG(psoc);
-		pmo_err("psoc is null");
-		return QDF_STATUS_E_NULL_VALUE;
-	}
-
-	if (!handler) {
-		QDF_BUG(handler);
-		pmo_err("pmo_get_vdev_dp_handle is null");
-		return QDF_STATUS_E_NULL_VALUE;
-	}
-
-	pmo_psoc_with_ctx(psoc, psoc_ctx) {
-		psoc_ctx->get_vdev_dp_handle = handler;
-	}
-
-	return QDF_STATUS_SUCCESS;
-}
-
-QDF_STATUS pmo_unregister_get_vdev_dp_handle(struct wlan_objmgr_psoc *psoc)
-{
-	struct pmo_psoc_priv_obj *psoc_ctx;
-
-	if (!psoc) {
-		QDF_BUG(psoc);
-		pmo_err("psoc is null");
-		return QDF_STATUS_E_NULL_VALUE;
-	}
-
-	pmo_psoc_with_ctx(psoc, psoc_ctx) {
-		psoc_ctx->get_vdev_dp_handle = NULL;
-	}
 
 	return QDF_STATUS_SUCCESS;
 }

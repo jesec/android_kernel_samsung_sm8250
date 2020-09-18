@@ -176,6 +176,11 @@ __setup("psi=", setup_psi);
 #define MONITOR_WINDOW_MIN_NS 1000000000 /* 1s */
 #define MONITOR_THRESHOLD_MIN_NS 100000000 /* 100ms */
 
+#define PERFLOG_PSI_THRESHOLD	250
+#define AVG10			0
+#define AVG60			1
+#define AVG300			2
+
 static int lmkd_count;
 static int lmkd_cricount;
 
@@ -371,7 +376,6 @@ static u64 update_averages(struct psi_group *group, u64 now)
 	u64 expires, period;
 	u64 avg_next_update;
 	int s;
-	unsigned long full_avg_max = 0;
 
 	/* avgX= */
 	expires = group->avg_next_update;
@@ -414,31 +418,28 @@ static u64 update_averages(struct psi_group *group, u64 now)
 			sample = period;
 		group->avg_total[s] += sample;
 		calc_avgs(group->avg[s], missed_periods, sample, period);
-		if (s % 2 && LOAD_INT(group->avg[s][0]) > full_avg_max) {
-			full_avg_max = LOAD_INT(group->avg[s][0]);
-		}
-	}
+		if (s % 2 && (LOAD_INT(group->avg[s][AVG10]) * 100 + LOAD_FRAC(group->avg[s][AVG10])) >= PERFLOG_PSI_THRESHOLD) {
+			u64 total_full = 0, total_some = 0;
+			int some, full;
+			char title[NR_PSI_RESOURCES][4] = {"IO", "MEM", "CPU"};
+			char *strtitle;
 
-	if (full_avg_max >= 3 && group != 0) {
-		int res, full;
-		char title[NR_PSI_RESOURCES][5] = {"IO", "MEM", "CPU"};
+			strtitle = title[s / 2];
+			some = s - 1;
+			full = s;
 
-		for (res = 0; res < NR_PSI_RESOURCES; res++) {
-			for (full = 0; full < 2 - (res == PSI_CPU); full++) {
-				u64 total;
-				char *strtitle;
+			total_some = div_u64(group->total[PSI_AVGS][some], NSEC_PER_USEC);
+			total_full = div_u64(group->total[PSI_AVGS][full], NSEC_PER_USEC);
 
-				total = div_u64(group->total[PSI_AVGS][res * 2 + full],
-						NSEC_PER_USEC);
-
-				strtitle = title[res];
-				perflog(PERFLOG_UNKNOWN, "[PSI][%s] %s avg10=%lu.%02lu avg60=%lu.%02lu avg300=%lu.%02lu total=%llu\n",
-					   strtitle, full ? "full" : "some",
-					   LOAD_INT(group->avg[res * 2 + full][0]), LOAD_FRAC(group->avg[res * 2 + full][0]),
-					   LOAD_INT(group->avg[res * 2 + full][1]), LOAD_FRAC(group->avg[res * 2 + full][1]),
-					   LOAD_INT(group->avg[res * 2 + full][2]), LOAD_FRAC(group->avg[res * 2 + full][2]),
-					   total);
-			}
+			perflog(PERFLOG_UNKNOWN, "[PSI][%s][%s] avg10=[%lu.%02lu/%lu.%02lu]  avg60=[%lu.%02lu/%lu.%02lu]  avg300=[%lu.%02lu/%lu.%02lu] total=[%llu/%llu]",
+				   strtitle, (group == &psi_system) ? "SYSTEM" : "CGROUP",
+				   LOAD_INT(group->avg[some][AVG10]), LOAD_FRAC(group->avg[some][AVG10]),
+				   LOAD_INT(group->avg[full][AVG10]), LOAD_FRAC(group->avg[full][AVG10]),
+				   LOAD_INT(group->avg[some][AVG60]), LOAD_FRAC(group->avg[some][AVG60]),
+				   LOAD_INT(group->avg[full][AVG60]), LOAD_FRAC(group->avg[full][AVG60]),
+				   LOAD_INT(group->avg[some][AVG300]), LOAD_FRAC(group->avg[some][AVG300]),
+				   LOAD_INT(group->avg[full][AVG300]), LOAD_FRAC(group->avg[full][AVG300]),
+				   total_some, total_full);
 		}
 	}
 
@@ -611,7 +612,7 @@ static u64 update_triggers(struct psi_group *group, u64 now)
 
 		if ((t->win.size >= MONITOR_WINDOW_MIN_NS) && 
 		    (t->threshold >= MONITOR_THRESHOLD_MIN_NS))
-			printk_deferred("psi: %s %lu %lu %d %lu %lu\n", __func__, now,
+			printk_deferred("psi: %s %llu %llu %d %llu %llu\n", __func__, now,
 			       t->last_event_time, t->state, t->threshold, growth);
 
 		/* Generate an event */

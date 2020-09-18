@@ -358,6 +358,12 @@ static irqreturn_t max77705_irq_thread(int irq, void *data)
 		pr_info("%s ic_alt_mode=%d\n", __func__, ic_alt_mode);
 	}
 
+	if ((irq_reg[USBC_INT] & BIT_SYSMsgI)
+			&& (dump_reg[1] == 0x03 /*sysmsg wdt*/)) {
+		irq_reg[CC_INT] &= ~(BIT_VCONNSCI);
+		pr_info("%s skip water detect during WDT\n", __func__);
+	}
+
 	/* Apply masking */
 	for (i = 0; i < MAX77705_IRQ_GROUP_NR; i++)
 		irq_reg[i] &= ~max77705->irq_masks_cur[i];

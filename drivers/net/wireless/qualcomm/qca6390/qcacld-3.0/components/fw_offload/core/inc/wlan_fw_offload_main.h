@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012 - 2019 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012 - 2020 The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -26,14 +26,38 @@
 #include <wlan_objmgr_psoc_obj.h>
 #include <wlan_objmgr_global_obj.h>
 #include <wlan_cmn.h>
+#include <scheduler_api.h>
 
 #include "cfg_ucfg_api.h"
+#include "wlan_fwol_public_structs.h"
 
 #define fwol_alert(params...) QDF_TRACE_FATAL(QDF_MODULE_ID_FWOL, params)
 #define fwol_err(params...) QDF_TRACE_ERROR(QDF_MODULE_ID_FWOL, params)
 #define fwol_warn(params...) QDF_TRACE_WARN(QDF_MODULE_ID_FWOL, params)
 #define fwol_info(params...) QDF_TRACE_INFO(QDF_MODULE_ID_FWOL, params)
 #define fwol_debug(params...) QDF_TRACE_DEBUG(QDF_MODULE_ID_FWOL, params)
+
+#define fwol_nofl_alert(params...) \
+	QDF_TRACE_FATAL_NO_FL(QDF_MODULE_ID_FWOL, params)
+#define fwol_nofl_err(params...) \
+	QDF_TRACE_ERROR_NO_FL(QDF_MODULE_ID_FWOL, params)
+#define fwol_nofl_warn(params...) \
+	QDF_TRACE_WARN_NO_FL(QDF_MODULE_ID_FWOL, params)
+#define fwol_nofl_info(params...) \
+	QDF_TRACE_INFO_NO_FL(QDF_MODULE_ID_FWOL, params)
+#define fwol_nofl_debug(params...) \
+	QDF_TRACE_DEBUG_NO_FL(QDF_MODULE_ID_FWOL, params)
+
+/**
+ * enum wlan_fwol_southbound_event - fw offload south bound event type
+ * @WLAN_FWOL_EVT_GET_ELNA_BYPASS_RESPONSE: get eLNA bypass response
+ */
+enum wlan_fwol_southbound_event {
+	WLAN_FWOL_EVT_INVALID = 0,
+	WLAN_FWOL_EVT_GET_ELNA_BYPASS_RESPONSE,
+	WLAN_FWOL_EVT_LAST,
+	WLAN_FWOL_EVT_MAX = WLAN_FWOL_EVT_LAST - 1
+};
 
 /**
  * struct wlan_fwol_three_antenna_btc - Three antenna BTC config items
@@ -49,6 +73,10 @@
  * @bt_interference_high_ll: Lower limit of high level BT interference
  * @bt_interference_high_ul: Upper limit of high level BT interference
  * @btc_mpta_helper_enable: Enable/Disable tri-radio MPTA helper
+ * @bt_sco_allow_wlan_2g_scan: Enable/Disble wlan 2g scan when
+ *                             BT SCO connection is on
+ * @btc_three_way_coex_config_legacy_enable: Enable/Disable tri-radio coex
+ *                             config legacy feature
  */
 struct wlan_fwol_coex_config {
 	uint8_t btc_mode;
@@ -65,10 +93,14 @@ struct wlan_fwol_coex_config {
 #ifdef FEATURE_MPTA_HELPER
 	bool    btc_mpta_helper_enable;
 #endif
+	bool bt_sco_allow_wlan_2g_scan;
+#ifdef FEATURE_COEX_CONFIG
+	bool    btc_three_way_coex_config_legacy_enable;
+#endif
 };
 
 #define FWOL_THERMAL_LEVEL_MAX 4
-#define FWOL_THERMAL_THROTTLE_LEVEL_MAX 4
+#define FWOL_THERMAL_THROTTLE_LEVEL_MAX 6
 /*
  * struct wlan_fwol_thermal_temp - Thermal temperature config items
  * @thermal_temp_min_level: Array of temperature minimum levels
@@ -76,6 +108,7 @@ struct wlan_fwol_coex_config {
  * @thermal_mitigation_enable: Control for Thermal mitigation feature
  * @throttle_period: Thermal throttle period value
  * @throttle_dutycycle_level: Array of throttle duty cycle levels
+ * @thermal_sampling_time: sampling time for thermal mitigation in ms
  */
 struct wlan_fwol_thermal_temp {
 	bool     thermal_mitigation_enable;
@@ -83,6 +116,7 @@ struct wlan_fwol_thermal_temp {
 	uint16_t thermal_temp_min_level[FWOL_THERMAL_LEVEL_MAX];
 	uint16_t thermal_temp_max_level[FWOL_THERMAL_LEVEL_MAX];
 	uint32_t throttle_dutycycle_level[FWOL_THERMAL_THROTTLE_LEVEL_MAX];
+	uint16_t thermal_sampling_time;
 };
 
 /**
@@ -143,8 +177,8 @@ struct wlan_fwol_neighbor_report_cfg {
  * @neighbor_report_cfg: 11K neighbor report config
  * @ani_enabled: ANI enable/disable
  * @enable_rts_sifsbursting: Enable RTS SIFS Bursting
+ * @enable_sifs_burst: Enable SIFS burst
  * @max_mpdus_inampdu: Max number of MPDUS
- * @arp_ac_category: ARP AC category
  * @enable_phy_reg_retention: Enable PHY reg retention
  * @upper_brssi_thresh: Upper BRSSI threshold
  * @lower_brssi_thresh: Lower BRSSI threshold
@@ -156,9 +190,11 @@ struct wlan_fwol_neighbor_report_cfg {
  * @enable_fw_log_type: Set the FW log type
  * @enable_fw_module_log_level: enable fw module log level
  * @enable_fw_module_log_level_num: enablefw module log level num
+ * @sap_xlna_bypass: bypass SAP xLNA
  * @is_rate_limit_enabled: Enable/disable RA rate limited
  * @tsf_gpio_pin: TSF GPIO Pin config
  * @tsf_irq_host_gpio_pin: TSF GPIO Pin config
+ * @tsf_sync_host_gpio_pin: TSF Sync GPIO Pin config
  * @tsf_ptp_options: TSF Plus feature options config
  * @lprx_enable: LPRx feature enable config
  * @sae_enable: SAE feature enable config
@@ -177,8 +213,8 @@ struct wlan_fwol_cfg {
 	struct wlan_fwol_neighbor_report_cfg neighbor_report_cfg;
 	bool ani_enabled;
 	bool enable_rts_sifsbursting;
+	uint8_t enable_sifs_burst;
 	uint8_t max_mpdus_inampdu;
-	uint32_t arp_ac_category;
 	uint8_t enable_phy_reg_retention;
 	uint16_t upper_brssi_thresh;
 	uint16_t lower_brssi_thresh;
@@ -190,6 +226,7 @@ struct wlan_fwol_cfg {
 	uint16_t enable_fw_log_type;
 	uint8_t enable_fw_module_log_level[FW_MODULE_LOG_LEVEL_STRING_LENGTH];
 	uint8_t enable_fw_module_log_level_num;
+	bool sap_xlna_bypass;
 #ifdef FEATURE_WLAN_RA_FILTERING
 	bool is_rate_limit_enabled;
 #endif
@@ -199,6 +236,9 @@ struct wlan_fwol_cfg {
 	uint32_t tsf_ptp_options;
 #ifdef WLAN_FEATURE_TSF_PLUS_EXT_GPIO_IRQ
 	uint32_t tsf_irq_host_gpio_pin;
+#endif
+#ifdef WLAN_FEATURE_TSF_PLUS_EXT_GPIO_SYNC
+	uint32_t tsf_sync_host_gpio_pin;
 #endif
 #endif
 #endif
@@ -219,9 +259,31 @@ struct wlan_fwol_cfg {
 /**
  * struct wlan_fwol_psoc_obj - FW offload psoc priv object
  * @cfg:     cfg items
+ * @cbs:     callback functions
+ * @tx_ops: tx operations for target interface
+ * @rx_ops: rx operations for target interface
  */
 struct wlan_fwol_psoc_obj {
 	struct wlan_fwol_cfg cfg;
+	struct wlan_fwol_callbacks cbs;
+	struct wlan_fwol_tx_ops tx_ops;
+	struct wlan_fwol_rx_ops rx_ops;
+};
+
+/**
+ * struct wlan_fwol_rx_event - event from south bound
+ * @psoc: psoc handle
+ * @event_id: event ID
+ * @get_elna_bypass_response: get eLNA bypass response
+ */
+struct wlan_fwol_rx_event {
+	struct wlan_objmgr_psoc *psoc;
+	enum wlan_fwol_southbound_event event_id;
+	union {
+#ifdef WLAN_FEATURE_ELNA
+		struct get_elna_bypass_response get_elna_bypass_response;
+#endif
+	};
 };
 
 /**
@@ -251,6 +313,22 @@ QDF_STATUS fwol_cfg_on_psoc_enable(struct wlan_objmgr_psoc *psoc);
  * Return: QDF_STATUS
  */
 QDF_STATUS fwol_cfg_on_psoc_disable(struct wlan_objmgr_psoc *psoc);
+
+/**
+ * fwol_process_event() - API to process event from south bound
+ * @msg: south bound message
+ *
+ * Return: QDF_STATUS_SUCCESS on success
+ */
+QDF_STATUS fwol_process_event(struct scheduler_msg *msg);
+
+/*
+ * fwol_release_rx_event() - Release fw offload RX event
+ * @event: fw offload RX event
+ *
+ * Return: none
+ */
+void fwol_release_rx_event(struct wlan_fwol_rx_event *event);
 
 /*
  * fwol_init_neighbor_report_cfg() - Populate default neighbor report CFG values

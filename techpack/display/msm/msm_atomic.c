@@ -197,6 +197,20 @@ msm_disable_outputs(struct drm_device *dev, struct drm_atomic_state *old_state)
 		else
 			funcs->dpms(encoder, DRM_MODE_DPMS_OFF);
 
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+		{
+			/*
+				notify registered clients about suspend event
+				This noti is triggered before panel power off & DSI_CMD_SET_OFF.
+			*/
+			int blank = FB_BLANK_POWERDOWN;
+
+			if (encoder->encoder_type == DRM_MODE_ENCODER_DSI)
+				__msm_drm_notifier_call_chain(FB_EVENT_BLANK, &blank);
+			else
+				pr_debug("%s %d\n", __func__, encoder->encoder_type);
+		}
+#endif
 		drm_bridge_post_disable(encoder->bridge);
 	}
 
@@ -415,6 +429,21 @@ static void msm_atomic_helper_commit_modeset_enables(struct drm_device *dev,
 			funcs->enable(encoder);
 		else
 			funcs->commit(encoder);
+
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+		{
+			/*
+				notify registered clients about resume event.
+				This noti is triggered after panel power on & DSI_CMD_SET_ON.
+			*/
+			int blank = FB_BLANK_UNBLANK;
+
+			if (encoder->encoder_type == DRM_MODE_ENCODER_DSI)
+				__msm_drm_notifier_call_chain(FB_EVENT_BLANK, &blank);
+			else
+				pr_debug("%s %d\n", __func__, encoder->encoder_type);
+		}
+#endif
 	}
 
 	if (kms && kms->funcs && kms->funcs->commit) {

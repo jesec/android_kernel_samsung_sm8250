@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2019 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2013-2020 The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -33,6 +33,7 @@
 #include <wlan_hdd_wowl.h>
 #include <cds_sched.h>
 #include <wlan_hdd_debugfs_llstat.h>
+#include <wlan_hdd_debugfs_mibstat.h>
 
 #define MAX_USER_COMMAND_SIZE_WOWL_ENABLE 8
 #define MAX_USER_COMMAND_SIZE_WOWL_PATTERN 512
@@ -40,6 +41,8 @@
 
 #define MAX_DEBUGFS_WAIT_ITERATIONS 20
 #define DEBUGFS_WAIT_SLEEP_TIME 100
+
+static bool hdd_periodic_pattern_map[MAXNUM_PERIODIC_TX_PTRNS];
 
 static qdf_atomic_t debugfs_thread_count;
 
@@ -300,6 +303,14 @@ static ssize_t __wcnss_patterngen_write(struct net_device *net_dev,
 
 	/* Delete pattern using index if duration is 0 */
 	if (!pattern_duration) {
+		if (!hdd_periodic_pattern_map[pattern_idx]) {
+			hdd_debug_rl("WoW pattern %d is not in the table.",
+				     pattern_idx);
+
+			qdf_mem_free(cmd);
+			return -EINVAL;
+		}
+
 		delPeriodicTxPtrnParams =
 			qdf_mem_malloc(sizeof(tSirDelPeriodicTxPtrn));
 		if (!delPeriodicTxPtrnParams) {
@@ -307,6 +318,7 @@ static ssize_t __wcnss_patterngen_write(struct net_device *net_dev,
 			qdf_mem_free(cmd);
 			return -ENOMEM;
 		}
+
 		delPeriodicTxPtrnParams->ucPtrnId = pattern_idx;
 		qdf_copy_macaddr(&delPeriodicTxPtrnParams->mac_address,
 				 &adapter->mac_addr);
@@ -320,6 +332,9 @@ static ssize_t __wcnss_patterngen_write(struct net_device *net_dev,
 			qdf_mem_free(delPeriodicTxPtrnParams);
 			goto failure;
 		}
+
+		hdd_periodic_pattern_map[pattern_idx] = false;
+
 		qdf_mem_free(cmd);
 		qdf_mem_free(delPeriodicTxPtrnParams);
 		return count;
@@ -392,6 +407,10 @@ static ssize_t __wcnss_patterngen_write(struct net_device *net_dev,
 		qdf_mem_free(addPeriodicTxPtrnParams);
 		goto failure;
 	}
+
+	if (!hdd_periodic_pattern_map[pattern_idx])
+		hdd_periodic_pattern_map[pattern_idx] = true;
+
 	qdf_mem_free(cmd);
 	qdf_mem_free(addPeriodicTxPtrnParams);
 	hdd_exit();
@@ -527,6 +546,9 @@ QDF_STATUS hdd_debugfs_init(struct hdd_adapter *adapter)
 					&fops_patterngen))
 		return QDF_STATUS_E_FAILURE;
 
+	if (wlan_hdd_create_mib_stats_file(adapter))
+		return QDF_STATUS_E_FAILURE;
+
 	if (wlan_hdd_create_ll_stats_file(adapter))
 		return QDF_STATUS_E_FAILURE;
 
@@ -544,5 +566,6 @@ QDF_STATUS hdd_debugfs_init(struct hdd_adapter *adapter)
 void hdd_debugfs_exit(struct hdd_adapter *adapter)
 {
 	debugfs_remove_recursive(adapter->debugfs_phy);
+	wlan_hdd_destroy_mib_stats_lock();
 }
 #endif /* #ifdef WLAN_OPEN_SOURCE */

@@ -1,7 +1,7 @@
 /*
  * Debug/trace/assert driver definitions for Dongle Host Driver.
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -191,7 +191,7 @@ do {	\
 #define DHD_FWLOG(args)	\
 	do { \
 		if (dhd_msg_level & DHD_FWLOG_VAL) { \
-			if (!log_print_threshold) \
+			if (control_logtrace && !log_print_threshold) \
 				printf args; \
 			DHD_LOG_DUMP_WRITE args; \
 		} \
@@ -200,7 +200,8 @@ do {	\
 #define DHD_FWLOG(args)	\
 	do { \
 		if (dhd_msg_level & DHD_FWLOG_VAL) { \
-			printf args; \
+			if (control_logtrace) \
+				printf args; \
 			DHD_LOG_DUMP_WRITE args; \
 		} \
 	} while (0)

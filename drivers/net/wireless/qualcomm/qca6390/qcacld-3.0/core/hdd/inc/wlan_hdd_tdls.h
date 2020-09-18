@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2019 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2020 The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -160,11 +160,7 @@ int wlan_hdd_cfg80211_configure_tdls_mode(struct wiphy *wiphy,
 					int data_len);
 
 QDF_STATUS hdd_tdls_register_peer(void *userdata, uint32_t vdev_id,
-				  const uint8_t *mac, uint16_t sta_id,
-				  uint8_t qos);
-
-QDF_STATUS hdd_tdls_deregister_peer(void *userdata, uint32_t vdev_id,
-				    uint8_t sta_id);
+				  const uint8_t *mac, uint8_t qos);
 
 /**
  * hdd_init_tdls_config() - initialize tdls config
@@ -174,6 +170,16 @@ QDF_STATUS hdd_tdls_deregister_peer(void *userdata, uint32_t vdev_id,
  */
 void hdd_init_tdls_config(struct tdls_start_params *tdls_cfg);
 
+/**
+ * hdd_config_tdls_with_band_switch() - configure tdls when band changes
+ *                                      Disable tdls offchmode if only one of
+ *                                      bands is supported
+ *                                      Enable tdls offchmode if all band enable
+ * @hdd_ctx:     Pointer to the HDD context
+ *
+ * Return: none
+ */
+void hdd_config_tdls_with_band_switch(struct hdd_context *hdd_ctx);
 #else
 
 static inline int wlan_hdd_tdls_antenna_switch(struct hdd_context *hdd_ctx,
@@ -193,20 +199,16 @@ static inline int wlan_hdd_cfg80211_configure_tdls_mode(struct wiphy *wiphy,
 
 static inline
 QDF_STATUS hdd_tdls_register_peer(void *userdata, uint32_t vdev_id,
-				  const uint8_t *mac, uint16_t sta_id,
-				  uint8_t qos)
-{
-	return QDF_STATUS_SUCCESS;
-}
-
-static inline
-QDF_STATUS hdd_tdls_deregister_peer(void *userdata, uint32_t vdev_id,
-				    uint8_t sta_id)
+				  const uint8_t *mac, uint8_t qos)
 {
 	return QDF_STATUS_SUCCESS;
 }
 
 static inline void hdd_init_tdls_config(struct tdls_start_params *tdls_cfg)
+{
+}
+
+static inline void hdd_config_tdls_with_band_switch(struct hdd_context *hdd_ctx)
 {
 }
 

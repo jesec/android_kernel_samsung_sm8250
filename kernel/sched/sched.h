@@ -2927,6 +2927,8 @@ extern enum sched_boost_policy sched_boost_policy(void);
 extern void sched_boost_parse_dt(void);
 extern void clear_ed_task(struct task_struct *p, struct rq *rq);
 extern bool early_detection_notify(struct rq *rq, u64 wallclock);
+
+#ifdef CONFIG_SCHED_SEC_TASK_BOOST
 static int is_low_priority_task(struct task_struct *p, bool always_set);
 
 #define HIGH_PRIO_NICE 0
@@ -2955,6 +2957,8 @@ int is_low_priority_task(struct task_struct  *p, bool always_set)
 	else
 		return LOW_PRIO_NICE;
 }
+#endif /* CONFIG_SCHED_SEC_TASK_BOOST */
+
 static inline unsigned int power_cost(int cpu, u64 demand)
 {
 	return cpu_max_possible_capacity(cpu);
@@ -2980,10 +2984,16 @@ static inline enum sched_boost_policy task_boost_policy(struct task_struct *p)
 		 * Filter out tasks less than min task util threshold
 		 * under conservative boost.
 		 */
+#ifdef CONFIG_SCHED_SEC_TASK_BOOST
 		if (sched_boost() == CONSERVATIVE_BOOST &&
 				task_util(p) <= sysctl_sched_min_task_util_for_boost &&
 				is_low_priority_task(p, false) == LOW_PRIO_NICE)
 			policy = SCHED_BOOST_NONE;
+#else
+		if (sched_boost() == CONSERVATIVE_BOOST &&
+			task_util(p) <= sysctl_sched_min_task_util_for_boost)
+			policy = SCHED_BOOST_NONE;
+#endif /* CONFIG_SCHED_SEC_TASK_BOOST */
 	}
 
 	return policy;

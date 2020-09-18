@@ -21,7 +21,7 @@
 #include <linux/of.h>
 #include <linux/spinlock.h>
 #include <linux/wakelock.h>
-#include <linux/fpga/pogo_i2c_notifier.h>
+#include <linux/input/pogo_i2c_notifier.h>
 
 enum LID_POSITION {
 	E_LID_0 = 1,
@@ -29,6 +29,12 @@ enum LID_POSITION {
 	E_LID_360 = 3,
 };
 
+enum LOGICAL_HALL_STATUS
+{
+	LOGICAL_HALL_OPEN = 0,
+	LOGICAL_HALL_CLOSE = 1,
+	LOGICAL_HALL_BACK = 2,
+};
 
 extern struct device *sec_key;
 
@@ -42,12 +48,12 @@ static int hall_logical_status = 1;
 static ssize_t hall_logical_detect_show(struct device *dev,
 				struct device_attribute *attr, char *buf)
 {
-	if (hall_logical_status == 1)
+	if (hall_logical_status == LOGICAL_HALL_OPEN)
 		sprintf(buf, "OPEN\n");
-	else if (hall_logical_status == 2)
-		sprintf(buf, "BACK\n");
-	else
+	else if (hall_logical_status == LOGICAL_HALL_CLOSE)
 		sprintf(buf, "CLOSE\n");
+	else
+		sprintf(buf, "BACK\n");
 
 	return strlen(buf);
 }
@@ -56,6 +62,7 @@ static DEVICE_ATTR(hall_logical_detect, 0444, hall_logical_detect_show, NULL);
 static int hall_logical_open(struct input_dev *input)
 {
 	/* Report current state of buttons that are connected to GPIOs */
+	input_report_switch(input, SW_FLIP, 0);
 	input_sync(input);
 
 	return 0;
@@ -81,7 +88,7 @@ static int logical_hallic_notifier_handler(struct notifier_block *nb,
 
 	switch (action) {
 	case POGO_NOTIFIER_ID_DETACHED:
-		hall_logical_status = 1;
+		hall_logical_status = LOGICAL_HALL_OPEN;
 		input_report_switch(logical_hall_dev->input, SW_FLIP, hall_logical_status);
 		input_sync(logical_hall_dev->input);
 		break;
@@ -92,17 +99,23 @@ static int logical_hallic_notifier_handler(struct notifier_block *nb,
 		}
 
 		hall_status = *pogo_data.data;
-		pr_info("%s hall_status = %d!\n", __func__, hall_status);
+
 		if (hall_status == E_LID_0) {
-			hall_logical_status = 0;
+			hall_logical_status = LOGICAL_HALL_CLOSE;
+			pr_info("%s hall_status = %d (CLOSE)\n", __func__, hall_status);
 			input_report_switch(logical_hall_dev->input, SW_FLIP, hall_logical_status);
 			input_sync(logical_hall_dev->input);
 		} else if (hall_status == E_LID_NORMAL) {
-			hall_logical_status = 1;
+			hall_logical_status = LOGICAL_HALL_OPEN;
+			pr_info("%s hall_status = %d (NORMAL)\n", __func__, hall_status);
 			input_report_switch(logical_hall_dev->input, SW_FLIP, hall_logical_status);
+			input_report_switch(logical_hall_dev->input, SW_HALL_LOGICAL, 0);
 			input_sync(logical_hall_dev->input);
 		} else if (hall_status == E_LID_360) {
-			hall_logical_status = 2;
+			hall_logical_status = LOGICAL_HALL_BACK;
+			pr_info("%s hall_status = %d (BACK)\n", __func__, hall_status);
+			input_report_switch(logical_hall_dev->input, SW_HALL_LOGICAL, 1);
+			input_sync(logical_hall_dev->input);
 		}
 		
 		break;
@@ -154,6 +167,7 @@ static int hall_logical_probe(struct platform_device *pdev)
 
 	input->evbit[0] |= BIT_MASK(EV_SW);
 	input_set_capability(input, EV_SW, SW_FLIP);
+	input_set_capability(input, EV_SW, SW_HALL_LOGICAL);
 
 	input->open = hall_logical_open;
 	input->close = hall_logical_close;

@@ -386,9 +386,13 @@ static void __save_error_info(struct super_block *sb, const char *func,
 	le32_add_cpu(&es->s_error_count, 1);
 }
 
+extern int ignore_fs_panic;
+
 static void save_error_info(struct super_block *sb, const char *func,
 			    unsigned int line)
 {
+	if (unlikely(ignore_fs_panic))
+		return;
 	__save_error_info(sb, func, line);
 	if (!bdev_read_only(sb->s_bdev))
 		ext4_commit_super(sb, 1);

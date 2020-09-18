@@ -57,7 +57,7 @@ int s2mpb03_read_reg(struct i2c_client *i2c, u8 reg, u8 *dest)
 	ret = i2c_smbus_read_byte_data(i2c, reg);
 	mutex_unlock(&s2mpb03->i2c_lock);
 	if (ret < 0) {
-		pr_info("%s:%s reg(0x%x), ret(%d)\n",
+		pr_info("%s:%s reg(0x%02hhx), ret(%d)\n",
 			 MFD_DEV_NAME, __func__, reg, ret);
 		return ret;
 	}
@@ -107,7 +107,7 @@ int s2mpb03_write_reg(struct i2c_client *i2c, u8 reg, u8 value)
 	ret = i2c_smbus_write_byte_data(i2c, reg, value);
 	mutex_unlock(&s2mpb03->i2c_lock);
 	if (ret < 0)
-		pr_info("%s:%s reg(0x%x), ret(%d)\n",
+		pr_info("%s:%s reg(0x%02hhx), ret(%d)\n",
 				MFD_DEV_NAME, __func__, reg, ret);
 
 	return ret;
@@ -307,7 +307,7 @@ static int s2mpb03_pmic_dt_parse_pdata(struct device *dev,
 {
 	struct device_node *pmic_np, *regulators_np, *reg_np;
 	struct s2mpb03_regulator_data *rdata;
-	unsigned int i;
+	size_t i;
 
 	pmic_np = dev->of_node;
 	if (!pmic_np) {
@@ -390,7 +390,7 @@ static ssize_t s2mpb03_read_store(struct device *dev,
 	if (ret < 0)
 		pr_info("%s: fail to read i2c address\n", __func__);
 
-	pr_info("%s: reg(0x%02x) data(0x%02x)\n", __func__, reg_addr, val);
+	pr_info("%s: reg(0x%02hhx) data(0x%02hhx)\n", __func__, reg_addr, val);
 	s2mpb03->read_addr = reg_addr;
 	s2mpb03->read_val = val;
 
@@ -402,7 +402,7 @@ static ssize_t s2mpb03_read_show(struct device *dev,
 				 char *buf)
 {
 	struct s2mpb03_data *s2mpb03 = dev_get_drvdata(dev);
-	return sprintf(buf, "0x%02x: 0x%02x\n", s2mpb03->read_addr,
+	return sprintf(buf, "0x%02hhx: 0x%02hhx\n", s2mpb03->read_addr,
 		       s2mpb03->read_val);
 }
 
@@ -412,20 +412,20 @@ static ssize_t s2mpb03_write_store(struct device *dev,
 {
 	struct s2mpb03_data *s2mpb03 = dev_get_drvdata(dev);
 	int ret;
-	u8 reg, data;
+	u8 reg = 0, data = 0;
 
 	if (buf == NULL) {
 		pr_info("%s: empty buffer\n", __func__);
 		return size;
 	}
 
-	ret = sscanf(buf, "%x %x", &reg, &data);
+	ret = sscanf(buf, "0x%02hhx 0x%02hhx", &reg, &data);
 	if (ret != 2) {
 		pr_info("%s: input error\n", __func__);
 		return size;
 	}
 
-	pr_info("%s: reg(0x%02x) data(0x%02x)\n", __func__, reg, data);
+	pr_info("%s: reg(0x%02hhx) data(0x%02hhx)\n", __func__, reg, data);
 
 	ret = s2mpb03_write_reg(s2mpb03->iodev->i2c, reg, data);
 	if (ret < 0)

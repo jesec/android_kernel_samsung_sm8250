@@ -238,7 +238,7 @@ static void __show_data(unsigned long addr, int nbytes, const char *name, unsign
 	 * don't attempt to dump non-kernel addresses or
 	 * values that are probably just small negative numbers
 	 */
-	if (addr < PAGE_OFFSET || addr > -256UL)
+	if (addr < KIMAGE_VADDR || addr > -256UL)
 		return;
 
 	printk(KERN_DEBUG "\n%s: %#lx:\n", name, addr);
@@ -261,8 +261,8 @@ static void __show_data(unsigned long addr, int nbytes, const char *name, unsign
 		for (j = 0; j < 8; j++) {
 			u32	data;
 
-			if (page_address != (page_mask & (uintptr_t)p))
-				pr_cont(" ********");
+			if (page_address && page_address != (page_mask & (uintptr_t)p))
+				pr_cont(" ????????");
 			else if (probe_kernel_address(p, data))
 				pr_cont(" ********");
 			else

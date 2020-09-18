@@ -19,7 +19,7 @@
 #define SR100_SET_POLL _IOW(SR100_MAGIC, 0x03, long)
 #define SR100_SET_FWD _IOW(SR100_MAGIC, 0x04, long)
 #define SR100_GET_THROUGHPUT _IOW(SR100_MAGIC, 0x05, long)
-#define SR100_SWITCH_RX_PATH _IOW(SR100_MAGIC, 0x60, long)
+#define SR100_ESE_RESET _IOW(SR100_MAGIC, 0x06, long)
 
 #define NORMAL_MODE_HEADER_LEN 4
 #define HBCI_MODE_HEADER_LEN 4
@@ -33,12 +33,11 @@
 struct sr100_spi_platform_data {
   unsigned int irq_gpio;
   unsigned int ce_gpio;
-  unsigned int ri_gpio;
-//  unsigned int switch_gpio;
-  unsigned int wakeup_gpio;
-  const char *uwb_vdd;
-  const char *uwb_vdd_pa;
+  unsigned int rtc_sync_gpio;
+  unsigned int spi_handshake_gpio;
   const char *uwb_vdd_io;
+  const char *uwb_vdd;
+  const char *uwb_vdd_rf;
 #ifdef CONFIG_UWB_PMIC_CLOCK
   struct   clk *clk;
 #endif

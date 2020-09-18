@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2019 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2016-2020 The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -40,6 +40,8 @@
 #include "cfg_nan_api.h"
 #include "wlan_mlme_ucfg_api.h"
 #include "qdf_util.h"
+#include <cdp_txrx_misc.h>
+#include "wlan_fwol_ucfg_api.h"
 
 /**
  * hdd_nan_datapath_target_config() - Configure NAN datapath features
@@ -117,6 +119,34 @@ static int hdd_close_ndi(struct hdd_adapter *adapter)
  *
  * Return:  true if allowed, false otherwise
  */
+#ifdef NDP_SAP_CONCURRENCY_ENABLE
+static bool hdd_is_ndp_allowed(struct hdd_context *hdd_ctx)
+{
+	struct hdd_adapter *adapter;
+	struct hdd_station_ctx *sta_ctx;
+
+	hdd_for_each_adapter(hdd_ctx, adapter) {
+		switch (adapter->device_mode) {
+		case QDF_P2P_GO_MODE:
+			if (test_bit(SOFTAP_BSS_STARTED,
+				     &adapter->event_flags))
+				return false;
+			break;
+		case QDF_P2P_CLIENT_MODE:
+		case QDF_IBSS_MODE:
+			sta_ctx = WLAN_HDD_GET_STATION_CTX_PTR(adapter);
+			if (hdd_conn_is_connected(sta_ctx) ||
+			    hdd_is_connecting(sta_ctx))
+				return false;
+			break;
+		default:
+			break;
+		}
+	}
+
+	return true;
+}
+#else
 static bool hdd_is_ndp_allowed(struct hdd_context *hdd_ctx)
 {
 	struct hdd_adapter *adapter;
@@ -127,14 +157,14 @@ static bool hdd_is_ndp_allowed(struct hdd_context *hdd_ctx)
 		case QDF_P2P_GO_MODE:
 		case QDF_SAP_MODE:
 			if (test_bit(SOFTAP_BSS_STARTED,
-					&adapter->event_flags))
+				     &adapter->event_flags))
 				return false;
 			break;
 		case QDF_P2P_CLIENT_MODE:
 		case QDF_IBSS_MODE:
 			sta_ctx = WLAN_HDD_GET_STATION_CTX_PTR(adapter);
 			if (hdd_conn_is_connected(sta_ctx) ||
-					hdd_is_connecting(sta_ctx))
+			    hdd_is_connecting(sta_ctx))
 				return false;
 			break;
 		default:
@@ -144,6 +174,7 @@ static bool hdd_is_ndp_allowed(struct hdd_context *hdd_ctx)
 
 	return true;
 }
+#endif /* NDP_SAP_CONCURRENCY_ENABLE */
 
 /**
  * hdd_ndi_start_bss() - Start BSS on NAN data interface
@@ -162,6 +193,7 @@ static int hdd_ndi_start_bss(struct hdd_adapter *adapter,
 	uint8_t wmm_mode = 0;
 	struct hdd_context *hdd_ctx;
 	uint8_t value = 0;
+	uint32_t oper_freq;
 
 	hdd_enter();
 
@@ -191,9 +223,10 @@ static int hdd_ndi_start_bss(struct hdd_adapter *adapter,
 
 	if (!operating_channel)
 		operating_channel = NAN_SOCIAL_CHANNEL_2_4GHZ;
+	oper_freq = wlan_reg_chan_to_freq(hdd_ctx->pdev, operating_channel);
 
 	roam_profile->ChannelInfo.numOfChannels = 1;
-	roam_profile->ChannelInfo.ChannelList = &operating_channel;
+	roam_profile->ChannelInfo.freq_list = &oper_freq;
 
 	roam_profile->SSIDs.numOfSSIDs = 1;
 	roam_profile->SSIDs.SSIDList->SSID.length = 0;
@@ -223,7 +256,7 @@ static int hdd_ndi_start_bss(struct hdd_adapter *adapter,
 		hdd_info("sme_RoamConnect issued successfully for NDI");
 	}
 
-	roam_profile->ChannelInfo.ChannelList = NULL;
+	roam_profile->ChannelInfo.freq_list = NULL;
 	roam_profile->ChannelInfo.numOfChannels = 0;
 
 	hdd_exit();
@@ -323,16 +356,16 @@ void hdd_ndp_event_handler(struct hdd_adapter *adapter,
 		case eCSR_ROAM_RESULT_NDI_CREATE_RSP:
 			success = (roam_info->ndp.ndi_create_params.status ==
 					NAN_DATAPATH_RSP_STATUS_SUCCESS);
-			hdd_debug("posting ndi create status: %d to umac",
-				success);
+			hdd_debug("posting ndi create status: %d (%s) to umac",
+				  success, success ? "Success" : "Failure");
 			os_if_nan_post_ndi_create_rsp(psoc, adapter->vdev_id,
 							success);
 			return;
 		case eCSR_ROAM_RESULT_NDI_DELETE_RSP:
 			success = (roam_info->ndp.ndi_create_params.status ==
 					NAN_DATAPATH_RSP_STATUS_SUCCESS);
-			hdd_debug("posting ndi delete status: %d to umac",
-				success);
+			hdd_debug("posting ndi delete status: %d (%s) to umac",
+				  success, success ? "Success" : "Failure");
 			os_if_nan_post_ndi_delete_rsp(psoc, adapter->vdev_id,
 							success);
 			return;
@@ -363,8 +396,6 @@ static int __wlan_hdd_cfg80211_process_ndp_cmd(struct wiphy *wiphy,
 	int ret_val;
 	struct hdd_context *hdd_ctx = wiphy_priv(wiphy);
 
-	hdd_enter();
-
 	ret_val = wlan_hdd_validate_context(hdd_ctx);
 	if (ret_val)
 		return ret_val;
@@ -375,23 +406,12 @@ static int __wlan_hdd_cfg80211_process_ndp_cmd(struct wiphy *wiphy,
 	}
 
 	if (!WLAN_HDD_IS_NDP_ENABLED(hdd_ctx)) {
-		hdd_err_rl("NAN datapath is not enabled");
-		return -EPERM;
-	}
-	/* NAN data path coexists only with STA interface */
-	if (false == hdd_is_ndp_allowed(hdd_ctx)) {
-		hdd_err_rl("Unsupported concurrency for NAN datapath");
+		hdd_debug("NAN datapath is not enabled");
 		return -EPERM;
 	}
 
-	/* NAN data path coexists only with STA interface */
-	if (false == hdd_is_ndp_allowed(hdd_ctx)) {
-		hdd_err_rl("Unsupported concurrency for NAN datapath");
-		return -EPERM;
-	}
-
-	return os_if_nan_process_ndp_cmd(hdd_ctx->psoc,
-					 data, data_len);
+	return os_if_nan_process_ndp_cmd(hdd_ctx->psoc, data, data_len,
+					 hdd_is_ndp_allowed(hdd_ctx));
 }
 
 /**
@@ -436,8 +456,9 @@ int hdd_init_nan_data_mode(struct hdd_adapter *adapter)
 	int32_t ret_val;
 	mac_handle_t mac_handle;
 	bool bval = false;
+	uint8_t enable_sifs_burst = 0;
 
-	ret_val = hdd_vdev_create(adapter, hdd_sme_roam_callback, adapter);
+	ret_val = hdd_vdev_create(adapter);
 	if (ret_val) {
 		hdd_err("failed to create vdev: %d", ret_val);
 		return ret_val;
@@ -476,13 +497,18 @@ int hdd_init_nan_data_mode(struct hdd_adapter *adapter)
 
 	set_bit(WMM_INIT_DONE, &adapter->event_flags);
 
+	status = ucfg_get_enable_sifs_burst(hdd_ctx->psoc, &enable_sifs_burst);
+	if (!QDF_IS_STATUS_SUCCESS(status))
+		hdd_err("Failed to get sifs burst value, use default");
+
 	ret_val = wma_cli_set_command((int)adapter->vdev_id,
-			(int)WMI_PDEV_PARAM_BURST_ENABLE,
-			(int)HDD_ENABLE_SIFS_BURST_DEFAULT,
-			PDEV_CMD);
+				      (int)WMI_PDEV_PARAM_BURST_ENABLE,
+				      enable_sifs_burst,
+				      PDEV_CMD);
 	if (0 != ret_val)
 		hdd_err("WMI_PDEV_PARAM_BURST_ENABLE set failed %d", ret_val);
 
+	hdd_set_netdev_flags(adapter);
 
 	update_ndi_state(adapter, NAN_DATA_NDI_CREATING_STATE);
 	return ret_val;
@@ -540,6 +566,8 @@ int hdd_ndi_open(char *iface_name)
 	adapter = hdd_open_adapter(hdd_ctx, QDF_NDI_MODE, iface_name,
 				   ndi_mac_addr, NET_NAME_UNKNOWN, true);
 	if (!adapter) {
+		if (!cfg_nan_get_ndi_mac_randomize(hdd_ctx->psoc))
+			wlan_hdd_release_intf_addr(hdd_ctx, ndi_mac_addr);
 		hdd_err("hdd_open_adapter failed");
 		return -EINVAL;
 	}
@@ -624,7 +652,6 @@ int hdd_ndi_delete(uint8_t vdev_id, char *iface_name, uint16_t transaction_id)
 	struct hdd_adapter *adapter;
 	struct hdd_station_ctx *sta_ctx;
 	struct hdd_context *hdd_ctx = cds_get_context(QDF_MODULE_ID_HDD);
-	uint8_t sta_id;
 
 	if (!hdd_ctx) {
 		hdd_err("hdd_ctx is null");
@@ -643,16 +670,6 @@ int hdd_ndi_delete(uint8_t vdev_id, char *iface_name, uint16_t transaction_id)
 		hdd_err("sta_ctx is NULL");
 		return -EINVAL;
 	}
-
-	sta_id = sta_ctx->broadcast_sta_id;
-	if (sta_id >= HDD_MAX_ADAPTERS) {
-		hdd_err("Error: Invalid sta id %u", sta_id);
-		return -EINVAL;
-	}
-
-	/* Since, the interface is being deleted, remove the broadcast id. */
-	hdd_ctx->sta_to_adapter[sta_id] = NULL;
-	sta_ctx->broadcast_sta_id = HDD_WLAN_INVALID_STA_ID;
 
 	os_if_nan_set_ndp_delete_transaction_id(adapter->vdev,
 						transaction_id);
@@ -676,8 +693,9 @@ void hdd_ndi_drv_ndi_create_rsp_handler(uint8_t vdev_id,
 	struct hdd_station_ctx *sta_ctx;
 	struct csr_roam_info *roam_info;
 	struct bss_description tmp_bss_descp = {0};
+	uint16_t ndp_inactivity_timeout = 0;
+	uint16_t ndp_keep_alive_period;
 	struct qdf_mac_addr bc_mac_addr = QDF_MAC_ADDR_BCAST_INIT;
-	uint8_t sta_id;
 
 	hdd_ctx = cds_get_context(QDF_MODULE_ID_HDD);
 	if (!hdd_ctx) {
@@ -697,12 +715,6 @@ void hdd_ndi_drv_ndi_create_rsp_handler(uint8_t vdev_id,
 		return;
 	}
 
-	sta_id = ndi_rsp->sta_id;
-	if (sta_id >= HDD_MAX_ADAPTERS) {
-		hdd_err("Error: Invalid sta id %u", sta_id);
-		return;
-	}
-
 	roam_info = qdf_mem_malloc(sizeof(*roam_info));
 	if (!roam_info)
 		return;
@@ -715,15 +727,30 @@ void hdd_ndi_drv_ndi_create_rsp_handler(uint8_t vdev_id,
 		wlan_hdd_netif_queue_control(adapter,
 					WLAN_START_ALL_NETIF_QUEUE_N_CARRIER,
 					WLAN_CONTROL_PATH);
+
+		if (QDF_IS_STATUS_ERROR(cfg_nan_get_ndp_inactivity_timeout(
+		    hdd_ctx->psoc, &ndp_inactivity_timeout)))
+			hdd_err("Failed to fetch inactivity timeout value");
+
+		sme_cli_set_command(adapter->vdev_id,
+				    WMI_VDEV_PARAM_NDP_INACTIVITY_TIMEOUT,
+				    ndp_inactivity_timeout, VDEV_CMD);
+
+		if (QDF_IS_STATUS_SUCCESS(cfg_nan_get_ndp_keepalive_period(
+						hdd_ctx->psoc,
+						&ndp_keep_alive_period)))
+			sme_cli_set_command(
+				adapter->vdev_id,
+				WMI_VDEV_PARAM_NDP_KEEPALIVE_TIMEOUT,
+				ndp_keep_alive_period, VDEV_CMD);
 	} else {
 		hdd_alert("NDI interface creation failed with reason %d",
 			ndi_rsp->reason /* create_reason */);
 	}
 
-	sta_ctx->broadcast_sta_id = sta_id;
-	hdd_save_peer(sta_ctx, sta_id, &bc_mac_addr);
-	hdd_roam_register_sta(adapter, roam_info, sta_id, &tmp_bss_descp);
-	hdd_ctx->sta_to_adapter[sta_id] = adapter;
+	hdd_save_peer(sta_ctx, &bc_mac_addr);
+	qdf_copy_macaddr(&roam_info->bssid, &bc_mac_addr);
+	hdd_roam_register_sta(adapter, roam_info, &tmp_bss_descp);
 
 	qdf_mem_free(roam_info);
 }
@@ -753,7 +780,7 @@ void hdd_ndi_drv_ndi_delete_rsp_handler(uint8_t vdev_id)
 	struct hdd_context *hdd_ctx;
 	struct hdd_adapter *adapter;
 	struct hdd_station_ctx *sta_ctx;
-	uint8_t sta_id;
+	struct qdf_mac_addr bc_mac_addr = QDF_MAC_ADDR_BCAST_INIT;
 
 	hdd_ctx = cds_get_context(QDF_MODULE_ID_HDD);
 	if (!hdd_ctx) {
@@ -773,17 +800,18 @@ void hdd_ndi_drv_ndi_delete_rsp_handler(uint8_t vdev_id)
 		return;
 	}
 
-	sta_id = sta_ctx->broadcast_sta_id;
-	if (sta_id < HDD_MAX_ADAPTERS) {
-		hdd_ctx->sta_to_adapter[sta_id] = NULL;
-		hdd_roam_deregister_sta(adapter, sta_id);
-		hdd_delete_peer(sta_ctx, sta_id);
-		sta_ctx->broadcast_sta_id = HDD_WLAN_INVALID_STA_ID;
-	}
+	hdd_delete_peer(sta_ctx, &bc_mac_addr);
 
 	wlan_hdd_netif_queue_control(adapter,
 				     WLAN_STOP_ALL_NETIF_QUEUE_N_CARRIER,
 				     WLAN_CONTROL_PATH);
+
+	/*
+	 * For NAN Data interface, the close session results in the final
+	 * indication to the userspace
+	 */
+	if (adapter->device_mode == QDF_NDI_MODE)
+		hdd_ndp_session_end_handler(adapter);
 
 	complete(&adapter->disconnect_comp_var);
 }
@@ -809,8 +837,6 @@ int hdd_ndp_new_peer_handler(uint8_t vdev_id, uint16_t sta_id,
 	struct bss_description tmp_bss_descp = {0};
 	struct csr_roam_info *roam_info;
 
-	hdd_enter();
-
 	hdd_ctx = cds_get_context(QDF_MODULE_ID_HDD);
 	if (!hdd_ctx) {
 		hdd_err("hdd_ctx is null");
@@ -829,13 +855,8 @@ int hdd_ndp_new_peer_handler(uint8_t vdev_id, uint16_t sta_id,
 		return -EINVAL;
 	}
 
-	if (sta_id >= HDD_MAX_ADAPTERS) {
-		hdd_err("Error: Invalid sta_id: %u", sta_id);
-		return -EINVAL;
-	}
-
 	/* save peer in ndp ctx */
-	if (false == hdd_save_peer(sta_ctx, sta_id, peer_mac_addr)) {
+	if (!hdd_save_peer(sta_ctx, peer_mac_addr)) {
 		hdd_err("Ndp peer table full. cannot save new peer");
 		return -EPERM;
 	}
@@ -843,23 +864,45 @@ int hdd_ndp_new_peer_handler(uint8_t vdev_id, uint16_t sta_id,
 	roam_info = qdf_mem_malloc(sizeof(*roam_info));
 	if (!roam_info)
 		return -ENOMEM;
+	qdf_copy_macaddr(&roam_info->bssid, peer_mac_addr);
 
 	/* this function is called for each new peer */
-	hdd_roam_register_sta(adapter, roam_info, sta_id, &tmp_bss_descp);
-	hdd_ctx->sta_to_adapter[sta_id] = adapter;
+	hdd_roam_register_sta(adapter, roam_info, &tmp_bss_descp);
+
+	qdf_copy_macaddr(&roam_info->bssid, peer_mac_addr);
+
 	/* perform following steps for first new peer ind */
 	if (fist_peer) {
-		hdd_info("Set ctx connection state to connected");
+		hdd_debug("Set ctx connection state to connected");
+		hdd_bus_bw_compute_prev_txrx_stats(adapter);
+		hdd_bus_bw_compute_timer_start(hdd_ctx);
 		sta_ctx->conn_info.conn_state = eConnectionState_NdiConnected;
 		hdd_wmm_connect(adapter, roam_info, eCSR_BSS_TYPE_NDI);
 		wlan_hdd_netif_queue_control(adapter,
 				WLAN_WAKE_ALL_NETIF_QUEUE, WLAN_CONTROL_PATH);
 	}
 	qdf_mem_free(roam_info);
-	hdd_exit();
 	return 0;
 }
 
+void hdd_cleanup_ndi(struct hdd_context *hdd_ctx,
+		     struct hdd_adapter *adapter)
+{
+	struct hdd_station_ctx *sta_ctx = WLAN_HDD_GET_STATION_CTX_PTR(adapter);
+
+	if (sta_ctx->conn_info.conn_state != eConnectionState_NdiConnected) {
+		hdd_debug("NDI has no NDPs");
+		return;
+	}
+	sta_ctx->conn_info.conn_state = eConnectionState_NdiDisconnected;
+	hdd_conn_set_connection_state(adapter,
+		eConnectionState_NdiDisconnected);
+	hdd_debug("Stop netif tx queues.");
+	wlan_hdd_netif_queue_control(adapter, WLAN_STOP_ALL_NETIF_QUEUE,
+				     WLAN_CONTROL_PATH);
+	hdd_bus_bw_compute_reset_prev_txrx_stats(adapter);
+	hdd_bus_bw_compute_timer_try_stop(hdd_ctx);
+}
 
 /**
  * hdd_ndp_peer_departed_handler() - Handle NDP peer departed indication
@@ -875,8 +918,6 @@ void hdd_ndp_peer_departed_handler(uint8_t vdev_id, uint16_t sta_id,
 	struct hdd_adapter *adapter;
 	struct hdd_station_ctx *sta_ctx;
 
-	hdd_enter();
-
 	hdd_ctx = cds_get_context(QDF_MODULE_ID_HDD);
 	if (!hdd_ctx) {
 		hdd_err("hdd_ctx is null");
@@ -895,24 +936,11 @@ void hdd_ndp_peer_departed_handler(uint8_t vdev_id, uint16_t sta_id,
 		return;
 	}
 
-	if (sta_id >= HDD_MAX_ADAPTERS) {
-		hdd_err("Error: Invalid sta_id: %u", sta_id);
-		return;
-	}
-
-	hdd_roam_deregister_sta(adapter, sta_id);
-	hdd_delete_peer(sta_ctx, sta_id);
-	hdd_ctx->sta_to_adapter[sta_id] = NULL;
+	hdd_delete_peer(sta_ctx, peer_mac_addr);
 
 	if (last_peer) {
-		hdd_info("No more ndp peers.");
-		sta_ctx->conn_info.conn_state = eConnectionState_NdiDisconnected;
-		hdd_conn_set_connection_state(adapter,
-			eConnectionState_NdiDisconnected);
-		hdd_info("Stop netif tx queues.");
-		wlan_hdd_netif_queue_control(adapter, WLAN_STOP_ALL_NETIF_QUEUE,
-					     WLAN_CONTROL_PATH);
+		hdd_debug("No more ndp peers.");
+		hdd_cleanup_ndi(hdd_ctx, adapter);
+		qdf_event_set(&adapter->peer_cleanup_done);
 	}
-
-	hdd_exit();
 }

@@ -1,7 +1,7 @@
 /*
  * Platform Dependent file for Samsung Exynos
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -61,6 +61,10 @@
 #include <linux/sec_class.h>
 #endif /* CONFIG_SEC_SYSFS */
 
+#if defined(CONFIG_MACH_A7LTE) || defined(CONFIG_NOBLESSE)
+#define PINCTL_DELAY 150
+#endif /* CONFIG_MACH_A7LTE || CONFIG_NOBLESSE */
+
 #ifdef CONFIG_BROADCOM_WIFI_RESERVED_MEM
 extern int dhd_init_wlan_mem(void);
 extern void *dhd_wlan_mem_prealloc(int section, unsigned long size);
@@ -75,67 +79,60 @@ EXPORT_SYMBOL(wlan_host_wake_irq);
 static unsigned int wlan_host_wake_up = -1;
 #endif /* CONFIG_BCMDHD_OOB_HOST_WAKE */
 
-#ifdef CONFIG_BCMDHD_PCIE
-#define EXYNOS_PCIE_RC_ONOFF
-#endif /* CONFIG_BCMDHD_PCIE */
+#if defined(CONFIG_MACH_A7LTE) || defined(CONFIG_NOBLESSE)
+extern struct device *mmc_dev_for_wlan;
+#endif /* CONFIG_MACH_A7LTE || CONFIG_NOBLESSE */
 
-#ifdef EXYNOS_PCIE_RC_ONOFF
+#ifdef CONFIG_BCMDHD_PCIE
 #if defined(CONFIG_MACH_UNIVERSAL7420) || defined(CONFIG_MACH_EXSOM7420)
 #define SAMSUNG_PCIE_CH_NUM 1
-#elif defined(CONFIG_SOC_EXYNOS8890)|| defined(CONFIG_SOC_EXYNOS8895) || \
-	defined(CONFIG_SOC_EXYNOS9810) || defined(CONFIG_SOC_EXYNOS9820) || \
-	defined(CONFIG_SOC_EXYNOS9830)
+#else
 #define SAMSUNG_PCIE_CH_NUM 0
-#endif
+#endif /* PCIE RC CH# by Platform defines */
 extern void exynos_pcie_pm_resume(int);
-extern void exynos_pcie_pm_suspend(int);
-#endif /* EXYNOS_PCIE_RC_ONOFF */
+#endif /* CONFIG_BCMDHD_PCIE */
 
-#if defined(CONFIG_SOC_EXYNOS7870)
+#if defined(CONFIG_SOC_EXYNOS7870) || defined(CONFIG_SOC_EXYNOS9110)
 extern struct mmc_host *wlan_mmc;
 extern void mmc_ctrl_power(struct mmc_host *host, bool onoff);
-#endif /* SOC_EXYNOS7870 */
+#endif /* SOC_EXYNOS7870 || CONFIG_SOC_EXYNOS9110 */
 
 static int
 dhd_wlan_power(int onoff)
 {
+#if defined(CONFIG_MACH_A7LTE) || defined(CONFIG_NOBLESSE)
+	struct pinctrl *pinctrl = NULL;
+#endif /* CONFIG_MACH_A7LTE || ONFIG_NOBLESSE */
+
 	printk(KERN_INFO"%s Enter: power %s\n", __FUNCTION__, onoff ? "on" : "off");
 
-#ifdef EXYNOS_PCIE_RC_ONOFF
-	if (!onoff) {
-		exynos_pcie_pm_suspend(SAMSUNG_PCIE_CH_NUM);
-	}
-
-	if (gpio_direction_output(wlan_pwr_on, onoff)) {
-		printk(KERN_ERR "%s failed to control WLAN_REG_ON to %s\n",
-			__FUNCTION__, onoff ? "HIGH" : "LOW");
-		return -EIO;
-	}
-
+#if defined(CONFIG_MACH_A7LTE) || defined(CONFIG_NOBLESSE)
 	if (onoff) {
-#if defined(CONFIG_SOC_EXYNOS8895) || defined(CONFIG_SOC_EXYNOS9810) || \
-	defined(CONFIG_SOC_EXYNOS9820) || defined(CONFIG_SOC_EXYNOS9830)
-	/* XXX: JIRA SWWLAN-139454: Added L1ss disable before firmware download completion
-	 * due to link down issue
-	 */
-		printk(KERN_ERR "%s Disable L1ss EP side\n", __FUNCTION__);
-		exynos_pcie_l1ss_ctrl(0, PCIE_L1SS_CTRL_WIFI);
-#endif /* CONFIG_SOC_EXYNOS8895 || CONFIG_SOC_EXYNOS9810 ||
-	* CONFIG_SOC_EXYNOS9820 || CONFIG_SOC_EXYNOS9830
-	*/
-		exynos_pcie_pm_resume(SAMSUNG_PCIE_CH_NUM);
+		pinctrl = devm_pinctrl_get_select(mmc_dev_for_wlan, "sdio_wifi_on");
+		if (IS_ERR(pinctrl))
+			printk(KERN_INFO "%s WLAN SDIO GPIO control error\n", __FUNCTION__);
+		msleep(PINCTL_DELAY);
 	}
-#else
+#endif /* CONFIG_MACH_A7LTE || CONFIG_NOBLESSE */
+
 	if (gpio_direction_output(wlan_pwr_on, onoff)) {
 		printk(KERN_ERR "%s failed to control WLAN_REG_ON to %s\n",
 			__FUNCTION__, onoff ? "HIGH" : "LOW");
 		return -EIO;
 	}
-#if defined(CONFIG_SOC_EXYNOS7870)
+
+#if defined(CONFIG_MACH_A7LTE) || defined(CONFIG_NOBLESSE)
+	if (!onoff) {
+		pinctrl = devm_pinctrl_get_select(mmc_dev_for_wlan, "sdio_wifi_off");
+		if (IS_ERR(pinctrl))
+			printk(KERN_INFO "%s WLAN SDIO GPIO control error\n", __FUNCTION__);
+	}
+#endif /* CONFIG_MACH_A7LTE || CONFIG_NOBLESSE */
+
+#if defined(CONFIG_SOC_EXYNOS7870) || defined(CONFIG_SOC_EXYNOS9110)
 	if (wlan_mmc)
 		mmc_ctrl_power(wlan_mmc, onoff);
-#endif /* SOC_EXYNOS7870 */
-#endif /* EXYNOS_PCIE_RC_ONOFF */
+#endif /* SOC_EXYNOS7870 || CONFIG_SOC_EXYNOS9110 */
 	return 0;
 }
 
@@ -201,9 +198,9 @@ dhd_wlan_init_gpio(void)
 	if (wlan_dev)
 		gpio_export_link(wlan_dev, "WLAN_REG_ON", wlan_pwr_on);
 
-#ifdef EXYNOS_PCIE_RC_ONOFF
+#ifdef CONFIG_BCMDHD_PCIE
 	exynos_pcie_pm_resume(SAMSUNG_PCIE_CH_NUM);
-#endif /* EXYNOS_PCIE_RC_ONOFF */
+#endif /* CONFIG_BCMDHD_PCIE */
 
 #ifdef CONFIG_BCMDHD_OOB_HOST_WAKE
 	/* ========== WLAN_HOST_WAKE ============ */

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2019 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2020 The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -239,16 +239,13 @@ QDF_STATUS hdd_update_mac_config(struct hdd_context *hdd_ctx)
 	QDF_STATUS qdf_status = QDF_STATUS_SUCCESS;
 
 	memset(mac_table, 0, sizeof(mac_table));
-	status = request_firmware_direct(&fw,
-					 WLAN_MAC_FILE,
-					 hdd_ctx->parent_dev);
+	status = request_firmware(&fw, WLAN_MAC_FILE, hdd_ctx->parent_dev);
 	if (status) {
 		/*
-		 * request_firmware_direct "fails" if the file is not found,
-		 * which is a valid setup for us, so log using debug instead
-		 * of error
+		 * request_firmware "fails" if the file is not found, which is a
+		 * valid setup for us, so log using debug instead of error
 		 */
-		hdd_debug("request_firmware_direct failed; status:%d", status);
+		hdd_debug("request_firmware failed; status:%d", status);
 		return QDF_STATUS_E_FAILURE;
 	}
 
@@ -449,7 +446,7 @@ QDF_STATUS hdd_set_idle_ps_config(struct hdd_context *hdd_ctx, bool val)
 	}
 
 	if (hdd_ctx->imps_enabled == val) {
-		hdd_info("Already in the requested power state:%d", val);
+		hdd_nofl_debug("Already in the requested power state:%d", val);
 		return QDF_STATUS_SUCCESS;
 	}
 
@@ -481,6 +478,26 @@ static void hdd_set_fine_time_meas_cap(struct hdd_context *hdd_ctx)
 	ucfg_mlme_get_fine_time_meas_cap(hdd_ctx->psoc, &capability);
 	ucfg_wifi_pos_set_ftm_cap(hdd_ctx->psoc, capability);
 	hdd_debug("fine time meas capability - Enabled: %04x", capability);
+}
+
+/**
+ * hdd_set_oem_6g_supported() - set oem 6g support enabled/disable
+ * @hdd_ctx: HDD context
+ *
+ * This function is used to pass oem 6g support enabled/disable value
+ * coming from INI to SME. This function make sure that configure
+ * INI is supported by the device.
+ *
+ * Return: None
+ */
+static void hdd_set_oem_6g_supported(struct hdd_context *hdd_ctx)
+{
+	bool oem_6g_disable = 1;
+
+	ucfg_mlme_get_oem_6g_supported(hdd_ctx->psoc, &oem_6g_disable);
+	ucfg_wifi_pos_set_oem_6g_supported(hdd_ctx->psoc, oem_6g_disable);
+	hdd_debug("oem 6g support is - %s",
+		  oem_6g_disable ? "Enabled" : "Disbaled");
 }
 
 /**
@@ -836,7 +853,7 @@ QDF_STATUS hdd_set_sme_config(struct hdd_context *hdd_ctx)
 	 */
 	sme_config->csr_config.phyMode =
 		hdd_cfg_xlate_to_csr_phy_mode(config->dot11Mode);
-
+	sme_update_nud_config(mac_handle, config->enable_nud_tracking);
 	if (config->dot11Mode == eHDD_DOT11_MODE_abg ||
 	    config->dot11Mode == eHDD_DOT11_MODE_11b ||
 	    config->dot11Mode == eHDD_DOT11_MODE_11g ||
@@ -859,15 +876,14 @@ QDF_STATUS hdd_set_sme_config(struct hdd_context *hdd_ctx)
 	 */
 	/* This param cannot be configured from INI */
 	sme_config->csr_config.send_smps_action = true;
-	sme_config->csr_config.AdHocChannel5G = ibss_cfg.adhoc_ch_5g;
-	sme_config->csr_config.AdHocChannel24 = ibss_cfg.adhoc_ch_2g;
+	sme_config->csr_config.ad_hoc_ch_freq_5g = ibss_cfg.adhoc_ch_5g;
+	sme_config->csr_config.ad_hoc_ch_freq_2g = ibss_cfg.adhoc_ch_2g;
 	sme_config->csr_config.ProprietaryRatesEnabled = 0;
 	sme_config->csr_config.HeartbeatThresh50 = 40;
 	ucfg_scan_cfg_get_dfs_chan_scan_allowed(hdd_ctx->psoc,
 						&enable_dfs_scan);
 	sme_config->csr_config.fEnableDFSChnlScan = enable_dfs_scan;
 	sme_config->csr_config.Csr11dinfo.Channels.numChannels = 0;
-
 	hdd_set_power_save_offload_config(hdd_ctx);
 
 #ifdef FEATURE_WLAN_ESE
@@ -894,6 +910,7 @@ QDF_STATUS hdd_set_sme_config(struct hdd_context *hdd_ctx)
 	sme_config->csr_config.max_intf_count = hdd_ctx->max_intf_count;
 
 	hdd_set_fine_time_meas_cap(hdd_ctx);
+	hdd_set_oem_6g_supported(hdd_ctx);
 
 	cds_set_multicast_logging(hdd_ctx->config->multicast_host_fw_msgs);
 

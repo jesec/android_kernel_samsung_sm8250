@@ -1,7 +1,7 @@
 /*
  * Broadcom Dongle Host Driver (DHD), Linux monitor network interface
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,7 +18,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #include <osl.h>
@@ -47,7 +47,7 @@ typedef enum monitor_states
 	MONITOR_STATE_INTERFACE_ADDED = 0x2,
 	MONITOR_STATE_INTERFACE_DELETED = 0x4
 } monitor_states_t;
-/* XXX
+/*
  * Some external functions, TODO: move them to dhd_linux.h
  */
 int dhd_add_monitor(const char *name, struct net_device **new_ndev);
@@ -224,10 +224,8 @@ static int dhd_mon_if_subif_start_xmit(struct sk_buff *skb, struct net_device *n
 		if ((dot11_hdr->frame_control & 0x0300) == 0x0300)
 			dot11_hdr_len += 6;
 
-		(void)memcpy_s(dst_mac_addr, sizeof(dst_mac_addr), dot11_hdr->addr1,
-				sizeof(dst_mac_addr));
-		(void)memcpy_s(src_mac_addr, sizeof(src_mac_addr), dot11_hdr->addr2,
-				sizeof(src_mac_addr));
+		eacopy(dot11_hdr->addr1, dst_mac_addr);
+		eacopy(dot11_hdr->addr2, src_mac_addr);
 
 		/* Skip the 802.11 header, QoS (if any) and SNAP, but leave spaces for
 		 * for two MAC addresses

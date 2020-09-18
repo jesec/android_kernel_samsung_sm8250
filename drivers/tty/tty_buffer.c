@@ -165,15 +165,12 @@ static struct tty_buffer *tty_buffer_alloc(struct tty_port *port, size_t size)
 
 	/* Should possibly check if this fails for the largest buffer we
 	   have queued and recycle that ? */
-	if (atomic_read(&port->buf.mem_used) > port->buf.mem_limit){
-		printk("[tty] tty buffer ran out\n");
+	if (atomic_read(&port->buf.mem_used) > port->buf.mem_limit)
 		return NULL;
-	}
 	p = kmalloc(sizeof(struct tty_buffer) + 2 * size, GFP_ATOMIC);
-	if (p == NULL){
-		printk("[tty] tty buffer alloc fail\n");
+	if (p == NULL)
 		return NULL;
-	}
+
 found:
 	tty_buffer_reset(p, size);
 	atomic_add(size, &port->buf.mem_used);

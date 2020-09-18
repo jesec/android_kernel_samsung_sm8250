@@ -43,6 +43,7 @@
 #define IOCTL_SET_PARTIAL_HLPM_SCAN	_IOW(SELF_DISPLAY_IOCTL_MAGIC, 61, struct self_partial_hlpm_scan)
 #define IOCTL_SELF_MAX			70
 
+
 #define IMAGE_HEADER_SIZE	2
 #define IMAGE_HEADER_SELF_ICON	"IC"
 #define IMAGE_HEADER_ANALOG_CLK	"AC"

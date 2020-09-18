@@ -24,16 +24,15 @@ config SEC_LOG_BUF
 if SEC_LOG_BUF
 choice
 	bool "Select sec_log_buf type"
+	default SEC_LOG_BUF_NO_CONSOLE
 
 config SEC_LOG_BUF_NO_CONSOLE
 	bool "Direct copying form __log_buf"
-	default y
 	help
 	  Kernel log will be copied directly from __log_buf.
 
 config SEC_LOG_BUF_CONSOLE
 	bool "Console based implementaion (EXPERIMENTAL)"
-	default n
 	help
 	  sec_log_buf will be registered as a console.
 
@@ -249,3 +248,10 @@ config SEC_NOEYEINFO
 	default n
 	help
 	  This feature enable for no store ddr eye info to ddr eye node
+
+config SEC_QPNP_PON_SPARE_BITS
+	int "The number of available bits in QPNP_PON_SOFT_RB_SPARE register"
+	range 6 7
+	default 7
+	help
+	  The number of available bits in QPNP_PON_SOFT_RB_SPARE register

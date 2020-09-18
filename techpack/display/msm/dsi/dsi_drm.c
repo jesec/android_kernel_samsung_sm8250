@@ -91,10 +91,7 @@ static void convert_to_dsi_mode(const struct drm_display_mode *drm_mode,
 		dsi_mode->panel_mode = DSI_OP_CMD_MODE;
 
 #if defined(CONFIG_DISPLAY_SAMSUNG)
-	if (drm_mode->type & DRM_MODE_TYPE_USERDEF)
-		dsi_mode->timing.sot_hs_mode = true;
-	else
-		dsi_mode->timing.sot_hs_mode = false;
+	dsi_mode->timing.sot_hs_mode = ss_is_sot_hs_from_drm_mode(drm_mode);
 #endif
 }
 
@@ -151,14 +148,11 @@ void dsi_convert_to_drm_mode(const struct dsi_display_mode *dsi_mode,
 		drm_mode->flags |= DRM_MODE_FLAG_CMD_MODE_PANEL;
 
 #if defined(CONFIG_DISPLAY_SAMSUNG)
-	if (dsi_mode->timing.sot_hs_mode)
-		drm_mode->type |= DRM_MODE_TYPE_USERDEF;
-
 	snprintf(drm_mode->name, DRM_DISPLAY_MODE_LEN, "%dx%dx%dx%d%s%s",
 			drm_mode->hdisplay, drm_mode->vdisplay,
 			drm_mode->vrefresh, drm_mode->clock,
 			video_mode ? "vid" : "cmd",
-			dsi_mode->timing.sot_hs_mode ? "HS" : "Normal");
+			dsi_mode->timing.sot_hs_mode ? "HS" : "NS");
 #else
 	/* set mode name */
 	snprintf(drm_mode->name, DRM_DISPLAY_MODE_LEN, "%dx%dx%dx%d%s",
@@ -276,6 +270,7 @@ static void dsi_bridge_enable(struct drm_bridge *bridge)
 static void dsi_bridge_disable(struct drm_bridge *bridge)
 {
 	int rc = 0;
+	int private_flags;
 	struct dsi_display *display;
 	struct dsi_bridge *c_bridge = to_dsi_bridge(bridge);
 
@@ -284,18 +279,14 @@ static void dsi_bridge_disable(struct drm_bridge *bridge)
 		return;
 	}
 	display = c_bridge->display;
+	private_flags =
+		bridge->encoder->crtc->state->adjusted_mode.private_flags;
 
 	if (display && display->drm_conn) {
-		if (bridge->encoder->crtc->state->adjusted_mode.private_flags &
-			MSM_MODE_FLAG_SEAMLESS_POMS) {
-			display->poms_pending = true;
-			/* Disable ESD thread, during panel mode switch */
-			sde_connector_schedule_status_work(display->drm_conn,
-				false);
-		} else {
-			display->poms_pending = false;
-			sde_connector_helper_bridge_disable(display->drm_conn);
-		}
+		display->poms_pending =
+			private_flags & MSM_MODE_FLAG_SEAMLESS_POMS;
+
+		sde_connector_helper_bridge_disable(display->drm_conn);
 	}
 
 	rc = dsi_display_pre_disable(c_bridge->display);
@@ -448,34 +439,28 @@ static bool dsi_bridge_mode_fixup(struct drm_bridge *bridge,
 			if (display->panel->panel_initialized || display->is_cont_splash_enabled) {
 				struct samsung_display_driver_data *vdd = display->panel->panel_private;
 				struct vrr_info *vrr = &vdd->vrr;
+				bool adjusted_sot_hs;
+				bool cur_sot_hs;
 
-				vrr->target_refresh_rate = adjusted_mode->vrefresh;
-				vrr->target_sot_hs_mode = !!(adjusted_mode->type & DRM_MODE_TYPE_USERDEF);
+				vrr->adjusted_refresh_rate = adjusted_mode->vrefresh;
+
+				cur_sot_hs = ss_is_sot_hs_from_drm_mode(cur_mode);
+				adjusted_sot_hs = ss_is_sot_hs_from_drm_mode(adjusted_mode);
+				vrr->adjusted_sot_hs_mode = adjusted_sot_hs;
 
 				vrr->cur_h_active = cur_mode->hdisplay;
 				vrr->cur_v_active = cur_mode->vdisplay;
-				vrr->target_h_active = adjusted_mode->hdisplay;
-				vrr->target_v_active = adjusted_mode->vdisplay;
+				vrr->adjusted_h_active = adjusted_mode->hdisplay;
+				vrr->adjusted_v_active = adjusted_mode->vdisplay;
 
 				/* vrr->cur_refresh_rate valuse is changed in Bridge RR,
 				 * so use cur_mode info.
 				 */
 				if ((cur_mode->vrefresh != adjusted_mode->vrefresh) ||
-					((cur_mode->type & DRM_MODE_TYPE_USERDEF) !=
-					 (adjusted_mode->type & DRM_MODE_TYPE_USERDEF))) {
+						(cur_sot_hs != adjusted_sot_hs)) {
 					LCD_INFO("DMS: VRR flag: %d -> 1\n", vrr->is_vrr_changing);
 					vrr->is_vrr_changing = true;
-					vrr->running_vrr = true;
-
-					/* case 04323399:
-					 * MDP set SDE_RSC_CMD_STATE for inter-frame power collapse, which
-					 * refer to TE. In case of Bridge RR, which causes higher TE period than MDP setting,
-					 * it lost wr_ptr irq, and causes delayed pp_done irq and frame drop.
-					 * To prevent this
-					 * During Bridge RR, set RSC state to SDE_RSC_CLK_STATE, 4-frames power collapse,
-					 * Then recover its state after Bridge RR is done.
-					 */
-					vdd->vrr.force_rsc_clk_state = true;
+					vdd->vrr.running_vrr_mdp= true;
 				}
 
 				if ((cur_mode->hdisplay != adjusted_mode->hdisplay) ||
@@ -487,22 +472,29 @@ static bool dsi_bridge_mode_fixup(struct drm_bridge *bridge,
 
 				dsi_mode.dsi_mode_flags |= DSI_MODE_FLAG_DMS;
 
-				SS_XLOG(cur_mode->vrefresh,
-					!!(cur_mode->type & DRM_MODE_TYPE_USERDEF),
-					adjusted_mode->vrefresh,
-					!!(adjusted_mode->type & DRM_MODE_TYPE_USERDEF));
+				/* Set max sde core clock to prevent screen noise due to
+				 * unbalanced clock between MDP and panel
+				 * SDE core clock will be restored in ss_panel_vrr_switch()
+				 * after finish VRR change.
+				 */
+				rc = ss_set_max_sde_core_clk(display->drm_dev);
+				if (rc) {
+					LCD_ERR("fail to set max sde core clock..(%d)\n", rc);
+					SS_XLOG(rc, 0xebad);
+				}
 
+				SS_XLOG(cur_mode->vrefresh, cur_sot_hs, adjusted_mode->vrefresh, adjusted_sot_hs);
 				LCD_INFO("DMS: switch mode %s(%dx%d@%d%s) -> %s(%dx%d@%d%s)\n",
 					cur_mode->name,
 					cur_mode->hdisplay,
 					cur_mode->vdisplay,
 					cur_mode->vrefresh,
-					!!(cur_mode->type & DRM_MODE_TYPE_USERDEF) ? "HS" : "NM",
+					cur_sot_hs ? "HS" : "NS",
 					adjusted_mode->name, 
 					adjusted_mode->hdisplay,
 					adjusted_mode->vdisplay,
 					adjusted_mode->vrefresh,
-					!!(adjusted_mode->type & DRM_MODE_TYPE_USERDEF) ? "HS" : "NM");
+					adjusted_sot_hs ? "HS" : "NS");
 			}
 		} else if (!drm_mode_equal(cur_mode, adjusted_mode)) {
 			/* In case of that
@@ -521,21 +513,23 @@ static bool dsi_bridge_mode_fixup(struct drm_bridge *bridge,
 			 */
 			struct samsung_display_driver_data *vdd = display->panel->panel_private;
 			struct vrr_info *vrr = &vdd->vrr;
+			bool adjusted_sot_hs;
+			bool cur_sot_hs;
 
-			vrr->cur_refresh_rate = vrr->target_refresh_rate =
+			cur_sot_hs = ss_is_sot_hs_from_drm_mode(cur_mode);
+			adjusted_sot_hs = ss_is_sot_hs_from_drm_mode(adjusted_mode);
+
+			vrr->cur_refresh_rate = vrr->adjusted_refresh_rate =
 				adjusted_mode->vrefresh;
-			vrr->cur_sot_hs_mode = vrr->target_sot_hs_mode =
-				!!(adjusted_mode->type & DRM_MODE_TYPE_USERDEF);
-
-			vrr->cur_h_active = vrr->target_h_active =
+			vrr->cur_sot_hs_mode = vrr->adjusted_sot_hs_mode =
+				adjusted_sot_hs;
+			vrr->cur_h_active = vrr->adjusted_h_active =
 				adjusted_mode->hdisplay;
-			vrr->cur_v_active  = vrr->target_v_active =
+			vrr->cur_v_active  = vrr->adjusted_v_active =
 				adjusted_mode->vdisplay;
 
-			SS_XLOG(cur_mode->vrefresh,
-				!!(cur_mode->type & DRM_MODE_TYPE_USERDEF),
-				adjusted_mode->vrefresh,
-				!!(adjusted_mode->type & DRM_MODE_TYPE_USERDEF),
+			SS_XLOG(cur_mode->vrefresh, cur_sot_hs,
+				adjusted_mode->vrefresh, adjusted_sot_hs,
 				crtc_state->active_changed, display->is_cont_splash_enabled);
 
 			LCD_INFO("DMS: switch mode %s(%dx%d@%d%s) -> %s(%dx%d@%d%s) " \
@@ -544,12 +538,12 @@ static bool dsi_bridge_mode_fixup(struct drm_bridge *bridge,
 				cur_mode->hdisplay,
 				cur_mode->vdisplay,
 				cur_mode->vrefresh,
-				!!(cur_mode->type & DRM_MODE_TYPE_USERDEF) ? "HS" : "NM",
+				cur_sot_hs ? "HS" : "NM",
 				adjusted_mode->name,
 				adjusted_mode->hdisplay,
 				adjusted_mode->vdisplay,
 				adjusted_mode->vrefresh,
-				!!(adjusted_mode->type & DRM_MODE_TYPE_USERDEF) ? "HS" : "NM",
+				adjusted_sot_hs ? "HS" : "NM",
 				crtc_state->active_changed,
 				display->is_cont_splash_enabled);
 		}
@@ -561,6 +555,7 @@ static bool dsi_bridge_mode_fixup(struct drm_bridge *bridge,
 	/* Reject seamless transition when active changed */
 	if (crtc_state->active_changed &&
 		((dsi_mode.dsi_mode_flags & DSI_MODE_FLAG_VRR) ||
+		(dsi_mode.dsi_mode_flags & DSI_MODE_FLAG_POMS) ||
 		(dsi_mode.dsi_mode_flags & DSI_MODE_FLAG_DYN_CLK))) {
 		DSI_ERR("seamless upon active changed 0x%x %d\n",
 			dsi_mode.dsi_mode_flags, crtc_state->active_changed);
@@ -627,6 +622,10 @@ int dsi_conn_get_mode_info(struct drm_connector *connector,
 	mode_info->clk_rate = dsi_drm_find_bit_clk_rate(display, drm_mode);
 	mode_info->mdp_transfer_time_us =
 		dsi_mode.priv_info->mdp_transfer_time_us;
+
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+	mode_info->frame_rate_org = mode_info->frame_rate;
+#endif
 
 	memcpy(&mode_info->topology, &dsi_mode.priv_info->topology,
 			sizeof(struct msm_display_topology));
@@ -943,8 +942,13 @@ int dsi_connector_get_modes(struct drm_connector *connector, void *data,
 	struct drm_display_mode drm_mode;
 	struct dsi_display *display = data;
 	struct edid edid;
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+	unsigned int width_mm = connector->display_info.width_mm;
+	unsigned int height_mm = connector->display_info.height_mm;
+#else
 	u8 width_mm = connector->display_info.width_mm;
 	u8 height_mm = connector->display_info.height_mm;
+#endif
 	const u8 edid_buf[EDID_LENGTH] = {
 		0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x44, 0x6D,
 		0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x1B, 0x10, 0x01, 0x03,

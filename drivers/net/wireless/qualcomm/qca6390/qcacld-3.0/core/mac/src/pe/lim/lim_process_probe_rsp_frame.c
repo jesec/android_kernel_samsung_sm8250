@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011-2019 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2011-2020 The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -108,13 +108,12 @@ lim_process_probe_rsp_frame(struct mac_context *mac_ctx, uint8_t *rx_Packet_info
 	tSirProbeRespBeacon *probe_rsp;
 	uint8_t qos_enabled = false;
 	uint8_t wme_enabled = false;
+	uint32_t chan_freq = 0;
 
 	if (!session_entry) {
 		pe_err("session_entry is NULL");
 		return;
 	}
-	pe_debug("SessionId: %d ProbeRsp Frame is received",
-		session_entry->peSessionId);
 
 	probe_rsp = qdf_mem_malloc(sizeof(tSirProbeRespBeacon));
 	if (!probe_rsp) {
@@ -127,10 +126,6 @@ lim_process_probe_rsp_frame(struct mac_context *mac_ctx, uint8_t *rx_Packet_info
 
 	header = WMA_GET_RX_MAC_HEADER(rx_Packet_info);
 
-	pe_debug("Rx Probe Response with length = %d from "QDF_MAC_ADDR_STR,
-		WMA_GET_RX_MPDU_LEN(rx_Packet_info),
-		QDF_MAC_ADDR_ARRAY(header->sa));
-
 	/* Validate IE information before processing Probe Response Frame */
 	if (lim_validate_ie_information_in_probe_rsp_frame(mac_ctx,
 				rx_Packet_info) !=
@@ -141,11 +136,11 @@ lim_process_probe_rsp_frame(struct mac_context *mac_ctx, uint8_t *rx_Packet_info
 	}
 
 	frame_len = WMA_GET_RX_PAYLOAD_LEN(rx_Packet_info);
-	QDF_TRACE(QDF_MODULE_ID_PE, QDF_TRACE_LEVEL_DEBUG,
-		FL("Probe Resp Frame Received: BSSID "
-		QDF_MAC_ADDR_STR " (RSSI %d)"),
-		QDF_MAC_ADDR_ARRAY(header->bssId),
-		(uint) abs((int8_t)WMA_GET_RX_RSSI_NORMALIZED(rx_Packet_info)));
+	pe_debug("Probe Resp(len %d): " QDF_MAC_ADDR_STR " RSSI %d",
+		 WMA_GET_RX_MPDU_LEN(rx_Packet_info),
+		 QDF_MAC_ADDR_ARRAY(header->bssId),
+		 (uint)abs((int8_t)
+		 WMA_GET_RX_RSSI_NORMALIZED(rx_Packet_info)));
 	/* Get pointer to Probe Response frame body */
 	body = WMA_GET_RX_MPDU_DATA(rx_Packet_info);
 		/* Enforce Mandatory IEs */
@@ -204,14 +199,16 @@ lim_process_probe_rsp_frame(struct mac_context *mac_ctx, uint8_t *rx_Packet_info
 		}
 		if (!LIM_IS_CONNECTION_ACTIVE(session_entry)) {
 			pe_warn("Recved Probe Resp from AP,AP-alive");
-			if (probe_rsp->HTInfo.present)
+			if (probe_rsp->HTInfo.present) {
+				chan_freq =
+				    wlan_reg_legacy_chan_to_freq(mac_ctx->pdev,
+								 probe_rsp->HTInfo.primaryChannel);
+				lim_received_hb_handler(mac_ctx, chan_freq,
+							session_entry);
+			} else
 				lim_received_hb_handler(mac_ctx,
-					probe_rsp->HTInfo.primaryChannel,
-					session_entry);
-			else
-				lim_received_hb_handler(mac_ctx,
-					(uint8_t)probe_rsp->channelNumber,
-					session_entry);
+							probe_rsp->chan_freq,
+							session_entry);
 		}
 		if (LIM_IS_STA_ROLE(session_entry) &&
 				!wma_is_csa_offload_enabled()) {
@@ -276,7 +273,7 @@ lim_process_probe_rsp_frame(struct mac_context *mac_ctx, uint8_t *rx_Packet_info
 						session_entry);
 				lim_send_edca_params(mac_ctx,
 					session_entry->gLimEdcaParamsActive,
-					sta_ds->bssId, false);
+					session_entry->vdev_id, false);
 			} else {
 				pe_err("SelfEntry missing in Hash");
 			}

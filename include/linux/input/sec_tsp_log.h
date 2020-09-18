@@ -39,5 +39,10 @@ extern void sec_debug_tsp_raw_data_msg(char *msg, char *fmt, ...);
 extern void sec_tsp_raw_data_clear(void);
 #endif
 extern void sec_debug_tsp_command_history(char *buf);
+
+/* Sponge Infinite dump */
+#define SEC_TSP_SPONGE_LOG_BUF_SIZE	(128 * 1024)	/* 128 KB */
+extern void sec_tsp_sponge_log(char *buf);
+
 #endif /* _SEC_TSP_LOG_H_ */
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2019 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2018-2020 The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -22,6 +22,10 @@
 #include "wlan_fw_offload_main.h"
 #include "cds_api.h"
 #include "wma.h"
+
+#ifdef SEC_CONFIG_PSM_SYSFS
+extern int wlan_hdd_sec_get_psm(void);
+#endif /* SEC_CONFIG_PSM_SYSFS */
 
 struct wlan_fwol_psoc_obj *fwol_get_psoc_obj(struct wlan_objmgr_psoc *psoc)
 {
@@ -52,6 +56,32 @@ fwol_mpta_helper_config_get(struct wlan_objmgr_psoc *psoc,
 }
 #endif
 
+/**
+ * fwol_three_way_coex_config_legacy_config_get: Populate
+ * btc_three_way_coex_config_legacy_enable from cfg
+ * @psoc: The global psoc handler
+ * @coex_config: The cfg structure
+ *
+ * Return: none
+ */
+#ifdef FEATURE_COEX_CONFIG
+static void
+fwol_three_way_coex_config_legacy_config_get(
+			struct wlan_objmgr_psoc *psoc,
+			struct wlan_fwol_coex_config *coex_config)
+{
+	coex_config->btc_three_way_coex_config_legacy_enable =
+			cfg_get(psoc, CFG_THREE_WAY_COEX_CONFIG_LEGACY);
+}
+#else
+static void
+fwol_three_way_coex_config_legacy_config_get(
+			struct wlan_objmgr_psoc *psoc,
+			struct wlan_fwol_coex_config *coex_config)
+{
+}
+#endif
+
 static void
 fwol_init_coex_config_in_cfg(struct wlan_objmgr_psoc *psoc,
 			     struct wlan_fwol_coex_config *coex_config)
@@ -77,6 +107,9 @@ fwol_init_coex_config_in_cfg(struct wlan_objmgr_psoc *psoc,
 	coex_config->bt_interference_high_ul =
 				cfg_get(psoc, CFG_BT_INTERFERENCE_HIGH_UL);
 	fwol_mpta_helper_config_get(psoc, coex_config);
+	coex_config->bt_sco_allow_wlan_2g_scan =
+				cfg_get(psoc, CFG_BT_SCO_ALLOW_WLAN_2G_SCAN);
+	fwol_three_way_coex_config_legacy_config_get(psoc, coex_config);
 }
 
 static void
@@ -103,14 +136,20 @@ fwol_init_thermal_temp_in_cfg(struct wlan_objmgr_psoc *psoc,
 	thermal_temp->thermal_mitigation_enable =
 				cfg_get(psoc, CFG_THERMAL_MITIGATION_ENABLE);
 	thermal_temp->throttle_period = cfg_get(psoc, CFG_THROTTLE_PERIOD);
+	thermal_temp->thermal_sampling_time =
+				cfg_get(psoc, CFG_THERMAL_SAMPLING_TIME);
 	thermal_temp->throttle_dutycycle_level[0] =
 				cfg_get(psoc, CFG_THROTTLE_DUTY_CYCLE_LEVEL0);
-	thermal_temp->throttle_dutycycle_level[1]=
+	thermal_temp->throttle_dutycycle_level[1] =
 				cfg_get(psoc, CFG_THROTTLE_DUTY_CYCLE_LEVEL1);
-	thermal_temp->throttle_dutycycle_level[2]=
+	thermal_temp->throttle_dutycycle_level[2] =
 				cfg_get(psoc, CFG_THROTTLE_DUTY_CYCLE_LEVEL2);
-	thermal_temp->throttle_dutycycle_level[3]=
+	thermal_temp->throttle_dutycycle_level[3] =
 				cfg_get(psoc, CFG_THROTTLE_DUTY_CYCLE_LEVEL3);
+	thermal_temp->throttle_dutycycle_level[4] =
+				cfg_get(psoc, CFG_THROTTLE_DUTY_CYCLE_LEVEL4);
+	thermal_temp->throttle_dutycycle_level[5] =
+				cfg_get(psoc, CFG_THROTTLE_DUTY_CYCLE_LEVEL5);
 }
 
 QDF_STATUS fwol_init_neighbor_report_cfg(struct wlan_objmgr_psoc *psoc,
@@ -138,6 +177,13 @@ QDF_STATUS fwol_init_neighbor_report_cfg(struct wlan_objmgr_psoc *psoc,
 		cfg_get(psoc, CFG_OFFLOAD_NEIGHBOR_REPORT_CACHE_TIMEOUT);
 	fwol_neighbor_report_cfg->max_req_cap =
 		cfg_get(psoc, CFG_OFFLOAD_NEIGHBOR_REPORT_MAX_REQ_CAP);
+
+#ifdef SEC_CONFIG_PSM_SYSFS
+	if (wlan_hdd_sec_get_psm()) {
+		fwol_neighbor_report_cfg->enable_bitmask = 0;
+		printk("[WIFI] CFG_OFFLOAD_11K_ENABLE_BITMASK : sec_control_psm = %u", fwol_neighbor_report_cfg->enable_bitmask);
+	}
+#endif /* SEC_CONFIG_PSM_SYSFS */
 
 	return QDF_STATUS_SUCCESS;
 }
@@ -212,7 +258,7 @@ static void fwol_parse_probe_req_ouis(struct wlan_objmgr_psoc *psoc,
 	whitelist->no_of_probe_req_ouis = 0;
 
 	if (!qdf_str_len(str)) {
-		fwol_info("NO OUIs to parse");
+		fwol_debug("NO OUIs to parse");
 		return;
 	}
 
@@ -250,10 +296,10 @@ next_token:
 static bool fwol_validate_ie_bitmaps(struct wlan_objmgr_psoc *psoc,
 				     struct wlan_fwol_ie_whitelist *whitelist)
 {
-	if (!(whitelist->ie_bitmap_0 && whitelist->ie_bitmap_1 &&
-	      whitelist->ie_bitmap_2 && whitelist->ie_bitmap_3 &&
-	      whitelist->ie_bitmap_4 && whitelist->ie_bitmap_5 &&
-	      whitelist->ie_bitmap_6 && whitelist->ie_bitmap_7))
+	if (!(whitelist->ie_bitmap_0 || whitelist->ie_bitmap_1 ||
+	      whitelist->ie_bitmap_2 || whitelist->ie_bitmap_3 ||
+	      whitelist->ie_bitmap_4 || whitelist->ie_bitmap_5 ||
+	      whitelist->ie_bitmap_6 || whitelist->ie_bitmap_7))
 		return false;
 
 	/*
@@ -382,6 +428,33 @@ ucfg_fwol_fetch_tsf_irq_host_gpio_pin(struct wlan_objmgr_psoc *psoc,
 {
 }
 #endif
+
+#ifdef WLAN_FEATURE_TSF_PLUS_EXT_GPIO_SYNC
+/**
+ * ucfg_fwol_fetch_tsf_sync_host_gpio_pin: Populate the
+ * tsf_sync_host_gpio_pin from cfg
+ * @psoc: The global psoc handler
+ * @fwol_cfg: The cfg structure
+ *
+ * This function is used to populate the cfg value of host platform
+ * gpio pin configured to drive tsf sync interrupt pin on wlan chip.
+ *
+ * Return: none
+ */
+static void
+ucfg_fwol_fetch_tsf_sync_host_gpio_pin(struct wlan_objmgr_psoc *psoc,
+				       struct wlan_fwol_cfg *fwol_cfg)
+{
+	fwol_cfg->tsf_sync_host_gpio_pin =
+		cfg_get(psoc, CFG_SET_TSF_SYNC_HOST_GPIO_PIN);
+}
+#else
+static void
+ucfg_fwol_fetch_tsf_sync_host_gpio_pin(struct wlan_objmgr_psoc *psoc,
+				       struct wlan_fwol_cfg *fwol_cfg)
+{
+}
+#endif
 /**
  * ucfg_fwol_init_sae_cfg: Populate the sae control config from cfg
  * @psoc: The global psoc handler
@@ -444,8 +517,8 @@ QDF_STATUS fwol_cfg_on_psoc_enable(struct wlan_objmgr_psoc *psoc)
 	fwol_cfg->ani_enabled = cfg_get(psoc, CFG_ENABLE_ANI);
 	fwol_cfg->enable_rts_sifsbursting =
 				cfg_get(psoc, CFG_SET_RTS_FOR_SIFS_BURSTING);
+	fwol_cfg->enable_sifs_burst = cfg_get(psoc, CFG_SET_SIFS_BURST);
 	fwol_cfg->max_mpdus_inampdu = cfg_get(psoc, CFG_MAX_MPDUS_IN_AMPDU);
-	fwol_cfg->arp_ac_category = cfg_get(psoc, CFG_ARP_AC_CATEGORY);
 	fwol_cfg->enable_phy_reg_retention = cfg_get(psoc, CFG_ENABLE_PHY_REG);
 	fwol_cfg->upper_brssi_thresh = cfg_get(psoc, CFG_UPPER_BRSSI_THRESH);
 	fwol_cfg->lower_brssi_thresh = cfg_get(psoc, CFG_LOWER_BRSSI_THRESH);
@@ -475,7 +548,9 @@ QDF_STATUS fwol_cfg_on_psoc_enable(struct wlan_objmgr_psoc *psoc)
 	ucfg_fwol_fetch_ra_filter(psoc, fwol_cfg);
 	ucfg_fwol_fetch_tsf_gpio_pin(psoc, fwol_cfg);
 	ucfg_fwol_fetch_tsf_irq_host_gpio_pin(psoc, fwol_cfg);
+	ucfg_fwol_fetch_tsf_sync_host_gpio_pin(psoc, fwol_cfg);
 	ucfg_fwol_fetch_dhcp_server_settings(psoc, fwol_cfg);
+	fwol_cfg->sap_xlna_bypass = cfg_get(psoc, CFG_SET_SAP_XLNA_BYPASS);
 
 	return status;
 }
@@ -484,4 +559,98 @@ QDF_STATUS fwol_cfg_on_psoc_disable(struct wlan_objmgr_psoc *psoc)
 {
 	/* Clear the CFG structure */
 	return QDF_STATUS_SUCCESS;
+}
+
+#ifdef WLAN_FEATURE_ELNA
+/**
+ * fwol_process_get_elna_bypass_resp() - Process get eLNA bypass response
+ * @event: response event
+ *
+ * Return: QDF_STATUS_SUCCESS on success
+ */
+static QDF_STATUS
+fwol_process_get_elna_bypass_resp(struct wlan_fwol_rx_event *event)
+{
+	QDF_STATUS status = QDF_STATUS_SUCCESS;
+	struct wlan_objmgr_psoc *psoc;
+	struct wlan_fwol_psoc_obj *fwol_obj;
+	struct wlan_fwol_callbacks *cbs;
+	struct get_elna_bypass_response *resp;
+
+	if (!event) {
+		fwol_err("Event buffer is NULL");
+		return QDF_STATUS_E_FAILURE;
+	}
+
+	psoc = event->psoc;
+	if (!psoc) {
+		fwol_err("psoc is NULL");
+		return QDF_STATUS_E_INVAL;
+	}
+
+	fwol_obj = fwol_get_psoc_obj(psoc);
+	if (!fwol_obj) {
+		fwol_err("Failed to get FWOL Obj");
+		return QDF_STATUS_E_INVAL;
+	}
+
+	cbs = &fwol_obj->cbs;
+	if (cbs->get_elna_bypass_callback) {
+		resp = &event->get_elna_bypass_response;
+		cbs->get_elna_bypass_callback(cbs->get_elna_bypass_context,
+					      resp);
+	} else {
+		fwol_err("NULL pointer for callback");
+		status = QDF_STATUS_E_IO;
+	}
+
+	return status;
+}
+#else
+static QDF_STATUS
+fwol_process_get_elna_bypass_resp(struct wlan_fwol_rx_event *event)
+{
+	return QDF_STATUS_SUCCESS;
+}
+#endif /* WLAN_FEATURE_ELNA */
+
+QDF_STATUS fwol_process_event(struct scheduler_msg *msg)
+{
+	QDF_STATUS status;
+	struct wlan_fwol_rx_event *event;
+
+	fwol_debug("msg type %d", msg->type);
+
+	if (!(msg->bodyptr)) {
+		fwol_err("Invalid message body");
+		return QDF_STATUS_E_INVAL;
+	}
+
+	event = msg->bodyptr;
+	msg->bodyptr = NULL;
+
+	switch (msg->type) {
+	case WLAN_FWOL_EVT_GET_ELNA_BYPASS_RESPONSE:
+		status = fwol_process_get_elna_bypass_resp(event);
+		break;
+	default:
+		status = QDF_STATUS_E_INVAL;
+		break;
+	}
+
+	fwol_release_rx_event(event);
+
+	return status;
+}
+
+void fwol_release_rx_event(struct wlan_fwol_rx_event *event)
+{
+	if (!event) {
+		fwol_err("event is NULL");
+		return;
+	}
+
+	if (event->psoc)
+		wlan_objmgr_psoc_release_ref(event->psoc, WLAN_FWOL_SB_ID);
+	qdf_mem_free(event);
 }

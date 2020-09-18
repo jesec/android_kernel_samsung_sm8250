@@ -15,11 +15,16 @@
 #include "include/sec_dual_battery.h"
 
 static enum power_supply_property sec_dual_battery_props[] = {
+	POWER_SUPPLY_PROP_STATUS,
 };
 
 static int sec_dual_check_eoc_status(struct sec_dual_battery_info *battery)
 {
 	union power_supply_propval value;
+	struct timespec ts = {0, };
+	unsigned long force_full_time = 0;
+
+	get_monotonic_boottime(&ts);
 
 	/* check out main battery's eoc status */
 	value.intval = SEC_BATTERY_VOLTAGE_MV;
@@ -32,16 +37,22 @@ static int sec_dual_check_eoc_status(struct sec_dual_battery_info *battery)
 		(enum power_supply_property)POWER_SUPPLY_EXT_PROP_CHG_CURRENT, value);
 	battery->main_current_avg = value.intval;
 
-	pr_info("%s %d %d %d %d \n", __func__, battery->main_voltage_avg, battery->pdata->main_full_condition_vcell, battery->main_current_avg, battery->pdata->main_full_condition_eoc);
-	if(battery->main_voltage_avg >= battery->pdata->main_full_condition_vcell &&
-		battery->main_current_avg <= battery->pdata->main_full_condition_eoc &&
+	pr_info("%s [Main] %dmV %dmA\n", __func__, battery->main_voltage_avg, battery->main_current_avg);
+
+	if((battery->main_voltage_avg >= battery->pdata->main_full_condition_vcell[battery->age_step] ||
+		battery->main_current_avg <= battery->pdata->main_full_condition_eoc) &&
 		!(battery->full_total_status & SEC_DUAL_BATTERY_MAIN_CONDITION_DONE)) {
-		pr_info("%s Main Batt eoc condtion is done \n", __func__);
+		pr_info("%s Main Batt eoc condition is done (2nd charging)\n", __func__);
 		battery->full_total_status |= SEC_DUAL_BATTERY_MAIN_CONDITION_DONE;
 		/* main supplement mode enable */
 		value.intval = 1;
 		psy_do_property(battery->pdata->main_limiter_name, set,
 			POWER_SUPPLY_PROP_CHARGE_FULL, value);
+		/* 2nd top off safety timer start */
+		if (battery->force_full_time == 0) {
+			ts = ktime_to_timespec(ktime_get_boottime());
+			battery->force_full_time = ts.tv_sec;
+		}
 	}
 
 	/* check out sub battery's eoc status */
@@ -55,21 +66,93 @@ static int sec_dual_check_eoc_status(struct sec_dual_battery_info *battery)
 		(enum power_supply_property)POWER_SUPPLY_EXT_PROP_CHG_CURRENT, value);
 	battery->sub_current_avg = value.intval;
 
-	pr_info("%s %d %d %d %d \n", __func__, battery->sub_voltage_avg, battery->pdata->sub_full_condition_vcell, battery->sub_current_avg, battery->pdata->sub_full_condition_eoc);
-	if(battery->sub_voltage_avg >= battery->pdata->sub_full_condition_vcell &&
-		battery->sub_current_avg <= battery->pdata->sub_full_condition_eoc &&
+	pr_info("%s [Sub] %dmV %dmA\n", __func__, battery->sub_voltage_avg, battery->sub_current_avg);
+
+	if((battery->sub_voltage_avg >= battery->pdata->sub_full_condition_vcell[battery->age_step] ||
+		battery->sub_current_avg <= battery->pdata->sub_full_condition_eoc) &&
 		!(battery->full_total_status & SEC_DUAL_BATTERY_SUB_CONDITION_DONE)) {
-		pr_info("%s Sub Batt eoc condtion is done \n", __func__);
+		pr_info("%s Sub Batt eoc condition is done (2nd charging)\n", __func__);
 		battery->full_total_status |= SEC_DUAL_BATTERY_SUB_CONDITION_DONE;
 		/* main supplement mode enable */
 		value.intval = 1;
 		psy_do_property(battery->pdata->sub_limiter_name, set,
 			POWER_SUPPLY_PROP_CHARGE_FULL, value);
+		/* 2nd top off safety timer start */
+		if (battery->force_full_time == 0) {
+			ts = ktime_to_timespec(ktime_get_boottime());
+			battery->force_full_time = ts.tv_sec;
+		}
 	}
 
-	pr_info("%s full satus = 0x%x \n", __func__, battery->full_total_status);
+	if (battery->force_full_time &&
+		battery->full_total_status != (SEC_DUAL_BATTERY_MAIN_CONDITION_DONE | SEC_DUAL_BATTERY_SUB_CONDITION_DONE)) {
+		if (ts.tv_sec >= battery->force_full_time) {
+			force_full_time = ts.tv_sec - battery->force_full_time;
+		} else {
+			force_full_time = 0xFFFFFFFF - battery->force_full_time
+				+ ts.tv_sec;
+		}
 
-	if(battery->full_total_status == (SEC_DUAL_BATTERY_MAIN_CONDITION_DONE | SEC_DUAL_BATTERY_SUB_CONDITION_DONE))
+		/* If both MAIN and SUB not reached EOC condition at least 30 minutes from force_full_time,
+			make FULL to prevent abnormal infinite charging */
+		if (force_full_time >= 1800) {
+			pr_info("%s force_full_time passed time(%ld), 2nd full safety timer works\n", __func__, force_full_time);
+			/* main/sub supplement mode enable */
+			value.intval = 1;
+			psy_do_property(battery->pdata->main_limiter_name, set,
+				POWER_SUPPLY_PROP_CHARGE_FULL, value);
+			psy_do_property(battery->pdata->sub_limiter_name, set,
+				POWER_SUPPLY_PROP_CHARGE_FULL, value);
+			battery->full_total_status =
+				(SEC_DUAL_BATTERY_MAIN_CONDITION_DONE | SEC_DUAL_BATTERY_SUB_CONDITION_DONE);
+		}
+	}
+
+	if(battery->full_total_status == (SEC_DUAL_BATTERY_MAIN_CONDITION_DONE | SEC_DUAL_BATTERY_SUB_CONDITION_DONE)) {
+		battery->force_full_time = 0;
+		return POWER_SUPPLY_STATUS_FULL;
+	} else
+		return POWER_SUPPLY_STATUS_CHARGING;
+}
+
+/* this function dose not work after 1st full charging, this is only for 2nd full charging */
+static int sec_dual_check_each_eoc(struct sec_dual_battery_info *battery)
+{
+	union power_supply_propval value;
+	bool eoc_status = false;
+
+	value.intval = SEC_BATTERY_CURRENT_MA;
+	psy_do_property(battery->pdata->main_limiter_name, get,
+		(enum power_supply_property)POWER_SUPPLY_EXT_PROP_CHG_CURRENT, value);
+	battery->main_current_avg = value.intval;
+
+	if ((battery->main_current_avg <= battery->pdata->main_full_condition_eoc)
+		&& (battery->main_voltage_avg >= battery->pdata->main_full_condition_vcell[battery->age_step])) {
+		pr_info("%s Main Batt eoc condition is done (1st charging)\n", __func__);
+		battery->full_total_status |= SEC_DUAL_BATTERY_MAIN_CONDITION_DONE;
+		/* main supplement mode enable */
+		value.intval = 1;
+		psy_do_property(battery->pdata->main_limiter_name, set,
+			POWER_SUPPLY_PROP_CHARGE_FULL, value);
+		eoc_status = true;
+	}
+
+	value.intval = SEC_BATTERY_CURRENT_MA;
+	psy_do_property(battery->pdata->sub_limiter_name, get,
+		(enum power_supply_property)POWER_SUPPLY_EXT_PROP_CHG_CURRENT, value);
+	battery->sub_current_avg = value.intval;
+
+	if ((battery->sub_current_avg <= battery->pdata->sub_full_condition_eoc)
+		&& (battery->sub_voltage_avg >= battery->pdata->sub_full_condition_vcell[battery->age_step])) {
+		pr_info("%s Sub Batt eoc condition is done (1st charging)\n", __func__);
+		battery->full_total_status |= SEC_DUAL_BATTERY_SUB_CONDITION_DONE;
+		/* main supplement mode enable */
+		value.intval = 1;
+		psy_do_property(battery->pdata->sub_limiter_name, set,
+			POWER_SUPPLY_PROP_CHARGE_FULL, value);
+		eoc_status = true;
+	}
+	if(eoc_status)
 		return POWER_SUPPLY_STATUS_FULL;
 	else
 		return POWER_SUPPLY_STATUS_CHARGING;
@@ -173,7 +256,18 @@ static int sec_dual_battery_get_property(struct power_supply *psy,
 
 	switch (psp) {
 	case POWER_SUPPLY_PROP_STATUS:
+		psy_do_property("battery", get,
+			POWER_SUPPLY_PROP_CHARGE_NOW, value);
+		if (value.intval == SEC_BATTERY_CHARGING_2ND) {
 			val->intval = sec_dual_check_eoc_status(battery);
+		} else {
+			val->intval = POWER_SUPPLY_STATUS_CHARGING;
+			pr_info("%s : skip checking eoc status because not 2nd charging(charging mode: %d)\n",
+				__func__, value.intval);
+		}
+		break;
+	case POWER_SUPPLY_PROP_CHARGE_FULL:
+		val->intval = sec_dual_check_each_eoc(battery);
 		break;
 	case POWER_SUPPLY_PROP_VOLTAGE_AVG:
 		if(value.intval == SEC_DUAL_BATTERY_MAIN)
@@ -226,12 +320,12 @@ static int sec_dual_battery_set_property(struct power_supply *psy,
 	enum power_supply_ext_property ext_psp = (enum power_supply_ext_property)psp;
 	union power_supply_propval value;
 
-	//value.intval = val->intval;
 	switch (psp) {
-	case POWER_SUPPLY_PROP_CHARGING_ENABLED:
-	
+	case POWER_SUPPLY_PROP_ONLINE:
+		if (val->intval == SEC_BATTERY_CABLE_NONE)
+			battery->force_full_time = 0;
 		break;
-	case POWER_SUPPLY_PROP_CHARGE_FULL:
+	case POWER_SUPPLY_PROP_CHARGING_ENABLED:
 		if(val->intval == 0) {
 			/* disable main/sub supplement mode */
 			value.intval = 0;
@@ -239,16 +333,15 @@ static int sec_dual_battery_set_property(struct power_supply *psy,
 				POWER_SUPPLY_PROP_CHARGE_FULL, value);
 			psy_do_property(battery->pdata->sub_limiter_name, set,
 				POWER_SUPPLY_PROP_CHARGE_FULL, value);
-			battery->full_total_status = SEC_DUAL_BATTERY_NONE;			
-		}
-		//else {
-			//value.intval = 1;
+			battery->full_total_status = SEC_DUAL_BATTERY_NONE;
+		} else {
+			value.intval = 1;
 			/* enable main/sub supplement mode */
-			//psy_do_property(battery->pdata->main_limiter_name, set,
-			//	POWER_SUPPLY_PROP_CHARGE_FULL, value);
-			//psy_do_property(battery->pdata->sub_limiter_name, set,
-			//	POWER_SUPPLY_PROP_CHARGE_FULL, value);
-		//}
+			psy_do_property(battery->pdata->main_limiter_name, set,
+				POWER_SUPPLY_PROP_CHARGE_FULL, value);
+			psy_do_property(battery->pdata->sub_limiter_name, set,
+				POWER_SUPPLY_PROP_CHARGE_FULL, value);
+		}
 		break;
 	case POWER_SUPPLY_PROP_ENERGY_NOW:
 		/* SET PWR OFF MODE 2*/		
@@ -264,6 +357,10 @@ static int sec_dual_battery_set_property(struct power_supply *psy,
 		break;
 	case POWER_SUPPLY_PROP_MAX ... POWER_SUPPLY_EXT_PROP_MAX:
 		switch (ext_psp) {
+		case POWER_SUPPLY_EXT_PROP_FULL_CONDITION:
+			battery->age_step = val->intval;
+			pr_info("%s : battery->age_step(%d)\n", __func__, battery->age_step);
+			break;
 		default:
 			return -EINVAL;
 		}
@@ -282,8 +379,8 @@ static int sec_dual_battery_parse_dt(struct device *dev,
 	struct device_node *np = dev->of_node;
 	struct sec_dual_battery_platform_data *pdata = battery->pdata;
 	int ret = 0;
-	//int len;
-	//const u32 *p;
+	int len;
+	const u32 *p;
 
 	if (!np) {
 		pr_err("%s: np NULL\n", __func__);
@@ -299,18 +396,27 @@ static int sec_dual_battery_parse_dt(struct device *dev,
 		if (ret)
 			pr_err("%s: sub_current_limiter is Empty\n", __func__);
 
-		ret = of_property_read_u32(np, "battery,main_full_condition_vcell",
-					&pdata->main_full_condition_vcell);
-		if (ret < 0) {
-			pr_info("%s : main_full_condition_vcell is empty\n", __func__);
-			pdata->main_full_condition_vcell = 4250;
+		p = of_get_property(np, "battery,main_full_condition_vcell", &len);
+		if (!p) {
+			pr_err("%s: main_full_condition_vcell is Empty\n", __func__);
+		} else {
+			len = len / sizeof(u32);
+			pdata->main_full_condition_vcell = kzalloc(sizeof(u32) * len, GFP_KERNEL);
+			ret = of_property_read_u32_array(np, "battery,main_full_condition_vcell",
+					pdata->main_full_condition_vcell, len);
+			if (ret)
+				pr_info("%s : main_full_condition_vcell read fail\n", __func__);
 		}
-
-		ret = of_property_read_u32(np, "battery,sub_full_condition_vcell",
-					&pdata->sub_full_condition_vcell);
-		if (ret < 0) {
-			pr_info("%s : sub_full_condition_vcell is empty\n", __func__);
-			pdata->sub_full_condition_vcell = 4250;
+		p = of_get_property(np, "battery,sub_full_condition_vcell", &len);
+		if (!p) {
+			pr_err("%s: sub_full_condition_vcell is Empty\n", __func__);
+		} else {
+			len = len / sizeof(u32);
+			pdata->sub_full_condition_vcell = kzalloc(sizeof(u32) * len, GFP_KERNEL);
+			ret = of_property_read_u32_array(np, "battery,sub_full_condition_vcell",
+					pdata->sub_full_condition_vcell, len);
+			if (ret)
+				pr_info("%s : sub_full_condition_vcell read fail\n", __func__);
 		}
 
 		ret = of_property_read_u32(np, "battery,main_full_condition_eoc",
@@ -391,9 +497,10 @@ static int sec_dual_battery_probe(struct platform_device *pdev)
 	dual_battery_cfg.drv_data = battery;
 
 	battery->psy_bat = power_supply_register(&pdev->dev, &sec_dual_battery_power_supply_desc, &dual_battery_cfg);
-	if (!battery->psy_bat) {
+	if (IS_ERR(battery->psy_bat)) {
+		ret = PTR_ERR(battery->psy_bat);
 		dev_err(battery->dev,
-			"%s: Failed to Register psy_bat\n", __func__);
+			"%s: Failed to Register psy_bat(%d)\n", __func__, ret);
 		goto err_pdata_free;
 	}
 

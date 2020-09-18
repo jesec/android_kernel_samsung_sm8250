@@ -33,6 +33,9 @@
 #if defined(DHD_ADPS_BAM_EXPORT) && defined(WL_BAM)
 #include <wl_bam.h>
 #endif	/* DHD_ADPS_BAM_EXPORT && WL_BAM */
+#ifdef WL_CFG80211
+#include <wl_cfg80211.h>
+#endif /* WL_CFG80211 */
 
 #ifdef SHOW_LOGTRACE
 extern dhd_pub_t* g_dhd_pub;
@@ -419,6 +422,7 @@ sssr_support_onoff(struct dhd_info *dev, const char *buf, size_t count)
 }
 #endif /* DHD_SSSR_DUMP */
 
+#define FMT_BUFSZ	32
 extern char firmware_path[];
 
 static ssize_t
@@ -433,11 +437,14 @@ show_firmware_path(struct dhd_info *dev, char *buf)
 static ssize_t
 store_firmware_path(struct dhd_info *dev, const char *buf, size_t count)
 {
+	char fmt_spec[FMT_BUFSZ] = "";
+
 	if ((int)strlen(buf) >= MOD_PARAM_PATHLEN) {
 		return -EINVAL;
 	}
 
-	sscanf(buf, "%s", firmware_path);
+	snprintf(fmt_spec, FMT_BUFSZ, "%%%ds", MOD_PARAM_PATHLEN - 1);
+	sscanf(buf, fmt_spec, firmware_path);
 
 	return count;
 }
@@ -456,11 +463,14 @@ show_nvram_path(struct dhd_info *dev, char *buf)
 static ssize_t
 store_nvram_path(struct dhd_info *dev, const char *buf, size_t count)
 {
+	char fmt_spec[FMT_BUFSZ] = "";
+
 	if ((int)strlen(buf) >= MOD_PARAM_PATHLEN) {
 		return -EINVAL;
 	}
 
-	sscanf(buf, "%s", nvram_path);
+	snprintf(fmt_spec, FMT_BUFSZ, "%%%ds", MOD_PARAM_PATHLEN - 1);
+	sscanf(buf, fmt_spec, nvram_path);
 
 	return count;
 }
@@ -1351,6 +1361,108 @@ set_control_he_enab(struct dhd_info *dev, const char *buf, size_t count)
 static struct dhd_attr dhd_attr_control_he_enab=
 __ATTR(control_he_enab, 0660, show_control_he_enab, set_control_he_enab);
 #endif /* CUSTOM_CONTROL_HE_ENAB */
+#ifdef WL_CFG80211
+#define _S(x) #x
+#define S(x) _S(x)
+#define SUBLOGLEVEL 20
+#define SUBLOGLEVELZ ((SUBLOGLEVEL) + (1))
+static const struct {
+	u32 log_level;
+	char *sublogname;
+} sublogname_map[] = {
+	{WL_DBG_ERR, "ERR"},
+	{WL_DBG_INFO, "INFO"},
+	{WL_DBG_DBG, "DBG"},
+	{WL_DBG_SCAN, "SCAN"},
+	{WL_DBG_TRACE, "TRACE"},
+	{WL_DBG_P2P_ACTION, "P2PACTION"}
+};
+
+/**
+* Format : echo "SCAN:1 DBG:1" > /sys/wifi/wl_dbg_level
+* to turn on SCAN and DBG log.
+* To turn off SCAN partially, echo "SCAN:0" > /sys/wifi/wl_dbg_level
+* To see current setting of debug level,
+* cat /sys/wifi/wl_dbg_level
+*/
+static ssize_t
+show_wl_debug_level(struct dhd_info *dhd, char *buf)
+{
+	char *param;
+	char tbuf[SUBLOGLEVELZ * ARRAYSIZE(sublogname_map)];
+	uint i;
+	ssize_t ret = 0;
+
+	bzero(tbuf, sizeof(tbuf));
+	param = &tbuf[0];
+	for (i = 0; i < ARRAYSIZE(sublogname_map); i++) {
+		param += snprintf(param, sizeof(tbuf) - 1, "%s:%d ",
+			sublogname_map[i].sublogname,
+			(wl_dbg_level & sublogname_map[i].log_level) ? 1 : 0);
+	}
+	ret = scnprintf(buf, PAGE_SIZE - 1, "%s \n", tbuf);
+	return ret;
+}
+
+static ssize_t
+set_wl_debug_level(struct dhd_info *dhd, const char *buf, size_t count)
+{
+	char tbuf[SUBLOGLEVELZ * ARRAYSIZE(sublogname_map)], sublog[SUBLOGLEVELZ];
+	char *params, *token, *colon;
+	uint i, tokens, log_on = 0;
+	size_t minsize = min_t(size_t, (sizeof(tbuf) - 1), count);
+
+	bzero(tbuf, sizeof(tbuf));
+	bzero(sublog, sizeof(sublog));
+	strlcpy(tbuf, buf, minsize);
+
+	DHD_INFO(("current wl_dbg_level %d \n", wl_dbg_level));
+
+	tbuf[minsize] = '\0';
+	params = &tbuf[0];
+	colon = strchr(params, '\n');
+	if (colon != NULL)
+		*colon = '\0';
+	while ((token = strsep(&params, " ")) != NULL) {
+		bzero(sublog, sizeof(sublog));
+		if (token == NULL || !*token)
+			break;
+		if (*token == '\0')
+			continue;
+		colon = strchr(token, ':');
+		if (colon != NULL) {
+			*colon = ' ';
+		}
+		tokens = sscanf(token, "%"S(SUBLOGLEVEL)"s %u", sublog, &log_on);
+		if (colon != NULL)
+			*colon = ':';
+
+		if (tokens == 2) {
+				for (i = 0; i < ARRAYSIZE(sublogname_map); i++) {
+					if (!strncmp(sublog, sublogname_map[i].sublogname,
+						strlen(sublogname_map[i].sublogname))) {
+						if (log_on)
+							wl_dbg_level |=
+							(sublogname_map[i].log_level);
+						else
+							wl_dbg_level &=
+							~(sublogname_map[i].log_level);
+					}
+				}
+		} else
+			WL_ERR(("%s: can't parse '%s' as a "
+			       "SUBMODULE:LEVEL (%d tokens)\n",
+			       tbuf, token, tokens));
+
+	}
+	DHD_INFO(("changed wl_dbg_level %d \n", wl_dbg_level));
+	return count;
+}
+
+static struct dhd_attr dhd_attr_wl_dbg_level =
+__ATTR(wl_dbg_level, 0660, show_wl_debug_level, set_wl_debug_level);
+#endif /* WL_CFG80211 */
+
 /* Attribute object that gets registered with "wifi" kobject tree */
 static struct attribute *default_file_attrs[] = {
 #ifdef DHD_MAC_ADDR_EXPORT
@@ -1428,6 +1540,9 @@ static struct attribute *default_file_attrs[] = {
 #if defined(CUSTOM_CONTROL_HE_ENAB)
 	&dhd_attr_control_he_enab.attr,
 #endif /* CUSTOM_CONTROL_HE_ENAB */
+#if defined(WL_CFG80211)
+	&dhd_attr_wl_dbg_level.attr,
+#endif /* WL_CFG80211 */
 	NULL
 };
 
@@ -1527,3 +1642,39 @@ void dhd_sysfs_exit(dhd_info_t *dhd)
 	/* Releae the kobject */
 	kobject_put(&dhd->dhd_kobj);
 }
+
+#ifdef DHD_SUPPORT_HDM
+static ssize_t
+hdm_load_module(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count)
+{
+	int val = bcm_atoi(buf);
+
+	if (val == 1) {
+		DHD_ERROR(("%s : Load module from the hdm %d\n", __FUNCTION__, val));
+		dhd_module_init_hdm();
+	} else {
+		DHD_ERROR(("Module load triggered with invalid value : %d\n", val));
+	}
+
+	return count;
+}
+
+static struct kobj_attribute hdm_wlan_attr =
+	__ATTR(hdm_wlan_loader, 0660, NULL, hdm_load_module);
+
+void
+dhd_hdm_wlan_sysfs_init()
+{
+	DHD_ERROR(("export hdm_wlan_loader\n"));
+	if (sysfs_create_file(kernel_kobj, &hdm_wlan_attr.attr)) {
+		DHD_ERROR(("export hdm_load failed\n"));
+	}
+}
+
+void
+dhd_hdm_wlan_sysfs_deinit(struct work_struct *work)
+{
+	sysfs_remove_file(kernel_kobj,  &hdm_wlan_attr.attr);
+
+}
+#endif /* DHD_SUPPORT_HDM */

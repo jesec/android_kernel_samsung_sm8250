@@ -1,7 +1,7 @@
 /*
  * Linux Packet (skb) interface
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,7 +18,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #ifndef _linux_pkt_h_
@@ -39,9 +39,6 @@
  */
 /* Because the non BINOSL implemenation of the PKT OSL routines are macros (for
  * performance reasons),  we need the Linux headers.
- */
-/* XXX REVISIT  Is there a more specific header file we should be including for the
- * struct/definitions we need? johnvb
  */
 #include <linuxver.h>
 

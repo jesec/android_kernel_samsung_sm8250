@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
  * Copyright (C) 2019 Samsung Electronics Co. Ltd.
  *
@@ -7,7 +8,7 @@
  * (at your option) any later version.
  */
 
-  /* usb notify layer v3.3 */
+  /* usb notify layer v3.4 */
 
 #ifndef __LINUX_USBLOG_PROC_NOTIFY_H__
 #define __LINUX_USBLOG_PROC_NOTIFY_H__
@@ -24,6 +25,8 @@ enum usblog_type {
 	NOTIFY_PORT_CONNECT,
 	NOTIFY_PORT_DISCONNECT,
 	NOTIFY_PORT_CLASS,
+	NOTIFY_PCM_PLAYBACK,
+	NOTIFY_PCM_CAPTURE,
 	NOTIFY_EXTRA,
 };
 
@@ -62,9 +65,9 @@ enum usblog_status {
 };
 
 /*
-	You should refer "linux/ccic/ccic_notifier.h"
-	ccic_device, ccic_id may be different at each branch
-*/
+ *	You should refer "linux/usb/typec/common/pdic_notifier.h"
+ *	ccic_device, ccic_id may be different at each branch
+ */
 enum ccic_device {
 	NOTIFY_DEV_INITIAL = 0,
 	NOTIFY_DEV_USB,
@@ -169,6 +172,7 @@ enum extra {
 	NOTIFY_EXTRA_CCOPEN_REQ_SET,
 	NOTIFY_EXTRA_CCOPEN_REQ_CLEAR,
 	NOTIFY_EXTRA_USB_ANALOGAUDIO,
+	NOTIFY_EXTRA_USBHOST_OVERCURRENT,
 };
 
 #define ALTERNATE_MODE_NOT_READY	(1 << 0)

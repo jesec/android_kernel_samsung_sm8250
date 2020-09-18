@@ -16,6 +16,7 @@
 
 #define pr_fmt(fmt)     KBUILD_MODNAME ":%s() " fmt, __func__
 
+#include <linux/crc32.h>
 #include <linux/init.h>
 #include <linux/kernel.h>
 #include <linux/of.h>
@@ -31,6 +32,8 @@
 
 struct free_object {
 	unsigned long fp;
+	unsigned long crc32;
+	uintptr_t magic;
 	unsigned long entries[];
 };
 
@@ -140,12 +143,24 @@ static struct free_track_config *__slub_debug_free_track_black_list(struct kmem_
 	return ft_cfg;
 }
 
+static unsigned long __slub_debug_calculate_crc32(struct kmem_cache *s, void *x)
+{
+	struct free_object *fobj = x;
+	unsigned long crc32;
+
+	crc32 = (unsigned long)crc32(0, (void *)&fobj->magic,
+			s->size - offsetof(struct free_object, magic));
+
+	return crc32;
+}
+
 void sec_slub_debug_save_free_track(struct kmem_cache *s, void *x)
 {
 	struct free_track_config *ft_cfg;
 	struct stack_trace trace;
 	unsigned long i;
 	struct free_object *fobj = x;
+	unsigned long crc32;
 
 	ft_cfg = __slub_debug_free_track_black_list(s);
 	if (likely(!ft_cfg))
@@ -164,6 +179,44 @@ void sec_slub_debug_save_free_track(struct kmem_cache *s, void *x)
 
 	for (i = trace.nr_entries; i < trace.max_entries; i++)
 		trace.entries[i] = 0;
+
+	fobj->magic = (uintptr_t)s;
+	crc32 = __slub_debug_calculate_crc32(s, x);
+	fobj->crc32 = crc32;
+}
+
+static bool __slub_debug_is_not_allocated_object(struct kmem_cache *s, void *x)
+{
+	struct free_object *fobj = x;
+	struct free_object *fobj_next = (void *)fobj->fp;
+
+	if (fobj->magic != (uintptr_t)s &&
+	    (!fobj_next || (fobj_next && fobj_next->magic != (uintptr_t)s)))
+		return true;
+
+	return false;
+}
+
+static bool __slub_debug_is_fp_ok(const void *fp)
+{
+	if (((fp == NULL) || (PAGE_OFFSET == ((uintptr_t)fp & PAGE_OFFSET))))
+		return true;
+
+	return false;
+}
+
+static bool __slub_debug_is_crc32_ok(struct kmem_cache *s, void *x)
+{
+	struct free_object *fobj = x;
+	unsigned long saved_crc32;
+	unsigned long calculated_crc32;
+
+	saved_crc32 = fobj->crc32;
+	calculated_crc32 = __slub_debug_calculate_crc32(s, x);
+	if (saved_crc32 == calculated_crc32)
+		return true;
+
+	return false;
 }
 
 void sec_slub_debug_panic_on_fp_corrupted(struct kmem_cache *s, void *x, void *fp)
@@ -176,10 +229,14 @@ void sec_slub_debug_panic_on_fp_corrupted(struct kmem_cache *s, void *x, void *f
 	if (likely(!ft_cfg))
 		return;
 
-	if (((fp == NULL) || (PAGE_OFFSET == ((uintptr_t)fp & PAGE_OFFSET))))
+	if (__slub_debug_is_not_allocated_object(s, x))
 		return;
 
-	for (trace.nr_entries = 0; trace.nr_entries < trace.max_entries; trace.nr_entries++) {
+	if (__slub_debug_is_fp_ok(fp) &&
+	    __slub_debug_is_crc32_ok(s, x))
+		return;
+
+	for (trace.nr_entries = 0; trace.nr_entries < ft_cfg->max_entries; trace.nr_entries++) {
 		if (!trace.entries[trace.nr_entries])
 			break;
 	}
@@ -192,7 +249,7 @@ void sec_slub_debug_panic_on_fp_corrupted(struct kmem_cache *s, void *x, void *f
 
 	print_stack_trace(&trace, 0);
 
-	panic("SLUB - Invalid fp in the freed object.");
+	panic("SLUB - Freed object is tainted.");
 }
 
 static int __init __sec_debug_init_of(void)

@@ -21,8 +21,6 @@
 #define ST_FAIL 0
 #define STARTUP_BIT_FAIL 2
 #define G_ZRL_DELTA_FAIL 4
-#define ST_ZRO_MIN (-15) /* HQE request */
-#define ST_ZRO_MAX 15 /* HQE request */
 #define SELFTEST_REVISED 1
 
 static ssize_t sub_gyro_vendor_show(struct device *dev,
@@ -126,20 +124,14 @@ static ssize_t sub_gyro_selftest_show(struct device *dev,
 			data->msg_buf[MSG_GYRO_SUB][2],
 			data->msg_buf[MSG_GYRO_SUB][3],
 			data->msg_buf[MSG_GYRO_SUB][4]);
+	} else {
+		st_zro_res = ST_PASS;
 	}
 
 	if (!data->msg_buf[MSG_GYRO_SUB][5])
 		st_diff_res = ST_PASS;
 	else if (data->msg_buf[MSG_GYRO_SUB][5] == STARTUP_BIT_FAIL)
 		pr_info("[FACTORY] %s - Gyro Start Up Bit fail\n", __func__);
-
-	if((ST_ZRO_MIN <= data->msg_buf[MSG_GYRO_SUB][6])
-		&& (data->msg_buf[MSG_GYRO_SUB][6] <= ST_ZRO_MAX)
-		&& (ST_ZRO_MIN <= data->msg_buf[MSG_GYRO_SUB][7])
-		&& (data->msg_buf[MSG_GYRO_SUB][7] <= ST_ZRO_MAX)
-		&& (ST_ZRO_MIN <= data->msg_buf[MSG_GYRO_SUB][8])
-		&& (data->msg_buf[MSG_GYRO_SUB][8]<= ST_ZRO_MAX))
-		st_zro_res = ST_PASS;
 
 	pr_info("[FACTORY]: %s - %d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d\n",
 		__func__,

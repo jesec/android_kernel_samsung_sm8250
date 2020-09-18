@@ -1546,7 +1546,7 @@ static int fts_ts_probe_entry(struct fts_ts_data *ts_data)
 		FTS_ERROR("[FB]Unable to register fb_notifier: %d", ret);
 	}
 #elif defined(CONFIG_HAS_EARLYSUSPEND)
-	ts_data->early_suspend.level = 
+	ts_data->early_suspend.level =
 		EARLY_SUSPEND_LEVEL_BLANK_SCREEN + FTS_SUSPEND_LEVEL;
 	ts_data->early_suspend.suspend = fts_ts_early_suspend;
 	ts_data->early_suspend.resume = fts_ts_late_resume;

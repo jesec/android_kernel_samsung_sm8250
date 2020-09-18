@@ -207,6 +207,7 @@ static const bcmevent_name_str_t bcmevent_names[] = {
 	BCMEVENT_NAME(WLC_E_OBSS_DETECTION),
 	BCMEVENT_NAME(WLC_E_SC_CHAN_QUAL),
 	BCMEVENT_NAME(WLC_E_DYNSAR),
+	BCMEVENT_NAME(WLC_E_ROAM_CACHE_UPDATE),
 };
 
 const char *bcmevent_get_name(uint event_type)

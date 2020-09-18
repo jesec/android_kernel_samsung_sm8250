@@ -1,7 +1,7 @@
 /*
  * Linux cfg80211 driver - Dongle Host Driver (DHD) related
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -75,10 +75,9 @@ s32 dhd_cfg80211_down(struct bcm_cfg80211 *cfg)
 {
 	struct net_device *ndev;
 	s32 err = 0;
-	dhd_pub_t *dhd =  (dhd_pub_t *)(cfg->pub);
 
 	WL_TRACE(("In\n"));
-	if ((!dhd_dongle_up) || (!dhd->up)) {
+	if (!dhd_dongle_up) {
 		WL_INFORM_MEM(("Dongle is already down\n"));
 		err = 0;
 		goto done;
@@ -86,7 +85,6 @@ s32 dhd_cfg80211_down(struct bcm_cfg80211 *cfg)
 	ndev = bcmcfg_to_prmry_ndev(cfg);
 	wl_dongle_down(ndev);
 done:
-	dhd_dongle_up = FALSE;
 	return err;
 }
 
@@ -182,6 +180,9 @@ wl_dongle_up(struct net_device *ndev)
 	err = wldev_ioctl_set(ndev, WLC_UP, &local_up, sizeof(local_up));
 	if (unlikely(err)) {
 		WL_ERR(("WLC_UP error (%d)\n", err));
+	} else {
+		WL_INFORM_MEM(("wl up\n"));
+		dhd_dongle_up = TRUE;
 	}
 	return err;
 }
@@ -195,6 +196,9 @@ wl_dongle_down(struct net_device *ndev)
 	err = wldev_ioctl_set(ndev, WLC_DOWN, &local_down, sizeof(local_down));
 	if (unlikely(err)) {
 		WL_ERR(("WLC_DOWN error (%d)\n", err));
+	} else {
+		WL_INFORM_MEM(("wl down\n"));
+		dhd_dongle_up = FALSE;
 	}
 	return err;
 }
@@ -229,6 +233,7 @@ s32 dhd_config_dongle(struct bcm_cfg80211 *cfg)
 #endif
 	struct net_device *ndev;
 	s32 err = 0;
+	dhd_pub_t *dhd = NULL;
 
 	WL_TRACE(("In\n"));
 	if (dhd_dongle_up) {
@@ -237,13 +242,18 @@ s32 dhd_config_dongle(struct bcm_cfg80211 *cfg)
 	}
 
 	ndev = bcmcfg_to_prmry_ndev(cfg);
+	dhd = (dhd_pub_t *)(cfg->pub);
 
 	err = wl_dongle_up(ndev);
 	if (unlikely(err)) {
 		WL_ERR(("wl_dongle_up failed\n"));
 		goto default_conf_out;
 	}
-	dhd_dongle_up = true;
+
+	if (dhd && dhd->fw_preinit) {
+		/* Init config will be done by fw preinit context */
+		return BCME_OK;
+	}
 
 default_conf_out:
 

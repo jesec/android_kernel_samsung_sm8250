@@ -21,9 +21,6 @@
  * IN THE SOFTWARE.
  *
  */
-
-#define pr_fmt(fmt)	"[drm-dp] %s: " fmt, __func__
-
 #include <linux/device.h>
 #include <linux/fs.h>
 #include <linux/slab.h>
@@ -34,7 +31,10 @@
 #include <linux/sched/signal.h>
 
 #include <linux/secdp_logger.h>
+#include "dp_debug.h"
 #include "secdp_aux_control.h"
+
+/*#define _SECDP_WAIT_ON_ATOMIC_T*/
 
 #define DP_ENUM_STR(x)	#x
 
@@ -136,14 +136,14 @@ static int auxdev_open(struct inode *inode, struct file *file)
 
 	aux_dev = secdp_aux_dev_get_by_minor(minor);
 	if (!aux_dev) {
-		pr_err("error: aux_dev is null\n");
+		DP_ERR("error: aux_dev is null\n");
 		return -ENODEV;
 	}
 
 	file->private_data = aux_dev;
 	g_fw_update_status = true;
 
-	pr_info("aux node open: valid\n");
+	DP_INFO("aux node open: valid\n");
 
 	return 0;
 }
@@ -208,7 +208,7 @@ static ssize_t auxdev_read(struct file *file, char __user *buf, size_t count,
 
 out:
 	atomic_dec(&aux_dev->usecount);
-#if 0//.TODO:
+#ifdef _SECDP_WAIT_ON_ATOMIC_T
 	wake_up_atomic_t(&aux_dev->usecount);
 #endif
 	return res;
@@ -251,10 +251,12 @@ static ssize_t auxdev_write(struct file *file, const char __user *buf,
 			goto out;
 		}
 
-		if (aux_dev->cmd_type == DP_AUXCMD_NATIVE)
-			res = aux_dev->secdp_dpcd_write(*offset, localbuf, todo);
-		else
+		if (aux_dev->cmd_type == DP_AUXCMD_NATIVE) {
+			res = aux_dev->secdp_dpcd_write(*offset, localbuf,
+					todo);
+		} else {
 			res = aux_dev->secdp_i2c_write(localbuf, todo);
+		}
 
 		if (res <= 0) {
 			res = num_bytes_processed ? num_bytes_processed : res;
@@ -269,7 +271,7 @@ static ssize_t auxdev_write(struct file *file, const char __user *buf,
 
 out:
 	atomic_dec(&aux_dev->usecount);
-#if 0//.TODO:
+#ifdef _SECDP_WAIT_ON_ATOMIC_T
 	wake_up_atomic_t(&aux_dev->usecount);
 #endif
 	return res;
@@ -280,7 +282,7 @@ static int auxdev_release(struct inode *inode, struct file *file)
 	struct secdp_aux_dev *aux_dev = file->private_data;
 
 	g_fw_update_status = false;
-	pr_info("aux node release\n");
+	DP_INFO("aux node release\n");
 
 	kref_put(&aux_dev->refcount, release_secdp_aux_dev);
 	return 0;
@@ -294,7 +296,7 @@ static long auxdev_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	struct ioctl_auxdev_info info;
 	struct secdp_aux_dev *aux_dev = file->private_data;
 
-	pr_debug("+++\n");
+	DP_DEBUG("+++\n");
 
 	if (_IOC_TYPE(cmd) != IOCTL_MAGIC)
 		return -EINVAL;
@@ -302,17 +304,18 @@ static long auxdev_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		return -EINVAL;
 
 	size = sizeof(struct ioctl_auxdev_info);
-	pr_info("cmd: %s\n", auxdev_ioctl_cmd_to_string(cmd));
+	DP_INFO("cmd: %s\n", auxdev_ioctl_cmd_to_string(cmd));
 
 	switch (cmd) {
 	case IOCTL_DP_AUXCMD_TYPE:
 		res = copy_from_user((void *)&info, (void *)arg, size);
 		if (res) {
-			pr_debug("error at copy_from_user, rc(%d)\n", res);
+			DP_DEBUG("error at copy_from_user, rc(%d)\n", res);
 			break;
 		}
 		aux_dev->cmd_type = info.cmd_type;
-		pr_info("auxcmd_type: %s\n", auxcmd_type_to_string(aux_dev->cmd_type));
+		DP_INFO("auxcmd_type: %s\n",
+			auxcmd_type_to_string(aux_dev->cmd_type));
 		break;
 	case IOCTL_DP_HPD_STATUS:
 		hpd = aux_dev->secdp_get_hpd_status();
@@ -336,7 +339,7 @@ static const struct file_operations auxdev_fops = {
 	.compat_ioctl	= auxdev_ioctl,
 };
 
-#if 0//.TODO:
+#ifdef _SECDP_WAIT_ON_ATOMIC_T
 static int auxdev_wait_atomic_t(atomic_t *p)
 {
 	schedule();
@@ -353,7 +356,7 @@ void secdp_aux_unregister_devnode(struct secdp_aux_dev *aux_dev)
 	mutex_unlock(&aux_idr_mutex);
 
 	atomic_dec(&aux_dev->usecount);
-#if 0//.TODO:
+#ifdef _SECDP_WAIT_ON_ATOMIC_T
 	wait_on_atomic_t(&aux_dev->usecount, auxdev_wait_atomic_t,
 			 TASK_UNINTERRUPTIBLE);
 #endif
@@ -363,7 +366,7 @@ void secdp_aux_unregister_devnode(struct secdp_aux_dev *aux_dev)
 		device_destroy(secdp_aux_dev_class,
 			       MKDEV(drm_dev_major, minor));
 
-	pr_info("secdp_aux_dev: aux unregistering\n");
+	DP_INFO("secdp_aux_dev: aux unregistering\n");
 	kref_put(&aux_dev->refcount, release_secdp_aux_dev);
 }
 
@@ -399,10 +402,12 @@ out:
 }
 
 int secdp_aux_dev_init(ssize_t (*secdp_i2c_write)(void *buffer, size_t size),
-			ssize_t (*secdp_i2c_read)(void *buffer, size_t size),
-			ssize_t (*secdp_dpcd_write)(unsigned int offset, void *buffer, size_t size),
-			ssize_t (*secdp_dpcd_read)(unsigned int offset,	void *buffer, size_t size),
-			int (*secdp_get_hpd_status)(void))
+		ssize_t (*secdp_i2c_read)(void *buffer, size_t size),
+		ssize_t (*secdp_dpcd_write)(unsigned int offset,
+				void *buffer, size_t size),
+		ssize_t (*secdp_dpcd_read)(unsigned int offset,
+				void *buffer, size_t size),
+		int (*secdp_get_hpd_status)(void))
 {
 	static bool check_init;
 	struct secdp_aux_dev *aux_dev;

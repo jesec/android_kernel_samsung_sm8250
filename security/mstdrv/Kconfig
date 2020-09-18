@@ -9,13 +9,18 @@
 # This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details. 
+# GNU General Public License for more details.
 
 config MST_LDO
 	bool "MST LDO kernel driver"
 	depends on !(MACH_X1Q_CHN_OPEN && !(MACH_X1Q_CHN_HKX) && !(SEC_FACTORY)) \
 			&& !(MACH_Y2Q_CHN_OPEN && !(MACH_Y2Q_CHN_HKX) && !(SEC_FACTORY)) \
-			&& !(MACH_Z3Q_CHN_OPEN && !(MACH_Z3Q_CHN_HKX) && !(SEC_FACTORY))
+			&& !(MACH_Z3Q_CHN_OPEN && !(MACH_Z3Q_CHN_HKX) && !(SEC_FACTORY)) \
+			&& !(SEC_GTS7XL_PROJECT) && !(SEC_GTS7L_PROJECT) \
+			&& !(MACH_C1Q_CHN_OPEN && !(MACH_C1Q_CHN_HK) && !(SEC_FACTORY)) \
+			&& !(MACH_C2Q_CHN_OPEN && !(MACH_C2Q_CHN_HK) && !(SEC_FACTORY)) \
+			&& !(MACH_F2Q_CHN_OPEN && !(MACH_F2Q_CHN_HKX) && !(SEC_FACTORY)) \
+			&& !(MACH_BLOOMXQ_CHN_OPEN && !(MACH_BLOOMXQ_CHN_HKX) && !(SEC_FACTORY))
 	default n
 	help
 	This enables the MST LDO kernel driver
@@ -24,7 +29,12 @@ config MST_V2
 	bool "MST V2"
 	depends on !(MACH_X1Q_CHN_OPEN && !(MACH_X1Q_CHN_HKX) && !(SEC_FACTORY)) \
 			&& !(MACH_Y2Q_CHN_OPEN && !(MACH_Y2Q_CHN_HKX) && !(SEC_FACTORY)) \
-			&& !(MACH_Z3Q_CHN_OPEN && !(MACH_Z3Q_CHN_HKX) && !(SEC_FACTORY))
+			&& !(MACH_Z3Q_CHN_OPEN && !(MACH_Z3Q_CHN_HKX) && !(SEC_FACTORY)) \
+			&& !(SEC_GTS7XL_PROJECT) && !(SEC_GTS7L_PROJECT) \
+			&& !(MACH_C1Q_CHN_OPEN && !(MACH_C1Q_CHN_HK) && !(SEC_FACTORY)) \
+			&& !(MACH_C2Q_CHN_OPEN && !(MACH_C2Q_CHN_HK) && !(SEC_FACTORY)) \
+			&& !(MACH_F2Q_CHN_OPEN && !(MACH_F2Q_CHN_HKX) && !(SEC_FACTORY)) \
+			&& !(MACH_BLOOMXQ_CHN_OPEN && !(MACH_BLOOMXQ_CHN_HKX) && !(SEC_FACTORY))
 	default n
 	help
 	This enables the MST V2 codes
@@ -57,7 +67,12 @@ config MFC_CHARGER
 	bool "MFC IC using model"
 	depends on !(MACH_X1Q_CHN_OPEN && !(MACH_X1Q_CHN_HKX) && !(SEC_FACTORY)) \
 			&& !(MACH_Y2Q_CHN_OPEN && !(MACH_Y2Q_CHN_HKX) && !(SEC_FACTORY)) \
-			&& !(MACH_Z3Q_CHN_OPEN && !(MACH_Z3Q_CHN_HKX) && !(SEC_FACTORY))
+			&& !(MACH_Z3Q_CHN_OPEN && !(MACH_Z3Q_CHN_HKX) && !(SEC_FACTORY)) \
+			&& !(SEC_GTS7XL_PROJECT) && !(SEC_GTS7L_PROJECT) \
+			&& !(MACH_C1Q_CHN_OPEN && !(MACH_C1Q_CHN_HK) && !(SEC_FACTORY)) \
+			&& !(MACH_C2Q_CHN_OPEN && !(MACH_C2Q_CHN_HK) && !(SEC_FACTORY)) \
+			&& !(MACH_F2Q_CHN_OPEN && !(MACH_F2Q_CHN_HKX) && !(SEC_FACTORY)) \
+			&& !(MACH_BLOOMXQ_CHN_OPEN && !(MACH_BLOOMXQ_CHN_HKX) && !(SEC_FACTORY))
 	default n
 	help
 	This enables the MFC IC sysfs node
@@ -67,15 +82,6 @@ config MST_TEEGRIS
 	default n
 	help
 	This enables the MST TEEGRIS function
-
-config MFC_LDO_COMMAND
-	bool "i2c patch for LDO on MFC IC IDT chip"
-	depends on !(MACH_X1Q_CHN_OPEN && !(MACH_X1Q_CHN_HKX) && !(SEC_FACTORY)) \
-			&& !(MACH_Y2Q_CHN_OPEN && !(MACH_Y2Q_CHN_HKX) && !(SEC_FACTORY)) \
-			&& !(SEC_Z3Q_PROJECT)
-	default n
-	help
-	This enables the i2c patch for LDO on MFC IC IDT chip
 
 config MST_LPM_DISABLE
 	bool "MST LPM Disable, this works only in eng binary version"
@@ -88,5 +94,4 @@ config MST_LPM_CONTROL
 	default n
 	help
 	This enables the MST LPM control code
-
 

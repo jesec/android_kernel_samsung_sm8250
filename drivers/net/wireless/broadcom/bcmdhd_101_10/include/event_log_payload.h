@@ -4,7 +4,7 @@
  * This file describes the payloads of event log entries that are data buffers
  * rather than formatted string entries. The contents are generally XTLVs.
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -21,7 +21,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #ifndef _EVENT_LOG_PAYLOAD_H_
@@ -68,6 +68,7 @@ typedef struct enhanced_ts_message_v1 {
 #define EVENT_LOG_XTLV_ID_BSSCFGDATA_SUM        4  /**< XTLV ID for bsscfg_q_summary_t */
 #define EVENT_LOG_XTLV_ID_UCTXSTATUS            5  /**< XTLV ID for ucode TxStatus array */
 #define EVENT_LOG_XTLV_ID_TXQ_SUM_V2            6  /**< XTLV ID for txq_summary_v2_t */
+#define EVENT_LOG_XTLV_ID_BUF                   7  /**< XTLV ID for event_log_buffer_t */
 
 /**
  * An XTLV holding a string
@@ -216,21 +217,26 @@ typedef struct xtlv_uc_txs {
 #define BAND2G_SIB_ENAB		0x4
 #define PARALLEL_SCAN		0x8
 #define SCAN_ABORT		0x10
+/* Note: Definitions  being reused in chan_info as SCAN_SUM_SCAN_CORE need clean up */
 #define SC_LOWSPAN_SCAN		0x20
+/* Note: Definitions  being reused in scan summary info as WL_SSUM_CLIENT_MASK need clean up */
 #define SC_SCAN			0x40
 
-#define WL_SSUM_TYPE_MASK	0x1C0u /* bit 8 - 6 */
-#define WL_SSUM_TYPE_SHIFT	6u
+#define WL_SSUM_CLIENT_MASK	0x1C0u	/* bit 8 - 6 */
+#define WL_SSUM_CLIENT_SHIFT	6u	/* shift client scan opereration */
 
-#define WL_SSUM_MODE_MASK	0xE00u /* bit 11 - 9 */
-#define WL_SSUM_MODE_SHIFT	9u
+#define WL_SSUM_MODE_MASK	0xE00u	/* bit 11 - 9 */
+#define WL_SSUM_MODE_SHIFT	9u	/* shift mode scan operation */
 
-#define WL_SSUM_TYPE_ASSOCSCAN	0x0u	/* Log as scan requested type is assoc scan */
-#define WL_SSUM_TYPE_ROAMSCAN	0x1u	/* Log as scan requested type is roam scan */
-#define WL_SSUM_TYPE_FWSCAN	0x2u	/* Log as scan requested type is other firmware scan */
-#define WL_SSUM_TYPE_HOSTSCAN	0x3u	/* Log as scan requested type is host scan */
+/* Common bits for channel and scan summary info */
+#define SCAN_SUM_CHAN_RESHED	0x1000 /* Bit 12 as resched scan for chaninfo and scan summary */
 
-#define WL_SSUM_SCANFLAG_INVALID	0x7u
+#define WL_SSUM_CLIENT_ASSOCSCAN	0x0u	/* Log as scan requested client is assoc scan */
+#define WL_SSUM_CLIENT_ROAMSCAN		0x1u	/* Log as scan requested client is roam scan */
+#define WL_SSUM_CLIENT_FWSCAN		0x2u	/* Log as scan requested client is other fw scan */
+#define WL_SSUM_CLIENT_HOSTSCAN		0x3u	/* Log as scan requested client is host scan */
+
+#define WL_SSUM_SCANFLAG_INVALID	0x7u	/* Log for invalid scan client or mode */
 
 /* scan_channel_info flags */
 #define ACTIVE_SCAN_SCN_SUM	0x2
@@ -289,7 +295,11 @@ struct wl_scan_summary {
 				/* flags[2] or WLC_CORE0 = if set, represents wlc_core0 */
 				/* flags[3] or WLC_CORE1 = if set, represents wlc_core1 */
 				/* flags[4] or HOME_CHAN = if set, represents home-channel */
-				/* flags[5:15] = reserved */
+				/* flags[5] or SCAN_SUM_SCAN_CORE = if set,
+				 * represents chan_info from scan core.
+				 */
+				/* flags[12] SCAN_SUM_CHAN_RESHED indicate scan rescheduled */
+				/* flags[6:11, 13:15] = reserved */
 				/* when scan_summary_info is used, */
 				/* the following flag bits are used: */
 				/* flags[1] or BAND5G_SIB_ENAB = */
@@ -298,16 +308,17 @@ struct wl_scan_summary {
 				/* allowSIBParallelPassiveScan on 2G band */
 				/* flags[3] or PARALLEL_SCAN = Parallel scan enabled or not */
 				/* flags[4] or SCAN_ABORT = SCAN_ABORTED scenario */
-				/* flags[5] reserved */
-				/* flags[6:8] is used as count value to identify SCAN TYPE
-				 * WL_SSUM_TYPE_ASSOCSCAN 0x0u, WL_SSUM_TYPE_ROAMSCAN 0x1u,
-				 * WL_SSUM_TYPE_FWSCAN	0x2u, WL_SSUM_TYPE_HOSTSCAN 0x3u
+				/* flags[5] = reserved */
+				/* flags[6:8] is used as count value to identify SCAN CLIENT
+				 * WL_SSUM_CLIENT_ASSOCSCAN 0x0u, WL_SSUM_CLIENT_ROAMSCAN 0x1u,
+				 * WL_SSUM_CLIENT_FWSCAN	0x2u, WL_SSUM_CLIENT_HOSTSCAN 0x3u
 				 */
 				/* flags[9:11] is used as count value to identify SCAN MODE
 				 * WL_SCAN_MODE_HIGH_ACC 0u, WL_SCAN_MODE_LOW_SPAN 1u,
 				 * WL_SCAN_MODE_LOW_POWER 2u
 				 */
-				/* flags[12:15] = reserved */
+				/* flags[12] SCAN_SUM_CHAN_RESHED indicate scan rescheduled */
+				/* flags[13:15] = reserved */
 	union {
 		wl_scan_channel_info_t scan_chan_info;	/* scan related information
 							* for each channel scanned
@@ -336,7 +347,11 @@ struct wl_scan_summary_v2 {
 				/* flags[2] or WLC_CORE0 = if set, represents wlc_core0 */
 				/* flags[3] or WLC_CORE1 = if set, represents wlc_core1 */
 				/* flags[4] or HOME_CHAN = if set, represents home-channel */
-				/* flags[5:15] = reserved */
+				/* flags[5] or SCAN_SUM_SCAN_CORE = if set,
+				 * represents chan_info from scan core.
+				 */
+				/* flags[12] SCAN_SUM_CHAN_RESHED indicate scan rescheduled */
+				/* flags[6:11, 13:15] = reserved */
 				/* when scan_summary_info is used, */
 				/* the following flag bits are used: */
 				/* flags[1] or BAND5G_SIB_ENAB = */
@@ -345,16 +360,17 @@ struct wl_scan_summary_v2 {
 				/* allowSIBParallelPassiveScan on 2G band */
 				/* flags[3] or PARALLEL_SCAN = Parallel scan enabled or not */
 				/* flags[4] or SCAN_ABORT = SCAN_ABORTED scenario */
-				/* flags[5] reserved */
-				/* flags[6:8] is used as count value to identify SCAN TYPE
-				 * WL_SSUM_TYPE_ASSOCSCAN 0x0u, WL_SSUM_TYPE_ROAMSCAN 0x1u,
-				 * WL_SSUM_TYPE_FWSCAN	0x2u, WL_SSUM_TYPE_HOSTSCAN 0x3u
+				/* flags[5] = reserved */
+				/* flags[6:8] is used as count value to identify SCAN CLIENT
+				 * WL_SSUM_CLIENT_ASSOCSCAN 0x0u, WL_SSUM_CLIENT_ROAMSCAN 0x1u,
+				 * WL_SSUM_CLIENT_FWSCAN	0x2u, WL_SSUM_CLIENT_HOSTSCAN 0x3u
 				 */
 				/* flags[9:11] is used as count value to identify SCAN MODE
 				 * WL_SCAN_MODE_HIGH_ACC 0u, WL_SCAN_MODE_LOW_SPAN 1u,
 				 * WL_SCAN_MODE_LOW_POWER 2u
 				 */
-				/* flags[12:15] = reserved */
+				/* flags[12] SCAN_SUM_CHAN_RESHED indicate scan rescheduled */
+				/* flags[13:15] = reserved */
 	/* scan_channel_ctx_t chan_cnt; */
 	uint8 channel_cnt_aux;			/* Number of channels to be scanned on Aux core */
 	uint8 channel_cnt_main;			/* Number of channels to be scanned on Main core */
@@ -831,12 +847,78 @@ typedef struct {
 	uint32  rxf1ovfl;	/** < Rx FIFO1 overflow counters information */
 } phy_periodic_counters_v1_t;
 
+typedef struct {
+
+	/* RX error related */
+	uint32	rxrsptmout;	/* number of response timeouts for transmitted frames
+				* expecting a response
+				*/
+	uint32	rxbadplcp;	/* number of parity check of the PLCP header failed */
+	uint32	rxcrsglitch;	/* PHY was able to correlate the preamble but not the header */
+	uint32	rxnodelim;	/* number of no valid delimiter detected by ampdu parser */
+	uint32	bphy_badplcp;	/* number of bad PLCP reception on BPHY rate */
+	uint32	bphy_rxcrsglitch;	/* PHY count of bphy glitches */
+	uint32	rxbadfcs;	/* number of frames for which the CRC check failed in the MAC */
+	uint32  rxtoolate;	/* receive too late */
+	uint32  rxf0ovfl;	/* Rx FIFO0 overflow counters information */
+	uint32  rxf1ovfl;	/* Rx FIFO1 overflow counters information */
+	uint32	rxanyerr;	/* Any RX error that is not counted by other counters. */
+	uint32	rxdropped;	/* Frame dropped */
+	uint32	rxnobuf;	/* Rx error due to no buffer */
+	uint32	rxrunt;		/* Runt frame counter */
+	uint32	rxfrmtoolong;	/* Number of received frame that are too long */
+	uint32	rxdrop20s;
+
+	/* RX related */
+	uint32	rxstrt;		/* number of received frames with a good PLCP */
+	uint32	rxbeaconmbss;	/* beacons received from member of BSS */
+	uint32	rxdtucastmbss;	/* number of received DATA frames with good FCS and matching RA */
+	uint32	rxdtocast;	/* number of received DATA frames (good FCS and no matching RA) */
+	uint32  goodfcs;        /* Good fcs counters  */
+	uint32	rxctl;		/* Number of control frames */
+	uint32	rxaction;	/* Number of action frames */
+	uint32	rxback;		/* Number of block ack frames rcvd */
+	uint32	rxctlucast;	/* Number of received unicast ctl frames */
+	uint32	rxframe;	/* Number of received frames */
+
+	/* TX related */
+	uint32	txallfrm;	/* total number of frames sent, incl. Data, ACK, RTS, CTS,
+				* Control Management (includes retransmissions)
+				*/
+	uint32	txmpdu;			/* Numer of transmitted mpdus */
+	uint32	txackbackctsfrm;	/* Number of ACK + BACK + CTS */
+
+	/* TX error related */
+	uint32	txrtsfail;		/* RTS TX failure count */
+	uint32	txphyerr;		/* PHY TX error count */
+
+	uint16	nav_cntr_l;		/* The state of the NAV */
+	uint16	nav_cntr_h;
+} phy_periodic_counters_v3_t;
+
 typedef struct phycal_log_cmn {
 	uint16 chanspec; /* Current phy chanspec */
 	uint8  last_cal_reason;  /* Last Cal Reason */
 	uint8  pad1;  /* Padding byte to align with word */
-	uint   last_cal_time; /* Last cal time in sec */
+	uint32  last_cal_time; /* Last cal time in sec */
 } phycal_log_cmn_t;
+
+typedef struct phycal_log_cmn_v2 {
+	uint16 chanspec; /* Current phy chanspec */
+	uint8  last_cal_reason;  /* Last Cal Reason */
+	uint8  pad1;  /* Padding byte to align with word */
+	uint32   last_cal_time; /* Last cal time in sec */
+
+	/* New Parameters */
+	uint16 last_cal_temp; /* Duration of SS cal in usec */
+	uint16 last_ss_caldur; /* Last ss cal duration */
+
+	/* Misc general purpose debug counters (will be used for future debugging) */
+	uint16 debug_01;
+	uint16 debug_02;
+	uint16 debug_03;
+	uint16 debug_04;
+} phycal_log_cmn_v2_t;
 
 typedef struct phycal_log_core {
 	uint16 ofdm_txa; /* OFDM Tx IQ Cal a coeff */
@@ -898,6 +980,68 @@ typedef struct phy_periodic_log_cmn {
 
 } phy_periodic_log_cmn_t;
 
+typedef struct phy_periodic_log_cmn_v2 {
+	uint16  chanspec; /* Current phy chanspec */
+	uint16  vbatmeas; /* Measured VBAT sense value */
+	uint16  featureflag; /* Currently active feature flags */
+	int8    chiptemp; /* Chip temparature */
+	int8    femtemp;  /* Fem temparature */
+
+	uint32  nrate; /* Current Tx nrate */
+
+	uint8   cal_phase_id; /* Current Multi phase cal ID */
+	uint8   rxchain; /* Rx Chain */
+	uint8   txchain; /* Tx Chain */
+	uint8   ofdm_desense; /* OFDM desense */
+
+	uint8   bphy_desense; /* BPHY desense */
+	uint8   pll_lockstatus; /* PLL Lock status */
+
+	uint32 duration;	/* millisecs spent sampling this channel */
+	uint32 congest_ibss;	/* millisecs in our bss (presumably this traffic will */
+				/*  move if cur bss moves channels) */
+	uint32 congest_obss;	/* traffic not in our bss */
+	uint32 interference;	/* millisecs detecting a non 802.11 interferer. */
+
+	uint8 slice;
+	uint8 version;		/* version of fw/ucode for debug purposes */
+	bool phycal_disable;		/* Set if calibration is disabled */
+	uint8 pad;
+	uint16 phy_log_counter;
+	uint16 noise_mmt_overdue;	/* Count up if ucode noise mmt is overdue for 5 sec */
+	uint16 chan_switch_tm; /* Channel switch time */
+
+	/* HP2P related params */
+	uint16 shm_mpif_cnt_val;
+	uint16 shm_thld_cnt_val;
+	uint16 shm_nav_cnt_val;
+	uint16 shm_cts_cnt_val;
+
+	uint16 shm_m_prewds_cnt;	/* Count of pre-wds fired in the ucode */
+	uint32 last_cal_time;		/* Last cal execution time */
+	uint16 deaf_count;		/* Depth of stay_in_carrier_search function */
+	uint32 ed20_crs0;		/* ED-CRS status on core 0 */
+	uint32 ed20_crs1;		/* ED-CRS status on core 1 */
+	uint32 noise_cal_req_ts;	/* Time-stamp when noise cal was requested */
+	uint32 noise_cal_intr_ts;	/* Time-stamp when noise cal was completed */
+	uint32 phywdg_ts;		/* Time-stamp when wd was fired */
+	uint32 phywd_dur;			/* Duration of the watchdog */
+	uint32 noise_mmt_abort_crs; /* Count of CRS during noise mmt */
+	uint32 chanspec_set_ts;		/* Time-stamp when chanspec was set */
+	uint32 vcopll_failure_cnt;	/* Number of VCO cal failures
+					* (including failures detected in ucode).
+					*/
+	uint32 dcc_fail_counter;	/* Number of DC cal failures */
+	uint32 log_ts;			/* Time-stamp when this log was collected */
+
+	/* Misc general purpose debug counters (will be used for future debugging) */
+	uint16 debug_01;
+	uint16 debug_02;
+	uint16 debug_03;
+	uint16 debug_04;
+	uint16 debug_05;
+} phy_periodic_log_cmn_v2_t;
+
 typedef struct phy_periodic_log_core {
 	uint8	baseindxval; /* TPC Base index */
 	int8	tgt_pwr; /* Programmed Target power */
@@ -913,13 +1057,41 @@ typedef struct phy_periodic_log_core {
 
 typedef struct phy_periodic_log_v1 {
 	uint8  version; /* Logging structure version */
-	uint8  numcores; /* Numbe of cores for which core specific data present */
+	uint8  numcores; /* Number of cores for which core specific data present */
 	uint16 length;  /* Length of the entire structure */
 	phy_periodic_log_cmn_t phy_perilog_cmn;
 	phy_periodic_counters_v1_t counters_peri_log;
 	/* This will be a variable length based on the numcores field defined above */
 	phy_periodic_log_core_t phy_perilog_core[1];
 } phy_periodic_log_v1_t;
+
+#define PHYCAL_LOG_VER3		(3u)
+#define PHY_PERIODIC_LOG_VER3	(3u)
+
+/* 4387 onwards */
+typedef struct phy_periodic_log_v3 {
+	uint8  version; /* Logging structure version */
+	uint8  numcores; /* Number of cores for which core specific data present */
+	uint16 length;  /* Length of the structure */
+
+	/* Logs general PHY parameters */
+	phy_periodic_log_cmn_v2_t phy_perilog_cmn;
+
+	/* Logs ucode counters and NAVs */
+	phy_periodic_counters_v3_t counters_peri_log;
+
+	/* Logs data pertaining to each core */
+	phy_periodic_log_core_t phy_perilog_core[1];
+} phy_periodic_log_v3_t;
+
+typedef struct phycal_log_v3 {
+	uint8  version; /* Logging structure version */
+	uint8  numcores; /* Number of cores for which core specific data present */
+	uint16 length;  /* Length of the entire structure */
+	phycal_log_cmn_v2_t phycal_log_cmn; /* Logging common structure */
+	/* This will be a variable length based on the numcores field defined above */
+	phycal_log_core_t phycal_log_core[1];
+} phycal_log_v3_t;
 
 /* Note: The version 2 is reserved for 4357 only. Future chips must not use this version. */
 
@@ -1209,5 +1381,53 @@ typedef struct roam_log_bcnrptrep_v3 {
 	uint16 duration;		/* duration */
 	uint16 pad;
 } roam_log_bcnrpt_rep_v3_t;
+
+#define EVENT_LOG_BUFFER_ID_PMK			0
+#define EVENT_LOG_BUFFER_ID_ANONCE		1
+#define EVENT_LOG_BUFFER_ID_SNONCE		2
+#define EVENT_LOG_BUFFER_ID_WPA_M3_KEYDATA	3
+#define EVENT_LOG_BUFFER_ID_WPA_CACHED_KEYDATA	4
+
+typedef struct event_log_buffer {
+	uint16 id;	/* XTLV ID: EVENT_LOG_XTLV_ID_BUF */
+	uint16 len;	/* XTLV Len */
+	uint16 buf_id;	/* One of the above EVENT_LOG_BUFFER_ID_XXXs */
+	uint16 pad;	/* for 4-byte start alignment of data */
+	uint8 data[];	/* the payload of interest */
+} event_log_buffer_t;
+
+#define XTLV_EVENT_LOG_BUFFER_LEN		(OFFSETOF(event_log_buffer_t, data))
+#define XTLV_EVENT_LOG_BUFFER_FULL_LEN(buf_len)	ALIGN_SIZE((XTLV_EVENT_LOG_BUFFER_LEN + \
+							(buf_len) * sizeof(uint8)), sizeof(uint32))
+
+/* Structures for parsing FSM log data
+ * Only used by host to parse data coming in FSM log set
+ * Following log tags use this structured data:
+ * EVENT_LOG_TAG_ASSOC_SM
+ * EVENT_LOG_TAG_SUP_SM
+ * EVENT_LOG_TAG_AUTH_SM
+ * EVENT_LOG_TAG_SAE_SM
+ * EVENT_LOG_TAG_FTM_SM
+ * EVENT_LOG_TAG_NAN_SM
+ * More state machine log tags may also use this format
+ */
+
+/* Generic FSM structure for logging. Must be wrapped into a proper structure. The wrapper
+ * structure can add more information but this needs to be one of the members of the wrapper
+ * structure.
+ */
+typedef struct event_log_generic_fsm_struct {
+	uint32 old_state;
+	uint32 new_state;
+	uint32 reason;
+	uint32 caller;
+} event_log_generic_fsm_struct_t;
+
+typedef struct event_log_wl_fsm_struct {
+	uint32 unit;
+	uint32 bsscfg_idx;
+	event_log_generic_fsm_struct_t generic_fsm;
+	uint32 data[]; /* Any other information relevant to this state transition */
+} event_log_wl_fsm_struct_t;
 
 #endif /* _EVENT_LOG_PAYLOAD_H_ */

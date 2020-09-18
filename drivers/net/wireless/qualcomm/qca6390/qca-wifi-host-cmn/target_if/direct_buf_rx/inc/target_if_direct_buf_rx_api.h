@@ -23,6 +23,13 @@
 #include "qdf_atomic.h"
 #include "wmi_unified_api.h"
 
+#ifdef WLAN_DEBUGFS
+#ifdef DIRECT_BUF_RX_DEBUG
+/* Base debugfs entry for DBR module */
+extern qdf_dentry_t dbr_debugfs_entry;
+#endif /* DIRECT_BUF_RX_DEBUG */
+#endif /* WLAN_DEBUGFS */
+
 #define direct_buf_rx_alert(params...) \
 	QDF_TRACE_FATAL(QDF_MODULE_ID_DIRECT_BUF_RX, params)
 #define direct_buf_rx_err(params...) \
@@ -138,12 +145,13 @@ void target_if_direct_buf_rx_register_tx_ops(
  * @mod_id: module id indicating the module using direct buffer rx framework
  * @paddr: Physical address of buffer for which cookie info is required
  * @cookie: cookie will be returned in this param
+ * @srng_id: srng ID
  *
  * Return: QDF status of operation
  */
 QDF_STATUS target_if_dbr_cookie_lookup(struct wlan_objmgr_pdev *pdev,
 				       uint8_t mod_id, qdf_dma_addr_t paddr,
-				       uint32_t *cookie);
+				       uint32_t *cookie, uint8_t srng_id);
 
 /**
  * target_if_dbr_buf_release() - Notify direct buf that a previously provided
@@ -152,10 +160,11 @@ QDF_STATUS target_if_dbr_cookie_lookup(struct wlan_objmgr_pdev *pdev,
  * @mod_id: module id indicating the module using direct buffer rx framework
  * @paddr: Physical address of buffer for which cookie info is required
  * @cookie: cookie value corresponding to the paddr
+ * @srng_id: srng ID
  *
  * Return: QDF status of operation
  */
 QDF_STATUS target_if_dbr_buf_release(struct wlan_objmgr_pdev *pdev,
 				     uint8_t mod_id, qdf_dma_addr_t paddr,
-				     uint32_t cookie);
+				     uint32_t cookie, uint8_t srng_id);
 #endif /* _TARGET_IF_DIRECT_BUF_RX_API_H_ */

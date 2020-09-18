@@ -198,21 +198,21 @@ int qmi_rmnet_flow_control(struct net_device *dev, u32 mq_idx, int enable)
 	struct netdev_queue *q;
 	struct timespec ts;
 	struct rtc_time tm;
-	
+
 	if (unlikely(mq_idx >= dev->num_tx_queues))
 		return 0;
 
 	q = netdev_get_tx_queue(dev, mq_idx);
 	if (unlikely(!q))
 		return 0;
-	
+
 	getnstimeofday(&ts);
 	rtc_time_to_tm(ts.tv_sec, &tm);
-	net_log("%d-%02d-%02d %02d:%02d:%02d.%06lu, %s[%d] %s_queue\n", 
+	net_log("%d-%02d-%02d %02d:%02d:%02d.%06lu, %s[%d] %s_queue\n",
 				tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
 				tm.tm_hour, tm.tm_min, tm.tm_sec, ts.tv_nsec/1000,
 				dev->name, mq_idx, enable ? "wake" : "stop");
-				
+
 	if (enable)
 		netif_tx_wake_queue(q);
 	else

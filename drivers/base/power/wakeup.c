@@ -26,12 +26,6 @@
 #include "power.h"
 #ifdef CONFIG_SEC_PM
 #include <linux/wakeup_reason.h>
-/* 
- * NOTE: Temporary code to find DIAG_WS owner
- */
-#define	DIAG_SOCKET_NAME_SZ		24
-extern char diag_ws_owner[DIAG_SOCKET_NAME_SZ]; 
-static char last_diag_ws_owner[DIAG_SOCKET_NAME_SZ];
 #endif
 
 #ifndef CONFIG_SUSPEND
@@ -865,27 +859,18 @@ void pm_print_active_wakeup_sources(void)
 	list_for_each_entry_rcu(ws, &wakeup_sources, entry) {
 		if (ws->active) {
 			pr_info("active wakeup source: %s\n", ws->name);
-			if (!strncmp(ws->name, "DIAG_WS", strlen("DIAG_WS")))
-				pr_info("%s owner : %s\n", ws->name, diag_ws_owner);
 			active = 1;
 		} else if (!active &&
 			   (!last_activity_ws ||
 			    ktime_to_ns(ws->last_time) >
 			    ktime_to_ns(last_activity_ws->last_time))) {
 			last_activity_ws = ws;
-			if (!strncmp(ws->name, "DIAG_WS", strlen("DIAG_WS")))
-				strncpy(last_diag_ws_owner, diag_ws_owner, strlen(diag_ws_owner));
-
 		}
 	}
 
-	if (!active && last_activity_ws) {
+	if (!active && last_activity_ws)
 		pr_info("last active wakeup source: %s\n",
 			last_activity_ws->name);
-		if (!strncmp(last_activity_ws->name, "DIAG_WS", strlen("DIAG_WS")))
-			pr_info("%s owner : %s\n", last_activity_ws->name, last_diag_ws_owner);
-	}
-
 	srcu_read_unlock(&wakeup_srcu, srcuidx);
 }
 EXPORT_SYMBOL_GPL(pm_print_active_wakeup_sources);

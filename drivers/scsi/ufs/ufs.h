@@ -177,12 +177,12 @@ enum unit_desc_param {
 	UNIT_DESC_PARAM_PHY_MEM_RSRC_CNT	= 0x18,
 	UNIT_DESC_PARAM_CTX_CAPABILITIES	= 0x20,
 	UNIT_DESC_PARAM_LARGE_UNIT_SIZE_M1	= 0x22,
+	UNIT_DESC_PARAM_WB_BUF_ALLOC_UNITS	= 0x29,
 #if defined(CONFIG_UFSHPB)
 	UNIT_DESC_HPB_LU_MAX_ACTIVE_REGIONS		= 0x23,
 	UNIT_DESC_HPB_LU_PIN_REGION_START_OFFSET	= 0x25,
 	UNIT_DESC_HPB_LU_NUM_PIN_REGIONS		= 0x27,
 #endif
-	UNIT_DESC_PARAM_WB_BUF_ALLOC_UNITS	= 0x29,
 };
 
 /* Device descriptor parameters offsets in bytes*/
@@ -229,11 +229,9 @@ enum device_desc_param {
 	DEVICE_DESC_PARAM_EX_FEAT_SUP		= 0x4F,
 #endif
 	DEVICE_DESC_PARAM_EXT_UFS_FEATURE_SUP	= 0x4F,
-#if 0
 	DEVICE_DESC_PARAM_WB_US_RED_EN		= 0x53,
 	DEVICE_DESC_PARAM_WB_TYPE		= 0x54,
 	DEVICE_DESC_PARAM_WB_SHARED_ALLOC_UNITS = 0x55,
-#endif
 };
 
 /* Interconnect descriptor parameters offsets in bytes*/
@@ -278,6 +276,11 @@ enum geometry_desc_param {
 	GEOMETRY_DESC_PARAM_ENM4_MAX_NUM_UNITS	= 0x3E,
 	GEOMETRY_DESC_PARAM_ENM4_CAP_ADJ_FCTR	= 0x42,
 	GEOMETRY_DESC_PARAM_OPT_LOG_BLK_SIZE	= 0x44,
+	GEOMETRY_DESC_PARAM_WB_MAX_ALLOC_UNITS	= 0x4F,
+	GEOMETRY_DESC_PARAM_WB_MAX_WB_LUNS	= 0x53,
+	GEOMETRY_DESC_PARAM_WB_BUFF_CAP_ADJ	= 0x54,
+	GEOMETRY_DESC_PARAM_WB_SUP_RED_TYPE	= 0x55,
+	GEOMETRY_DESC_PARAM_WB_SUP_WB_TYPE	= 0x56,
 #if defined(CONFIG_UFSHPB)
 	GEOMETRY_DESC_HPB_REGION_SIZE			= 0x48,
 	GEOMETRY_DESC_HPB_NUMBER_LU 			= 0x49,
@@ -649,9 +652,7 @@ struct ufs_dev_info {
 	u8	i_product_name;
 	u16	w_spec_version;
 	u32	d_ext_ufs_feature_sup;
-#if 0
 	u8	b_wb_buffer_type;
-#endif
 	u8	i_lt;
 
 	/* query flags */
@@ -665,11 +666,9 @@ struct ufs_dev_info {
 	/* Device deviations from standard UFS device spec. */
 	unsigned int quirks;
 
-#if 0
 	bool keep_vcc_on;
 
 	bool wb_config_lun;
-#endif
 };
 
 #define MAX_MODEL_LEN 16

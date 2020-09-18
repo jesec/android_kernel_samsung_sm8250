@@ -3166,12 +3166,21 @@ dhd_calculate_adps_energy_gain(wl_adps_energy_gain_v1_t *data)
 	int txpspoll_energy[MAX_BANDS] =
 		{ADPS_GAIN_2G_TX_PSPOLL, ADPS_GAIN_5G_TX_PSPOLL};
 
+	if (data->version == 0 || data->length != sizeof(*data)) {
+		DHD_FILTER_ERR(("%s - invalid adps_energy_gain data\n", __FUNCTION__));
+		return BCME_ERROR;
+	}
+
 	/* dur unit: mSec */
 	for (i = 0; i < MAX_BANDS; i++) {
 		energy_gain += (data->gain_data[i].pm_dur_gain * pm0_idle_energy[i]);
 		energy_gain -= (data->gain_data[i].step0_dur * txpspoll_energy[i]);
 	}
 	energy_gain /= ADPS_GAIN_ENERGY_CONV_UNIT;
+
+	if (energy_gain < 0) {
+		energy_gain = 0;
+	}
 
 	return energy_gain;
 }
@@ -3185,21 +3194,22 @@ int dhd_event_log_filter_adps_energy_gain(dhd_pub_t *dhdp)
 	EWPF_ifc_elem_t *ifc_elem;
 
 	if (!dhdp || !dhdp->event_log_filter) {
-		return 0;
+		DHD_FILTER_ERR(("%s - dhdp or event_log_filter is NULL\n", __FUNCTION__));
+		return BCME_ERROR;
 	}
 
 	filter = (EWP_filter_t *)dhdp->event_log_filter;
 
 	if (filter->enabled != TRUE) {
 		DHD_FILTER_ERR(("%s - EWP Filter is not enabled\n", __FUNCTION__));
-		return 0;
+		return BCME_UNSUPPORTED;
 	}
 
 	/* Refer to STA interface */
 	last_elem = dhd_ring_get_last(filter->i_ring[0]);
 	if (last_elem == NULL) {
 		DHD_FILTER_ERR(("%s - last_elem is NULL\n", __FUNCTION__));
-		return 0;
+		return BCME_ERROR;
 	}
 
 	ifc_elem = (EWPF_ifc_elem_t *)last_elem;

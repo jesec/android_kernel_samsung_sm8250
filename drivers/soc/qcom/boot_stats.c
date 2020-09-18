@@ -83,9 +83,9 @@ err1:
 static void print_boot_stats(void)
 {
 #ifdef CONFIG_SEC_BOOTSTAT
-	bs_linuxloader_start = readl_relaxed(&boot_stats->bootloader_start);
+	bs_uefi_start = readl_relaxed(&boot_stats->bootloader_start);
 	bs_linux_start = readl_relaxed(&boot_stats->bootloader_end);
-	bs_uefi_start = readl_relaxed(&boot_stats->bootloader_display);
+	bs_linuxloader_start = readl_relaxed(&boot_stats->bootloader_display);
 	bs_bootloader_load_kernel = readl_relaxed(
 					&boot_stats->bootloader_load_kernel);
 #endif

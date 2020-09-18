@@ -15,6 +15,7 @@
 
 #define pr_fmt(fmt)     KBUILD_MODNAME ":%s() " fmt, __func__
 
+#include <linux/version.h>
 #include <linux/module.h>
 #include <linux/device.h>
 #include <linux/slab.h>
@@ -29,6 +30,9 @@
 #include <linux/sec_debug.h>
 #ifdef CONFIG_SEC_QUEST
 #include <linux/sec_quest.h>
+#endif
+#ifdef CONFIG_SEC_QUEST_BPS_CLASSIFIER
+#include <linux/sec_quest_bps_classifier.h>
 #endif
 
 #define PARAM_RD		0
@@ -79,7 +83,7 @@ static void param_sec_operation(struct work_struct *work)
 	}
 
 	fs = get_fs();
-	set_fs(get_ds());
+	set_fs(KERNEL_DS);
 
 	ret = vfs_llseek(filp, sched_param_data->offset, SEEK_SET);
 	if (unlikely(ret < 0)) {
@@ -258,6 +262,16 @@ bool sec_get_param(enum sec_param_index index, void *value)
 		wait_for_completion(&sched_sec_param_data.work);
 		break;
 #endif
+#ifdef CONFIG_SEC_QUEST_BPS_CLASSIFIER
+	case param_index_quest_bps_data:
+		sched_sec_param_data.value = value;
+		sched_sec_param_data.offset = SEC_PARAM_QUEST_BPS_DATA_OFFSET;
+		sched_sec_param_data.size = sizeof(struct bps_info);
+		sched_sec_param_data.direction = PARAM_RD;
+		schedule_work(&sched_sec_param_data.sec_param_work);
+		wait_for_completion(&sched_sec_param_data.work);
+		break;
+#endif
 	case param_index_VrrStatus:
 		memcpy(value, param_data->VrrStatus,
 			sizeof(param_data->VrrStatus));
@@ -393,6 +407,16 @@ bool sec_set_param(enum sec_param_index index, void *value)
 		sched_sec_param_data.value = (struct param_quest_ddr_result_t *)value;
 		sched_sec_param_data.offset = SEC_PARAM_QUEST_DDR_RESULT_OFFSET;
 		sched_sec_param_data.size = sizeof(struct param_quest_ddr_result_t);
+		sched_sec_param_data.direction = PARAM_WR;
+		schedule_work(&sched_sec_param_data.sec_param_work);
+		wait_for_completion(&sched_sec_param_data.work);
+		break;
+#endif
+#ifdef CONFIG_SEC_QUEST_BPS_CLASSIFIER
+	case param_index_quest_bps_data:
+		sched_sec_param_data.value = (struct bps_info *)value;
+		sched_sec_param_data.offset = SEC_PARAM_QUEST_BPS_DATA_OFFSET;
+		sched_sec_param_data.size = sizeof(struct bps_info);
 		sched_sec_param_data.direction = PARAM_WR;
 		schedule_work(&sched_sec_param_data.sec_param_work);
 		wait_for_completion(&sched_sec_param_data.work);

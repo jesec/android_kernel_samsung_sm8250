@@ -1,7 +1,7 @@
 /*
  * Platform Dependent file for Qualcomm MSM/APQ
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -126,8 +126,8 @@ dhd_wifi_init_gpio(void)
 	wlan_host_wake_irq = gpio_to_irq(wlan_host_wake_up);
 #endif /* CONFIG_BCMDHD_OOB_HOST_WAKE */
 
-#if defined(CONFIG_BCM4359) || defined(CONFIG_BCM4361) || \
-	defined(CONFIG_BCM4375) || defined(CONFIG_BCM4389)
+#if defined(CONFIG_BCM4359) || defined(CONFIG_BCM4361) || defined(CONFIG_BCM4375) || \
+	defined(CONFIG_BCM4389)
 	printk(KERN_INFO "%s: Call msm_pcie_enumerate\n", __FUNCTION__);
 	msm_pcie_enumerate(MSM_PCIE_CH_NUM);
 #endif /* CONFIG_BCM4359 || CONFIG_BCM4361 || CONFIG_BCM4375 || CONFIG_BCM4389 */

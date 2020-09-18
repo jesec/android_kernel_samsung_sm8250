@@ -20,7 +20,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #ifndef	_bcmpcie_h_
@@ -146,6 +146,10 @@ typedef struct {
 #define PCIE_SHARED2_TRAP_ON_HOST_DB7	0x00040000u	/* can take a trap on DB7 from host */
 
 #define PCIE_SHARED2_DURATION_SCALE	0x00100000u
+#define PCIE_SHARED2_ETD_ADDR_SUPPORT	0x00800000u
+
+#define PCIE_SHARED2_TXCSO		0x00200000u	/* Tx Checksum offload support */
+#define PCIE_SHARED2_TXPOST_EXT		0x00400000u	/* extended txpost work item support */
 
 #define PCIE_SHARED2_D2H_D11_TX_STATUS	0x40000000
 #define PCIE_SHARED2_H2D_D11_TX_STATUS	0x80000000
@@ -391,6 +395,7 @@ typedef struct {
 	uint32		flags3;
 	uint32		host_cap2;
 	uint32		host_cap3;
+	uint32		PHYS_ADDR_N(etd_addr);
 } pciedev_shared_t;
 
 /* Device F/W provides the following access function:
@@ -415,20 +420,24 @@ typedef struct {
 #define HOSTCAP_FAST_DELETE_RING		0x00200000
 #define HOSTCAP_PKT_TXSTATUS			0x00400000
 #define HOSTCAP_UR_FW_NO_TRAP			0x00800000 /* Don't trap on UR */
+#define HOSTCAP_TX_CSO				0x01000000
 #define HOSTCAP_HSCB				0x02000000
 /* Host support for extended device trap debug buffer */
 #define HOSTCAP_EXT_TRAP_DBGBUF			0x04000000
+#define HOSTCAP_TXPOST_EXT			0x08000000
 /* Host support for enhanced debug lane */
 #define HOSTCAP_EDL_RING			0x10000000
 #define HOSTCAP_PKT_TIMESTAMP			0x20000000
 #define HOSTCAP_PKT_HP2P			0x40000000
 #define HOSTCAP_HWA				0x80000000
+
 #define HOSTCAP2_DURATION_SCALE_MASK            0x0000003Fu
 
 /* extended trap debug buffer allocation sizes. Note that this buffer can be used for
  * other trap related purposes also.
  */
 #define BCMPCIE_HOST_EXT_TRAP_DBGBUF_LEN_MIN	(64u * 1024u)
+#define BCMPCIE_HOST_EXT_TRAP_DBGBUF_LEN	(96u * 1024u)
 #define BCMPCIE_HOST_EXT_TRAP_DBGBUF_LEN_MAX	(256u * 1024u)
 
 /**
@@ -488,6 +497,7 @@ typedef struct {
 #define D2HMB_FWHALT                    D2H_DEV_FWHALT
 #define D2HMB_TRAP_IN_TRAP              D2H_DEV_TRAP_IN_TRAP
 #define D2HMB_EXT_TRAP_DATA             D2H_DEV_EXT_TRAP_DATA
+#define D2H_FWTRAP_MAC_SSSR_RDY		0x00010000u	/* MAC SSSR prepped */
 
 /* Size of Extended Trap data Buffer */
 #define BCMPCIE_EXT_TRAP_DATA_MAXLEN  4096

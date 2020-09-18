@@ -3,7 +3,7 @@
  * Contents are wifi-specific, used by any kernel or app-level
  * software that might want wifi things as it grows.
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -20,7 +20,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #include <typedefs.h>
@@ -1132,9 +1132,6 @@ wl_copy_macstat_upto_ver10(uint16 cntver, uint32 *dst, uint32 *src)
 	return BCME_OK;
 }
 
-/* XXX: Refer to the following twiki for macstat conversion from old to new
- * http://hwnbu-twiki.sj.broadcom.com/bin/view/Mwgroup/MacStatistics#counters_names_printed_out
- */
 static int
 wl_copy_macstat_ver11(uint32 *dst, uint32 *src)
 {

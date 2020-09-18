@@ -1,7 +1,7 @@
 /*
  * HND Run Time Environment ioctl.
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,7 +18,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #ifndef _dngl_ioctl_h_
@@ -108,9 +108,16 @@ typedef struct memuse_info {
 	uint32 mf_count;        /* Malloc failure count */
 } memuse_info_t;
 
-#define D11_DMA_LOOPBACK	1
-#define BMC_DMA_LOOPBACK	2
-#define D11_DMA_HOST_MEM_LPBK	4
+/* Different DMA loopback modes */
+#define M2M_DMA_LOOPBACK	0	/* PCIE M2M mode */
+#define D11_DMA_LOOPBACK	1	/* PCIE M2M and D11 mode without ucode */
+#define BMC_DMA_LOOPBACK	2	/* PCIE M2M and D11 mode with ucode */
+#define M2M_NON_DMA_LOOPBACK	3	/* Non DMA(indirect) mode */
+#define D11_DMA_HOST_MEM_LPBK	4	/* D11 mode */
+#define M2M_DMA_WRITE_TO_RAM	6	/* PCIE M2M write to specific memory mode */
+#define M2M_DMA_READ_FROM_RAM	7	/* PCIE M2M read from specific memory mode */
+#define D11_DMA_WRITE_TO_RAM	8	/* D11 write to specific memory mode */
+#define D11_DMA_READ_FROM_RAM	9	/* D11 read from specific memory mode */
 
 /* For D11 DMA loopback test */
 typedef struct d11_dmalpbk_init_args {

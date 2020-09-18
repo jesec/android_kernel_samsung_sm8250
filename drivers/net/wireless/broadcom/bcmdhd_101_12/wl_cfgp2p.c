@@ -2583,6 +2583,8 @@ wl_cfgp2p_start_p2p_device(struct wiphy *wiphy, struct wireless_dev *wdev)
 	if (!cfg)
 		return -EINVAL;
 
+	RETURN_EIO_IF_NOT_UP(cfg);
+
 	WL_TRACE(("Enter\n"));
 
 	ret = wl_cfgp2p_set_firm_p2p(cfg);

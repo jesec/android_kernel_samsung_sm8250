@@ -249,7 +249,7 @@ static int ss_dsi_poc_ctrl(struct samsung_display_driver_data *vdd, u32 cmd, con
 			LCD_ERR("fail to get erase param..\n");
 			return -EINVAL;
 		}
-		
+
 		vdd->poc_driver.er_try_cnt++;
 		ret = ss_poc_erase_sector(vdd, erase_start, erase_len);
 		if (unlikely(ret < 0)) {
@@ -474,7 +474,7 @@ static int _ss_dsi_poc_read(struct samsung_display_driver_data *vdd, char __user
 			loff_t *ppos)
 {
 	int image_size = 0;
-	int ret = 0;	
+	int ret = 0;
 
 	LCD_DEBUG("ss_dsi_poc_read \n");
 
@@ -540,7 +540,7 @@ static ssize_t ss_dsi_poc_read(struct file *file, char __user *buf, size_t count
 	int ret;
 
 	vdd->poc_driver.rd_try_cnt++;
-	
+
 	ret = _ss_dsi_poc_read(vdd, buf, count, ppos);
 	if (ret < 0) {
 		LCD_ERR("fail to poc read..\n");
@@ -622,7 +622,7 @@ static ssize_t ss_dsi_poc_write(struct file *file, const char __user *buf,
 	int ret = 0;
 
 	vdd->poc_driver.wr_try_cnt++;
-	
+
 	ret = _ss_dsi_poc_write(vdd, buf, count, ppos);
 	if (ret < 0) {
 		LCD_ERR("fail to poc write..\n");
@@ -957,26 +957,26 @@ static int poc_dpui_notifier_callback(struct notifier_block *self,
 	size = snprintf(tbuf, MAX_DPUI_VAL_LEN, "%d", poci);
 	set_dpui_field(DPUI_KEY_PNPOCI, tbuf, size);
 
-	inc_dpui_u32_field(DPUI_KEY_PNPOC_ER_TRY, poc->er_try_cnt);	
-	inc_dpui_u32_field(DPUI_KEY_PNPOC_ER_FAIL, poc->er_fail_cnt);	
-	inc_dpui_u32_field(DPUI_KEY_PNPOC_WR_TRY, poc->wr_try_cnt);	
-	inc_dpui_u32_field(DPUI_KEY_PNPOC_WR_FAIL, poc->wr_fail_cnt);	
+	inc_dpui_u32_field(DPUI_KEY_PNPOC_ER_TRY, poc->er_try_cnt);
+	inc_dpui_u32_field(DPUI_KEY_PNPOC_ER_FAIL, poc->er_fail_cnt);
+	inc_dpui_u32_field(DPUI_KEY_PNPOC_WR_TRY, poc->wr_try_cnt);
+	inc_dpui_u32_field(DPUI_KEY_PNPOC_WR_FAIL, poc->wr_fail_cnt);
 	inc_dpui_u32_field(DPUI_KEY_PNPOC_RD_TRY, poc->rd_try_cnt);
 	inc_dpui_u32_field(DPUI_KEY_PNPOC_RD_FAIL, poc->rd_fail_cnt);
-	
+
 	LCD_INFO("poc dpui: try=%d, fail=%d, id=%d, %d\n",
 			total_try_cnt, total_fail_cnt, poci, poci_org);
 	LCD_INFO("poc dpui: er (%d/%d), wr (%d/%d), rd (%d/%d)\n",
 			poc->er_try_cnt, poc->er_fail_cnt,
 			poc->wr_try_cnt, poc->wr_fail_cnt,
 			poc->rd_try_cnt, poc->rd_fail_cnt);
-	
+
 	poc->er_try_cnt = 0;
 	poc->er_fail_cnt = 0;
 	poc->wr_try_cnt = 0;
 	poc->wr_fail_cnt = 0;
 	poc->rd_try_cnt = 0;
-	poc->rd_fail_cnt = 0;	
+	poc->rd_fail_cnt = 0;
 
 	return 0;
 }
@@ -1037,7 +1037,7 @@ int ss_dsi_poc_init(struct samsung_display_driver_data *vdd)
 	vdd->poc_driver.wr_fail_cnt = 0;
 	vdd->poc_driver.rd_try_cnt = 0;
 	vdd->poc_driver.rd_fail_cnt = 0;
-	
+
 	vdd->panel_func.samsung_poc_ctrl = ss_dsi_poc_ctrl;
 
 	ret = misc_register(&vdd->poc_driver.dev);

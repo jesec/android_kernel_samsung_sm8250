@@ -50,6 +50,10 @@
 #include <linux/leds.h>
 #endif /* CONFIG_ANDROID_TIMED_OUTPUT */
 
+#if defined(CONFIG_BATTERY_SAMSUNG)
+#include "../battery_v2/include/sec_charging_common.h"
+#endif
+
 struct cs40l2x_private {
 	struct device *dev;
 	struct regmap *regmap;
@@ -115,6 +119,7 @@ struct cs40l2x_private {
 	int ipp_measured;
 	bool asp_available;
 	bool asp_enable;
+	bool a2h_enable;
 	struct hrtimer asp_timer;
 	const struct cs40l2x_fw_desc *fw_desc;
 	unsigned int fw_id_remap;
@@ -123,6 +128,8 @@ struct cs40l2x_private {
 	bool comp_enable_redc;
 	bool comp_enable_f0;
 	bool amp_gnd_stby;
+	bool clab_wt_en[CS40L2X_MAX_WAVEFORMS];
+	bool f0_wt_en[CS40L2X_MAX_WAVEFORMS];
 	bool regdump_done;
 	struct cs40l2x_wseq_pair dsp_cache[CS40L2X_DSP_CACHE_MAX];
 	unsigned int dsp_cache_depth;
@@ -198,11 +205,17 @@ const char sec_vib_event_cmd[EVENT_CMD_MAX][MAX_STR_LEN_EVENT_CMD] = {
 
 char sec_motor_type[MAX_STR_LEN_VIB_TYPE];
 char sec_prev_event_cmd[MAX_STR_LEN_EVENT_CMD];
-#if defined(CONFIG_FOLDER_HALL)
-static const int FOLDER_TYPE = 1;
-#else
-static const int FOLDER_TYPE = 0;
 #endif
+
+#if defined(CONFIG_BATTERY_SAMSUNG)
+static int vib_get_temperature(void)
+{
+	union power_supply_propval value = {0, };
+
+	psy_do_property("battery", get, POWER_SUPPLY_PROP_TEMP, value);
+
+	return value.intval;
+}
 #endif
 
 #ifdef CONFIG_MOTOR_DRV_CS40L2X_PMIC_RESET
@@ -323,35 +336,64 @@ static int cs40l2x_dig_scale_get(struct cs40l2x_private *cs40l2x,
 static int cs40l2x_dig_scale_set(struct cs40l2x_private *cs40l2x,
 			unsigned int dig_scale);
 
+static int get_dig_scale_folder_type(struct cs40l2x_private *cs40l2x)
+{
+	struct cs40l2x_platform_data pdata;
+	EVENT_STATUS *status;
+#if defined(CONFIG_BATTERY_SAMSUNG)
+	int current_temp = vib_get_temperature();
+
+	pr_info("%s: current temp: %d\n", __func__, current_temp);
+#endif
+	pdata = cs40l2x->pdata;
+	status = &cs40l2x->save_vib_event;
+#if defined(CONFIG_BATTERY_SAMSUNG)
+#if defined (CONFIG_SEC_F2Q_PROJECT)
+	if (current_temp >= pdata.high_temp) {
+		return pdata.dig_scale_high_temp;
+	}
+#endif
+#endif
+	if(status->EVENTS.FOLDER_STATE == 0) {	/* Case for folder opened status */
+		if(status->EVENTS.SHORT_DURATION == 1)
+			return pdata.dig_scale_fo_sd;
+#if defined(CONFIG_BATTERY_SAMSUNG)
+#if defined (CONFIG_SEC_BLOOMXQ_PROJECT)
+		if (current_temp <= pdata.lower_temp)
+			return pdata.dig_scale_fo_ld_lower_temp;
+		else if (current_temp <= pdata.low_temp)
+			return pdata.dig_scale_fo_ld_low_temp;
+#endif
+#endif
+		return pdata.dig_scale_fo_ld;
+	}
+
+	/* case for folder closed status */
+	if(status->EVENTS.SHORT_DURATION == 1)
+		return pdata.dig_scale_fc_sd;
+
+	return pdata.dig_scale_fc_ld;
+}
+
 static int set_current_dig_scale(struct cs40l2x_private *cs40l2x) {
+	struct cs40l2x_platform_data pdata;
 	EVENT_STATUS *status;
 	int scale = 0;
 
-	if(cs40l2x == NULL) {
+	if (cs40l2x == NULL) {
 		pr_err("%s: device is null\n", __func__);
 		return -EINVAL;
 	}
+
+	pdata = cs40l2x->pdata;
 	status = &cs40l2x->save_vib_event;
 
-	if (FOLDER_TYPE == 1) {
-		if(status->EVENTS.FOLDER_STATE == 0) {
-			if(status->EVENTS.SHORT_DURATION == 1) {
-				scale = EVENT_DIG_SCALE_FOLDER_OPEN_SHORT_DURATION;
-			}
-			else {
-				scale = EVENT_DIG_SCALE_FOLDER_OPEN_LONG_DURATION;
-			}
-		} else {
-			if(status->EVENTS.SHORT_DURATION == 1) {
-				scale = EVENT_DIG_SCALE_FOLDER_CLOSE_SHORT_DURATION;
-			}
-			else {
-				scale = EVENT_DIG_SCALE_FOLDER_CLOSE_LONG_DURATION;
-			}
-		}
-	} else {
-		scale = EVENT_DIG_SCALE_NONE;
-	}
+	if (pdata.folder_type)
+		scale = get_dig_scale_folder_type(cs40l2x);
+	else
+		scale = pdata.dig_scale_default;
+
+	pr_info("%s: scale set to %d\n", __func__, scale);
 
 	mutex_lock(&cs40l2x->lock);
 	cs40l2x_dig_scale_set(cs40l2x, scale);
@@ -360,7 +402,7 @@ static int set_current_dig_scale(struct cs40l2x_private *cs40l2x) {
 	scale = 0;
 	cs40l2x_dig_scale_get(cs40l2x, &scale);
 
-	if (FOLDER_TYPE == 1) {
+	if (pdata.folder_type) {
 		pr_info("%s: scale:%d (FOLD:%s, DURA:%s, ACCESS:%s)\n", __func__, scale,
 				status->EVENTS.FOLDER_STATE ? "CLOSE" : "OPEN",
 				status->EVENTS.SHORT_DURATION ? "SHORT" : "LONG",
@@ -2485,7 +2527,7 @@ static ssize_t cs40l2x_dig_scale_show(struct device *dev,
 {
 	struct cs40l2x_private *cs40l2x = cs40l2x_get_private(dev);
 	int ret;
-	unsigned int dig_scale;
+	unsigned int dig_scale = 0;
 
 	/*
 	 * this operation is agnostic to the variable firmware ID and may
@@ -3289,6 +3331,7 @@ static ssize_t cs40l2x_intensity_store(struct device *dev,
 	return count;
 }
 
+#if !defined (CONFIG_1030LRA_MOTOR)
 static ssize_t cs40l2x_haptic_engine_show(struct device *dev,
 			struct device_attribute *attr, char *buf)
 {
@@ -3307,6 +3350,7 @@ static ssize_t cs40l2x_haptic_engine_store(struct device *dev,
 
 	return count;
 }
+#endif
 
 static ssize_t cs40l2x_motor_type_show(struct device *dev, 
 		struct device_attribute *attr, char *buf)
@@ -3975,7 +4019,7 @@ static ssize_t cs40l2x_hw_reset_store(struct device *dev,
 	unsigned int val, fw_id_restore;
 
 #ifdef CONFIG_CS40L2X_SAMSUNG_FEATURE
-	pr_info("%s: enter revid:%d %d count:%d\n", __func__,
+	pr_info("%s: enter revid:%d %d count:%lu\n", __func__,
 			CS40L2X_REVID_B1, cs40l2x->revid, count);
 #endif
 
@@ -4156,9 +4200,9 @@ static int cs40l2x_imon_offs_sync(struct cs40l2x_private *cs40l2x)
 {
 	struct regmap *regmap = cs40l2x->regmap;
 	unsigned int reg_calc_enable = cs40l2x_dsp_reg(cs40l2x,
-			"IMON_OFFSET_CALC_ENABLE",
+			"VMON_IMON_OFFSET_ENABLE",
 			CS40L2X_XM_UNPACKED_TYPE, cs40l2x->fw_desc->id);
-	unsigned int val_calc_enable = CS40L2X_IMON_OFFS_CALC_DISABLED;
+	unsigned int val_calc_enable = CS40L2X_IMON_OFFS_CALC_DIS;
 	unsigned int reg, val;
 	int ret;
 
@@ -4173,7 +4217,7 @@ static int cs40l2x_imon_offs_sync(struct cs40l2x_private *cs40l2x)
 			return ret;
 
 		if (val == CS40L2X_CLAB_ENABLED)
-			val_calc_enable = CS40L2X_IMON_OFFS_CALC_ENABLED;
+			val_calc_enable = CS40L2X_IMON_OFFS_CALC_EN;
 	}
 
 	return regmap_write(regmap, reg_calc_enable, val_calc_enable);
@@ -4402,7 +4446,9 @@ static DEVICE_ATTR(heartbeat, 0660, cs40l2x_heartbeat_show, NULL);
 static DEVICE_ATTR(num_waves, 0660, cs40l2x_num_waves_show, NULL);
 #ifdef CONFIG_CS40L2X_SAMSUNG_FEATURE
 static DEVICE_ATTR(intensity, 0660, cs40l2x_intensity_show, cs40l2x_intensity_store);
+#if !defined (CONFIG_1030LRA_MOTOR)
 static DEVICE_ATTR(haptic_engine, 0660, cs40l2x_haptic_engine_show, cs40l2x_haptic_engine_store);
+#endif
 static DEVICE_ATTR(motor_type, 0660, cs40l2x_motor_type_show, NULL);
 static DEVICE_ATTR(event_cmd, 0660, cs40l2x_event_cmd_show, cs40l2x_event_cmd_store);
 #endif
@@ -4479,7 +4525,9 @@ static struct attribute *cs40l2x_dev_attrs[] = {
 	&dev_attr_num_waves.attr,
 #ifdef CONFIG_CS40L2X_SAMSUNG_FEATURE
 	&dev_attr_intensity.attr,
+#if !defined (CONFIG_1030LRA_MOTOR)
 	&dev_attr_haptic_engine.attr,
+#endif
 	&dev_attr_motor_type.attr,
 	&dev_attr_event_cmd.attr,
 #endif
@@ -4522,6 +4570,35 @@ static void cs40l2x_wl_relax(struct cs40l2x_private *cs40l2x)
 
 	pm_relax(dev);
 	dev_dbg(dev, "Relaxed suspend blocker\n");
+}
+
+static int cs40l2x_enable_classh(struct cs40l2x_private *cs40l2x)
+{
+	struct regmap *regmap = cs40l2x->regmap;
+	int ret, i;
+
+	for (i = 0; i < CS40L2X_MAX_WAVEFORMS; i++)
+		if (cs40l2x->clab_wt_en[i] || cs40l2x->f0_wt_en[i])
+			break;
+
+	if (i == CS40L2X_MAX_WAVEFORMS)
+		return 0;
+
+	/* Add 50 ms delay to settly the waveform */
+	msleep(50);
+	ret = regmap_update_bits(regmap, CS40L2X_BSTCVRT_VCTRL2,
+					CS40L2X_BST_CTL_SEL_MASK,
+					CS40L2X_BST_CTL_SEL_CLASSH);
+	if (ret)
+		return ret;
+
+	ret = regmap_update_bits(regmap, CS40L2X_PWR_CTRL3,
+			CS40L2X_CLASSH_EN_MASK,
+			1 << CS40L2X_CLASSH_EN_SHIFT);
+	if (ret)
+		return ret;
+
+	return 0;
 }
 
 static void cs40l2x_vibe_mode_worker(struct work_struct *work)
@@ -4610,7 +4687,25 @@ static void cs40l2x_vibe_mode_worker(struct work_struct *work)
 		cs40l2x->vibe_mode = CS40L2X_VIBE_MODE_HAPTIC;
 		if (cs40l2x->vibe_state != CS40L2X_VIBE_STATE_RUNNING)
 			cs40l2x_wl_relax(cs40l2x);
+	} else if (cs40l2x->vibe_mode == CS40L2X_VIBE_MODE_HAPTIC &&
+						cs40l2x->a2h_enable) {
+
+		ret = regmap_update_bits(regmap, CS40L2X_PWR_CTRL3,
+				CS40L2X_CLASSH_EN_MASK,
+				1 << CS40L2X_CLASSH_EN_SHIFT);
+		if (ret)
+			goto err_mutex;
+
+		ret = regmap_write(regmap, CS40L2X_DSP_VIRT1_MBOX_5,
+					CS40L2X_A2H_I2S_START);
+		if (ret)
+			goto err_mutex;
 	}
+
+	ret = cs40l2x_enable_classh(cs40l2x);
+	if (ret)
+		goto err_mutex;
+
 
 err_mutex:
 	mutex_unlock(&cs40l2x->lock);
@@ -4989,7 +5084,7 @@ static int cs40l2x_diag_capture(struct cs40l2x_private *cs40l2x)
 static int cs40l2x_peak_capture(struct cs40l2x_private *cs40l2x)
 {
 	struct regmap *regmap = cs40l2x->regmap;
-	int vmon_max, vmon_min, imon_max, imon_min;
+	unsigned int vmon_max, vmon_min, imon_max, imon_min;
 	int ret;
 
 	/* VMON min and max are returned as 24-bit two's-complement values */
@@ -5125,6 +5220,171 @@ static int cs40l2x_check_recovery(struct cs40l2x_private *cs40l2x)
 	enable_irq(i2c_client->irq);
 
 	return ret;
+}
+
+static int cs40l2x_classh_wt_check(struct cs40l2x_private *cs40l2x,
+					const unsigned char *data,
+					const int len, int *pos)
+{
+	struct device *dev = cs40l2x->dev;
+	int i, index;
+	unsigned int header_end = CS40L2X_WT_HEAD_END;
+
+	if (*pos < 0 || *pos >= CS40L2X_MAX_WAVEFORMS)
+		return -EINVAL;
+
+	index = *pos;
+	/* Check the wave table header for CLAB and F0 waveforms */
+	for (i = 1; i < len; i += 12) {
+		if (!memcmp(&header_end, (data + i), 3))
+			break;
+
+		if (*(data + i) & CS40L2X_CLAB_WT_EN)
+			cs40l2x->clab_wt_en[index] = true;
+
+		if (*(data + i) & CS40L2X_F0_WT_EN)
+			cs40l2x->f0_wt_en[index] = true;
+
+		dev_dbg(dev, "header = 0x%x clab_wt_en = 0x%x\n", *(data + i),
+			cs40l2x->clab_wt_en[index]);
+		index++;
+		if (index >= CS40L2X_MAX_WAVEFORMS) {
+			dev_err(dev, "Overflow on waveforms\n");
+			return -EFAULT;
+		}
+	}
+
+	*pos += index;
+
+	return 0;
+}
+
+static int cs40l2x_set_boost_voltage(struct cs40l2x_private *cs40l2x,
+					unsigned int boost_ctl)
+{
+	struct regmap *regmap = cs40l2x->regmap;
+	struct device *dev = cs40l2x->dev;
+	unsigned int bst_ctl_scaled;
+	int ret;
+
+	if (boost_ctl)
+		boost_ctl &= CS40L2X_PDATA_MASK;
+	else
+		boost_ctl = CS40L2X_BST_VOLT_MAX;
+
+	switch (boost_ctl) {
+	case 0:
+		bst_ctl_scaled = boost_ctl;
+		break;
+	case CS40L2X_BST_VOLT_MIN ... CS40L2X_BST_VOLT_MAX:
+		bst_ctl_scaled = ((boost_ctl - CS40L2X_BST_VOLT_MIN) / 50) + 1;
+		break;
+	default:
+		dev_err(dev, "Invalid VBST limit: %d mV\n", boost_ctl);
+		return -EINVAL;
+	}
+
+	ret = regmap_update_bits(regmap, CS40L2X_BSTCVRT_VCTRL1,
+			CS40L2X_BST_CTL_MASK,
+			bst_ctl_scaled << CS40L2X_BST_CTL_SHIFT);
+	if (ret) {
+		dev_err(dev, "Failed to write VBST limit\n");
+		return ret;
+	}
+
+	ret = regmap_update_bits(regmap, CS40L2X_BSTCVRT_VCTRL2,
+			CS40L2X_BST_CTL_LIM_EN_MASK,
+			1 << CS40L2X_BST_CTL_LIM_EN_SHIFT);
+	if (ret) {
+		dev_err(dev, "Failed to configure VBST control\n");
+		return ret;
+	}
+
+	return 0;
+}
+
+
+static int cs40l2x_cond_classh(struct cs40l2x_private *cs40l2x, int index)
+{
+	struct regmap *regmap = cs40l2x->regmap;
+	unsigned int enable = 0, reg, boost = cs40l2x->pdata.boost_ctl;
+	int ret;
+	bool disable_classh = false;
+
+
+	if (index < 0 || index >= CS40L2X_MAX_WAVEFORMS)
+		return -EINVAL;
+
+	reg = cs40l2x_dsp_reg(cs40l2x, "DYNAMIC_F0_ENABLED",
+					CS40L2X_XM_UNPACKED_TYPE,
+						CS40L2X_ALGO_ID_DYN_F0);
+
+	if (reg) {
+		ret = regmap_read(regmap, reg, &enable);
+		if (ret)
+			return ret;
+
+		if (enable) {
+			if (cs40l2x->f0_wt_en[index]) {
+				boost = cs40l2x->pdata.boost_ctl;
+				disable_classh = true;
+			}
+		}
+	}
+
+	reg = cs40l2x_dsp_reg(cs40l2x, "CLAB_ENABLED",
+			CS40L2X_XM_UNPACKED_TYPE, CS40L2X_ALGO_ID_CLAB);
+
+	if (reg) {
+		ret = regmap_read(regmap, reg, &enable);
+		if (ret)
+			return ret;
+
+		if (enable) {
+			if (cs40l2x->clab_wt_en[index]) {
+				boost = cs40l2x->pdata.boost_clab;
+				disable_classh = true;
+			}
+		}
+	}
+
+	if (disable_classh) {
+		ret = cs40l2x_set_boost_voltage(cs40l2x, boost);
+		if (ret)
+			return ret;
+
+		ret = regmap_update_bits(regmap, CS40L2X_BSTCVRT_VCTRL2,
+						CS40L2X_BST_CTL_SEL_MASK,
+						CS40L2X_BST_CTL_SEL_CP_VAL);
+		if (ret)
+			return ret;
+
+		ret = regmap_update_bits(regmap, CS40L2X_PWR_CTRL3,
+				CS40L2X_CLASSH_EN_MASK,
+				0 << CS40L2X_CLASSH_EN_SHIFT);
+		if (ret)
+			return ret;
+
+	} else {
+		ret = regmap_update_bits(regmap, CS40L2X_BSTCVRT_VCTRL2,
+						CS40L2X_BST_CTL_SEL_MASK,
+						CS40L2X_BST_CTL_SEL_CLASSH);
+		if (ret)
+			return ret;
+
+		ret = regmap_update_bits(regmap, CS40L2X_PWR_CTRL3,
+				CS40L2X_CLASSH_EN_MASK,
+				1 << CS40L2X_CLASSH_EN_SHIFT);
+		if (ret)
+			return ret;
+
+		ret = cs40l2x_set_boost_voltage(cs40l2x, boost);
+		if (ret)
+			return ret;
+
+	}
+
+	return 0;
 }
 
 static void cs40l2x_vibe_start_worker(struct work_struct *work)
@@ -5299,6 +5559,12 @@ static void cs40l2x_vibe_start_worker(struct work_struct *work)
 #if defined(CONFIG_VIB_NOTIFIER)
 		vib_notifier_notify();
 #endif
+		ret = cs40l2x_cond_classh(cs40l2x, cs40l2x->cp_trailer_index);
+		if (ret) {
+			dev_err(dev, "Conditional ClassH failed\n");
+			break;
+		}
+
 		ret = cs40l2x_ack_write(cs40l2x, CS40L2X_MBOX_TRIGGER_MS,
 				cs40l2x->cp_trailer_index & CS40L2X_INDEX_MASK,
 				CS40L2X_MBOX_TRIGGERRESET);
@@ -5308,6 +5574,12 @@ static void cs40l2x_vibe_start_worker(struct work_struct *work)
 #if defined(CONFIG_VIB_NOTIFIER)
 		vib_notifier_notify();
 #endif
+		ret = cs40l2x_cond_classh(cs40l2x, cs40l2x->cp_trailer_index);
+		if (ret) {
+			dev_err(dev, "Conditional ClassH failed\n");
+			break;
+		}
+ 
 		ret = cs40l2x_ack_write(cs40l2x, CS40L2X_MBOX_TRIGGERINDEX,
 				cs40l2x->cp_trailer_index,
 				CS40L2X_MBOX_TRIGGERRESET);
@@ -6608,7 +6880,7 @@ static int cs40l2x_coeff_file_parse(struct cs40l2x_private *cs40l2x,
 	unsigned int block_offset, block_type, block_length;
 	unsigned int algo_id, algo_rev, reg;
 	int ret = -EINVAL;
-	int i;
+	int i = 0, wt_index = 0;
 
 	*wt_date = '\0';
 
@@ -6662,6 +6934,8 @@ static int cs40l2x_coeff_file_parse(struct cs40l2x_private *cs40l2x,
 						algo_id);
 				ret = -EINVAL;
 				goto err_rls_fw;
+			} else {
+				dev_info(dev, "Valid algo ID 0x%x\n", algo_id);
 			}
 
 			if (((algo_rev >> 8) & CS40L2X_ALGO_REV_MASK)
@@ -6727,6 +7001,15 @@ static int cs40l2x_coeff_file_parse(struct cs40l2x_private *cs40l2x,
 				ret = -EINVAL;
 				goto err_rls_fw;
 			}
+
+			if (wt_found) {
+				ret = cs40l2x_classh_wt_check(cs40l2x,
+						&fw->data[pos],
+						block_length, &wt_index);
+				if (ret)
+					goto err_rls_fw;
+			}
+
 			break;
 		case CS40L2X_YM_UNPACKED_TYPE:
 			reg = CS40L2X_DSP1_YMEM_UNPACK24_0 + block_offset
@@ -6743,8 +7026,25 @@ static int cs40l2x_coeff_file_parse(struct cs40l2x_private *cs40l2x,
 				ret = -EINVAL;
 				goto err_rls_fw;
 			}
+
+			if (wt_found) {
+				ret = cs40l2x_classh_wt_check(cs40l2x,
+						&fw->data[pos],
+						block_length, &wt_index);
+				if (ret)
+					goto err_rls_fw;
+			}
+
 			break;
-		default:
+		case CS40L2X_XM_PACKED_TYPE:                   
+			reg = CS40L2X_DSP1_XMEM_PACK_0 + block_offset
+					+ cs40l2x->algo_info[i].xm_base * 4;     
+			break;                                       
+		case CS40L2X_YM_PACKED_TYPE:                   
+			reg = CS40L2X_DSP1_YMEM_PACK_0 + block_offset
+					+ cs40l2x->algo_info[i].ym_base * 4;     
+			break;                                       
+ 		default:
 			dev_err(dev, "Unexpected block type: 0x%04X\n",
 					block_type);
 			ret = -EINVAL;
@@ -8179,6 +8479,10 @@ static int cs40l2x_handle_of_data(struct i2c_client *i2c_client,
 	if (!ret)
 		pdata->boost_ctl = out_val | CS40L2X_PDATA_PRESENT;
 
+	ret = of_property_read_u32(np, "cirrus,boost-clab-millivolt", &out_val);
+	if (!ret)
+		pdata->boost_clab = out_val | CS40L2X_PDATA_PRESENT;
+
 	ret = of_property_read_u32(np, "cirrus,boost-ovp-millivolt", &out_val);
 	if (!ret)
 		pdata->boost_ovp = out_val;
@@ -8354,6 +8658,76 @@ static int cs40l2x_handle_of_data(struct i2c_client *i2c_client,
 		pr_info("%s: motor type not specified\n", __func__);
 	else
 		snprintf(sec_motor_type, sizeof(sec_motor_type), "%s", type);
+
+	pdata->folder_type = of_property_read_bool(np, "samsung,folder_type");
+
+	if (pdata->folder_type) {
+		ret = of_property_read_u32(np, "samsung,dig_scale_open_long_duration", &out_val);
+		if (!ret)
+			pdata->dig_scale_fo_ld = out_val;
+
+		pr_info("%s: dig scale fo ld:%d\n", __func__, pdata->dig_scale_fo_ld);
+
+		ret = of_property_read_u32(np, "samsung,dig_scale_open_short_duration", &out_val);
+		if (!ret)
+			pdata->dig_scale_fo_sd = out_val;
+
+		pr_info("%s: dig scale fo sd:%d\n", __func__, pdata->dig_scale_fo_sd);
+
+		ret = of_property_read_u32(np, "samsung,dig_scale_close_long_duration", &out_val);
+		if (!ret)
+			pdata->dig_scale_fc_ld = out_val;
+
+		pr_info("%s: dig scale fc ld:%d\n", __func__, pdata->dig_scale_fc_ld);
+
+		ret = of_property_read_u32(np, "samsung,dig_scale_close_short_duration", &out_val);
+		if (!ret)
+			pdata->dig_scale_fc_sd = out_val;
+
+		pr_info("%s: dig scale fc sd:%d\n", __func__, pdata->dig_scale_fc_sd);
+
+		ret = of_property_read_u32(np, "samsung,dig_scale_open_long_duration_low_temp", &out_val);
+		if (!ret)
+			pdata->dig_scale_fo_ld_low_temp = out_val;
+
+		pr_info("%s: dig scale fo ld low temp:%d\n", __func__, pdata->dig_scale_fo_ld_low_temp);
+
+		ret = of_property_read_u32(np, "samsung,dig_scale_open_long_duration_lower_temp", &out_val);
+		if (!ret)
+			pdata->dig_scale_fo_ld_lower_temp = out_val;
+
+		pr_info("%s: dig scale fo ld lower temp:%d\n", __func__, pdata->dig_scale_fo_ld_lower_temp);
+
+		ret = of_property_read_u32(np, "samsung,dig_scale_high_temp", &out_val);
+		if (!ret)
+			pdata->dig_scale_high_temp = out_val;
+
+		pr_info("%s: dig scale high temp:%d\n", __func__, pdata->dig_scale_high_temp);
+
+		ret = of_property_read_s32(np, "samsung,low_temp", &out_val);
+		if (!ret)
+			pdata->low_temp = out_val;
+
+		pr_info("%s: low temp:%d\n", __func__, pdata->low_temp);
+
+		ret = of_property_read_s32(np, "samsung,lower_temp", &out_val);
+		if (!ret)
+			pdata->lower_temp = out_val;
+
+		pr_info("%s: lower temp:%d\n", __func__, pdata->lower_temp);
+
+		ret = of_property_read_s32(np, "samsung,high_temp", &out_val);
+		if (!ret)
+			pdata->high_temp = out_val;
+
+		pr_info("%s: high temp:%d\n", __func__, pdata->high_temp);
+	} else {
+		ret = of_property_read_u32(np, "samsung,dig_scale_default", &out_val);
+		if (!ret)
+			pdata->dig_scale_default = out_val;
+
+		pr_info("%s: dig scale default:%d\n", __func__, pdata->dig_scale_default);
+	}
 #endif
 	return 0;
 }
@@ -8911,7 +9285,7 @@ static int cs40l2x_i2c_probe(struct i2c_client *i2c_client,
 	if (cs40l2x->reset_gpio == NULL) {
 		cs40l2x->reset_vldo = devm_regulator_get(dev, "samsung,reset-vldo");
 		if (IS_ERR(cs40l2x->reset_vldo)) {
-			pr_err("can't request VLDO power supply: %ld\n", __func__, 
+			pr_err("%s: can't request VLDO power supply: %ld\n", __func__, 
 				PTR_ERR(cs40l2x->reset_vldo));
 			cs40l2x->reset_vldo = NULL;
 			return ret;

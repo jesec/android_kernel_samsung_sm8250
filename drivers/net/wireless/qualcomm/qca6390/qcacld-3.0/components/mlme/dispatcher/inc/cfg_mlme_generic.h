@@ -582,7 +582,7 @@
  * gRemoveTimeStampSyncCmd - Enable/Disable to remove time stamp sync cmd
  * @Min: 0
  * @Max: 1
- * @Default: 1
+ * @Default: 0
  *
  * This ini is used to enable/disable the removal of time stamp sync cmd
  *
@@ -592,38 +592,142 @@
  */
 #define CFG_REMOVE_TIME_STAMP_SYNC_CMD CFG_INI_BOOL( \
 	"gRemoveTimeStampSyncCmd", \
-	1, \
+	0, \
 	"Enable to remove time stamp sync cmd")
 
 /*
  * <ini>
- * gEnableChangeChannelBandWidth  Enable/Disable change
- * channel&bandwidth in the mission mode
+ * disable_4way_hs_offload - Enable/Disable 4 way handshake offload to firmware
  * @Min: 0
  * @Max: 1
  * @Default: 0
  *
- * 0  not allow change channel&bandwidth by setMonChan
- * 1  allow change channel&bandwidth by setMonChan
+ * 0  4-way HS to be handled in firmware
+ * 1  4-way HS to be handled in supplicant
  *
  * Related: None
  *
- * Supported Feature: STA
+ * Supported Feature: STA Roaming
  *
  * Usage: External
  *
  * </ini>
  */
-#ifdef FEATURE_MONITOR_MODE_SUPPORT
-#define CFG_CHANGE_CHANNEL_BANDWIDTH_DEFAULT true
-#else
-#define CFG_CHANGE_CHANNEL_BANDWIDTH_DEFAULT false
-#endif
+#define CFG_DISABLE_4WAY_HS_OFFLOAD CFG_INI_BOOL("disable_4way_hs_offload", \
+						 0, \
+						 "Enable/disable 4 way handshake offload to firmware")
 
-#define CFG_CHANGE_CHANNEL_BANDWIDTH CFG_INI_BOOL( \
-		"gEnableChangeChannelBandWidth", \
-		CFG_CHANGE_CHANNEL_BANDWIDTH_DEFAULT, \
-		"enable change channel bw")
+/*
+ * <ini>
+ * mgmt_retry_max - Maximum Retries for mgmt frames
+ * @Min: 0
+ * @Max: 31
+ * @Default: 15
+ *
+ * This ini is used to set maximum retries for mgmt frames
+ *
+ * Supported Feature: STA/SAP
+ *
+ * Usage: External
+ *
+ * </ini>
+ */
+#define CFG_MGMT_RETRY_MAX CFG_INI_UINT( \
+	"mgmt_retry_max", \
+	0, \
+	31, \
+	15, \
+	CFG_VALUE_OR_DEFAULT, \
+	"Max retries for mgmt frames")
+
+/*
+ * <ini>
+ * bmiss_skip_full_scan - To decide whether firmware does channel map based
+ * partial scan or partial scan followed by full scan in case no candidate is
+ * found in partial scan.
+ * @Min: 0
+ * @Max: 1
+ * @Default: 0
+ *
+ * 0 : Based on the channel map , firmware does scan to find new AP. if AP is
+ *     not found then it does a full scan on all valid channels.
+ * 1 : Firmware does channel map based partial scan only.
+ *
+ * Related: None
+ *
+ * Supported Feature: STA Roaming
+ *
+ * Usage: External
+ *
+ * </ini>
+ */
+#define CFG_BMISS_SKIP_FULL_SCAN CFG_INI_BOOL("bmiss_skip_full_scan", \
+			0, \
+			"To decide partial/partial scan followed by full scan")
+
+/*
+ * <ini>
+ * gEnableRingBuffer - Enable Ring Buffer for Bug Report
+ * @Min: 0
+ * @Max: 1
+ * @Default: 1
+ *
+ * This ini is used to enable Ring Buffer
+ *
+ * Related: None
+ *
+ * Supported Feature: STA/SAP
+ *
+ * Usage: External
+ *
+ * </ini>
+ */
+#define CFG_ENABLE_RING_BUFFER CFG_INI_BOOL( \
+		"gEnableRingBuffer", \
+		1, \
+		"To Enable Ring Buffer")
+
+/*
+ * <ini>
+ * sae_connect_retries - Bit mask to retry Auth and full connection on assoc
+ * timeout to same AP and auth retries during roaming
+ * @Min: 0x0
+ * @Max: 0x52
+ * @Default: 0x49
+ *
+ * This ini is used to set max auth retry in auth phase of roaming and initial
+ * connection and max connection retry in case of assoc timeout. MAX Auth and
+ * connection retries are capped to 2 and roam Auth retry is capped to 1.
+ * Default is 0x49 i.e. 1 retry each.
+ *
+ * Bits       Retry Type
+ * BIT[0:2]   AUTH retries
+ * BIT[3:5]   Connection reties
+ * BIT[6:8]   ROAM AUTH retries
+ *
+ * Some Possible values are as below
+ * 0          - NO auth/roam Auth retry and NO full connection retry after
+ *              assoc timeout
+ * 0x49       - 1 auth/roam auth retry and 1 full connection retry
+ * 0x52       - 1 roam auth retry, 2 auth retry and 2 full connection retry
+ * 0x1 /0x2   - 0 roam auth retry, 1 or 2 auth retry respectively and NO full
+ *              connection retry
+ * 0x8 /0x10  - 0 roam auth retry,NO auth retry and 1 or 2 full connection retry
+ *              respectively.
+ * 0x4A       - 1 roam auth retry,2 auth retry and 1 full connection retry
+ * 0x51       - 1 auth/roam auth retry and 2 full connection retry
+ *
+ * Related: None
+ *
+ * Supported Feature: STA SAE
+ *
+ * Usage: External
+ *
+ * </ini>
+ */
+#define CFG_SAE_CONNECION_RETRIES CFG_INI_UINT("sae_connect_retries", \
+				0, 0x52, 0x49, CFG_VALUE_OR_DEFAULT, \
+				"Bit mask to retry Auth and full connection on assoc timeout to same AP for SAE connection")
 
 #define CFG_GENERIC_ALL \
 	CFG(CFG_ENABLE_DEBUG_PACKET_LOG) \
@@ -642,6 +746,7 @@
 	CFG(CFG_ENABLE_LPASS_SUPPORT) \
 	CFG(CFG_ENABLE_SELF_RECOVERY) \
 	CFG(CFG_ENABLE_DEAUTH_TO_DISASSOC_MAP) \
+	CFG(CFG_DISABLE_4WAY_HS_OFFLOAD) \
 	CFG(CFG_SAP_DOT11MC) \
 	CFG(CFG_ENABLE_FATAL_EVENT_TRIGGER) \
 	CFG(CFG_SUB_20_CHANNEL_WIDTH) \
@@ -651,6 +756,8 @@
 	CFG(CFG_ITO_REPEAT_COUNT) \
 	CFG(CFG_ENABLE_BEACON_RECEPTION_STATS) \
 	CFG(CFG_REMOVE_TIME_STAMP_SYNC_CMD) \
-	CFG(CFG_CHANGE_CHANNEL_BANDWIDTH)
-
+	CFG(CFG_MGMT_RETRY_MAX) \
+	CFG(CFG_BMISS_SKIP_FULL_SCAN) \
+	CFG(CFG_ENABLE_RING_BUFFER) \
+	CFG(CFG_SAE_CONNECION_RETRIES)
 #endif /* __CFG_MLME_GENERIC_H */

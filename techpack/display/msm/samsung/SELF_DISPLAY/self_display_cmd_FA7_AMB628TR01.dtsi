@@ -20,7 +20,7 @@
 		 *************************************************************************************************************************
 		 */
 
-		samsung,self_dispaly_on = [
+		samsung,self_dispaly_on_revA = [
 			29 01 00 00 00 00 03 FC 5A 5A	/* TEST KEY Enable */
 			29 01 00 00 00 00 02 B0 33	/* Global para */
 			29 01 00 00 00 00 02 FE 24	/* Move Setting */
@@ -28,7 +28,7 @@
 			29 01 00 00 00 00 03 FC A5 A5	/* TEST KEY Disable */
 		];
 
-		samsung,self_dispaly_off = [
+		samsung,self_dispaly_off_revA = [
 			29 01 00 00 00 00 03 F0 5A 5A	/* TEST KEY Enable */
 			29 01 00 00 00 00 03 7C 00 00		/* Self ICON Off */
 			29 01 00 00 00 00 02 7D 01		/* Self Move 2C Sync Off */
@@ -45,7 +45,7 @@
 		 */
 
 		/* Inverval 100ms Move Pattern */
-		samsung,self_move_on_100 = [
+		samsung,self_move_on_100_revA = [
 			29 01 00 00 00 00 03 F0 5A 5A	/* TEST KEY Enable */
 			29 01 00 00 00 00 61 7D
 				00 00 00 00 00 00 22
@@ -62,7 +62,7 @@
 		];
 
 		/* Inverval 200ms Move Pattern */
-		samsung,self_move_on_200 = [
+		samsung,self_move_on_200_revA = [
 			29 01 00 00 00 00 03 F0 5A 5A	/* TEST KEY Enable */
 			29 01 00 00 00 00 61 7D
 				00 00 00 00 00 00 55
@@ -79,7 +79,7 @@
 		];
 
 		/* Inverval 500ms Move Pattern */
-		samsung,self_move_on_500 = [
+		samsung,self_move_on_500_revA = [
 			29 01 00 00 00 00 03 F0 5A 5A	/* TEST KEY Enable */
 			29 01 00 00 00 00 61 7D
 				00 00 00 00 00 00 dd
@@ -96,7 +96,7 @@
 		];
 
 		/* Inverval 1000ms(1Sec) Move Pattern */
-		samsung,self_move_on_1000 = [
+		samsung,self_move_on_1000_revA = [
 			29 01 00 00 00 00 03 F0 5A 5A	/* TEST KEY Enable */
 			29 01 00 00 00 00 61 7D
 				00 00 00 00 00 00 dd
@@ -113,7 +113,7 @@
 		];
 
 		/* Debug Move Pattern(Only for 1000ms Interval) */
-		samsung,self_move_on_debug = [
+		samsung,self_move_on_debug_revA = [
 			29 01 00 00 00 00 03 F0 5A 5A	/* TEST KEY Enable */
 			29 01 00 00 00 00 61 7D
 				00 00 00 00 00 00 00
@@ -129,7 +129,7 @@
 			29 01 00 00 00 00 03 F0 A5 A5	/* TEST KEY Disable */
 		];
 
-		samsung,self_move_2c_sync_off = [
+		samsung,self_move_2c_sync_off_revA = [
 			29 01 00 00 00 00 03 F0 5A 5A	/* TEST KEY Enable */
 			29 01 00 00 00 00 02 7D 01
 			29 01 00 00 00 00 03 F0 A5 A5	/* TEST KEY Disable */
@@ -142,7 +142,7 @@
 		 *************************************************************************************************************************
 		 */
 
-		samsung,self_time_set = [
+		samsung,self_time_set_revA = [
 			29 01 00 00 00 00 03 F0 5A 5A	/* TEST KEY Enable */
 			29 01 00 00 00 00 0B 77
 				00 04 00 00 00
@@ -157,13 +157,13 @@
 		 *************************************************************************************************************************
 		 */
 
-		samsung,self_video_mem_setting = [
+		samsung,self_video_mem_setting_revA = [
 			29 01 00 00 22 00 04 7B 00 00 00		/* Self Video Off 34ms delay */
 			29 01 00 00 00 00 02 75 04
 			/* image data (4C,5C) ... */
 		];
 
-		samsung,self_video_on = [
+		samsung,self_video_on_revA = [
 			29 01 00 00 00 00 03 F0 5A 5A	/* TEST KEY Enable */
 			29 01 00 00 00 00 58 7B
 				00 C0 11 00 00 00 00 00
@@ -180,7 +180,7 @@
 			29 01 00 00 00 00 03 F0 A5 A5	/* TEST KEY Disable */
 		];
 
-		samsung,self_video_off = [
+		samsung,self_video_off_revA = [
 			29 01 00 00 00 00 03 F0 5A 5A	/* TEST KEY Enable */
 			29 01 00 00 00 00 04 7B 00 C0 00
 			29 01 00 00 00 00 03 F0 A5 A5	/* TEST KEY Disable */
@@ -192,13 +192,13 @@
 		 *************************************************************************************************************************
 		 */
 
-		samsung,self_mask_mem_setting = [
+		samsung,self_mask_mem_setting_revA = [
 			29 01 00 00 00 00 02 7A 00		/* Self Mask Off 34ms delay */
 			29 01 00 00 00 00 02 75 10		/* MA_SEL(1), IC_SEL, VI_SEL, DC_SEL, AC_SEL */
 			/* image data (4C,5C) ... */
 		];
 
-		samsung,self_mask_on = [
+		samsung,self_mask_on_revA = [
 			29 01 00 00 00 00 03 F0 5A 5A	/* TEST KEY Enable */
 			29 01 00 00 00 00 10 7A
 				01 00 00 00 95 08 52 08
@@ -206,7 +206,7 @@
 			29 01 00 00 00 00 03 F0 A5 A5	/* TEST KEY Disable */
 		];
 
-		samsung,self_mask_on_factory = [
+		samsung,self_mask_on_factory_revA = [
 			29 01 00 00 00 00 03 F0 5A 5A	/* TEST KEY Enable */
 			29 01 00 00 00 00 10 7A
 				01 08 E8 09 7D 09 7E 0A
@@ -214,7 +214,7 @@
 			29 01 00 00 00 00 03 F0 A5 A5	/* TEST KEY Disable */
 		];
 
-		samsung,self_mask_off = [
+		samsung,self_mask_off_revA = [
 			29 01 00 00 00 00 03 F0 5A 5A	/* TEST KEY Enable  */
 			29 01 00 00 00 00 02 7A 00		/* SM_MASK_EN(0)	*/
 			29 01 00 00 00 00 03 F0 A5 A5	/* TEST KEY Disable */
@@ -226,13 +226,13 @@
 		 *************************************************************************************************************************
 		 */
 
-		samsung,self_icon_mem_setting = [
+		samsung,self_icon_mem_setting_revA = [
 			29 01 00 00 22 00 03 7C 00 00	/* Self ICON Disable 34ms delay */
 			29 01 00 00 00 00 02 75 08		/* MA_SEL, IC_SEL(1), VI_SEL, DC_SEL, AC_SEL */
 			/* image data (4C,5C) ... */
 		];
 
-		samsung,self_icon_grid = [  //need to check
+		samsung,self_icon_grid_revA = [  //need to check
 			29 01 00 00 00 00 03 F0 5A 5A	/* TEST KEY Enable */
 			29 01 00 00 00 00 16 7C
 								00 11 02 00 07
@@ -243,7 +243,7 @@
 			29 01 00 00 00 00 03 F0 A5 A5	/* TEST KEY Disable */
 		];
 
-		samsung,self_icon_on_grid_on = [
+		samsung,self_icon_on_grid_on_revA = [
 			29 01 00 00 00 00 03 F0 5A 5A	/* TEST KEY Enable */
 			29 01 00 00 00 00 16 7C
 				00 11 02 00 02 00 01 00
@@ -252,7 +252,7 @@
 			29 01 00 00 00 00 03 F0 A5 A5	/* TEST KEY Disable */
 		];
 
-		samsung,self_icon_on_grid_off = [
+		samsung,self_icon_on_grid_off_revA = [
 			29 01 00 00 00 00 03 F0 5A 5A	/* TEST KEY Enable */
 			29 01 00 00 00 00 0B 7C
 				00 01 02 00 02 00 01 00
@@ -260,7 +260,7 @@
 			29 01 00 00 00 00 03 F0 A5 A5	/* TEST KEY Disable */
 		];
 
-		samsung,self_icon_off_grid_on = [
+		samsung,self_icon_off_grid_on_revA = [
 			29 01 00 00 00 00 03 F0 5A 5A	/* TEST KEY Enable */
 			29 01 00 00 00 00 16 7C
 				00 10 00 00 00 00 00 00
@@ -269,13 +269,13 @@
 			29 01 00 00 00 00 03 F0 A5 A5	/* TEST KEY Disable */
 		];
 
-		samsung,self_icon_off_grid_off = [
+		samsung,self_icon_off_grid_off_revA = [
 			29 01 00 00 00 00 03 F0 5A 5A	/* TEST KEY Enable */
 			29 01 00 00 00 00 03 7C 00 00
 			29 01 00 00 00 00 03 F0 A5 A5	/* TEST KEY Disable */
 		];
 
-		samsung,self_icon_grid_2c_sync_off = [
+		samsung,self_icon_grid_2c_sync_off_revA = [
 			29 01 00 00 00 00 03 F0 5A 5A	/* TEST KEY Enable */
 			29 01 00 00 00 00 02 7C 03
 			29 01 00 00 00 00 03 F0 A5 A5	/* TEST KEY Disable */
@@ -287,13 +287,13 @@
 		 *************************************************************************************************************************
 		 */
 
-		samsung,self_aclock_sidemem_setting = [
+		samsung,self_aclock_sidemem_setting_revA = [
 			29 01 00 00 22 00 03 77 00 00	/*Self Clock & Self Timer Off 34ms delay */
 			29 01 00 00 00 00 02 75 01
 			/* image data (4C,5C) ... */
 		];
 
-		samsung,self_aclock_on = [
+		samsung,self_aclock_on_revA = [
 			29 01 00 00 00 00 03 F0 5A 5A	/* TEST KEY Enable */
 			29 01 00 00 00 00 16 77
 				00 07 00 0A 0A 1D 00 03
@@ -303,7 +303,7 @@
 			29 01 00 00 00 00 03 F0 A5 A5	/* TEST KEY Disable */
 		];
 
-		samsung,self_aclock_time_update = [
+		samsung,self_aclock_time_update_revA = [
 			29 01 00 00 00 00 03 F0 5A 5A	/* TEST KEY Enable */
 /*			29 01 00 00 00 00 08 77
 								00 07 00 05 03
@@ -313,7 +313,7 @@
 			29 01 00 00 00 00 03 F0 A5 A5	/* TEST KEY Disable */
 		];
 
-		samsung,self_aclock_rotation = [
+		samsung,self_aclock_rotation_revA = [
 			29 01 00 00 00 00 03 F0 5A 5A	/* TEST KEY Enable */
 			29 01 00 00 00 00 0F 77
 				00 07 00 0A 0A 1D 00 03
@@ -321,13 +321,13 @@
 			29 01 00 00 00 00 03 F0 A5 A5	/* TEST KEY Disable */
 		];
 
-		samsung,self_aclock_off = [
+		samsung,self_aclock_off_revA = [
 			29 01 00 00 00 00 03 F0 5A 5A	/* TEST KEY Enable */
 			29 01 00 00 00 00 03 77 00 00
 			29 01 00 00 00 00 03 F0 A5 A5	/* TEST KEY Disable */
 		];
 
-		samsung,self_aclock_hide = [
+		samsung,self_aclock_hide_revA = [
 			29 01 00 00 00 00 03 F0 5A 5A	/* TEST KEY Enable */
 			29 01 00 00 00 00 03 77 00 05
 			29 01 00 00 00 00 03 F0 A5 A5	/* TEST KEY Disable */
@@ -340,13 +340,13 @@
 		 *************************************************************************************************************************
 		 */
 
-		samsung,self_dclock_sidemem_setting = [
+		samsung,self_dclock_sidemem_setting_revA = [
 			29 01 00 00 22 00 03 77 00 00	/* Self Clock & Self Timer Off 34ms delay */
 			29 01 00 00 00 00 02 75 02
 			/* image data (4C,5C) ... */
 		];
 
-		samsung,self_dclock_on = [
+		samsung,self_dclock_on_revA = [
 			29 01 00 00 00 00 03 F0 5A 5A	/* TEST KEY Enable */
 			29 01 00 00 00 00 2A 77
 				00 36 05 0A 03 00 00 03
@@ -359,7 +359,7 @@
 			29 01 00 00 00 00 03 F0 A5 A5	/* TEST KEY Disable */
 		];
 
-		samsung,self_dclock_blinking_on = [
+		samsung,self_dclock_blinking_on_revA = [
 			29 01 00 00 00 00 03 F0 5A 5A	/* TEST KEY Enable */
 			29 01 00 00 00 00 1B 79
 				00 C0 00 00 00 00 57 01
@@ -369,7 +369,7 @@
 			29 01 00 00 00 00 03 F0 A5 A5	/* TEST KEY Disable */
 		];
 
-		samsung,self_dclock_time_update = [
+		samsung,self_dclock_time_update_revA = [
 			29 01 00 00 00 00 03 F0 5A 5A	/* TEST KEY Enable */
 /*			29 01 00 00 00 00 08 77
 								00 36 05 03 1A
@@ -379,25 +379,25 @@
 			29 01 00 00 00 00 03 F0 A5 A5	/* TEST KEY Disable */
 		];
 
-		samsung,self_dclock_off = [
+		samsung,self_dclock_off_revA = [
 			29 01 00 00 00 00 03 F0 5A 5A	/* TEST KEY Enable */
 			29 01 00 00 00 00 03 77 00 00
 			29 01 00 00 00 00 03 F0 A5 A5	/* TEST KEY Disable */
 		];
 
-		samsung,self_dclock_hide = [
+		samsung,self_dclock_hide_revA = [
 			29 01 00 00 00 00 03 F0 5A 5A	/* TEST KEY Enable */
 			29 01 00 00 00 00 03 77 00 14
 			29 01 00 00 00 00 03 F0 A5 A5	/* TEST KEY Disable */
 		];
 
-		samsung,self_dclock_blinking_off = [
+		samsung,self_dclock_blinking_off_revA = [
 			29 01 00 00 00 00 03 F0 5A 5A	/* TEST KEY Enable */
 			29 01 00 00 00 00 03 79 00 00
 			29 01 00 00 00 00 03 F0 A5 A5	/* TEST KEY Disable */
 		];
 
-		samsung,self_clock_2c_sync_off = [
+		samsung,self_clock_2c_sync_off_revA = [
 			29 01 00 00 00 00 03 F0 5A 5A	/* TEST KEY Enable */
 			29 01 00 00 00 00 02 77 01
 			29 01 00 00 00 00 03 F0 A5 A5	/* TEST KEY Disable */
@@ -409,6 +409,6 @@
 		 *************************************************************************************************************************
 		 */
 
-		samsung,self_disp_debug_rx_cmds = [ 06 01 00 00 00 00 01 7F 12 00];	/* read 7F 1st ~ 18th */
+		samsung,self_disp_debug_rx_cmds_revA = [ 06 01 00 00 00 00 01 7F 12 00];	/* read 7F 1st ~ 18th */
 	};
 };

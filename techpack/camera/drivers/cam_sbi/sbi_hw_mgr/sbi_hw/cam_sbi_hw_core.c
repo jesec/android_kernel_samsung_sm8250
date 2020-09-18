@@ -371,7 +371,7 @@ static void cam_sbi_hw_init_dma_address(struct cam_hw_info *sbi_hw)
 	ssm->total_written_frames = 0;
 	ssm->total_read_frames = 0;
 	ssm->frame_drop_count = 0;
-	ssm->before_cue_num = 7;
+	ssm->before_cue_num = (ssm->ssm_framerate == 960) ? 7 : 5;
 
 	/* reset address queue */
 	CAM_DBG(CAM_SBI, "Reset WDMA0/WDMA2 and RDMA1/RDMA2 address queues");
@@ -392,11 +392,8 @@ static void cam_sbi_hw_task1_switch_check(struct cam_hw_info *sbi_hw,
 
 	if (ssm->rec_write_enable) {
 		/* buffer full check */
-		if ((ssm->total_written_frames >= ssm->max_frames) &&
-			(ssm->frame_id == 1)) {
+		if (ssm->total_written_frames >= ssm->max_frames) {
 			ssm->rec_write_enable = false;
-			cam_sbi_hw_task1_switch(sbi_hw, false);
-			cam_sbi_hw_reg_manual_update(sbi_hw);
 			ssm->write_done_info = true;
 		}
 	}
@@ -1402,10 +1399,9 @@ int cam_sbi_hw_stop(void *hw_priv, void * stop_hw_args, uint32_t arg_size)
 
 	if (sbi_hw->open_count == 0 ||
 		sbi_hw->hw_state == CAM_HW_STATE_POWER_DOWN) {
-
 		mutex_unlock(&sbi_hw->hw_mutex);
-		CAM_ERR(CAM_SBI, "Error Unbalanced stop");
-		return -EINVAL;
+		CAM_INFO(CAM_SBI, "Error Unbalanced stop");
+		return 0;
 	}
 	sbi_hw->open_count--;
 

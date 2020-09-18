@@ -23,11 +23,11 @@ obj-$(CONFIG_INPUT_JOYDEV)	+= joydev.o
 obj-$(CONFIG_INPUT_EVDEV)	+= evdev.o
 obj-$(CONFIG_INPUT_EVBUG)	+= evbug.o
 
-obj-$(CONFIG_INPUT_KEYBOARD)	+= keyboard/
 obj-$(CONFIG_INPUT_MOUSE)	+= mouse/
 obj-$(CONFIG_INPUT_JOYSTICK)	+= joystick/
 obj-$(CONFIG_INPUT_TABLET)	+= tablet/
 obj-$(CONFIG_INPUT_TOUCHSCREEN)	+= touchscreen/
+obj-$(CONFIG_INPUT_KEYBOARD)	+= keyboard/
 obj-$(CONFIG_INPUT_WACOM)	+= wacom/
 obj-$(CONFIG_INPUT_MISC)	+= misc/
 
@@ -38,3 +38,5 @@ obj-$(CONFIG_TOUCHSCREEN_DUMP_MODE)	+= sec_tsp_dumpkey.o
 
 
 obj-$(CONFIG_RMI4_CORE)		+= rmi4/
+
+ccflags-y += -Wformat

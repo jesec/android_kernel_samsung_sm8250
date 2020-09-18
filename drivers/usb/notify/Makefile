@@ -1,5 +1,7 @@
 
 # usb notify driver
+
+subdir-ccflags-y := -Wformat
 obj-$(CONFIG_USB_HOST_NOTIFY)		+= host_notify_class.o
 obj-$(CONFIG_USB_EXTERNAL_NOTIFY)	+= external_notify.o
 obj-$(CONFIG_USB_NOTIFY_PROC_LOG)	+= usblog_proc_notify.o

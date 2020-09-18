@@ -53,6 +53,10 @@
 #define CSIPHY_DNP_PARAMS                4
 #define CSIPHY_2PH_REGS                  5
 #define CSIPHY_3PH_REGS                  6
+#if defined(CONFIG_SEC_BLOOMXQ_PROJECT)
+#define CSIPHY_RESET_POLL_2PH_REG        7
+#define CSIPHY_RESET_POLL_3PH_REG        8
+#endif
 
 #define CSIPHY_MAX_INSTANCES     2
 
@@ -66,6 +70,13 @@
 #define CDBG(fmt, args...) pr_err(fmt, ##args)
 #else
 #define CDBG(fmt, args...) pr_debug(fmt, ##args)
+#endif
+
+#if defined(CONFIG_SEC_C2Q_PROJECT)
+#define ALLOW_MULTIPLE_CSIPHY_ACQRUIE
+#endif
+#if defined(ALLOW_MULTIPLE_CSIPHY_ACQRUIE)
+#define MAX_BRIDGE_COUNT (2)
 #endif
 
 enum cam_csiphy_state {
@@ -146,6 +157,9 @@ struct csiphy_reg_t {
 	int32_t  reg_data;
 	int32_t  delay;
 	uint32_t csiphy_param_type;
+#if defined(CONFIG_SEC_BLOOMXQ_PROJECT)
+	uint32_t reg_data_mask;
+#endif
 };
 
 struct csiphy_device;
@@ -281,7 +295,12 @@ struct csiphy_device {
 	uint8_t num_irq_registers;
 	struct cam_subdev v4l2_dev_str;
 	struct cam_csiphy_param csiphy_info;
+#if defined(ALLOW_MULTIPLE_CSIPHY_ACQRUIE)
+	struct intf_params bridge_intf[MAX_BRIDGE_COUNT];
+	int bridge_cnt;
+#else
 	struct intf_params bridge_intf;
+#endif
 	uint32_t clk_lane;
 	uint32_t acquire_count;
 	uint32_t start_dev_count;

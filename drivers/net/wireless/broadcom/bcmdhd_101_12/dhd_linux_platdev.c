@@ -633,7 +633,11 @@ static int dhd_wifi_platform_load_pcie(void)
 		/* XXX For x86 Bringup PC or BRIX */
 		err = dhd_bus_register();
 	} else {
+#ifdef DHD_SUPPORT_HDM
+		if (dhd_download_fw_on_driverload || hdm_trigger_init) {
+#else
 		if (dhd_download_fw_on_driverload) {
+#endif /* DHD_SUPPORT_HDM */
 			/* power up all adapters */
 			for (i = 0; i < dhd_wifi_platdata->num_adapters; i++) {
 				int retry = POWERUP_MAX_RETRY;

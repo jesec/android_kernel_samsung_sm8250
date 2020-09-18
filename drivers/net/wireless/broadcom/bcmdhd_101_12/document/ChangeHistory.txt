@@ -1,30 +1,174 @@
-BCM4375 DHD 101.12.15.6 for Android Hubble Project
+BCM4375/BCM430132 DHD 101.12.38.1 for Android Canvas/Hubble/Noblesse Project
 
-DHD 101.12.15.6 - 2020.02.03
+DHD 101.12.38.1 - 2020.07.03
 Others
- - CS9045500(By Nam Counjong) Changed getWifiLinkLayerStats wme_cnt value from wme_counters to if_counters
- - CS9531282(SoonHo Lee) Added log message for NDP keep alive
- - CS9623149(Beom Jip Kim) Fixed delay for NAN_REQUEST_DISABLE command
- - CS9702973(By Lim Junhak) Added to check connected state when SET MAC force disassoc
+ - CS00010646327(By Kim MinSoo) Set initial country code as XZ(World Wide Safe) for Location WiFi scanning mode
 
 
-DHD 101.12.15.4 - 2020.01.16
-Kernel Panic
- - CS9673429(By LEE EONJI) Fixed kernel panic by cleaning up rtt work handler when wifi turn off
-
-
-DHD 101.12.15.2 - 2020.01.15
-Kernel Panic
- - CS9659158(By Kwak Hogil) Fixed kernel panic issue (don't use GRO feature for the packet used in the pktlog module)
-
-
-DHD 101.12.15.1 - 2020.01.14
+DHD 101.12.38 - 2020.06.26
 Others
- - CS9620282(By Cho NamJu) Fixed P2P connection failure under VSDB
+ - CS00010526513(By Kang MinHo) Prevented connection state mismatch from a dead lock condition
+ - CS00010597429(By Choi Hyeonu) Added default reset scan dwell time when disable the wifi low latency mode
+
+
+DHD 101.12.36 - 2020.06.19
+New Feature
+ - CS00010357236(By Lee Sunghee) Added to support Minimum ROAM score delta
+   (This patch should be sync up with WL UTIL 1.444 or higher version)
+
+Kernel Panic
+ - CS00010453490(By Lee Gibum) Fixed kernel panic in the case of lack of dongle memory
+ - CS00010568145(By Min SungBin) Fixed kernel panic due to PCIe access during suspend
+
+Others
+ - CS00009657226(By Hwang MinSik) Implemented new P2P NOA event throttling
+ - CS00010459620(By Choi Hyeonu) Changed WAPI define as customized
+ - CS00010501500(By Hwang MinSik) Fixed battery drain caused by PM suspend callback
+ - CS00010509771(By Hwang MinSik) Added log to check wakeup source
+ - CS00010519643(By Kim Jinwon) Added SUPPORT_LATENCY_CRITICAL_DATA to 4361B2 Makefile to reduce BT scan window
+ - CS00010561409(By Lee Sunghee) Changed default value for minimum roam score delta, roam RSSI limit
+ - CS00010583413(By Lee SoonHo) Fixed to disable GRO feature when qdisc rx traffic control is activated
+
+APPS 1.444
+- wl UTIL (wlarm64_android)
+
+
+DHD 101.12.31.3 - 2020.06.12
+Security Patch
+ - CS00010526161(By Choi Hyeonu) SI-17883: Fixed incorrect use of snprintf in wl_cfg80211_wbtext_config leading to kernel warning
+
+Others
+ - CS00010422901(By Choi Hyeonu) Fixed wrong function name
+ - CS00010465652(By Min Hyun-Kee) Fixed TCP TX low performance issue by changing pacing_shift/tcp_limit_output_bytes
+ - CS00010488343(By Park Jun-young) Fixed CID:86939 Prevent issue
+ - CS00010519389(By Lee Dooho) Fixed TDLS capability bit to be set correctly in supported feature set
+ - CS00010540711(By Choi Hyeonu) Changed debugdump filename rule to support debug dump in dumpstate
+
+
+DHD 101.12.31.2 - 2020.06.02
+New Feature
+ - CS00010168478(By Gu Ja Heon) Calculation of Rx Wi-Fi link speed
+   (This patch should be sync up with FW 18.41.24.2 or higher version)
+
+Others
+ - CS00010422901(By Choi Hyeonu) Corrected a wrong variable name
+ - CS00010446591(By Xiao Zhiyong) Disabled GRO in latency mode
+ - CS00010470953(By Choi Hyeonu) Applied spinlock only for hikey while collecting dongle memdump
+ - CS00010471182, CS00010480802(by Bang Haejung) Disabled roaming when NDP established
+ - CS00010482746(By Kang Yeji) Added beacon request MAX window and channel time on Duration Mandatory mode
+ - Fixed to update missing WIPS event
+   (This patch should be sync up with FW 18.41.24.2 or higher version)
+
+
+DHD 101.12.31.1 - 2020.05.22
+New Feature
+ - Added Android private command to support WTC feature
+
+Kernel Panic
+ - CS00010395199(By YoungHo Jeon) Fixed kernel panic caused by p2p discovery during wifi off
+ - CS00010401595(By Min Cheol Jeong), CS00010445273(SoonHo Lee) Fixed DHD mutex deadlock
+
+Others
+ - CS00010126556(By SoonHo Lee) Enabled frameburst when VSDB operates (Canvas only)
+ - CS00010289554(By MinSik Hwang) Fixed SVACE issues
+   (WGIDs: 1370, 1435, 4947, 9610, 9655, 10538, 10539, 14922, 17478, 17553, 42184, 50060, 57535, 64106)
+ - CS00010384502(By Gibum Lee) Fixed the packet count for GETSTAINFO command
+ - CS00010422889(By Hyeonu Choi) Fixed compilation warning at dhd_common.c
+ - CS00010429596(By Sunghee Lee) Fixed to prevent a multiple update of ROAM channel list when disconnection
+ - Added Kconfig entry for Canvas project featuring
+   (CONFIG_WLAN_BCM4375_ADVANCED_FEATURES)
+
+
+DHD 101.12.27 - 2020.05.08
+Others
+ - Fixed to parse country code string from private command properly on non Blob case
+ - Fixed to return error code for EWP_FILTER private command if F/W don't have 'ecounters' capability
+ - Fixed to return error code for GET_ADPS_GAIN private command if unsupported
 
 Vendor HAL Library
-- HAL_REL_1_59_15
- - CS9600986(By Haejung Bang) Fixed to update transaction id properly during NAN disable
+- HAL_REL_1_59_19
+ - CS10160423(By Min Cheol Jeong) Added log to print out file operation error code
+ - CS9442138(by Hyeonu Choi) Removed verbal log messages during collecting DHD dump
+ - CS9442138(by Hyeonu Choi) Collected DHD dump log files by requested dump file sequence
+
+
+DHD 101.12.26 - 2020.05.01
+New Feature
+ - Reduced rtnl lock/unlock time during Wi-Fi turn on 
+   (This feature will be enabled with CONFIG_WLAN_BCM4375_ADVANCED_FEATURES and HAL 1.59.16 or higher version)
+
+Others
+ - CS10173402(By Haejung Bang) Fixed to clean up P2P connection when country code changed
+ - CS10259062(By Hwang MinSik) Changed the specific kernel log format to merge from two lines into one line
+ - CS10259062(By Hwang MinSik) Removed unnecessary kernel log to reduce logging overhead
+ - CS9657226(By MinSik Hwang) Added feature for P2P interface event throttling to enter host suspend properly
+ - Added missing patch to trigger hang in case of KSO failure
+ - Changed dequeue algorithm in SDIO DHD to improve throughput
+ - Fixed to avoid cache clearing on wrong interface from p2p discovery deinit context
+ - Fixed to clean up connection properly when country code changed
+
+
+DHD 101.12.20.2 - 2020.04.24
+Security Patch
+ - CS10206825(By Hwang MinSik) SI-17238: Fixed heap buffer overwrite in wl_cfgvendor_nan_req_publish
+
+Others
+ - CS10101651(By Min SungBin) Removed the debugfs and ported wl_dbg_level into sysfs
+ - CS10101977(By Lee Sunghee) Fixed missing ROAM RSSI limit during pre-initialization
+ - CS10126647(By Lee SoonHo) Fixed frameburst enable for P2P RSDB scenario
+ - CS10148015(by Zhenpeng Lin) Fixed invalid check condition of ADPS mode config
+ - CS10174909(By Jeong Min Cheol) Fixed hang reason in the case of wrong ROT and D3 ACK timeout
+   (This patch should be sync up with FW 18.41.16 or higher version)
+ - CS10196954(By Sung-gi Choi) Added vmalloc trial for memory allocation in case of memory allocation failure with kmalloc
+ - CS9358607(By MinSik Hwang) Added Noblesse bring-up code
+ - CS9442138(by Hyeonu Choi) Rearranged dump file sequence of DHD dump
+ - CS9658182(By MinSik Hwang) Fixed makefile to use single nvram file
+ - CS9658764(By MinSik Hwang) Fixed softap turn-on failure
+ - CS9658803(By MinSik Hwang) Fixed Tizen file path error
+ - CS9696402(By Soonho Lee) Added logs to print NAN local availability map
+ - CS9945534(By Choi Hyeonu) Fixed to inform PCIE EP up status on MSM PCIE Platform
+ - Fixed Wi-Fi turn on failure issue for the SDIO platform when used CONFIG_VMAP_STACK and CONFIG_HAVE_ARCH_VMAP_STACK on kernel
+ - Moved dhd_host_recover_link function under PCIE definition
+ - Supported band lock with config file
+
+APPS 1.411
+- wl UTIL (wlarm64_android)
+
+
+DHD 101.12.18.1 - 2020.03.27
+New Feature
+ - CS9510143(By Min SungBin) Support Knox HDM feature
+
+Kernel Panic
+ - CS9659158(By Kwak Hogil) Fixed kernel panic issue (don't use GRO feature for the packet used in the pktlog module)
+ - CS9673429(By LEE EONJI) Fixed kernel panic by cleaning up rtt work handler when wifi turn off
+ - CS9799537(By Min Cheol Jeong) Added an array range condition to prevent a kernel panic
+
+Security Patch
+ - CS9987808(By Kang Hyung Wook) SI-16993: Fixed buffer overflow in wl_cfgvendor_set_pmk
+
+Others
+ - CS9045500(By Nam Counjong) Changed getWifiLinkLayerStats wme_cnt value from wme_counters to if_counters
+ - CS9531282(By SoonHo Lee) Added log message for NDP keep alive
+   (It should be sync up with FW 18.41.8.9 or higher version)
+ - CS9620282(By Cho NamJu) Fixed P2P connection failure under VSDB
+ - CS9623149(By Beom Jip Kim) Fixed delay for NAN_REQUEST_DISABLE command
+ - CS9696198(By Park Jun-young) Added wakeup packet information in PKTLOG and debug_dump
+ - CS9702973(By Lim Junhak) Added to check connected state when SET MAC force disassoc
+ - CS9799034(By Min SungBin) Skipped dumping pcie config or core register after pcie link down regardless of cto prevention
+ - CS9813545(By Lee SoonHo) Fixed P2P low Tput issue under STA/P2P scenario
+ - CS9821268(By Min SungBin) Fixed the kernel panic due to a NULL pointer dereference at wl_cfg80211_mgmt_tx
+ - CS9924502(By LEE EONJI) Blocked pcie ep access after pcie link down in scan timeout handler
+ - Added an exception code for HAL START cmd when the device is not ready
+ - Fixed PCIe affinity operation by invalid command for SDM platform
+ - Fixed unexpected COMMS failure due to nan cleanup delay
+
+Vendor HAL Library
+- HAL_REL_1_59_16
+ - Reduced rtnl_lock/unlock time during Wi-Fi turn on
+
+APPS 1.411
+- wl UTIL (wlarm64_android)
 
 
 DHD 101.12.15 - 2020.01.10

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2019 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2013-2020 The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -139,6 +139,8 @@ struct roam_offload_scan_rssi_params {
  * roam_scan_inactivity_time.
  * @roam_scan_period_after_inactivity: Roam scan period in ms after device is
  * in inactive state.
+ * @full_scan_period: Full scan period is the idle period in seconds
+ * between two successive full channel roam scans.
  */
 struct roam_scan_period_params {
 	uint32_t vdev_id;
@@ -147,6 +149,7 @@ struct roam_scan_period_params {
 	uint32_t roam_scan_inactivity_time;
 	uint32_t roam_inactive_data_packet_count;
 	uint32_t roam_scan_period_after_inactivity;
+	uint32_t full_scan_period;
 };
 
 /**
@@ -197,6 +200,8 @@ struct wmi_mawc_roam_params {
  *                             AP's, in units of db
  * @num_disallowed_aps: How many APs the target should maintain in its LCA
  *                      list
+ * @delta_rssi: (dB units) when AB in RSSI blacklist improved by at least
+ *              delta_rssi,it will be removed from blacklist
  *
  * This structure holds all the key parameters related to
  * initial connection and roaming connections.
@@ -219,6 +224,7 @@ struct roam_scan_filter_params {
 	uint32_t num_rssi_rejection_ap;
 	struct reject_ap_config_params
 				rssi_rejection_ap[MAX_RSSI_AVOID_BSSID_LIST];
+	uint32_t delta_rssi;
 };
 
 #define WMI_CFG_VALID_CHANNEL_LIST_LEN    100
@@ -242,7 +248,7 @@ struct roam_scan_filter_params {
  * @desired_tx_pwr: desired tx power
  * @mac_addr: MC dest addr
  * @plm_num_ch: channel numbers
- * @plm_ch_list: channel list
+ * @plm_ch_freq_list: channel frequency list
  * @vdev_id: vdev id
  * @enable:  enable/disable
  */
@@ -258,8 +264,8 @@ struct plm_req_params {
 	struct qdf_mac_addr mac_addr;
 	/* no of channels */
 	uint8_t plm_num_ch;
-	/* channel numbers */
-	uint8_t plm_ch_list[WMI_CFG_VALID_CHANNEL_LIST_LEN];
+	/* channel frequency list */
+	uint32_t plm_ch_freq_list[WMI_CFG_VALID_CHANNEL_LIST_LEN];
 	uint8_t vdev_id;
 	bool enable;
 };
@@ -391,10 +397,12 @@ struct param_slot_scoring {
  * ap over the roam score of the current ap
  * @roam_trigger_bitmap: bitmap of roam triggers on which roam_score_delta
  * will be applied
+ * @vendor_roam_score_algorithm: Prefered algorithm for roam candidate selection
+ * @cand_min_roam_score_delta: candidate min roam score delta value
  * @rssi_scoring: RSSI scoring information.
  * @esp_qbss_scoring: ESP/QBSS scoring percentage information
  * @oce_wan_scoring: OCE WAN metrics percentage information
-*/
+ */
 struct scoring_param {
 	uint32_t disable_bitmap;
 	int32_t rssi_weightage;
@@ -413,6 +421,8 @@ struct scoring_param {
 	uint32_t nss_index_score;
 	uint32_t roam_score_delta;
 	uint32_t roam_trigger_bitmap;
+	uint32_t vendor_roam_score_algorithm;
+	uint32_t cand_min_roam_score_delta;
 	struct rssi_scoring rssi_scoring;
 	struct param_slot_scoring esp_qbss_scoring;
 	struct param_slot_scoring oce_wan_scoring;
@@ -455,6 +465,7 @@ struct scoring_param {
  * ROAM_TRIGGER_REASON_DEAUTH: Roam triggered due to deauth received from the
  * current connected AP.
  * ROAM_TRIGGER_REASON_IDLE: Roam triggered due to inactivity of the device.
+ * ROAM_TRIGGER_REASON_STA_KICKOUT: Roam triggered due to sta kickout event.
  * ROAM_TRIGGER_REASON_MAX: Maximum number of roam triggers
  */
 enum roam_trigger_reason {
@@ -473,6 +484,7 @@ enum roam_trigger_reason {
 	ROAM_TRIGGER_REASON_BSS_LOAD,
 	ROAM_TRIGGER_REASON_DEAUTH,
 	ROAM_TRIGGER_REASON_IDLE,
+	ROAM_TRIGGER_REASON_STA_KICKOUT,
 	ROAM_TRIGGER_REASON_MAX,
 };
 
@@ -689,6 +701,24 @@ struct wmi_disconnect_roam_params {
 };
 
 /**
+ * struct wmi_roam_auth_status_params - WPA3 roam auth response status
+ * parameters
+ * @vdev_id: Vdev on which roam preauth is happening
+ * @preauth_status: Status of the Auth response.
+ *      IEEE80211_STATUS_SUCCESS(0) for success. Corresponding
+ *      IEEE80211 failure status code for failure.
+ *
+ * @bssid: Candidate BSSID
+ * @pmkid: PMKID derived for the auth
+ */
+struct wmi_roam_auth_status_params {
+	uint32_t vdev_id;
+	uint32_t preauth_status;
+	struct qdf_mac_addr bssid;
+	uint8_t pmkid[PMKID_LEN];
+};
+
+/**
  * @time_offset: time offset after 11k offload command to trigger a neighbor
  *	report request (in seconds)
  * @low_rssi_offset: Offset from rssi threshold to trigger a neighbor
@@ -738,6 +768,17 @@ struct wmi_invoke_neighbor_report_params {
 	uint32_t vdev_id;
 	uint32_t send_resp_to_host;
 	struct mac_ssid ssid;
+};
+
+/**
+ * struct roam_triggers - vendor configured roam triggers
+ * @vdev_id: vdev id
+ * @trigger_bitmap: vendor configured roam trigger bitmap as
+ *		    defined @enum roam_control_trigger_reason
+ */
+struct roam_triggers {
+	uint32_t vdev_id;
+	uint32_t trigger_bitmap;
 };
 
 #endif /* _WMI_UNIFIED_ROAM_PARAM_H_ */

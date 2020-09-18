@@ -30,14 +30,14 @@ struct sec_dual_battery_platform_data {
 	char *main_limiter_name;
 	char *sub_limiter_name;
 
-	int main_full_condition_vcell;
-	int sub_full_condition_vcell;
+	int *main_full_condition_vcell;
+	int *sub_full_condition_vcell;
 
 	int main_full_condition_eoc;
 	int sub_full_condition_eoc;
 
 	int main_bat_con_det_gpio;
-	int sub_bat_con_det_gpio;	
+	int sub_bat_con_det_gpio;
 };
 
 struct sec_dual_battery_info {
@@ -68,6 +68,11 @@ struct sec_dual_battery_info {
 	int full_total_status;
 
 	int chg_mode;
+
+	unsigned long force_full_time;
+#if defined(CONFIG_BATTERY_AGE_FORECAST)
+	int age_step;
+#endif
 };
 
 #endif /* __SEC_DUAL_BATTERY_H */

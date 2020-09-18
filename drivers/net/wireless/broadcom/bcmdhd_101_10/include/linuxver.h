@@ -2,7 +2,7 @@
  * Linux-specific abstractions to gain some independence from linux kernel versions.
  * Pave over some 2.2 versus 2.4 versus 2.6 kernel differences.
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -19,7 +19,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #ifndef _linuxver_h_
@@ -117,7 +117,7 @@
 
 /*
  * TODO:
- * XXX: daemonize() API is deprecated from kernel-3.8 onwards. More debugging
+ * daemonize() API is deprecated from kernel-3.8 onwards. More debugging
  *      has to be done whether this can cause any issue in case, if driver is
  *      loaded as a module from userspace.
  */
@@ -494,7 +494,7 @@ pci_save_state(struct pci_dev *dev, u32 *buffer)
 {
 	int i;
 	if (buffer) {
-		/* XXX: 100% dword access ok here? */
+		/* 100% dword access ok here? */
 		for (i = 0; i < 16; i++)
 			pci_read_config_dword(dev, i * 4, &buffer[i]);
 	}
@@ -597,7 +597,7 @@ typedef struct {
 	int		up_cnt;
 } tsk_ctl_t;
 
-/* XXXX ANDREY: new MACROs to start stop threads(OLD kthread API STYLE) */
+/* ANDREY: new MACROs to start stop threads(OLD kthread API STYLE) */
 /* requires  tsk_ctl_t tsk  argument, the caller's priv data is passed in owner ptr */
 /* note this macro assumes there may be only one context waiting on thread's completion */
 #ifdef DHD_DEBUG

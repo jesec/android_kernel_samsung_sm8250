@@ -15,7 +15,6 @@
 #include <dsp/q6asm-v2.h>
 #include <dsp/q6adm-v2.h>
 
-int q6audio_get_afe_cal_validation(u16 port_id, u32 topology_id);
 /****************************************************************************/
 /*//////////////////////////// AUDIO SOLUTION //////////////////////////////*/
 /****************************************************************************/
@@ -54,6 +53,9 @@ int q6audio_get_afe_cal_validation(u16 port_id, u32 topology_id);
 #define AFE_MODULE_ID_VOLUME_MONITOR 0x10001f41
 #define AFE_MODULE_PARAM_ID_GET_VOLUME_MONITOR 0x10001f42
 #define AFE_MODULE_PARAM_ID_SET_VOLUME_MONITOR 0x10001f43
+
+#define MODULE_ID_PP_LISTENBACK		 0x10001f51
+#define PARAM_ID_PP_LISTENBACK_SET_PARAMS  0x10001f52
 
 enum sb_type {
 	SB_DISABLE,
@@ -143,8 +145,22 @@ struct afe_volume_monitor_get_params_t {
 	uint32_t  payload[VOLUME_MONITOR_GET_PAYLOAD_SIZE];
 } __packed;
 
+#if defined(CONFIG_SEC_AFE_REMOTE_MIC)
+struct afe_remote_mic_params_t {
+	uint32_t  payload;
+} __packed;
+#endif
+
+struct afe_listen_enable_params_t {
+	uint32_t  payload;
+} __packed;
+
 int afe_get_volume_monitor(int port_id, int *volume_monitor_value);
 int afe_set_volume_monitor(int port_id, int enable,  int volume_level, int avc_support, int db_atten);
+int afe_set_sa_listenback(int port_id, int enable);
+#if defined(CONFIG_SEC_AFE_REMOTE_MIC)
+int afe_set_remote_mic_vol(int port_id, int vol_index);
+#endif
 
 /****************************************************************************/
 /*//////////////////////////// VOICE SOLUTION //////////////////////////////*/
@@ -188,6 +204,9 @@ int afe_set_volume_monitor(int port_id, int enable,  int volume_level, int avc_s
 #define VOICE_MODULE_SET_DEVICE				0x10041000
 #define VOICE_MODULE_SET_DEVICE_PARAM		0x10041001
 
+#if defined(CONFIG_SEC_AFE_REMOTE_MIC)
+#define AFE_MODULE_LVVEFQ_TX				0x1000B501
+#endif
 #define DIAMONDVOICE_REMOTEVOL_PARAM		0x10001012
 
 #define VOICE_MODULE_ECHO_REF_MUTE			0x1000B500

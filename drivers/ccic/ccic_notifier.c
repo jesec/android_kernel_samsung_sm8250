@@ -298,7 +298,8 @@ int ccic_notifier_notify(CC_NOTI_TYPEDEF *p_noti, void *pd, int pdic_attach)
 		break;
 	}
 #ifdef CONFIG_USB_NOTIFY_PROC_LOG
-	store_usblog_notify(NOTIFY_CCIC_EVENT, (void *)p_noti, NULL);
+	if (p_noti->id != CCIC_NOTIFY_ID_POWER_STATUS)
+		store_usblog_notify(NOTIFY_CCIC_EVENT, (void *)p_noti, NULL);
 #endif
 	ret = blocking_notifier_call_chain(&(ccic_notifier.notifier_call_chain),
 			p_noti->id, &(ccic_notifier.ccic_template));

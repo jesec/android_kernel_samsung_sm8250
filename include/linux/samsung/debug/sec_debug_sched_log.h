@@ -8,7 +8,7 @@
 
 #include "sec_debug_sched_log_type.h"
 
-#ifdef CONFIG_SEC_DEBUG_SCHED_LOG
+#if IS_ENABLED(CONFIG_SEC_DEBUG_SCHED_LOG)
 /* called @ drivers/soc/qcom/watchdog_v2.c */
 void sec_debug_save_last_pet(unsigned long long last_pet);
 
@@ -48,7 +48,7 @@ static inline void sec_debug_irq_sched_log(unsigned int irq, void *fn, char *nam
 #endif /* CONFIG_SEC_DEBUG_SCHED_LOG */
 
 
-#ifdef CONFIG_SEC_DEBUG_MSG_LOG
+#if IS_ENABLED(CONFIG_SEC_DEBUG_MSG_LOG)
 /* TODO: do not call this function directly.
  * plz use sec_debug_msg_log macro instead.
  */
@@ -91,7 +91,7 @@ static inline void sec_debug_fuelgauge_log(unsigned int voltage, unsigned short 
 #endif /* CONFIG_SEC_DEBUG_FUELGAUGE_LOG */
 
 
-#ifdef CONFIG_SEC_DEBUG_POWER_LOG
+#if IS_ENABLED(CONFIG_SEC_DEBUG_POWER_LOG)
 /* called @ drivers/cpuidle/lpm-levels.c */
 extern void sec_debug_cpu_lpm_log(int cpu, unsigned int index, bool success, int entry_exit);
 

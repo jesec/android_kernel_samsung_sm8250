@@ -2614,7 +2614,7 @@ do_inferred_modes(struct detailed_timing *timing, void *c)
 	closure->modes += drm_dmt_modes_for_range(closure->connector,
 						  closure->edid,
 						  timing);
-	
+
 	if (!version_greater(closure->edid, 1, 1))
 		return; /* GTF not defined yet */
 
@@ -2854,7 +2854,7 @@ do_cvt_mode(struct detailed_timing *timing, void *c)
 
 static int
 add_cvt_modes(struct drm_connector *connector, struct edid *edid)
-{	
+{
 	struct detailed_mode_closure closure = {
 		.connector = connector,
 		.edid = edid,
@@ -4197,10 +4197,6 @@ drm_extract_hdr_db(struct drm_connector *connector, const u8 *db)
 	DRM_DEBUG_KMS("min luminance %d\n", connector->hdr_min_luminance);
 }
 
-#ifdef CONFIG_SEC_DISPLAYPORT
-bool secdp_panel_hdr_supported(void);
-#endif
-
 /*
  * drm_hdmi_extract_extended_blk_info - Parse the HDMI extended tag blocks
  * @connector: connector corresponding to the HDMI sink
@@ -4213,10 +4209,6 @@ drm_hdmi_extract_extended_blk_info(struct drm_connector *connector,
 {
 	const u8 *cea = drm_find_cea_extension(edid);
 	const u8 *db = NULL;
-
-#ifdef CONFIG_SEC_DISPLAYPORT
-	connector->hdr_supported = false;
-#endif
 
 	if (cea && cea_revision(cea) >= 3) {
 		int i, start, end;
@@ -4249,18 +4241,6 @@ drm_hdmi_extract_extended_blk_info(struct drm_connector *connector,
 			}
 		}
 	}
-
-#ifdef CONFIG_SEC_DISPLAYPORT
-	if (connector) {
-		pr_info("[drm-dp] %s: HDR electro-optical <%d>, hdr_supported <%d>\n",
-			__func__, connector->hdr_eotf, connector->hdr_supported);
-
-		if (connector->hdr_supported && !secdp_panel_hdr_supported()) {
-			connector->hdr_supported = false;
-		}
-	}
-	pr_info("[drm-dp] %s: hdr_supported <%d>\n", __func__, connector->hdr_supported);
-#endif
 }
 
 static void
@@ -4300,7 +4280,7 @@ void drm_edid_get_monitor_name(struct edid *edid, char *name, int bufsize)
 {
 	int name_length;
 	char buf[13];
-	
+
 	if (bufsize <= 0)
 		return;
 

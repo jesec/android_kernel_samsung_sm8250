@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-/* Copyright (c) 2012-2019, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2020, The Linux Foundation. All rights reserved.
  */
 
 
@@ -35,6 +35,7 @@
 #include "msm-pcm-q6-v2.h"
 #include "msm-pcm-routing-v2.h"
 #include "msm-qti-pp-config.h"
+#include <linux/adsp/adsp-loader.h>
 
 #define DRV_NAME "msm-pcm-q6-v2"
 #define TIMEOUT_MS	1000
@@ -119,6 +120,44 @@ static struct snd_pcm_hw_constraint_list constraints_sample_rates = {
 	.list = supported_sample_rates,
 	.mask = 0,
 };
+
+#define RETRY_MAX 5
+
+enum direction {
+	ASM_OPEN_WRITE,
+	ASM_OPEN_READ,
+	ASM_OPEN_MAX,
+};
+
+static int asm_fail[ASM_OPEN_MAX];
+
+static void msm_pcm_do_recovery(enum direction id)
+{
+	pr_info("%s: id(%d), write_fail(%d), read_fail(%d)\n",
+		__func__, id, asm_fail[ASM_OPEN_WRITE], asm_fail[ASM_OPEN_READ]);
+
+#ifdef CONFIG_SEC_SND_DEBUG
+	panic("q6asm open %s failed", id==0 ? "write" : "read");
+#endif
+
+	if (++asm_fail[id] > RETRY_MAX) {
+		adsp_ssr();
+		asm_fail[ASM_OPEN_WRITE] = asm_fail[ASM_OPEN_READ] = 0;
+	}
+}
+
+static void msm_pcm_reset_asm_fail(enum direction id)
+{
+	if ((asm_fail[ASM_OPEN_WRITE] == 0) &&
+		(asm_fail[ASM_OPEN_READ] == 0))
+		return;
+
+	pr_info("%s: id(%d), write_fail(%d), read_fail(%d)\n",
+		__func__, id, asm_fail[ASM_OPEN_WRITE], asm_fail[ASM_OPEN_READ]);
+
+
+	asm_fail[id] = 0;
+}
 
 static void msm_pcm_route_event_handler(enum msm_pcm_routing_event event,
 					void *priv_data)
@@ -404,6 +443,7 @@ static int msm_pcm_playback_prepare(struct snd_pcm_substream *substream)
 			__func__, ret);
 			q6asm_audio_client_free(prtd->audio_client);
 			prtd->audio_client = NULL;
+			msm_pcm_do_recovery(ASM_OPEN_WRITE);
 			return -ENOMEM;
 		}
 
@@ -465,6 +505,7 @@ static int msm_pcm_playback_prepare(struct snd_pcm_substream *substream)
 	prtd->enabled = 1;
 	prtd->cmd_pending = 0;
 	prtd->cmd_interrupt = 0;
+	msm_pcm_reset_asm_fail(ASM_OPEN_WRITE);
 
 	return 0;
 }
@@ -535,6 +576,7 @@ static int msm_pcm_capture_prepare(struct snd_pcm_substream *substream)
 			pr_err("%s: q6asm_open_read failed\n", __func__);
 			q6asm_audio_client_free(prtd->audio_client);
 			prtd->audio_client = NULL;
+			msm_pcm_do_recovery(ASM_OPEN_READ);
 			return -ENOMEM;
 		}
 
@@ -623,6 +665,7 @@ static int msm_pcm_capture_prepare(struct snd_pcm_substream *substream)
 		pr_debug("%s: cmd cfg pcm was block failed", __func__);
 
 	prtd->enabled = RUNNING;
+	msm_pcm_reset_asm_fail(ASM_OPEN_READ);
 
 	return ret;
 }
@@ -1007,6 +1050,10 @@ static int msm_pcm_capture_copy(struct snd_pcm_substream *substream,
 			xfer = size;
 		offset = prtd->in_frame_info[idx].offset;
 		pr_debug("Offset value = %d\n", offset);
+		if (size == 0) {
+			memset(bufptr+offset, 0, fbytes);
+			size = xfer = fbytes;
+		}
 		if (copy_to_user(buf, bufptr+offset, xfer)) {
 			pr_err("Failed to copy buf to user\n");
 			ret = -EFAULT;
@@ -1514,13 +1561,17 @@ static int msm_pcm_volume_ctl_get(struct snd_kcontrol *kcontrol,
 {
 	struct snd_pcm_volume *vol = snd_kcontrol_chip(kcontrol);
 	struct msm_plat_data *pdata = NULL;
-	struct snd_pcm_substream *substream =
-		vol->pcm->streams[vol->stream].substream;
+	struct snd_pcm_substream *substream = NULL;
 	struct snd_soc_pcm_runtime *soc_prtd = NULL;
 	struct snd_soc_component *component = NULL;
 	struct msm_audio *prtd;
 
 	pr_debug("%s\n", __func__);
+	if (!vol) {
+		pr_err("%s: vol is NULL\n", __func__);
+		return -ENODEV;
+	}
+	substream = vol->pcm->streams[vol->stream].substream;
 	if (!substream) {
 		pr_err("%s substream not found\n", __func__);
 		return -ENODEV;

@@ -81,8 +81,12 @@ static int samsung_panel_on_post(struct samsung_display_driver_data *vdd)
 
 	/* mafpc */
 	if (vdd->mafpc.is_support) {
-		vdd->mafpc.need_to_write = true;
-		LCD_INFO("Need to write mafpc image data to DDI\n");
+		if (!vdd->samsung_splash_enabled) {
+			vdd->mafpc.need_to_write = true;
+			LCD_INFO("Need to write mafpc image data to DDI\n");
+		} else {
+			LCD_INFO("Samsung splash enabled.. skip mafpc write\n");
+		}
 	}
 
 	return true;
@@ -518,7 +522,7 @@ static int ss_smart_dimming_init(struct samsung_display_driver_data *vdd,
 
 	vdd->br_info.temperature = 20; // default temperature
 
-	br_tbl->smart_dimming_loaded_dsi = true;
+	vdd->br_info.smart_dimming_loaded_dsi = true;
 
 	LCD_INFO("DSI%d, FPS: %d, HS: %d --\n", vdd->ndx,
 			br_tbl->refresh_rate, br_tbl->is_sot_hs_mode);
@@ -891,6 +895,14 @@ static struct dsi_panel_cmd_set *__ss_vrr(struct samsung_display_driver_data *vd
 				panel->cur_mode->timing.refresh_rate,
 				panel->cur_mode->timing.sot_hs_mode ? "HS" : "NM",
 				is_hbm, is_hmt, ss_get_brr_mode_name(brr_mode));
+
+		if (panel->cur_mode->timing.refresh_rate != vdd->vrr.adjusted_refresh_rate ||
+				panel->cur_mode->timing.sot_hs_mode != vdd->vrr.adjusted_sot_hs_mode)
+			LCD_ERR("VRR: unmatched RR mode (%dhz%s / %dhz%s)\n",
+					panel->cur_mode->timing.refresh_rate,
+					panel->cur_mode->timing.sot_hs_mode ? "HS" : "NM",
+					vdd->vrr.adjusted_refresh_rate,
+					vdd->vrr.adjusted_sot_hs_mode ? "HS" : "NM");
 	}
 
 	if (ss_is_brr_on(brr_mode)) {
@@ -1014,17 +1026,9 @@ static struct dsi_panel_cmd_set *__ss_vrr(struct samsung_display_driver_data *vd
 			cur_hs ? "HS" : "NM",
 			vrr->cur_refresh_rate,
 			vrr->cur_sot_hs_mode ? "HS" : "NM",
-			vrr->target_refresh_rate,
-			vrr->target_sot_hs_mode ? "HS" : "NM",
+			vrr->adjusted_refresh_rate,
+			vrr->adjusted_sot_hs_mode ? "HS" : "NM",
 			vrr_cmds->cmds[VRR_CMDID_AID].msg.tx_buf[1]);
-
-	if (panel->cur_mode->timing.refresh_rate != vdd->vrr.target_refresh_rate ||
-			panel->cur_mode->timing.sot_hs_mode != vdd->vrr.target_sot_hs_mode)
-		LCD_ERR("VRR: unmatched RR mode (%dhz%s / %dhz%s)\n",
-				panel->cur_mode->timing.refresh_rate,
-				panel->cur_mode->timing.sot_hs_mode ? "HS" : "NM",
-				vdd->vrr.target_refresh_rate,
-				vdd->vrr.target_sot_hs_mode ? "HS" : "NM");
 
 	return vrr_cmds;
 }
@@ -1105,7 +1109,7 @@ static struct dsi_panel_cmd_set *ss_gamma_hmt(struct samsung_display_driver_data
 		return NULL;
 	}
 
-	LCD_DEBUG("hmt_bl_level : %d candela : %dCD\n", vdd->br_info.br_tbl[0].hmt_stat.hmt_bl_level, vdd->br_info.br_tbl[0].hmt_stat.candela_level_hmt);
+	LCD_DEBUG("hmt_bl_level : %d candela : %dCD\n", vdd->br_info.hmt_stat.hmt_bl_level, vdd->br_info.hmt_stat.candela_level_hmt);
 
 	if (vdd->vrr.black_frame_mode == BLACK_FRAME_INSERT) {
 		/* HS <-> Normal mode: insert one black frame to hide screen noise
@@ -1183,7 +1187,7 @@ static struct dsi_panel_cmd_set *ss_elvss_hmt(struct samsung_display_driver_data
 			vdd->br_info.temperature : BIT(7) | (-1*vdd->br_info.temperature);
 
 	/* ELVSS(MPS_CON) setting condition is equal to normal birghtness */ // B5 2nd para : MPS_CON
-	if (vdd->br_info.br_tbl[0].hmt_stat.candela_level_hmt > 39)
+	if (vdd->br_info.hmt_stat.candela_level_hmt > 39)
 		elvss_cmds->cmds->msg.tx_buf[2] = 0xDC;
 	else
 		elvss_cmds->cmds->msg.tx_buf[2] = 0xCC;
@@ -1223,6 +1227,9 @@ static int ss_smart_dimming_init_hmt(struct samsung_display_driver_data *vdd)
 		return false;
 	}
 
+	vdd->br_info.hmt_stat.hmt_on = 0;
+	vdd->br_info.hmt_stat.hmt_bl_level = 0;
+
 	for (count = 0; count < vdd->br_info.br_tbl_count; count++) {
 		struct brightness_table *br_tbl = &vdd->br_info.br_tbl[count];
 
@@ -1233,15 +1240,10 @@ static int ss_smart_dimming_init_hmt(struct samsung_display_driver_data *vdd)
 			return false;
 		}
 
-		br_tbl->hmt_stat.hmt_on = 0;
-		br_tbl->hmt_stat.hmt_bl_level = 0;
-		br_tbl->hmt_stat.hmt_reverse = 0;
-		br_tbl->hmt_stat.hmt_is_first = 1;
-
 		ss_make_sdimconf_hmt(vdd, br_tbl);
-
-		br_tbl->smart_dimming_hmt_loaded_dsi = true;
 	}
+
+	vdd->br_info.smart_dimming_hmt_loaded_dsi = true;
 
 	LCD_INFO("DSI%d : --\n", vdd->ndx);
 
@@ -1785,6 +1787,7 @@ static int ss_gct_write(struct samsung_display_driver_data *vdd)
 	u8 vddm_set[MAX_VDDM] = {0x0, 0x04, 0x08};
 	int ret = 0;
 	struct dsi_panel *panel = GET_DSI_PANEL(vdd);
+	int wait_cnt = 1000; /* 1000 * 0.5ms = 500ms */
 
 	LCD_INFO("+\n");
 
@@ -1795,12 +1798,15 @@ static int ss_gct_write(struct samsung_display_driver_data *vdd)
 
 	mutex_lock(&vdd->exclusive_tx.ex_tx_lock);
 	vdd->exclusive_tx.enable = 1;
+	while (!list_empty(&vdd->cmd_lock.wait_list) && --wait_cnt)
+		usleep_range(500, 500);
+
 	for (i = TX_GCT_ENTER; i <= TX_GCT_EXIT; i++)
 		ss_set_exclusive_tx_packet(vdd, i, 1);
 	ss_set_exclusive_tx_packet(vdd, RX_GCT_CHECKSUM, 1);
 	ss_set_exclusive_tx_packet(vdd, TX_REG_READ_POS, 1);
 
-	mdelay(10);
+	usleep_range(10000, 11000);
 
 	checksum = vdd->gct.checksum;
 	for (i = VDDM_LV; i < MAX_VDDM; i++) {
@@ -1816,7 +1822,7 @@ static int ss_gct_write(struct samsung_display_driver_data *vdd)
 		set->cmds[10].msg.tx_buf[1] = vddm_set[i];
 		ss_send_cmd(vdd, TX_GCT_ENTER);
 
-		mdelay(150);
+		msleep(150);
 
 		ss_panel_data_read(vdd, RX_GCT_CHECKSUM, checksum++,
 				LEVEL_KEY_NONE);
@@ -1825,7 +1831,7 @@ static int ss_gct_write(struct samsung_display_driver_data *vdd)
 		LCD_INFO("(%d) TX_GCT_MID\n", i);
 		ss_send_cmd(vdd, TX_GCT_MID);
 
-		mdelay(150);
+		msleep(150);
 
 		ss_panel_data_read(vdd, RX_GCT_CHECKSUM, checksum++,
 				LEVEL_KEY_NONE);
@@ -1856,6 +1862,9 @@ static int ss_gct_write(struct samsung_display_driver_data *vdd)
 	 * So, on commands should be sent before wake up the waitq
 	 * and set exclusive_tx.enable to false.
 	 */
+	ss_set_exclusive_tx_packet(vdd, DSI_CMD_SET_OFF, 1);
+	ss_send_cmd(vdd, DSI_CMD_SET_OFF);
+
 	vdd->panel_state = PANEL_PWR_OFF;
 	dsi_panel_power_off(panel);
 	dsi_panel_power_on(panel);
@@ -1869,6 +1878,7 @@ static int ss_gct_write(struct samsung_display_driver_data *vdd)
 	ss_send_cmd(vdd, DSI_CMD_SET_ON);
 	dsi_panel_update_pps(panel);
 
+	ss_set_exclusive_tx_packet(vdd, DSI_CMD_SET_OFF, 0);
 	ss_set_exclusive_tx_packet(vdd, DSI_CMD_SET_ON, 0);
 	ss_set_exclusive_tx_packet(vdd, TX_LEVEL0_KEY_ENABLE, 0);
 	ss_set_exclusive_tx_packet(vdd, DSI_CMD_SET_PPS, 0);
@@ -1953,8 +1963,8 @@ static int ss_mafpc_data_init(struct samsung_display_driver_data *vdd)
 
 	LCD_INFO("mAFPC Panel Data init\n");
 
-	vdd->mafpc.img_buf = mafbc_img_data;
-	vdd->mafpc.img_size = ARRAY_SIZE(mafbc_img_data);
+	vdd->mafpc.img_buf = mafpc_img_data;
+	vdd->mafpc.img_size = ARRAY_SIZE(mafpc_img_data);
 
 	if (vdd->mafpc.make_img_mass_cmds)
 		vdd->mafpc.make_img_mass_cmds(vdd, vdd->mafpc.img_buf, vdd->mafpc.img_size, TX_MAFPC_IMAGE); /* Image Data */
@@ -1966,8 +1976,8 @@ static int ss_mafpc_data_init(struct samsung_display_driver_data *vdd)
 	}
 
 	/* CRC Check For Factory Mode */
-	vdd->mafpc.crc_img_buf = mafbc_img_data_crc_check;
-	vdd->mafpc.crc_img_size = ARRAY_SIZE(mafbc_img_data_crc_check);
+	vdd->mafpc.crc_img_buf = mafpc_img_data_crc_check;
+	vdd->mafpc.crc_img_size = ARRAY_SIZE(mafpc_img_data_crc_check);
 
 	if (vdd->mafpc.make_img_mass_cmds)
 		vdd->mafpc.make_img_mass_cmds(vdd, vdd->mafpc.crc_img_buf, vdd->mafpc.crc_img_size, TX_MAFPC_CRC_CHECK_IMAGE); /* CRC Check Image Data */
@@ -2468,13 +2478,13 @@ static int ss_vrr_init(struct vrr_info *vrr)
 	mutex_init(&vrr->vrr_lock);
 	mutex_init(&vrr->brr_lock);
 
-	vrr->force_rsc_clk_state = false;
+	vrr->running_vrr_mdp = false;
 	vrr->running_vrr = false;
-	vrr->force_update_mdp_clk = false;
 
 	/* Bootloader: WQHD@60hz Normal mode */
-	vrr->cur_refresh_rate = vrr->target_refresh_rate = 60;
-	vrr->cur_sot_hs_mode = vrr->target_sot_hs_mode = false;
+	vrr->cur_refresh_rate = vrr->adjusted_refresh_rate = 60;
+	vrr->cur_sot_hs_mode = vrr->adjusted_sot_hs_mode = false;
+	vrr->max_h_active_support_120hs = 1080; /* supports 120hz until FHD 1080 */
 
 	vrr->hs_nm_seq = HS_NM_OFF;
 	vrr->delayed_perf_normal = false;
@@ -2859,14 +2869,17 @@ static int __init samsung_panel_initialize(void)
 				strlen(panel_string)))
 		ndx = SECONDARY_DISPLAY_NDX;
 	else {
-		LCD_ERR("can not find panel_name (%s) / (%s)\n", panel_string, panel_name);
+		LCD_ERR("panel_string %s can not find panel_name (%s, %s)\n", panel_string, panel_name, panel_secondary_name);
 		return 0;
 	}
 
 	vdd = ss_get_vdd(ndx);
 	vdd->panel_func.samsung_panel_init = samsung_panel_init;
 
-	LCD_INFO("%s done.. \n", panel_name);
+	if (ndx == PRIMARY_DISPLAY_NDX)
+		LCD_INFO("%s done.. \n", panel_name);
+	else
+		LCD_INFO("%s done.. \n", panel_secondary_name);
 
 	return 0;
 }

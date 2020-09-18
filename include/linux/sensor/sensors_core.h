@@ -38,4 +38,8 @@ void remap_sensor_data_32(int *, u32);
 #define TIME_HI_MASK 0xFFFFFFFF00000000
 #define TIME_HI_SHIFT 32
 #include <linux/alarmtimer.h>
+
+extern int sensordump_notifier_register(struct notifier_block *nb);
+extern int sensordump_notifier_unregister(struct notifier_block *nb);
+extern int sensordump_notifier_call_chain(unsigned long val, void *v);
 #endif

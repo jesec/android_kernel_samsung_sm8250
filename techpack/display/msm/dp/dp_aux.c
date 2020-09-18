@@ -868,34 +868,8 @@ end:
 static int secdp_aux_configure_aux_switch(struct dp_aux *dp_aux,
 		bool enable, int orientation)
 {
-	int rc = 0;
-#if 0//.TODO:
-	enum fsa_function event = FSA_EVENT_MAX;
-
-	if (!dp->aux_switch_node) {
-		DP_DEBUG("undefined fsa4480 handle\n");
-		goto end;
-	}
-
-	switch (dp->usbpd->orientation) {
-	case ORIENTATION_CC1:
-		event = FSA_USBC_ORIENTATION_CC1;
-		break;
-	case ORIENTATION_CC2:
-		event = FSA_USBC_ORIENTATION_CC2;
-		break;
-	default:
-		DP_ERR("invalid orientation\n");
-		rc = -EINVAL;
-		goto end;
-	}
-
-	rc = fsa4480_switch_event(dp->aux_switch_node, event);
-	if (rc)
-		DP_ERR("failed to configure fsa4480 i2c device (%d)\n", rc);
-end:
-#endif
-	return rc;
+	//.TODO:
+	return 0;
 }
 #endif
 

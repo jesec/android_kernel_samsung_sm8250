@@ -1,7 +1,7 @@
 /*
  * HND generic pktq operation primitives
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,7 +18,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #include <typedefs.h>
@@ -58,11 +58,11 @@ BCMFASTPATH(pktq_penq)(struct pktq *pq, int prec, void *p)
 	if (HND_PKTQ_MUTEX_ACQUIRE(&pq->mutex, OSL_EXT_TIME_FOREVER) != OSL_EXT_SUCCESS)
 		return NULL;
 
-	ASSERT(prec >= 0 && prec < pq->num_prec);
-	ASSERT(PKTLINK(p) == NULL);		/* queueing chains not allowed */
+	ASSERT_FP(prec >= 0 && prec < pq->num_prec);
+	ASSERT_FP(PKTLINK(p) == NULL);		/* queueing chains not allowed */
 
-	ASSERT(!pktq_full(pq));
-	ASSERT(!pktqprec_full(pq, prec));
+	ASSERT_FP(!pktq_full(pq));
+	ASSERT_FP(!pktqprec_full(pq, prec));
 
 	q = &pq->q[prec];
 
@@ -136,7 +136,7 @@ BCMFASTPATH(spktq_enq)(struct spktq *spq, void *p)
 	if (HND_PKTQ_MUTEX_ACQUIRE(&spq->mutex, OSL_EXT_TIME_FOREVER) != OSL_EXT_SUCCESS)
 		return NULL;
 
-	ASSERT(!spktq_full(spq));
+	ASSERT_FP(!spktq_full(spq));
 
 	PKTSETLINK(p, NULL);
 
@@ -166,11 +166,11 @@ BCMFASTPATH(pktq_penq_head)(struct pktq *pq, int prec, void *p)
 	if (HND_PKTQ_MUTEX_ACQUIRE(&pq->mutex, OSL_EXT_TIME_FOREVER) != OSL_EXT_SUCCESS)
 		return NULL;
 
-	ASSERT(prec >= 0 && prec < pq->num_prec);
-	ASSERT(PKTLINK(p) == NULL);		/* queueing chains not allowed */
+	ASSERT_FP(prec >= 0 && prec < pq->num_prec);
+	ASSERT_FP(PKTLINK(p) == NULL);		/* queueing chains not allowed */
 
-	ASSERT(!pktq_full(pq));
-	ASSERT(!pktqprec_full(pq, prec));
+	ASSERT_FP(!pktq_full(pq));
+	ASSERT_FP(!pktqprec_full(pq, prec));
 
 	q = &pq->q[prec];
 
@@ -202,7 +202,7 @@ BCMFASTPATH(spktq_enq_head)(struct spktq *spq, void *p)
 	if (HND_PKTQ_MUTEX_ACQUIRE(&spq->mutex, OSL_EXT_TIME_FOREVER) != OSL_EXT_SUCCESS)
 		return NULL;
 
-	ASSERT(!spktq_full(spq));
+	ASSERT_FP(!spktq_full(spq));
 
 	PKTSETLINK(p, NULL);
 
@@ -232,7 +232,7 @@ BCMFASTPATH(pktq_pdeq)(struct pktq *pq, int prec)
 	if (HND_PKTQ_MUTEX_ACQUIRE(&pq->mutex, OSL_EXT_TIME_FOREVER) != OSL_EXT_SUCCESS)
 		return NULL;
 
-	ASSERT(prec >= 0 && prec < pq->num_prec);
+	ASSERT_FP(prec >= 0 && prec < pq->num_prec);
 
 	q = &pq->q[prec];
 
@@ -304,7 +304,7 @@ BCMFASTPATH(pktq_pdeq_tail)(struct pktq *pq, int prec)
 	if (HND_PKTQ_MUTEX_ACQUIRE(&pq->mutex, OSL_EXT_TIME_FOREVER) != OSL_EXT_SUCCESS)
 		return NULL;
 
-	ASSERT(prec >= 0 && prec < pq->num_prec);
+	ASSERT_FP(prec >= 0 && prec < pq->num_prec);
 
 	q = &pq->q[prec];
 
@@ -421,11 +421,11 @@ BCMFASTPATH(pktq_append)(struct pktq *pq, int prec, struct spktq *list)
 	if (list_q->head == NULL)
 		goto done;
 
-	ASSERT(prec >= 0 && prec < pq->num_prec);
-	ASSERT(PKTLINK(list_q->tail) == NULL);         /* terminated list */
+	ASSERT_FP(prec >= 0 && prec < pq->num_prec);
+	ASSERT_FP(PKTLINK(list_q->tail) == NULL);         /* terminated list */
 
-	ASSERT(!pktq_full(pq));
-	ASSERT(!pktqprec_full(pq, prec));
+	ASSERT_FP(!pktq_full(pq));
+	ASSERT_FP(!pktqprec_full(pq, prec));
 
 	q = &pq->q[prec];
 
@@ -474,9 +474,9 @@ BCMFASTPATH(spktq_append)(struct spktq *spq, struct spktq *list)
 	if (list_q->head == NULL)
 		goto done;
 
-	ASSERT(PKTLINK(list_q->tail) == NULL);         /* terminated list */
+	ASSERT_FP(PKTLINK(list_q->tail) == NULL);         /* terminated list */
 
-	ASSERT(!spktq_full(spq));
+	ASSERT_FP(!spktq_full(spq));
 
 	q = &spq->q;
 
@@ -521,11 +521,11 @@ BCMFASTPATH(pktq_prepend)(struct pktq *pq, int prec, struct spktq *list)
 	if (list_q->head == NULL)
 		goto done;
 
-	ASSERT(prec >= 0 && prec < pq->num_prec);
-	ASSERT(PKTLINK(list_q->tail) == NULL);         /* terminated list */
+	ASSERT_FP(prec >= 0 && prec < pq->num_prec);
+	ASSERT_FP(PKTLINK(list_q->tail) == NULL);         /* terminated list */
 
-	ASSERT(!pktq_full(pq));
-	ASSERT(!pktqprec_full(pq, prec));
+	ASSERT_FP(!pktq_full(pq));
+	ASSERT_FP(!pktqprec_full(pq, prec));
 
 	q = &pq->q[prec];
 
@@ -580,9 +580,9 @@ BCMFASTPATH(spktq_prepend)(struct spktq *spq, struct spktq *list)
 	if (list_q->head == NULL)
 		goto done;
 
-	ASSERT(PKTLINK(list_q->tail) == NULL);         /* terminated list */
+	ASSERT_FP(PKTLINK(list_q->tail) == NULL);         /* terminated list */
 
-	ASSERT(!spktq_full(spq));
+	ASSERT_FP(!spktq_full(spq));
 
 	q = &spq->q;
 
@@ -624,7 +624,7 @@ BCMFASTPATH(pktq_pdeq_prev)(struct pktq *pq, int prec, void *prev_p)
 	if (HND_PKTQ_MUTEX_ACQUIRE(&pq->mutex, OSL_EXT_TIME_FOREVER) != OSL_EXT_SUCCESS)
 		return NULL;
 
-	ASSERT(prec >= 0 && prec < pq->num_prec);
+	ASSERT_FP(prec >= 0 && prec < pq->num_prec);
 
 	q = &pq->q[prec];
 
@@ -662,7 +662,7 @@ BCMFASTPATH(pktq_pdeq_with_fn)(struct pktq *pq, int prec, ifpkt_cb_t fn, int arg
 	if (HND_PKTQ_MUTEX_ACQUIRE(&pq->mutex, OSL_EXT_TIME_FOREVER) != OSL_EXT_SUCCESS)
 		return NULL;
 
-	ASSERT(prec >= 0 && prec < pq->num_prec);
+	ASSERT_FP(prec >= 0 && prec < pq->num_prec);
 
 	q = &pq->q[prec];
 	p = q->head;
@@ -717,7 +717,7 @@ BCMFASTPATH(pktq_pdel)(struct pktq *pq, void *pktbuf, int prec)
 	if (HND_PKTQ_MUTEX_ACQUIRE(&pq->mutex, OSL_EXT_TIME_FOREVER) != OSL_EXT_SUCCESS)
 		return FALSE;
 
-	ASSERT(prec >= 0 && prec < pq->num_prec);
+	ASSERT_FP(prec >= 0 && prec < pq->num_prec);
 
 	/* Should this just assert pktbuf? */
 	if (!pktbuf)
@@ -1226,7 +1226,7 @@ typedef struct {
 static spktq_cbinfo_t spktq_cbinfo = {NULL, NULL};
 static spktq_cbinfo_t *spktq_cbinfo_get(void);
 
-/* XXX: Accessor function forced into RAM to keep spktq_cbinfo out of shdat */
+/* Accessor function forced into RAM to keep spktq_cbinfo out of shdat */
 static spktq_cbinfo_t*
 BCMRAMFN(spktq_cbinfo_get)(void)
 {
@@ -1412,7 +1412,7 @@ pktqprec_avail_pkts(struct pktq *pq, int prec)
 }
 
 bool
-pktqprec_full(struct pktq *pq, int prec)
+BCMFASTPATH(pktqprec_full)(struct pktq *pq, int prec)
 {
 	bool ret;
 
@@ -1420,7 +1420,7 @@ pktqprec_full(struct pktq *pq, int prec)
 	if (HND_PKTQ_MUTEX_ACQUIRE(&pq->mutex, OSL_EXT_TIME_FOREVER) != OSL_EXT_SUCCESS)
 		return FALSE;
 
-	ASSERT(prec >= 0 && prec < pq->num_prec);
+	ASSERT_FP(prec >= 0 && prec < pq->num_prec);
 
 	ret = pq->q[prec].n_pkts >= pq->q[prec].max_pkts;
 

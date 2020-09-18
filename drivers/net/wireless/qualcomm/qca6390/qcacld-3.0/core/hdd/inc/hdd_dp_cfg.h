@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2019 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2020 The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -37,10 +37,14 @@
 #define CFG_RX_MODE_DEFAULT 0
 #elif defined(HELIUMPLUS)
 #define CFG_RX_MODE_DEFAULT CFG_ENABLE_NAPI
-#elif defined(QCA_WIFI_QCA6290_11AX)
+#endif
+
+#ifndef CFG_RX_MODE_DEFAULT
+#if defined(FEATURE_WLAN_DP_RX_THREADS)
 #define CFG_RX_MODE_DEFAULT (CFG_ENABLE_DP_RX_THREADS | CFG_ENABLE_NAPI)
 #else
 #define CFG_RX_MODE_DEFAULT (CFG_ENABLE_RX_THREAD | CFG_ENABLE_NAPI)
+#endif
 #endif
 
 /* Max # of packets to be processed in 1 tx comp loop */
@@ -356,7 +360,7 @@
  *
  * @Min: 0
  * @Max: 4294967295UL
- * @Default: 7000
+ * @Default: 9000
  *
  * This ini specifies the bus bandwidth very high threshold
  *
@@ -369,7 +373,7 @@
 		"gBusBandwidthVeryHighThreshold", \
 		0, \
 		4294967295UL, \
-		7000, \
+		9000, \
 		CFG_VALUE_OR_DEFAULT, \
 		"Bus bandwidth very high threshold")
 
@@ -640,7 +644,186 @@
 		500, \
 		CFG_VALUE_OR_DEFAULT, \
 		"High Threshold inorder to trigger High Tx Tp")
+
+/*
+ * <ini>
+ * gBusLowTputCntThreshold - Threshold count to trigger low Tput
+ *			     GRO flush skip
+ * @Min: 0
+ * @Max: 200
+ * @Default: 10
+ *
+ * This ini is a threshold that if count of times for bus Tput level
+ * PLD_BUS_WIDTH_LOW in bus_bw_timer() >= this threshold, will enable skipping
+ * GRO flush, current default threshold is 10, then will delay GRO flush-skip
+ * 1 second for low Tput level.
+ *
+ * Supported Feature: GRO flush skip when low T-put
+ *
+ * Usage: Internal
+ *
+ * </ini>
+ */
+#define CFG_DP_BUS_LOW_BW_CNT_THRESHOLD \
+		CFG_INI_UINT( \
+		"gBusLowTputCntThreshold", \
+		0, \
+		200, \
+		10, \
+		CFG_VALUE_OR_DEFAULT, \
+		"Threshold to trigger GRO flush skip for low T-put")
+
+/*
+ * <ini>
+ * gHandleLatencyCriticalClients - Enable the handling of latency critical
+ *			     clients in bus bandwidth timer.
+ * @Default: false
+ *
+ * This ini enables the handling of latency critical clients, eg: 11g/a
+ * clients, when they are running their corresponding peak throughput.
+ *
+ * Supported Feature: Latency critical clients in host
+ *
+ * Usage: External
+ *
+ * </ini>
+ */
+#define CFG_DP_BUS_HANDLE_LATENCY_CRITICAL_CLIENTS \
+		CFG_INI_BOOL( \
+		"gHandleLatencyCriticalClients", \
+		false, \
+		"Control to enable latency critical clients")
+
 #endif /*WLAN_FEATURE_DP_BUS_BANDWIDTH*/
+
+#ifdef QCA_SUPPORT_TXRX_DRIVER_TCP_DEL_ACK
+/*
+ * <ini>
+ * gDriverDelAckHighThreshold - High Threshold inorder to trigger TCP
+ *                              delay ack feature in the host.
+ * @Min: 0
+ * @Max: 70000
+ * @Default: 300
+ *
+ * This ini specifies the threshold of RX packets transmitted
+ * over a period of 100 ms beyond which TCP delay ack can be enabled
+ * to improve TCP RX throughput requirement.
+ *
+ * Supported Feature: Tcp Delayed Ack in the host
+ *
+ * Usage: Internal
+ *
+ * </ini>
+ */
+#define CFG_DP_DRIVER_TCP_DELACK_HIGH_THRESHOLD \
+		CFG_INI_UINT( \
+		"gDriverDelAckHighThreshold", \
+		0, \
+		70000, \
+		300, \
+		CFG_VALUE_OR_DEFAULT, \
+		"TCP delack high threshold")
+
+/*
+ * <ini>
+ * gDriverDelAckLowThreshold - Low Threshold inorder to disable TCP
+ *                             delay ack feature in the host.
+ * @Min: 0
+ * @Max: 70000
+ * @Default: 100
+ *
+ * This ini is used to mention the Low Threshold inorder to disable TCP Del
+ * Ack feature in the host.
+ *
+ * Supported Feature: Tcp Delayed Ack in the host
+ *
+ * Usage: Internal
+ *
+ * </ini>
+ */
+#define CFG_DP_DRIVER_TCP_DELACK_LOW_THRESHOLD \
+		CFG_INI_UINT( \
+		"gDriverDelAckLowThreshold", \
+		0, \
+		70000, \
+		100, \
+		CFG_VALUE_OR_DEFAULT, \
+		"TCP delack low threshold")
+
+/*
+ * <ini>
+ * gDriverDelAckTimerValue - Timeout value (ms) to send out all TCP del
+ *                           ack frames
+ * @Min: 1
+ * @Max: 15
+ * @Default: 3
+ *
+ * This ini specifies the time out value to send out all pending TCP delay
+ * ACK frames.
+ *
+ * Supported Feature: Tcp Delayed Ack in the host
+ *
+ * Usage: Internal
+ *
+ * </ini>
+ */
+#define CFG_DP_DRIVER_TCP_DELACK_TIMER_VALUE \
+		CFG_INI_UINT( \
+		"gDriverDelAckTimerValue", \
+		1, \
+		15, \
+		3, \
+		CFG_VALUE_OR_DEFAULT, \
+		"Send out all TCP Del Acks if time out")
+
+/*
+ * <ini>
+ * gDriverDelAckPktCount - The maximum number of TCP delay ack frames
+ * @Min: 0
+ * @Max: 50
+ * @Default: 20
+ *
+ * This ini specifies the maximum number of TCP delayed ack frames.
+ *
+ * Supported Feature: Tcp Delayed Ack in the host
+ *
+ * Usage: Internal
+ *
+ * </ini>
+ */
+#define CFG_DP_DRIVER_TCP_DELACK_PKT_CNT \
+		CFG_INI_UINT( \
+		"gDriverDelAckPktCount", \
+		0, \
+		50, \
+		20, \
+		CFG_VALUE_OR_DEFAULT, \
+		"No of TCP Del ACK count")
+
+/*
+ * <ini>
+ * gDriverDelAckEnable - Control to enable Dynamic Configuration of Tcp
+ *                       Delayed Ack in the host.
+ * @Default: true
+ *
+ * This ini is used to enable Dynamic Configuration of Tcp Delayed Ack
+ * in the host.
+ *
+ * Related: gDriverDelAckHighThreshold, gDriverDelAckLowThreshold,
+ *          gDriverDelAckPktCount, gDriverDelAckTimerValue
+ *
+ * Supported Feature: Tcp Delayed Ack in the host
+ *
+ * Usage: Internal
+ *
+ * </ini>
+ */
+#define CFG_DP_DRIVER_TCP_DELACK_ENABLE \
+		CFG_INI_BOOL( \
+		"gDriverDelAckEnable", \
+		true, \
+		"Enable tcp del ack in the driver")
+#endif
 
 /*
  * <ini>
@@ -702,6 +885,31 @@
 		CFG_VALUE_OR_DEFAULT, \
 		"CPU mask to affine Rx_thread")
 #endif
+
+/*
+ * <ini>
+ * RX_THREAD_UL_CPU_AFFINITY_MASK - CPU mask to affine Rx_thread
+ *
+ * @Min: 0
+ * @Max: 0xFF
+ * @Default: 0x0
+ *
+ * This ini is used to set Rx_thread CPU affinity for uplink traffic
+ *
+ * Supported Feature: Rx_thread
+ *
+ * Usage: Internal
+ *
+ * </ini>
+ */
+#define CFG_DP_RX_THREAD_UL_CPU_MASK \
+		CFG_INI_UINT( \
+		"RX_THREAD_UL_CPU_AFFINITY_MASK", \
+		0, \
+		0xFF, \
+		0x0, \
+		CFG_VALUE_OR_DEFAULT, \
+		"CPU mask to affine Rx_thread for uplink traffic")
 
 /*
  * <ini>
@@ -934,14 +1142,40 @@
 	1, 4, 1, CFG_VALUE_OR_DEFAULT, \
 	"Control to set the number of dp rx threads")
 
+/*
+ * <ini>
+ * ce_service_max_rx_ind_flush - Maximum number of HTT messages
+ * to be processed per NAPI poll
+ *
+ * @Min: 1
+ * @Max: 32
+ * @Default: 1
+ *
+ * Usage: Internal
+ *
+ * </ini>
+ */
 #define CFG_DP_CE_SERVICE_MAX_RX_IND_FLUSH \
 		CFG_INI_UINT("ce_service_max_rx_ind_flush", \
-		1, 32, 32, \
+		1, 32, 1, \
 		CFG_VALUE_OR_DEFAULT, "Ctrl to set ce service max rx ind flsh")
 
+/*
+ * <ini>
+ * ce_service_max_yield_time - Time in microseconds after which
+ * a NAPI poll must yield
+ *
+ * @Min: 500
+ * @Max: 10000
+ * @Default: 500
+ *
+ * Usage: Internal
+ *
+ * </ini>
+ */
 #define CFG_DP_CE_SERVICE_MAX_YIELD_TIME \
 		CFG_INI_UINT("ce_service_max_yield_time", \
-		500, 10000, 10000, \
+		500, 10000, 500, \
 		CFG_VALUE_OR_DEFAULT, "Ctrl to set ce service max yield time")
 
 #ifdef WLAN_FEATURE_FASTPATH
@@ -994,22 +1228,61 @@
 		20, \
 		"1, 6, 2, 126", \
 		"dp trace configuration string")
+
+/*
+ * <ini>
+ * dp_proto_event_bitmap - Control for which protocol packet diag event should
+ *  be sent to user space.
+ * @Min: 0
+ * @Max: 0x17
+ * @Default: 0x6
+ *
+ * This ini is used to control for which protocol packet diag event should be
+ * sent to user space.
+ *
+ * QDF_NBUF_PKT_TRAC_TYPE_DNS       0x01
+ * QDF_NBUF_PKT_TRAC_TYPE_EAPOL     0x02
+ * QDF_NBUF_PKT_TRAC_TYPE_DHCP      0x04
+ * QDF_NBUF_PKT_TRAC_TYPE_ARP       0x10
+ *
+ * Related: None
+ *
+ * Supported Feature: STA, SAP
+ *
+ * Usage: Internal
+ *
+ * <ini>
+ */
+#define CFG_DP_PROTO_EVENT_BITMAP \
+		CFG_INI_UINT("dp_proto_event_bitmap", \
+		0, 0x17, 0x17, \
+		CFG_VALUE_OR_DEFAULT, \
+		"Control for which protocol type diag log should be sent")
+
 #define CFG_DP_CONFIG_DP_TRACE_ALL \
 		CFG(CFG_DP_ENABLE_DP_TRACE) \
-		CFG(CFG_DP_DP_TRACE_CONFIG)
+		CFG(CFG_DP_DP_TRACE_CONFIG) \
+		CFG(CFG_DP_PROTO_EVENT_BITMAP)
 #else
 #define CFG_DP_CONFIG_DP_TRACE_ALL
 #endif
 
+#ifdef WLAN_NUD_TRACKING
 /*
  * <ini>
  * gEnableNUDTracking - Will enable or disable NUD tracking within driver
  * @Min: 0
- * @Max: 1
- * @Default: 1
+ * @Max: 3
+ * @Default: 2
  *
- * This ini is used to enable or disable NUD tracking within driver
- *
+ * This ini is used to specify the behaviour of the driver for NUD tracking.
+ * If the ini value is:-
+ * 0: Driver will not track the NUD failures, and ignore the same.
+ * 1: Driver will track the NUD failures and if honoured will disconnect from
+ * the connected BSSID.
+ * 2: Driver will track the NUD failures and if honoured will roam away from
+ * the connected BSSID to a new BSSID to retain the data connectivity.
+ * 3: Driver will try to roam to a new AP but if roam fails, disconnect.
  * Related: None
  *
  * Supported Feature: STA
@@ -1018,15 +1291,57 @@
  *
  * <ini>
  */
-#ifdef WLAN_NUD_TRACKING
 #define CFG_DP_ENABLE_NUD_TRACKING \
-		CFG_INI_BOOL("gEnableNUDTracking", \
-		true, "Ctrl to enable nud tracking")
+		CFG_INI_UINT("gEnableNUDTracking", \
+		 0, \
+		 3, \
+		 2, \
+		 CFG_VALUE_OR_DEFAULT, "Driver NUD tracking behaviour")
 
 #define CFG_DP_ENABLE_NUD_TRACKING_ALL \
 			CFG(CFG_DP_ENABLE_NUD_TRACKING)
 #else
 #define CFG_DP_ENABLE_NUD_TRACKING_ALL
+#endif
+
+#ifdef WLAN_SUPPORT_TXRX_HL_BUNDLE
+
+#define CFG_DP_HL_BUNDLE_HIGH_TH \
+		CFG_INI_UINT( \
+		"tx_bundle_high_threashold", \
+		0, \
+		70000, \
+		4330, \
+		CFG_VALUE_OR_DEFAULT, \
+		"tx bundle high threashold")
+
+#define CFG_DP_HL_BUNDLE_LOW_TH \
+		CFG_INI_UINT( \
+		"tx_bundle_low_threashold", \
+		0, \
+		70000, \
+		4000, \
+		CFG_VALUE_OR_DEFAULT, \
+		"tx bundle low threashold")
+
+#define CFG_DP_HL_BUNDLE_TIMER_VALUE \
+		CFG_INI_UINT( \
+		"tx_bundle_timer_in_ms", \
+		10, \
+		10000, \
+		100, \
+		CFG_VALUE_OR_DEFAULT, \
+		"tx bundle timer value in ms")
+
+#define CFG_DP_HL_BUNDLE_SIZE \
+		CFG_INI_UINT( \
+		"tx_bundle_size", \
+		0, \
+		64, \
+		16, \
+		CFG_VALUE_OR_DEFAULT, \
+		"tx bundle size")
+
 #endif
 
 /*
@@ -1083,14 +1398,39 @@
 	CFG(CFG_DP_TCP_DELACK_THRESHOLD_HIGH) \
 	CFG(CFG_DP_TCP_DELACK_THRESHOLD_LOW) \
 	CFG(CFG_DP_TCP_DELACK_TIMER_COUNT) \
-	CFG(CFG_DP_TCP_TX_HIGH_TPUT_THRESHOLD)
+	CFG(CFG_DP_TCP_TX_HIGH_TPUT_THRESHOLD) \
+	CFG(CFG_DP_BUS_LOW_BW_CNT_THRESHOLD) \
+	CFG(CFG_DP_BUS_HANDLE_LATENCY_CRITICAL_CLIENTS)
+
 #else
 #define CFG_HDD_DP_BUS_BANDWIDTH
+#endif
+
+#ifdef QCA_SUPPORT_TXRX_DRIVER_TCP_DEL_ACK
+#define CFG_DP_DRIVER_TCP_DELACK \
+	CFG(CFG_DP_DRIVER_TCP_DELACK_HIGH_THRESHOLD) \
+	CFG(CFG_DP_DRIVER_TCP_DELACK_LOW_THRESHOLD) \
+	CFG(CFG_DP_DRIVER_TCP_DELACK_TIMER_VALUE) \
+	CFG(CFG_DP_DRIVER_TCP_DELACK_PKT_CNT) \
+	CFG(CFG_DP_DRIVER_TCP_DELACK_ENABLE)
+#else
+#define CFG_DP_DRIVER_TCP_DELACK
+#endif
+
+#ifdef WLAN_SUPPORT_TXRX_HL_BUNDLE
+#define CFG_DP_HL_BUNDLE \
+	CFG(CFG_DP_HL_BUNDLE_HIGH_TH) \
+	CFG(CFG_DP_HL_BUNDLE_LOW_TH) \
+	CFG(CFG_DP_HL_BUNDLE_TIMER_VALUE) \
+	CFG(CFG_DP_HL_BUNDLE_SIZE)
+#else
+#define CFG_DP_HL_BUNDLE
 #endif
 
 #define CFG_HDD_DP_ALL \
 	CFG(CFG_DP_NAPI_CE_CPU_MASK) \
 	CFG(CFG_DP_RX_THREAD_CPU_MASK) \
+	CFG(CFG_DP_RX_THREAD_UL_CPU_MASK) \
 	CFG(CFG_DP_RPS_RX_QUEUE_CPU_MAP_LIST) \
 	CFG(CFG_DP_TX_ORPHAN_ENABLE) \
 	CFG(CFG_DP_RX_MODE) \
@@ -1107,7 +1447,9 @@
 	CFG(CFG_DP_HTC_WMI_CREDIT_CNT) \
 	CFG_DP_ENABLE_FASTPATH_ALL \
 	CFG_HDD_DP_BUS_BANDWIDTH \
+	CFG_DP_DRIVER_TCP_DELACK \
 	CFG_HDD_DP_LEGACY_TX_FLOW \
 	CFG_DP_ENABLE_NUD_TRACKING_ALL \
-	CFG_DP_CONFIG_DP_TRACE_ALL
+	CFG_DP_CONFIG_DP_TRACE_ALL \
+	CFG_DP_HL_BUNDLE
 #endif

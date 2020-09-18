@@ -1,7 +1,7 @@
 /*
  * Driver O/S-independent utility routines
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,7 +18,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #include <typedefs.h>
@@ -72,6 +72,13 @@
 
 #ifdef PRIVACY_MASK
 struct ether_addr privacy_addrmask;
+
+/* RAM accessor function to avoid 'privacy_addrmask' in ROM/RAM shared data section. */
+static struct ether_addr *
+BCMRAMFN(privacy_addrmask_get)(void)
+{
+	return &privacy_addrmask;
+}
 #endif /* PRIVACY_MASK */
 
 #ifdef BCMDRIVER
@@ -125,7 +132,7 @@ BCMFASTPATH(pkttotcnt)(osl_t *osh, void *p)
 
 /* return the last buffer of chained pkt */
 void *
-pktlast(osl_t *osh, void *p)
+BCMFASTPATH(pktlast)(osl_t *osh, void *p)
 {
 	for (; PKTNEXT(osh, p); p = PKTNEXT(osh, p))
 		;
@@ -314,7 +321,7 @@ BCMFASTPATH(pktsetprio)(void *pkt, bool update_vtag)
 	int rc = 0;
 
 	pktdata = (uint8 *)PKTDATA(OSH_NULL, pkt);
-	ASSERT(ISALIGNED((uintptr)pktdata, sizeof(uint16)));
+	ASSERT_FP(ISALIGNED((uintptr)pktdata, sizeof(uint16)));
 
 	eh = (struct ether_header *) pktdata;
 
@@ -399,7 +406,7 @@ BCMFASTPATH(pktsetprio)(void *pkt, bool update_vtag)
 		rc |= PKTPRIO_DSCP;
 	}
 
-	ASSERT(priority >= 0 && priority <= MAXPRIO);
+	ASSERT_FP(priority >= 0 && priority <= MAXPRIO);
 	PKTSETPRIO(pkt, priority);
 	return (rc | priority);
 }
@@ -436,7 +443,6 @@ BCMFASTPATH(pktsetprio_qms)(void *pkt, uint8* up_table, bool update_vtag)
 
 		pktdata = (uint8 *)PKTDATA(OSH_NULL, pkt);
 		pktlen = PKTLEN(OSH_NULL, pkt);
-
 		if (pktgetdscp(pktdata, pktlen, &dscp)) {
 			rc = PKTPRIO_DSCP;
 			user_priority = dscp2up(up_table, dscp);
@@ -558,7 +564,7 @@ static char bcm_undeferrstr[32];
 static const char *bcmerrorstrtable[] = BCMERRSTRINGTABLE;
 
 /* Convert the error codes into related error strings  */
-/* XXX: BCMRAMFN for BCME_LAST usage */
+/* BCMRAMFN for BCME_LAST usage */
 const char *
 BCMRAMFN(bcmerrorstr)(int bcmerror)
 {
@@ -959,17 +965,17 @@ BCMFASTPATH(bcm_mwbmap_free)(struct bcm_mwbmap * mwbmap_hdl, uint32 bitix)
 	BCM_MWBMAP_AUDIT(mwbmap_hdl);
 	mwbmap_p = BCM_MWBMAP_PTR(mwbmap_hdl);
 
-	ASSERT(bitix < mwbmap_p->total);
+	ASSERT_FP(bitix < mwbmap_p->total);
 
 	/* Start with second level hierarchy */
 	wordix   = BCM_MWBMAP_DIVOP(bitix);
 	bitmap   = (1U << BCM_MWBMAP_MODOP(bitix));
 	bitmap_p = &mwbmap_p->id_bitmap[wordix];
 
-	ASSERT((*bitmap_p & bitmap) == 0U);	/* ASSERT not a double free */
+	ASSERT_FP((*bitmap_p & bitmap) == 0U);	/* ASSERT not a double free */
 
 	mwbmap_p->ifree++; /* update free count */
-	ASSERT(mwbmap_p->ifree <= mwbmap_p->total);
+	ASSERT_FP(mwbmap_p->ifree <= mwbmap_p->total);
 
 	MWBMAP_DBG(("Lvl2: bitix<%02u> wordix<%02u>: %08x | %08x = %08x ifree %d",
 	            bitix, wordix, *bitmap_p, bitmap, (*bitmap_p) | bitmap,
@@ -1274,11 +1280,11 @@ BCMFASTPATH(id16_map_alloc)(void * id16_map_hndl)
 	uint16 val16;
 	id16_map_t * id16_map;
 
-	ASSERT(id16_map_hndl != NULL);
+	ASSERT_FP(id16_map_hndl != NULL);
 
 	id16_map = (id16_map_t *)id16_map_hndl;
 
-	ASSERT(id16_map->total > 0);
+	ASSERT_FP(id16_map->total > 0);
 
 	if (id16_map->stack_idx < 0) {
 		id16_map->failures++;
@@ -1289,13 +1295,13 @@ BCMFASTPATH(id16_map_alloc)(void * id16_map_hndl)
 	id16_map->stack_idx--;
 
 #if defined(BCM_DBG) && defined(BCM_DBG_ID16)
-	ASSERT((id16_map->start == ID16_UNDEFINED) ||
+	ASSERT_FP((id16_map->start == ID16_UNDEFINED) ||
 	       (val16 < (id16_map->start + id16_map->total)));
 
 	if (id16_map->dbg) { /* Validate val16 */
 		id16_map_dbg_t *id16_map_dbg = (id16_map_dbg_t *)id16_map->dbg;
 
-		ASSERT(id16_map_dbg->avail[val16 - id16_map->start] == TRUE);
+		ASSERT_FP(id16_map_dbg->avail[val16 - id16_map->start] == TRUE);
 		id16_map_dbg->avail[val16 - id16_map->start] = FALSE;
 	}
 #endif /* BCM_DBG && BCM_DBG_ID16 */
@@ -1308,18 +1314,18 @@ BCMFASTPATH(id16_map_free)(void * id16_map_hndl, uint16 val16)
 {
 	id16_map_t * id16_map;
 
-	ASSERT(id16_map_hndl != NULL);
+	ASSERT_FP(id16_map_hndl != NULL);
 
 	id16_map = (id16_map_t *)id16_map_hndl;
 
 #if defined(BCM_DBG) && defined(BCM_DBG_ID16)
-	ASSERT((id16_map->start == ID16_UNDEFINED) ||
+	ASSERT_FP((id16_map->start == ID16_UNDEFINED) ||
 	       (val16 < (id16_map->start + id16_map->total)));
 
 	if (id16_map->dbg) { /* Validate val16 */
 		id16_map_dbg_t *id16_map_dbg = (id16_map_dbg_t *)id16_map->dbg;
 
-		ASSERT(id16_map_dbg->avail[val16 - id16_map->start] == FALSE);
+		ASSERT_FP(id16_map_dbg->avail[val16 - id16_map->start] == FALSE);
 		id16_map_dbg->avail[val16 - id16_map->start] = TRUE;
 	}
 #endif /* BCM_DBG && BCM_DBG_ID16 */
@@ -1687,19 +1693,20 @@ int
 BCMRAMFN(bcm_addrmask_set)(int enable)
 {
 #ifdef PRIVACY_MASK
+	struct ether_addr *privacy = privacy_addrmask_get();
 	if (enable) {
 		/* apply mask as (For SS)
 		 * orig		: 12:34:56:78:90:ab
 		 * masked	: 12:xx:xx:xx:x0:ab
 		 */
-		privacy_addrmask.octet[1] = privacy_addrmask.octet[2] =
-			privacy_addrmask.octet[3] = 0;
-		privacy_addrmask.octet[0] = privacy_addrmask.octet[5] = 0xff;
-		privacy_addrmask.octet[4] = 0x0f;
+		privacy->octet[1] = privacy->octet[2] =
+			privacy->octet[3] = 0;
+		privacy->octet[0] = privacy->octet[5] = 0xff;
+		privacy->octet[4] = 0x0f;
 	} else
 	{
 		/* No masking. All are 0xff. */
-		memcpy(&privacy_addrmask, &ether_bcast, sizeof(struct ether_addr));
+		memcpy(privacy, &ether_bcast, sizeof(struct ether_addr));
 	}
 
 	return BCME_OK;
@@ -1714,7 +1721,8 @@ int
 bcm_addrmask_get(int *val)
 {
 #ifdef PRIVACY_MASK
-	if (!eacmp(&ether_bcast, &privacy_addrmask)) {
+	struct ether_addr *privacy = privacy_addrmask_get();
+	if (!eacmp(&ether_bcast, privacy)) {
 		*val = FALSE;
 	} else {
 		*val = TRUE;
@@ -1954,7 +1962,7 @@ bcmstrstr(const char *haystack, const char *needle)
 	if (strlen(haystack) < nlen) {
 		return NULL;
 	}
-	len = strlen(haystack) - nlen + 1u;
+	len = (uint)strlen(haystack) - nlen + 1u;
 
 	for (i = 0u; i < len; i++)
 		if (memcmp(needle, &haystack[i], nlen) == 0)
@@ -2166,7 +2174,7 @@ bcm_ether_atoe(const char *p, struct ether_addr *ea)
 	return (i == 6);
 }
 
-/* parse a xxx.xxx.xxx.xxx format IPV4 address */
+/* parse a nnn.nnn.nnn.nnn format IPV4 address */
 int
 bcm_atoipv4(const char *p, struct ipv4_addr *ip)
 {
@@ -3854,7 +3862,7 @@ bcm_mw_to_qdbm(uint16 mw)
 }
 
 uint
-bcm_bitcount(uint8 *bitmap, uint length)
+bcm_bitcount(const uint8 *bitmap, uint length)
 {
 	uint bitcount = 0, i;
 	uint8 tmp;
@@ -4637,9 +4645,10 @@ bcm_match_buffers(const uint8 *b1, uint b1_len, const uint8 *b2, uint b2_len)
 void
 BCMRAMFN(bcm_ether_privacy_mask)(struct ether_addr *addr)
 {
+	struct ether_addr *privacy = privacy_addrmask_get();
 	if (addr && !ETHER_ISMULTI(addr)) {
-		*(uint32*)(&(addr->octet[0])) &= *((uint32*)&privacy_addrmask.octet[0]);
-		*(uint16*)(&(addr->octet[4])) &= *((uint16*)&privacy_addrmask.octet[4]);
+		*(uint32*)(&(addr->octet[0])) &= *((uint32*)&privacy->octet[0]);
+		*(uint16*)(&(addr->octet[4])) &= *((uint16*)&privacy->octet[4]);
 	}
 }
 #endif /* PRIVACY_MASK */

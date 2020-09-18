@@ -56,8 +56,10 @@
 #define RTEDEVGETTSF		0x8915  /* Get device TSF */
 #define RTEDURATIONUNIT		0x8916  /* Duration unit */
 #define RTEWRITE_WAR_REGS	0x8917  /* write workaround regs */
+#define RTEDEVRMPMK		0x8918  /* Remove PMK */
+#define RTEDEVDBGVAL		0x8919  /* Set debug val */
 /* Ensure last RTE IOCTL define val is assigned to RTEIOCTLEND */
-#define RTEIOCTLEND		0x8917  /* LAST RTE IOCTL value */
+#define RTEIOCTLEND		0x8919  /* LAST RTE IOCTL value */
 
 #define RTE_IOCTL_QUERY		0x00
 #define RTE_IOCTL_SET		0x01
@@ -132,6 +134,16 @@ typedef struct d11_dmalpbk_args {
 	uint8 core_num;
 	uint8 pad[3];
 } d11_dmalpbk_args_t;
+
+typedef enum wl_config_var {
+	WL_VAR_TX_PKTFETCH_INDUCE = 1,
+	WL_VAR_LAST
+} wl_config_var_t;
+
+typedef struct wl_config_buf {
+	wl_config_var_t var;
+	uint32 val;
+} wl_config_buf_t;
 
 /* ================================================================ */
 /* These are the existing ioctls moved from src/include/rte_ioctl.h */

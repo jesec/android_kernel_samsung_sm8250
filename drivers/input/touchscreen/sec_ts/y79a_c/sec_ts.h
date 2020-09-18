@@ -40,11 +40,18 @@
 #include <linux/workqueue.h>
 #include <linux/power_supply.h>
 
-#if defined(CONFIG_TRUSTONIC_TRUSTED_UI_QC)
-#include <linux/input/tui_hal_ts.h>
-#endif
 #ifdef CONFIG_SAMSUNG_TUI
 #include "stui_inf.h"
+#endif
+
+#if defined(CONFIG_TOUCHSCREEN_DUAL_FOLDABLE) && defined(CONFIG_FOLDER_HALL)
+#include <linux/hall.h>
+#endif
+
+#ifdef CONFIG_TOUCHSCREEN_DUAL_FOLDABLE
+#define input_raw_info_d(mode, dev, fmt, ...) input_raw_info(SUB_TOUCH, dev, fmt, ## __VA_ARGS__)
+#else
+#define input_raw_info_d(mode, dev, fmt, ...) input_raw_info(mode, dev, fmt, ## __VA_ARGS__)
 #endif
 
 #ifdef CONFIG_INPUT_SEC_SECURE_TOUCH
@@ -56,6 +63,14 @@
 
 #define SECURE_TOUCH_ENABLE	1
 #define SECURE_TOUCH_DISABLE	0
+#endif
+
+/* LFD DISPLAY INFO*/
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+#include "../../../techpack/display/msm/samsung/ss_panel_notify.h"
+#endif
+#if defined(CONFIG_EXYNOS_DPU30)
+#include <linux/panel_notify.h>
 #endif
 
 #define SEC_TS_I2C_NAME		"sec_ts"
@@ -139,12 +154,21 @@
 #define SEC_TS_NVM_OFFSET_CAL_FAIL_CNT			(SEC_TS_NVM_OFFSET_CAL_FAIL_FLAG + 1)
 #define SEC_TS_NVM_OFFSET_LENGTH			(SEC_TS_NVM_OFFSET_CAL_FAIL_CNT + 1)
 
-#define SEC_TS_NVM_LAST_BLOCK_OFFSET			SEC_TS_NVM_OFFSET_LENGTH
+#define SEC_TS_NVM_OFFSET_CAL_COUNT_MULTI	(SEC_TS_NVM_OFFSET_LENGTH + 1)
+#define SEC_TS_NVM_OFFST_LENGTH_MULTI			((SEC_TS_NVM_OFFSET_CAL_FAIL_CNT * 2) + 1)
+
+#define SEC_TS_NVM_LAST_BLOCK_OFFSET			SEC_TS_NVM_OFFST_LENGTH_MULTI
 #define SEC_TS_NVM_TOTAL_OFFSET_LENGTH		(SEC_TS_NVM_LAST_BLOCK_OFFSET + 1)
 
 
 #define TOUCH_TX_CHANNEL_NUM			50
 #define TOUCH_RX_CHANNEL_NUM			50
+
+/*SPONGE library parameters*/
+#define SEC_TS_MAX_SPONGE_DUMP_BUFFER	512
+#define SEC_TS_SPONGE_DUMP_EVENT_MASK	0x7F
+#define SEC_TS_SPONGE_DUMP_INF_MASK	0x80
+#define SEC_TS_SPONGE_DUMP_INF_SHIFT	7
 
 /* SEC_TS READ REGISTER ADDRESS */
 #define SEC_TS_CMD_SENSE_ON			0x10
@@ -199,16 +223,22 @@
 #define SEC_TS_CMD_STATEMANAGE_ON		0x8E
 #define SEC_TS_CMD_CALIBRATION_OFFSET_SDC	0x8F
 #define SEC_TS_CMD_SET_SCANRATE			0x94
+#define SEC_TS_CMD_CHECK_CALIBRATION_MODE			0x96
+#define SEC_TS_CMD_SET_VARIABLE_REFRESH_RATE_MODE			0x97
 //#define SEC_TS_CMD_START_LOWPOWER_TEST	0x9B
 #define SEC_TS_CMD_LPM_AOD_OFF_ON		0x9B
+#define SEC_TS_CMD_SYNC_CHANGED			0x9C
 #define SEC_TS_CMD_SIP_MODE			0xB5
+#define SEC_TS_CMD_NOTE_MODE			0x46
 #define SET_TS_CMD_SET_LOWTEMPERATURE_MODE	0xBE
-#define SET_TS_CMD_ELVSS_TEST	0xD7
+#define SET_TS_CMD_ELVSS_TEST			0xD7
+#define SET_TS_CMD_SRAM_TEST			0x9D
 
 #define SEC_TS_CMD_LPM_AOD_OFF	0x01
 #define SEC_TS_CMD_LPM_AOD_ON	0x02
 
 /* SEC_TS SPONGE OPCODE COMMAND */
+#define SEC_TS_CMD_SPONGE_DUMP_FLUSH			0x01
 #define SEC_TS_CMD_SPONGE_AOD_ACTIVE_INFO		0x0A
 #define SEC_TS_CMD_SPONGE_OFFSET_UTC			0x10
 #define SEC_TS_CMD_SPONGE_PRESS_PROPERTY		0x14
@@ -219,6 +249,8 @@
 #define SEC_TS_CMD_SPONGE_READ_PARAM			0x92
 #define SEC_TS_CMD_SPONGE_NOTIFY_PACKET			0x93
 #define SEC_TS_CMD_SPONGE_LP_DUMP			0xF0
+#define SEC_TS_CMD_SPONGE_LP_DUMP_CUR_IDX		0xF2
+#define SEC_TS_CMD_SPONGE_LP_DUMP_EVENT			0xF4
 
 #define SEC_TS_CMD_STATUS_EVENT_TYPE	0xA0
 #define SEC_TS_READ_FW_INFO		0xA2
@@ -303,10 +335,16 @@
 #define SEC_TS_GESTURE_CODE_DOUBLE_TAP		0x01
 #define SEC_TS_GESTURE_CODE_PRESS		0x03
 #define SEC_TS_GESTURE_CODE_SINGLE_TAP		0x04
+#define SEC_TS_GESTURE_CODE_DUMPFLUSH		0x05
+
 
 /* SEC_TS_GESTURE_ID */
 #define SEC_TS_GESTURE_ID_AOD			0x00
 #define SEC_TS_GESTURE_ID_DOUBLETAP_TO_WAKEUP	0x01
+
+/* SEC_TS_DUMP_ID */
+#define SEC_TS_SPONGE_DUMP_0			0x00
+#define SEC_TS_SPONGE_DUMP_1			0x01
 
 /* SEC_TS_INFO : Info acknowledge event */
 #define SEC_TS_ACK_BOOT_COMPLETE	0x00
@@ -327,6 +365,7 @@
 #define SEC_TS_VENDOR_ACK_NOISE_STATUS_NOTI		0x64
 #define SEC_TS_VENDOR_ACK_PRE_NOISE_STATUS_NOTI		0x6D
 #define SEC_TS_VENDOR_ACK_CHARGER_STATUS_NOTI		0x6E
+#define SEC_TS_VENDOR_ACK_DISPMODE_STATUS_NOTI		0x6F
 
 /* SEC_TS_ERROR : Error event */
 #define SEC_TS_ERR_EVNET_CORE_ERR	0x0
@@ -365,6 +404,14 @@
 #define SEC_TS_BIT_CHARGER_MODE_WIRELESS_CHARGER	(0x1 << 2)
 #define SEC_TS_BIT_CHARGER_MODE_WIRELESS_BATTERY_PACK	(0x1 << 3)
 
+#define DISABLE_TSP_SCAN_BLOCK		0x00
+#define ENABLE_TSP_SCAN_BLOCK		0x01
+#define ENABLE_SPEN_CHARGING_MODE	0x02
+#define DISABLE_SPEN_CHARGING_MODE	0x03
+#define ENABLE_SPEN_IN			0x04
+#define ENABLE_SPEN_OUT			0x05
+
+
 #define STATE_MANAGE_ON			1
 #define STATE_MANAGE_OFF		0
 
@@ -381,6 +428,30 @@
 #define STATUS_EVENT_VENDOR_PROXIMITY	0x6A
 
 #define SEC_TS_CMD_PROX_POWER_OFF	0xBD
+
+/* CALIBRATION SYNC CHECK */
+#define SEC_TS_NOT_SYNC_FREQUENCY	0
+#define SEC_TS_NO_INFO_CAL_NS			1
+
+#define SEC_TS_LFD_CTRL_LOCK			1
+#define SEC_TS_LFD_CTRL_UNLOCK			2
+
+#if defined(CONFIG_TOUCHSCREEN_DUAL_FOLDABLE) && defined(CONFIG_FOLDER_HALL)
+#define SEC_TS_STATUS_UNFOLDING		0x00
+#define SEC_TS_STATUS_FOLDING		0x01
+
+enum tsp_status_call_pos {
+	SEC_TS_STATE_CHK_POS_OPEN = 0,
+	SEC_TS_STATE_CHK_POS_CLOSE,
+	SEC_TS_STATE_CHK_POS_HALL,
+	SEC_TS_STATE_CHK_POS_SYSFS,
+};
+#endif
+
+enum sync_changed_data {
+	SEC_TS_SYNC_CHANGED_30_TO_60	= 1,
+	SEC_TS_SYNC_CHANGED_MAX
+};
 
 enum grip_write_mode {
 	G_NONE				= 0,
@@ -466,6 +537,10 @@ typedef enum {
 	SPONGE_EVENT_TYPE_AOD_HOMEKEY_RELEASE	= 0x0D,
 	SPONGE_EVENT_TYPE_AOD_HOMEKEY_RELEASE_NO_HAPTIC	= 0x0E
 } SPONGE_EVENT_TYPE;
+
+/* send for FP */
+#define EVENT_TYPE_TSP_SCAN_UNBLOCK	0xE1;
+#define EVENT_TYPE_TSP_SCAN_BLOCK	0xE2;
 
 #define CMD_RESULT_WORD_LEN		10
 
@@ -719,7 +794,6 @@ struct sec_ts_data {
 	struct i2c_client *client;
 	struct input_dev *input_dev;
 	struct input_dev *input_dev_pad;
-	struct input_dev *input_dev_touch;
 	struct input_dev *input_dev_proximity;
 	struct sec_ts_plat_data *plat_data;
 	struct sec_ts_coordinate coord[MAX_SUPPORT_TOUCH_COUNT + MAX_SUPPORT_HOVER_COUNT];
@@ -754,12 +828,19 @@ struct sec_ts_data {
 	struct mutex eventlock;
 	struct mutex modechange;
 	struct mutex sponge_mutex;
-
+	struct mutex proc_mutex;
+#if defined(CONFIG_TOUCHSCREEN_DUAL_FOLDABLE) && defined(CONFIG_FOLDER_HALL)
+	struct mutex status_mutex;
+#endif
 	int nv;
 	int disassemble_count;
 
 	struct delayed_work work_read_info;
 	struct delayed_work work_print_info;
+	struct delayed_work work_lfd_ctrl;
+	char lfd_ctrl;
+	char lfd_ctrl_prev;
+	int lfd_ctrl_delay;
 	u32	print_info_cnt_open;
 	u32	print_info_cnt_release;
 	u16	print_info_currnet_mode;
@@ -773,15 +854,21 @@ struct sec_ts_data {
 	atomic_t secure_pending_irqs;
 	struct completion secure_powerdown;
 	struct completion secure_interrupt;
-#if defined(CONFIG_TRUSTONIC_TRUSTED_UI_QC)
-	struct completion st_irq_received;
-#endif
 #endif
 	struct completion resume_done;
 	struct wake_lock wakelock;
 	struct sec_cmd_data sec;
 	short *pFrame;
-
+#ifdef CONFIG_TOUCHSCREEN_DUAL_FOLDABLE
+	int flip_status_prev;
+	int flip_status;
+	int flip_status_current;
+	int change_flip_status;
+	int tsp_open_status;
+	struct mutex switching_mutex;
+	struct delayed_work switching_work;
+	struct notifier_block hall_ic_nb;
+#endif
 	bool probe_done;
 	bool info_work_done;
 	volatile bool shutdown_is_on_going;
@@ -798,6 +885,7 @@ struct sec_ts_data {
 	unsigned int scrub_x;
 	unsigned int scrub_y;
 
+	unsigned int spen_mode_val;
 	u8 tsp_temp_data;
 	bool tsp_temp_data_skip;
 
@@ -822,6 +910,7 @@ struct sec_ts_data {
 	u8 tsp_dump_lock;
 
 	struct sec_tclm_data *tdata;
+	struct sec_tclm_data *tdata2;
 	bool is_cal_done;
 
 	volatile int wet_mode;
@@ -829,6 +918,7 @@ struct sec_ts_data {
 	u8 factory_position;
 
 	u8 ed_enable;
+	u8 display_mode;
 	u16 proximity_thd;
 	bool proximity_jig_mode; 
 	u8 sip_mode;
@@ -880,6 +970,7 @@ struct sec_ts_data {
 	short cm_raw_key_p2p_diff_data[2][3];	/* key : max support key is 3 */
 	short cm_raw_set_p2p_gap_y;
 	short cm_raw_set_p2p_gap_y_result;	/* mis_cal pass/fail */
+	short contact_gap_max;
 
 	u32	defect_probability;
 #ifdef MINORITY_REPORT
@@ -893,8 +984,12 @@ struct sec_ts_data {
 	int debug_flag;
 	int fix_active_mode;
 
+	int skipped_mode;
+	
 	u8 lp_sensitivity;
 
+	u8 fod_vi_tx;
+	u8 fod_vi_rx;
 	u8 fod_vi_size;
 	u8 press_prop;
 /* thermistor */
@@ -914,6 +1009,20 @@ struct sec_ts_data {
 	char *fail_hist_sub_proc;
 	char *fail_hist_main_proc;
 	char *fail_hist_all_proc;
+
+	bool sponge_inf_dump;
+	u8 sponge_dump_format;
+	u8 sponge_dump_event;
+	u8 sponge_dump_border_msb;
+	u8 sponge_dump_border_lsb;
+	bool sponge_dump_delayed_flag;
+	u8 sponge_dump_delayed_area;
+	u16 sponge_dump_border;
+
+#if defined(CONFIG_DISPLAY_SAMSUNG) || defined(CONFIG_EXYNOS_DPU30)
+	struct panel_dms_data dms_event_data;
+	struct notifier_block panel_notif;
+#endif
 
 	int (*sec_ts_i2c_write)(struct sec_ts_data *ts, u8 reg, u8 *data, int len);
 	int (*sec_ts_i2c_read)(struct sec_ts_data *ts, u8 reg, u8 *data, int len);
@@ -966,6 +1075,8 @@ struct sec_ts_plat_data {
 	bool support_open_short_test;
 	bool support_mis_calibration_test;
 	bool support_vrr;
+	bool support_multi_cal;
+	bool support_fp_intr2_call;
 };
 
 typedef struct {
@@ -1049,14 +1160,16 @@ int sec_ts_raw_device_init(struct sec_ts_data *ts);
 void send_event_to_user(struct sec_ts_data *ts, int number, int val);
 
 #if defined(CONFIG_DISPLAY_SAMSUNG)
+#ifdef CONFIG_TOUCHSCREEN_DUAL_FOLDABLE
+int get_lcd_attached_secondary(char *mode);
+#else
 int get_lcd_attached(char *mode);
+#endif
 #endif
 
 #if defined(CONFIG_EXYNOS_DPU30)
 int get_lcd_info(char *arg);
 #endif
-
-extern struct sec_ts_data *ts_dup;
 
 #ifdef CONFIG_BATTERY_SAMSUNG
 extern unsigned int lpcharge;
@@ -1064,6 +1177,10 @@ extern unsigned int lpcharge;
 
 void set_grip_data_to_ic(struct sec_ts_data *ts, u8 flag);
 void sec_ts_set_grip_type(struct sec_ts_data *ts, u8 set_type);
+
+#ifdef CONFIG_TOUCHSCREEN_DUAL_FOLDABLE
+void sec_ts_chk_tsp_ic_status(struct sec_ts_data *ts, int call_pos);
+#endif
 
 ssize_t get_miscal_dump(struct sec_ts_data *ts, char *buf);
 ssize_t get_cmoffset_dump_all(struct sec_ts_data *ts, char *buf, u8 position);
@@ -1073,5 +1190,7 @@ void sec_ts_ioctl_remove(struct sec_ts_data *ts);
 
 int sec_ts_set_press_property(struct sec_ts_data *ts);
 int get_aod_active_area(struct sec_ts_data *ts);
+void get_fod_info(struct sec_ts_data *ts);
+int sec_ts_set_scan_mode(struct sec_ts_data *ts, int mode);
 
 #endif

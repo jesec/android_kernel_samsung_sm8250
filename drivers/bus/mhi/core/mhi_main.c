@@ -692,7 +692,7 @@ int mhi_queue_buf(struct mhi_device *mhi_dev,
 	 */
 	if (unlikely(MHI_PM_IN_ERROR_STATE(mhi_cntrl->pm_state))) {
 		MHI_VERB("MHI is not in active state, pm_state:%s\n",
-				to_mhi_pm_state_str(mhi_cntrl->pm_state));
+			 to_mhi_pm_state_str(mhi_cntrl->pm_state));
 
 		return -EIO;
 	}
@@ -1091,9 +1091,9 @@ static int parse_rsc_event(struct mhi_controller *mhi_cntrl,
 
 	/* received out of bound cookie */
 	if (cookie >= buf_ring->len) {
-		MHI_ERR("cookie %u buf_ring->len %zu", cookie, buf_ring->len);
+		MHI_ERR("cookie 0x%08x bufring_len %zu", cookie, buf_ring->len);
 		MHI_ERR("Processing Event:0x%llx 0x%08x 0x%08x\n",
-				event->ptr, event->dword[0], event->dword[1]);
+			event->ptr, event->dword[0], event->dword[1]);
 		panic("invalid cookie");
 	}
 
@@ -1274,7 +1274,7 @@ int mhi_process_ctrl_ev_ring(struct mhi_controller *mhi_cntrl,
 			/* convert device ee to host ee */
 			event = mhi_translate_dev_ee(mhi_cntrl, event);
 
-			MHI_ERR("MHI EE received event:%s\n",
+			MHI_LOG("MHI EE received event:%s\n",
 				TO_MHI_EXEC_STR(event));
 			switch (event) {
 			case MHI_EE_SBL:
@@ -1363,7 +1363,7 @@ int mhi_process_data_event_ring(struct mhi_controller *mhi_cntrl,
 		MHI_VERB("Processing Event:0x%llx 0x%08x 0x%08x 0x%llx 0x%llx\n",
 			local_rp->ptr, local_rp->dword[0], local_rp->dword[1],
 			dev_rp, er_ctxt->rp);
-			
+
 		mhi_event->last_cached_tre.ptr = local_rp->ptr;
 		mhi_event->last_cached_tre.dword[0] = local_rp->dword[0];
 		mhi_event->last_cached_tre.dword[1] = local_rp->dword[1];
@@ -1390,7 +1390,7 @@ next_er_element:
 			mhi_recycle_ev_ring_element_color(mhi_cntrl, ev_ring);
 		else
 			mhi_recycle_ev_ring_element(mhi_cntrl, ev_ring);
-		
+
 		local_rp = ev_ring->rp;
 		dev_rp = mhi_to_virtual(ev_ring, er_ctxt->rp);
 		count++;
@@ -2317,7 +2317,7 @@ int mhi_debugfs_mhi_chan_show(struct seq_file *m, void *d)
 	struct mhi_chan_ctxt *chan_ctxt;
 	int i;
 
-	if (!mhi_cntrl->mhi_chan || !mhi_cntrl->mhi_ctxt)
+	if (!mhi_cntrl->mhi_ctxt)
 		return -ENODEV;
 
 	seq_printf(m, "[%llu ns]:\n", sched_clock());

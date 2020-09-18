@@ -132,20 +132,20 @@ extern u8 rkp_ro_page(unsigned long addr);
 
 static inline unsigned int cmp_sec_integrity(const struct cred *cred,struct mm_struct *mm)
 {
-	
+
 	if (cred->bp_task != current)
-		printk(KERN_ERR "KDP: cred->bp_task: %p, current: %p\n", 
+		printk(KERN_ERR "KDP: cred->bp_task: %p, current: %p\n",
 						cred->bp_task, current);
 
 	if (mm && (mm->pgd != cred->bp_pgd))
-		printk(KERN_ERR "KDP: mm: %p, mm->pgd: %p, cred->bp_pgd: %p\n", 
+		printk(KERN_ERR "KDP: mm: %p, mm->pgd: %p, cred->bp_pgd: %p\n",
 						mm, mm->pgd, cred->bp_pgd);
 
-	return ((cred->bp_task != current) || 
-			(mm && (!( in_interrupt() || in_softirq())) && 
+	return ((cred->bp_task != current) ||
+			(mm && (!( in_interrupt() || in_softirq())) &&
 			(cred->bp_pgd != swapper_pg_dir) &&
 			(mm->pgd != cred->bp_pgd)));
-			
+
 }
 
 extern struct cred init_cred;
@@ -153,20 +153,20 @@ static inline unsigned int rkp_is_valid_cred_sp(u64 cred,u64 sp)
 {
 		struct task_security_struct *tsec = (struct task_security_struct *)sp;
 
-		if((cred == (u64)&init_cred) && 
+		if((cred == (u64)&init_cred) &&
 			( sp == (u64)&init_sec)){
 			return 0;
 		}
 		if (!rkp_ro_page(cred) || !rkp_ro_page(cred+sizeof(struct cred)) ||
 			(!rkp_ro_page(sp) || !rkp_ro_page(sp+sizeof(struct task_security_struct)))) {
-			printk(KERN_ERR, "KDP: rkp_ro_page: cred: %d, cred+sizeof(cred): %d, ", 
+			printk(KERN_ERR, "KDP: rkp_ro_page: cred: %d, cred+sizeof(cred): %d, ",
 							rkp_ro_page((u64)cred), rkp_ro_page((u64)cred+sizeof(struct cred)));
-			printk(KERN_ERR, "rkp_ro_page(sp): %d, sp+sizeof(task_security_struct): %d\n", 
-							rkp_ro_page(sp), rkp_ro_page(sp+sizeof(struct task_security_struct))); 
+			printk(KERN_ERR, "rkp_ro_page(sp): %d, sp+sizeof(task_security_struct): %d\n",
+							rkp_ro_page(sp), rkp_ro_page(sp+sizeof(struct task_security_struct)));
 			return 1;
 		}
 		if ((u64)tsec->bp_cred != cred) {
-			printk(KERN_ERR, "KDP: tesc->bp_cred: %p, cred: %p\n", 
+			printk(KERN_ERR, "KDP: tesc->bp_cred: %p, cred: %p\n",
 							(u64)tsec->bp_cred, cred);
 			return 1;
 		}
@@ -177,7 +177,7 @@ static inline unsigned int rkp_is_valid_cred_sp(u64 cred,u64 sp)
 int security_integrity_current(void)
 {
 	rcu_read_lock();
-	if ( rkp_cred_enable && 
+	if ( rkp_cred_enable &&
 		(rkp_is_valid_cred_sp((u64)current_cred(),(u64)current_cred()->security)||
 		cmp_sec_integrity(current_cred(),current->mm)||
 		cmp_ns_integrity())) {
@@ -1175,7 +1175,7 @@ static int selinux_sb_clone_mnt_opts(const struct super_block *oldsb,
 	 * if the parent was able to be mounted it clearly had no special lsm
 	 * mount options.  thus we can safely deal with this superblock later
 	 */
- 
+
 	if (!ss_initialized) // SEC_SELINUX_PORTING_COMMON Change to use RKP
 		return 0;
 
@@ -3109,7 +3109,7 @@ out:
 	if((strcmp(sb->s_type->name,"sdcardfs")) == 0)
 		mutex_unlock(&selinux_sdcardfs_lock);
 	// ] SEC_SELINUX_PORTING_COMMON
-	
+
 	return rc;
 }
 
@@ -5802,15 +5802,9 @@ static int selinux_nlmsg_perm(struct sock *sk, struct sk_buff *skb)
 				sk->sk_protocol, nlh->nlmsg_type,
 				secclass_map[sclass - 1].name,
 				task_pid_nr(current), current->comm);
-// [ SEC_SELINUX_PORTING_COMMON
-#ifdef CONFIG_ALWAYS_ENFORCE
-			if (!security_get_allow_unknown(&selinux_state))
-#else
 			if (enforcing_enabled(&selinux_state) &&
 			    !security_get_allow_unknown(&selinux_state))
 				return rc;
-#endif
-// ] SEC_SELINUX_PORTING_COMMON
 			rc = 0;
 		} else if (rc == -ENOENT) {
 			/* -ENOENT is a missing socket/class mapping, ignore */

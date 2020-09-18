@@ -11,12 +11,15 @@
 #define FLASH_ACK				0x06
 
 #define MPU_W9020				0x44
+#define MPU_W9021				0x45
 
 #define FLASH_BLOCK_SIZE			256
 #define DATA_SIZE				(65536 * 5)
 #define BLOCK_NUM				143
 #define W9020_START_ADDR			0x2000
 #define W9020_END_ADDR				0x23fff
+#define W9021_START_ADDR			0x3000
+#define W9021_END_ADDR				0x3efff
 
 #define BOOT_CMD_SIZE				(0x010c + 0x02)	/* 78 */
 #define BOOT_RSP_SIZE				6

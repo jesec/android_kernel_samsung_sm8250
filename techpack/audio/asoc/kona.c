@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2016-2019, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2016-2020, The Linux Foundation. All rights reserved.
  */
 
 #include <linux/clk.h>
@@ -899,6 +899,24 @@ static void *def_wcd_mbhc_cal(void);
 
 #ifdef CONFIG_SND_SOC_CS35L41
 static struct snd_soc_codec_conf cs35l41_conf[] = {
+#ifdef CONFIG_SND_SOC_CS35L41_4SPK
+	{
+		.dev_name = "cs35l41-codec.0.auto",
+		.name_prefix = "FL",
+	},
+	{
+		.dev_name = "cs35l41-codec.4.auto",
+		.name_prefix = "FR",
+	},
+	{
+		.dev_name = "cs35l41-codec.8.auto",
+		.name_prefix = "RL",
+	},
+	{
+		.dev_name = "cs35l41-codec.12.auto",
+		.name_prefix = "RR",
+	}
+#else
 	{
 		.dev_name = "cs35l41-codec.0.auto",
 		.name_prefix = "Right",
@@ -906,7 +924,14 @@ static struct snd_soc_codec_conf cs35l41_conf[] = {
 	{
 		.dev_name = "cs35l41-codec.4.auto",
 		.name_prefix = "Left",
+#ifdef CONFIG_SND_SOC_CS35L41_3SPK
+	},
+	{
+		.dev_name = "cs35l41-codec.8.auto",
+		.name_prefix = "Rcv",
+#endif
 	}
+#endif
 };
 
 /*
@@ -939,7 +964,7 @@ static const char *const static_clk_mode[] = {"Off", "5P6", "6P1", "11P2",
 
 unsigned int dai_force_frame32;
 static const char *const dai_force_frame32_config[] = {"Off", "On"};
-#endif
+#endif /* CONFIG_SND_SOC_CS35L41 */
 
 /*
  * Need to report LINEIN
@@ -4122,6 +4147,46 @@ static const struct snd_kcontrol_new msm_common_snd_controls[] = {
 	SOC_ENUM_EXT("USB_AUDIO_TX SampleRate", usb_tx_sample_rate,
 			usb_audio_tx_sample_rate_get,
 			usb_audio_tx_sample_rate_put),
+	SOC_ENUM_EXT("USB_AUDIO_RX Format", usb_rx_format,
+			usb_audio_rx_format_get, usb_audio_rx_format_put),
+	SOC_ENUM_EXT("USB_AUDIO_TX Format", usb_tx_format,
+			usb_audio_tx_format_get, usb_audio_tx_format_put),
+	SOC_ENUM_EXT("USB_AUDIO_RX Channels", usb_rx_chs,
+			usb_audio_rx_ch_get, usb_audio_rx_ch_put),
+	SOC_ENUM_EXT("USB_AUDIO_TX Channels", usb_tx_chs,
+			usb_audio_tx_ch_get, usb_audio_tx_ch_put),
+	SOC_ENUM_EXT("PROXY_RX Channels", proxy_rx_chs,
+			proxy_rx_ch_get, proxy_rx_ch_put),
+	SOC_ENUM_EXT("Display Port RX Channels", ext_disp_rx_chs,
+			ext_disp_rx_ch_get, ext_disp_rx_ch_put),
+	SOC_ENUM_EXT("Display Port RX Bit Format", ext_disp_rx_format,
+			ext_disp_rx_format_get, ext_disp_rx_format_put),
+	SOC_ENUM_EXT("Display Port RX SampleRate", ext_disp_rx_sample_rate,
+			ext_disp_rx_sample_rate_get,
+			ext_disp_rx_sample_rate_put),
+	SOC_ENUM_EXT("Display Port1 RX Channels", ext_disp_rx_chs,
+			ext_disp_rx_ch_get, ext_disp_rx_ch_put),
+	SOC_ENUM_EXT("Display Port1 RX Bit Format", ext_disp_rx_format,
+			ext_disp_rx_format_get, ext_disp_rx_format_put),
+	SOC_ENUM_EXT("Display Port1 RX SampleRate", ext_disp_rx_sample_rate,
+			ext_disp_rx_sample_rate_get,
+			ext_disp_rx_sample_rate_put),
+	SOC_ENUM_EXT("BT SampleRate", bt_sample_rate,
+			msm_bt_sample_rate_get,
+			msm_bt_sample_rate_put),
+	SOC_ENUM_EXT("BT SampleRate RX", bt_sample_rate_rx,
+			msm_bt_sample_rate_rx_get,
+			msm_bt_sample_rate_rx_put),
+	SOC_ENUM_EXT("BT SampleRate TX", bt_sample_rate_tx,
+			msm_bt_sample_rate_tx_get,
+			msm_bt_sample_rate_tx_put),
+	SOC_ENUM_EXT("AFE_LOOPBACK_TX Channels", afe_loopback_tx_chs,
+			afe_loopback_tx_ch_get, afe_loopback_tx_ch_put),
+	SOC_ENUM_EXT("VI_FEED_TX Channels", vi_feed_tx_chs,
+			msm_vi_feed_tx_ch_get, msm_vi_feed_tx_ch_put),
+};
+
+static const struct snd_kcontrol_new msm_tdm_snd_controls[] = {
 	SOC_ENUM_EXT("PRI_TDM_RX_0 SampleRate", tdm_rx_sample_rate,
 			tdm_rx_sample_rate_get,
 			tdm_rx_sample_rate_put),
@@ -4158,82 +4223,6 @@ static const struct snd_kcontrol_new msm_common_snd_controls[] = {
 	SOC_ENUM_EXT("SEN_TDM_TX_0 SampleRate", tdm_tx_sample_rate,
 			tdm_tx_sample_rate_get,
 			tdm_tx_sample_rate_put),
-	SOC_ENUM_EXT("PRIM_AUX_PCM_RX SampleRate", prim_aux_pcm_rx_sample_rate,
-			aux_pcm_rx_sample_rate_get,
-			aux_pcm_rx_sample_rate_put),
-	SOC_ENUM_EXT("SEC_AUX_PCM_RX SampleRate", sec_aux_pcm_rx_sample_rate,
-			aux_pcm_rx_sample_rate_get,
-			aux_pcm_rx_sample_rate_put),
-	SOC_ENUM_EXT("TERT_AUX_PCM_RX SampleRate", tert_aux_pcm_rx_sample_rate,
-			aux_pcm_rx_sample_rate_get,
-			aux_pcm_rx_sample_rate_put),
-	SOC_ENUM_EXT("QUAT_AUX_PCM_RX SampleRate", quat_aux_pcm_rx_sample_rate,
-			aux_pcm_rx_sample_rate_get,
-			aux_pcm_rx_sample_rate_put),
-	SOC_ENUM_EXT("QUIN_AUX_PCM_RX SampleRate", quin_aux_pcm_rx_sample_rate,
-			aux_pcm_rx_sample_rate_get,
-			aux_pcm_rx_sample_rate_put),
-	SOC_ENUM_EXT("SEN_AUX_PCM_RX SampleRate", sen_aux_pcm_rx_sample_rate,
-			aux_pcm_rx_sample_rate_get,
-			aux_pcm_rx_sample_rate_put),
-	SOC_ENUM_EXT("PRIM_AUX_PCM_TX SampleRate", prim_aux_pcm_tx_sample_rate,
-			aux_pcm_tx_sample_rate_get,
-			aux_pcm_tx_sample_rate_put),
-	SOC_ENUM_EXT("SEC_AUX_PCM_TX SampleRate", sec_aux_pcm_tx_sample_rate,
-			aux_pcm_tx_sample_rate_get,
-			aux_pcm_tx_sample_rate_put),
-	SOC_ENUM_EXT("TERT_AUX_PCM_TX SampleRate", tert_aux_pcm_tx_sample_rate,
-			aux_pcm_tx_sample_rate_get,
-			aux_pcm_tx_sample_rate_put),
-	SOC_ENUM_EXT("QUAT_AUX_PCM_TX SampleRate", quat_aux_pcm_tx_sample_rate,
-			aux_pcm_tx_sample_rate_get,
-			aux_pcm_tx_sample_rate_put),
-	SOC_ENUM_EXT("QUIN_AUX_PCM_TX SampleRate", quin_aux_pcm_tx_sample_rate,
-			aux_pcm_tx_sample_rate_get,
-			aux_pcm_tx_sample_rate_put),
-	SOC_ENUM_EXT("SEN_AUX_PCM_TX SampleRate", sen_aux_pcm_tx_sample_rate,
-			aux_pcm_tx_sample_rate_get,
-			aux_pcm_tx_sample_rate_put),
-	SOC_ENUM_EXT("PRIM_MI2S_RX SampleRate", prim_mi2s_rx_sample_rate,
-			mi2s_rx_sample_rate_get,
-			mi2s_rx_sample_rate_put),
-	SOC_ENUM_EXT("SEC_MI2S_RX SampleRate", sec_mi2s_rx_sample_rate,
-			mi2s_rx_sample_rate_get,
-			mi2s_rx_sample_rate_put),
-	SOC_ENUM_EXT("TERT_MI2S_RX SampleRate", tert_mi2s_rx_sample_rate,
-			mi2s_rx_sample_rate_get,
-			mi2s_rx_sample_rate_put),
-	SOC_ENUM_EXT("QUAT_MI2S_RX SampleRate", quat_mi2s_rx_sample_rate,
-			mi2s_rx_sample_rate_get,
-			mi2s_rx_sample_rate_put),
-	SOC_ENUM_EXT("QUIN_MI2S_RX SampleRate", quin_mi2s_rx_sample_rate,
-			mi2s_rx_sample_rate_get,
-			mi2s_rx_sample_rate_put),
-	SOC_ENUM_EXT("SEN_MI2S_RX SampleRate", sen_mi2s_rx_sample_rate,
-			mi2s_rx_sample_rate_get,
-			mi2s_rx_sample_rate_put),
-	SOC_ENUM_EXT("PRIM_MI2S_TX SampleRate", prim_mi2s_tx_sample_rate,
-			mi2s_tx_sample_rate_get,
-			mi2s_tx_sample_rate_put),
-	SOC_ENUM_EXT("SEC_MI2S_TX SampleRate", sec_mi2s_tx_sample_rate,
-			mi2s_tx_sample_rate_get,
-			mi2s_tx_sample_rate_put),
-	SOC_ENUM_EXT("TERT_MI2S_TX SampleRate", tert_mi2s_tx_sample_rate,
-			mi2s_tx_sample_rate_get,
-			mi2s_tx_sample_rate_put),
-	SOC_ENUM_EXT("QUAT_MI2S_TX SampleRate", quat_mi2s_tx_sample_rate,
-			mi2s_tx_sample_rate_get,
-			mi2s_tx_sample_rate_put),
-	SOC_ENUM_EXT("QUIN_MI2S_TX SampleRate", quin_mi2s_tx_sample_rate,
-			mi2s_tx_sample_rate_get,
-			mi2s_tx_sample_rate_put),
-	SOC_ENUM_EXT("SEN_MI2S_TX SampleRate", sen_mi2s_tx_sample_rate,
-			mi2s_tx_sample_rate_get,
-			mi2s_tx_sample_rate_put),
-	SOC_ENUM_EXT("USB_AUDIO_RX Format", usb_rx_format,
-			usb_audio_rx_format_get, usb_audio_rx_format_put),
-	SOC_ENUM_EXT("USB_AUDIO_TX Format", usb_tx_format,
-			usb_audio_tx_format_get, usb_audio_tx_format_put),
 	SOC_ENUM_EXT("PRI_TDM_RX_0 Format", tdm_rx_format,
 			tdm_rx_format_get,
 			tdm_rx_format_put),
@@ -4270,60 +4259,6 @@ static const struct snd_kcontrol_new msm_common_snd_controls[] = {
 	SOC_ENUM_EXT("SEN_TDM_TX_0 Format", tdm_tx_format,
 			tdm_tx_format_get,
 			tdm_tx_format_put),
-	SOC_ENUM_EXT("PRIM_AUX_PCM_RX Format", aux_pcm_rx_format,
-			msm_aux_pcm_rx_format_get, msm_aux_pcm_rx_format_put),
-	SOC_ENUM_EXT("SEC_AUX_PCM_RX Format", aux_pcm_rx_format,
-			msm_aux_pcm_rx_format_get, msm_aux_pcm_rx_format_put),
-	SOC_ENUM_EXT("TERT_AUX_PCM_RX Format", aux_pcm_rx_format,
-			msm_aux_pcm_rx_format_get, msm_aux_pcm_rx_format_put),
-	SOC_ENUM_EXT("QUAT_AUX_PCM_RX Format", aux_pcm_rx_format,
-			msm_aux_pcm_rx_format_get, msm_aux_pcm_rx_format_put),
-	SOC_ENUM_EXT("QUIN_AUX_PCM_RX Format", aux_pcm_rx_format,
-			msm_aux_pcm_rx_format_get, msm_aux_pcm_rx_format_put),
-	SOC_ENUM_EXT("SEN_AUX_PCM_RX Format", aux_pcm_rx_format,
-			msm_aux_pcm_rx_format_get, msm_aux_pcm_rx_format_put),
-	SOC_ENUM_EXT("PRIM_AUX_PCM_TX Format", aux_pcm_tx_format,
-			msm_aux_pcm_tx_format_get, msm_aux_pcm_tx_format_put),
-	SOC_ENUM_EXT("SEC_AUX_PCM_TX Format", aux_pcm_tx_format,
-			msm_aux_pcm_tx_format_get, msm_aux_pcm_tx_format_put),
-	SOC_ENUM_EXT("TERT_AUX_PCM_TX Format", aux_pcm_tx_format,
-			msm_aux_pcm_tx_format_get, msm_aux_pcm_tx_format_put),
-	SOC_ENUM_EXT("QUAT_AUX_PCM_TX Format", aux_pcm_tx_format,
-			msm_aux_pcm_tx_format_get, msm_aux_pcm_tx_format_put),
-	SOC_ENUM_EXT("QUIN_AUX_PCM_TX Format", aux_pcm_tx_format,
-			msm_aux_pcm_tx_format_get, msm_aux_pcm_tx_format_put),
-	SOC_ENUM_EXT("SEN_AUX_PCM_TX Format", aux_pcm_tx_format,
-			msm_aux_pcm_tx_format_get, msm_aux_pcm_tx_format_put),
-	SOC_ENUM_EXT("PRIM_MI2S_RX Format", mi2s_rx_format,
-			msm_mi2s_rx_format_get, msm_mi2s_rx_format_put),
-	SOC_ENUM_EXT("SEC_MI2S_RX Format", mi2s_rx_format,
-			msm_mi2s_rx_format_get, msm_mi2s_rx_format_put),
-	SOC_ENUM_EXT("TERT_MI2S_RX Format", mi2s_rx_format,
-			msm_mi2s_rx_format_get, msm_mi2s_rx_format_put),
-	SOC_ENUM_EXT("QUAT_MI2S_RX Format", mi2s_rx_format,
-			msm_mi2s_rx_format_get, msm_mi2s_rx_format_put),
-	SOC_ENUM_EXT("QUIN_MI2S_RX Format", mi2s_rx_format,
-			msm_mi2s_rx_format_get, msm_mi2s_rx_format_put),
-	SOC_ENUM_EXT("SEN_MI2S_RX Format", mi2s_rx_format,
-			msm_mi2s_rx_format_get, msm_mi2s_rx_format_put),
-	SOC_ENUM_EXT("PRIM_MI2S_TX Format", mi2s_tx_format,
-			msm_mi2s_tx_format_get, msm_mi2s_tx_format_put),
-	SOC_ENUM_EXT("SEC_MI2S_TX Format", mi2s_tx_format,
-			msm_mi2s_tx_format_get, msm_mi2s_tx_format_put),
-	SOC_ENUM_EXT("TERT_MI2S_TX Format", mi2s_tx_format,
-			msm_mi2s_tx_format_get, msm_mi2s_tx_format_put),
-	SOC_ENUM_EXT("QUAT_MI2S_TX Format", mi2s_tx_format,
-			msm_mi2s_tx_format_get, msm_mi2s_tx_format_put),
-	SOC_ENUM_EXT("QUIN_MI2S_TX Format", mi2s_tx_format,
-			msm_mi2s_tx_format_get, msm_mi2s_tx_format_put),
-	SOC_ENUM_EXT("SEN_MI2S_TX Format", mi2s_tx_format,
-			msm_mi2s_tx_format_get, msm_mi2s_tx_format_put),
-	SOC_ENUM_EXT("USB_AUDIO_RX Channels", usb_rx_chs,
-			usb_audio_rx_ch_get, usb_audio_rx_ch_put),
-	SOC_ENUM_EXT("USB_AUDIO_TX Channels", usb_tx_chs,
-			usb_audio_tx_ch_get, usb_audio_tx_ch_put),
-	SOC_ENUM_EXT("PROXY_RX Channels", proxy_rx_chs,
-			proxy_rx_ch_get, proxy_rx_ch_put),
 	SOC_ENUM_EXT("PRI_TDM_RX_0 Channels", tdm_rx_chs,
 			tdm_rx_ch_get,
 			tdm_rx_ch_put),
@@ -4360,6 +4295,134 @@ static const struct snd_kcontrol_new msm_common_snd_controls[] = {
 	SOC_ENUM_EXT("SEN_TDM_TX_0 Channels", tdm_tx_chs,
 			tdm_tx_ch_get,
 			tdm_tx_ch_put),
+	SOC_SINGLE_MULTI_EXT("TDM Slot Map", SND_SOC_NOPM, 0, 255, 0,
+			TDM_MAX_SLOTS + MAX_PATH, NULL, tdm_slot_map_put),
+};
+
+static const struct snd_kcontrol_new msm_auxpcm_snd_controls[] = {
+	SOC_ENUM_EXT("PRIM_AUX_PCM_RX SampleRate", prim_aux_pcm_rx_sample_rate,
+			aux_pcm_rx_sample_rate_get,
+			aux_pcm_rx_sample_rate_put),
+	SOC_ENUM_EXT("SEC_AUX_PCM_RX SampleRate", sec_aux_pcm_rx_sample_rate,
+			aux_pcm_rx_sample_rate_get,
+			aux_pcm_rx_sample_rate_put),
+	SOC_ENUM_EXT("TERT_AUX_PCM_RX SampleRate", tert_aux_pcm_rx_sample_rate,
+			aux_pcm_rx_sample_rate_get,
+			aux_pcm_rx_sample_rate_put),
+	SOC_ENUM_EXT("QUAT_AUX_PCM_RX SampleRate", quat_aux_pcm_rx_sample_rate,
+			aux_pcm_rx_sample_rate_get,
+			aux_pcm_rx_sample_rate_put),
+	SOC_ENUM_EXT("QUIN_AUX_PCM_RX SampleRate", quin_aux_pcm_rx_sample_rate,
+			aux_pcm_rx_sample_rate_get,
+			aux_pcm_rx_sample_rate_put),
+	SOC_ENUM_EXT("SEN_AUX_PCM_RX SampleRate", sen_aux_pcm_rx_sample_rate,
+			aux_pcm_rx_sample_rate_get,
+			aux_pcm_rx_sample_rate_put),
+	SOC_ENUM_EXT("PRIM_AUX_PCM_TX SampleRate", prim_aux_pcm_tx_sample_rate,
+			aux_pcm_tx_sample_rate_get,
+			aux_pcm_tx_sample_rate_put),
+	SOC_ENUM_EXT("SEC_AUX_PCM_TX SampleRate", sec_aux_pcm_tx_sample_rate,
+			aux_pcm_tx_sample_rate_get,
+			aux_pcm_tx_sample_rate_put),
+	SOC_ENUM_EXT("TERT_AUX_PCM_TX SampleRate", tert_aux_pcm_tx_sample_rate,
+			aux_pcm_tx_sample_rate_get,
+			aux_pcm_tx_sample_rate_put),
+	SOC_ENUM_EXT("QUAT_AUX_PCM_TX SampleRate", quat_aux_pcm_tx_sample_rate,
+			aux_pcm_tx_sample_rate_get,
+			aux_pcm_tx_sample_rate_put),
+	SOC_ENUM_EXT("QUIN_AUX_PCM_TX SampleRate", quin_aux_pcm_tx_sample_rate,
+			aux_pcm_tx_sample_rate_get,
+			aux_pcm_tx_sample_rate_put),
+	SOC_ENUM_EXT("SEN_AUX_PCM_TX SampleRate", sen_aux_pcm_tx_sample_rate,
+			aux_pcm_tx_sample_rate_get,
+			aux_pcm_tx_sample_rate_put),
+	SOC_ENUM_EXT("PRIM_AUX_PCM_RX Format", aux_pcm_rx_format,
+			msm_aux_pcm_rx_format_get, msm_aux_pcm_rx_format_put),
+	SOC_ENUM_EXT("SEC_AUX_PCM_RX Format", aux_pcm_rx_format,
+			msm_aux_pcm_rx_format_get, msm_aux_pcm_rx_format_put),
+	SOC_ENUM_EXT("TERT_AUX_PCM_RX Format", aux_pcm_rx_format,
+			msm_aux_pcm_rx_format_get, msm_aux_pcm_rx_format_put),
+	SOC_ENUM_EXT("QUAT_AUX_PCM_RX Format", aux_pcm_rx_format,
+			msm_aux_pcm_rx_format_get, msm_aux_pcm_rx_format_put),
+	SOC_ENUM_EXT("QUIN_AUX_PCM_RX Format", aux_pcm_rx_format,
+			msm_aux_pcm_rx_format_get, msm_aux_pcm_rx_format_put),
+	SOC_ENUM_EXT("SEN_AUX_PCM_RX Format", aux_pcm_rx_format,
+			msm_aux_pcm_rx_format_get, msm_aux_pcm_rx_format_put),
+	SOC_ENUM_EXT("PRIM_AUX_PCM_TX Format", aux_pcm_tx_format,
+			msm_aux_pcm_tx_format_get, msm_aux_pcm_tx_format_put),
+	SOC_ENUM_EXT("SEC_AUX_PCM_TX Format", aux_pcm_tx_format,
+			msm_aux_pcm_tx_format_get, msm_aux_pcm_tx_format_put),
+	SOC_ENUM_EXT("TERT_AUX_PCM_TX Format", aux_pcm_tx_format,
+			msm_aux_pcm_tx_format_get, msm_aux_pcm_tx_format_put),
+	SOC_ENUM_EXT("QUAT_AUX_PCM_TX Format", aux_pcm_tx_format,
+			msm_aux_pcm_tx_format_get, msm_aux_pcm_tx_format_put),
+	SOC_ENUM_EXT("QUIN_AUX_PCM_TX Format", aux_pcm_tx_format,
+			msm_aux_pcm_tx_format_get, msm_aux_pcm_tx_format_put),
+	SOC_ENUM_EXT("SEN_AUX_PCM_TX Format", aux_pcm_tx_format,
+			msm_aux_pcm_tx_format_get, msm_aux_pcm_tx_format_put),
+};
+
+static const struct snd_kcontrol_new msm_mi2s_snd_controls[] = {
+	SOC_ENUM_EXT("PRIM_MI2S_RX SampleRate", prim_mi2s_rx_sample_rate,
+			mi2s_rx_sample_rate_get,
+			mi2s_rx_sample_rate_put),
+	SOC_ENUM_EXT("SEC_MI2S_RX SampleRate", sec_mi2s_rx_sample_rate,
+			mi2s_rx_sample_rate_get,
+			mi2s_rx_sample_rate_put),
+	SOC_ENUM_EXT("TERT_MI2S_RX SampleRate", tert_mi2s_rx_sample_rate,
+			mi2s_rx_sample_rate_get,
+			mi2s_rx_sample_rate_put),
+	SOC_ENUM_EXT("QUAT_MI2S_RX SampleRate", quat_mi2s_rx_sample_rate,
+			mi2s_rx_sample_rate_get,
+			mi2s_rx_sample_rate_put),
+	SOC_ENUM_EXT("QUIN_MI2S_RX SampleRate", quin_mi2s_rx_sample_rate,
+			mi2s_rx_sample_rate_get,
+			mi2s_rx_sample_rate_put),
+	SOC_ENUM_EXT("SEN_MI2S_RX SampleRate", sen_mi2s_rx_sample_rate,
+			mi2s_rx_sample_rate_get,
+			mi2s_rx_sample_rate_put),
+	SOC_ENUM_EXT("PRIM_MI2S_TX SampleRate", prim_mi2s_tx_sample_rate,
+			mi2s_tx_sample_rate_get,
+			mi2s_tx_sample_rate_put),
+	SOC_ENUM_EXT("SEC_MI2S_TX SampleRate", sec_mi2s_tx_sample_rate,
+			mi2s_tx_sample_rate_get,
+			mi2s_tx_sample_rate_put),
+	SOC_ENUM_EXT("TERT_MI2S_TX SampleRate", tert_mi2s_tx_sample_rate,
+			mi2s_tx_sample_rate_get,
+			mi2s_tx_sample_rate_put),
+	SOC_ENUM_EXT("QUAT_MI2S_TX SampleRate", quat_mi2s_tx_sample_rate,
+			mi2s_tx_sample_rate_get,
+			mi2s_tx_sample_rate_put),
+	SOC_ENUM_EXT("QUIN_MI2S_TX SampleRate", quin_mi2s_tx_sample_rate,
+			mi2s_tx_sample_rate_get,
+			mi2s_tx_sample_rate_put),
+	SOC_ENUM_EXT("SEN_MI2S_TX SampleRate", sen_mi2s_tx_sample_rate,
+			mi2s_tx_sample_rate_get,
+			mi2s_tx_sample_rate_put),
+	SOC_ENUM_EXT("PRIM_MI2S_RX Format", mi2s_rx_format,
+			msm_mi2s_rx_format_get, msm_mi2s_rx_format_put),
+	SOC_ENUM_EXT("SEC_MI2S_RX Format", mi2s_rx_format,
+			msm_mi2s_rx_format_get, msm_mi2s_rx_format_put),
+	SOC_ENUM_EXT("TERT_MI2S_RX Format", mi2s_rx_format,
+			msm_mi2s_rx_format_get, msm_mi2s_rx_format_put),
+	SOC_ENUM_EXT("QUAT_MI2S_RX Format", mi2s_rx_format,
+			msm_mi2s_rx_format_get, msm_mi2s_rx_format_put),
+	SOC_ENUM_EXT("QUIN_MI2S_RX Format", mi2s_rx_format,
+			msm_mi2s_rx_format_get, msm_mi2s_rx_format_put),
+	SOC_ENUM_EXT("SEN_MI2S_RX Format", mi2s_rx_format,
+			msm_mi2s_rx_format_get, msm_mi2s_rx_format_put),
+	SOC_ENUM_EXT("PRIM_MI2S_TX Format", mi2s_tx_format,
+			msm_mi2s_tx_format_get, msm_mi2s_tx_format_put),
+	SOC_ENUM_EXT("SEC_MI2S_TX Format", mi2s_tx_format,
+			msm_mi2s_tx_format_get, msm_mi2s_tx_format_put),
+	SOC_ENUM_EXT("TERT_MI2S_TX Format", mi2s_tx_format,
+			msm_mi2s_tx_format_get, msm_mi2s_tx_format_put),
+	SOC_ENUM_EXT("QUAT_MI2S_TX Format", mi2s_tx_format,
+			msm_mi2s_tx_format_get, msm_mi2s_tx_format_put),
+	SOC_ENUM_EXT("QUIN_MI2S_TX Format", mi2s_tx_format,
+			msm_mi2s_tx_format_get, msm_mi2s_tx_format_put),
+	SOC_ENUM_EXT("SEN_MI2S_TX Format", mi2s_tx_format,
+			msm_mi2s_tx_format_get, msm_mi2s_tx_format_put),
 	SOC_ENUM_EXT("PRIM_MI2S_RX Channels", prim_mi2s_rx_chs,
 			msm_mi2s_rx_ch_get, msm_mi2s_rx_ch_put),
 	SOC_ENUM_EXT("SEC_MI2S_RX Channels", sec_mi2s_rx_chs,
@@ -4384,35 +4447,6 @@ static const struct snd_kcontrol_new msm_common_snd_controls[] = {
 			msm_mi2s_tx_ch_get, msm_mi2s_tx_ch_put),
 	SOC_ENUM_EXT("SEN_MI2S_TX Channels", sen_mi2s_tx_chs,
 			msm_mi2s_tx_ch_get, msm_mi2s_tx_ch_put),
-	SOC_ENUM_EXT("Display Port RX Channels", ext_disp_rx_chs,
-			ext_disp_rx_ch_get, ext_disp_rx_ch_put),
-	SOC_ENUM_EXT("Display Port RX Bit Format", ext_disp_rx_format,
-			ext_disp_rx_format_get, ext_disp_rx_format_put),
-	SOC_ENUM_EXT("Display Port RX SampleRate", ext_disp_rx_sample_rate,
-			ext_disp_rx_sample_rate_get,
-			ext_disp_rx_sample_rate_put),
-	SOC_ENUM_EXT("Display Port1 RX Channels", ext_disp_rx_chs,
-			ext_disp_rx_ch_get, ext_disp_rx_ch_put),
-	SOC_ENUM_EXT("Display Port1 RX Bit Format", ext_disp_rx_format,
-			ext_disp_rx_format_get, ext_disp_rx_format_put),
-	SOC_ENUM_EXT("Display Port1 RX SampleRate", ext_disp_rx_sample_rate,
-			ext_disp_rx_sample_rate_get,
-			ext_disp_rx_sample_rate_put),
-	SOC_ENUM_EXT("BT SampleRate", bt_sample_rate,
-			msm_bt_sample_rate_get,
-			msm_bt_sample_rate_put),
-	SOC_ENUM_EXT("BT SampleRate RX", bt_sample_rate_rx,
-			msm_bt_sample_rate_rx_get,
-			msm_bt_sample_rate_rx_put),
-	SOC_ENUM_EXT("BT SampleRate TX", bt_sample_rate_tx,
-			msm_bt_sample_rate_tx_get,
-			msm_bt_sample_rate_tx_put),
-	SOC_ENUM_EXT("AFE_LOOPBACK_TX Channels", afe_loopback_tx_chs,
-			afe_loopback_tx_ch_get, afe_loopback_tx_ch_put),
-	SOC_ENUM_EXT("VI_FEED_TX Channels", vi_feed_tx_chs,
-			msm_vi_feed_tx_ch_get, msm_vi_feed_tx_ch_put),
-	SOC_SINGLE_MULTI_EXT("TDM Slot Map", SND_SOC_NOPM, 0, 255, 0,
-			TDM_MAX_SLOTS + MAX_PATH, NULL, tdm_slot_map_put),
 #ifdef CONFIG_SND_SOC_CS35L41
 	SOC_ENUM_EXT("DAI Clocks", cirrus_snd_enum[0], dai_clks_get,
 			dai_clks_put),
@@ -5893,8 +5927,8 @@ static int msm_dmic_event(struct snd_soc_dapm_widget *w,
 }
 
 #ifdef CONFIG_SND_SOC_CS35L41
-static int cs35l41_left_speaker(struct snd_soc_dapm_widget *w,
-			struct snd_kcontrol *kcontrol, int event)
+static int cs35l41_amp_3_speaker(struct snd_soc_dapm_widget *w,
+			  struct snd_kcontrol *kcontrol, int event)
 {
 	struct snd_soc_component *component = snd_soc_dapm_to_component(w->dapm);
 
@@ -5902,24 +5936,53 @@ static int cs35l41_left_speaker(struct snd_soc_dapm_widget *w,
 
 	switch (event) {
 	case SND_SOC_DAPM_PRE_PMD:
-		cirrus_bd_store_values("_left");
+		cirrus_bd_store_values("_3");
 		break;
 	}
 
 	return 0;
 }
 
-static int cs35l41_right_speaker(struct snd_soc_dapm_widget *w,
-			struct snd_kcontrol *kcontrol, int event)
+static int cs35l41_amp_2_speaker(struct snd_soc_dapm_widget *w,
+			  struct snd_kcontrol *kcontrol, int event)
 {
-
 	struct snd_soc_component *component = snd_soc_dapm_to_component(w->dapm);
 
 	dev_info(component->dev, "%s ev: %d\n", __func__, event);
 
 	switch (event) {
 	case SND_SOC_DAPM_PRE_PMD:
-		cirrus_bd_store_values("_right");
+		cirrus_bd_store_values("_2");
+		break;
+	}
+
+	return 0;
+}
+static int cs35l41_amp_1_speaker(struct snd_soc_dapm_widget *w,
+			  struct snd_kcontrol *kcontrol, int event)
+{
+	struct snd_soc_component *component = snd_soc_dapm_to_component(w->dapm);
+
+	dev_info(component->dev, "%s ev: %d\n", __func__, event);
+
+	switch (event) {
+	case SND_SOC_DAPM_PRE_PMD:
+		cirrus_bd_store_values("_1");
+		break;
+	}
+
+	return 0;
+}
+static int cs35l41_amp_0_speaker(struct snd_soc_dapm_widget *w,
+			  struct snd_kcontrol *kcontrol, int event)
+{
+	struct snd_soc_component *component = snd_soc_dapm_to_component(w->dapm);
+
+	dev_info(component->dev, "%s ev: %d\n", __func__, event);
+
+	switch (event) {
+	case SND_SOC_DAPM_PRE_PMD:
+		cirrus_bd_store_values("_0");
 		break;
 	}
 
@@ -5942,8 +6005,10 @@ static const struct snd_soc_dapm_widget msm_int_dapm_widgets[] = {
 	SND_SOC_DAPM_MIC("Digital Mic6", NULL),
 	SND_SOC_DAPM_MIC("Digital Mic7", NULL),
 #ifdef CONFIG_SND_SOC_CS35L41
-	SND_SOC_DAPM_SPK("L SPK", cs35l41_left_speaker),
-	SND_SOC_DAPM_SPK("R SPK", cs35l41_right_speaker),
+	SND_SOC_DAPM_SPK("AMP0 SPK", cs35l41_amp_0_speaker),
+	SND_SOC_DAPM_SPK("AMP1 SPK", cs35l41_amp_1_speaker),
+	SND_SOC_DAPM_SPK("AMP2 SPK", cs35l41_amp_2_speaker),
+	SND_SOC_DAPM_SPK("AMP3 SPK", cs35l41_amp_3_speaker),
 #endif
 };
 
@@ -5951,13 +6016,68 @@ static const struct snd_soc_dapm_widget msm_int_dapm_widgets[] = {
 static int kona_tdm_cirrus_init(struct snd_soc_pcm_runtime *rtd)
 {
 	struct snd_soc_dai **codec_dais = rtd->codec_dais;
+#ifdef CONFIG_SND_SOC_CS35L41_4SPK
+	struct snd_soc_dapm_context *front_left_dapm =
+		snd_soc_component_get_dapm(codec_dais[0]->component);
+	struct snd_soc_dapm_context *front_right_dapm =
+		snd_soc_component_get_dapm(codec_dais[1]->component);
+	struct snd_soc_dapm_context *rear_left_dapm =
+		snd_soc_component_get_dapm(codec_dais[2]->component);
+	struct snd_soc_dapm_context *rear_right_dapm =
+		snd_soc_component_get_dapm(codec_dais[3]->component);
+#else
+#ifdef CONFIG_SND_SOC_CS35L41_3SPK
+	struct snd_soc_dapm_context *rcv_dapm =
+		snd_soc_component_get_dapm(codec_dais[2]->component);
+#endif
 	struct snd_soc_dapm_context *left_dapm =
 		snd_soc_component_get_dapm(codec_dais[1]->component);
 	struct snd_soc_dapm_context *right_dapm =
 		snd_soc_component_get_dapm(codec_dais[0]->component);
+#endif
 
 	pr_info("%s: ++\n", __func__);
+#ifdef CONFIG_SND_SOC_CS35L41_4SPK
+	snd_soc_dapm_ignore_suspend(rear_right_dapm, "RR AMP Capture");
+	snd_soc_dapm_ignore_suspend(rear_right_dapm, "RR AMP Playback");
+	snd_soc_dapm_ignore_suspend(rear_right_dapm, "RR AMP SPK");
+	snd_soc_dapm_ignore_suspend(rear_right_dapm, "RR VP");
+	snd_soc_dapm_ignore_suspend(rear_right_dapm, "RR VBST");
+	snd_soc_dapm_ignore_suspend(rear_right_dapm, "RR ISENSE");
+	snd_soc_dapm_ignore_suspend(rear_right_dapm, "RR VSENSE");
+	snd_soc_dapm_ignore_suspend(rear_right_dapm, "RR TEMP");
+	snd_soc_dapm_sync(rear_right_dapm);
 
+	snd_soc_dapm_ignore_suspend(rear_left_dapm, "RL AMP Capture");
+	snd_soc_dapm_ignore_suspend(rear_left_dapm, "RL AMP Playback");
+	snd_soc_dapm_ignore_suspend(rear_left_dapm, "RL AMP SPK");
+	snd_soc_dapm_ignore_suspend(rear_left_dapm, "RL VP");
+	snd_soc_dapm_ignore_suspend(rear_left_dapm, "RL VBST");
+	snd_soc_dapm_ignore_suspend(rear_left_dapm, "RL ISENSE");
+	snd_soc_dapm_ignore_suspend(rear_left_dapm, "RL VSENSE");
+	snd_soc_dapm_ignore_suspend(rear_left_dapm, "RL TEMP");
+	snd_soc_dapm_sync(rear_left_dapm);
+
+	snd_soc_dapm_ignore_suspend(front_right_dapm, "FR AMP Capture");
+	snd_soc_dapm_ignore_suspend(front_right_dapm, "FR AMP Playback");
+	snd_soc_dapm_ignore_suspend(front_right_dapm, "FR AMP SPK");
+	snd_soc_dapm_ignore_suspend(front_right_dapm, "FR VP");
+	snd_soc_dapm_ignore_suspend(front_right_dapm, "FR VBST");
+	snd_soc_dapm_ignore_suspend(front_right_dapm, "FR ISENSE");
+	snd_soc_dapm_ignore_suspend(front_right_dapm, "FR VSENSE");
+	snd_soc_dapm_ignore_suspend(front_right_dapm, "FR TEMP");
+	snd_soc_dapm_sync(front_right_dapm);
+
+	snd_soc_dapm_ignore_suspend(front_left_dapm, "FL AMP Capture");
+	snd_soc_dapm_ignore_suspend(front_left_dapm, "FL AMP Playback");
+	snd_soc_dapm_ignore_suspend(front_left_dapm, "FL AMP SPK");
+	snd_soc_dapm_ignore_suspend(front_left_dapm, "FL VP");
+	snd_soc_dapm_ignore_suspend(front_left_dapm, "FL VBST");
+	snd_soc_dapm_ignore_suspend(front_left_dapm, "FL ISENSE");
+	snd_soc_dapm_ignore_suspend(front_left_dapm, "FL VSENSE");
+	snd_soc_dapm_ignore_suspend(front_left_dapm, "FL TEMP");
+	snd_soc_dapm_sync(front_left_dapm);
+#else
 	snd_soc_dapm_ignore_suspend(left_dapm, "Left AMP Capture");
 	snd_soc_dapm_ignore_suspend(left_dapm, "Left AMP Playback");
 	snd_soc_dapm_ignore_suspend(left_dapm, "Left AMP SPK");
@@ -5977,7 +6097,19 @@ static int kona_tdm_cirrus_init(struct snd_soc_pcm_runtime *rtd)
 	snd_soc_dapm_ignore_suspend(right_dapm, "Right VSENSE");
 	snd_soc_dapm_ignore_suspend(right_dapm, "Right TEMP");
 	snd_soc_dapm_sync(right_dapm);
-	
+
+#ifdef CONFIG_SND_SOC_CS35L41_3SPK
+	snd_soc_dapm_ignore_suspend(rcv_dapm, "Rcv AMP Capture");
+	snd_soc_dapm_ignore_suspend(rcv_dapm, "Rcv AMP Playback");
+	snd_soc_dapm_ignore_suspend(rcv_dapm, "Rcv AMP SPK");
+	snd_soc_dapm_ignore_suspend(rcv_dapm, "Rcv VP");
+	snd_soc_dapm_ignore_suspend(rcv_dapm, "Rcv VBST");
+	snd_soc_dapm_ignore_suspend(rcv_dapm, "Rcv ISENSE");
+	snd_soc_dapm_ignore_suspend(rcv_dapm, "Rcv VSENSE");
+	snd_soc_dapm_ignore_suspend(rcv_dapm, "Rcv TEMP");
+	snd_soc_dapm_sync(rcv_dapm);
+#endif
+#endif
 	register_cirrus_bigdata_cb(codec_dais[0]->component);
 
 	return 0;
@@ -6003,6 +6135,45 @@ static int msm_wcn_init_lito(struct snd_soc_pcm_runtime *rtd)
 	return snd_soc_dai_set_channel_map(codec_dai, ARRAY_SIZE(tx_ch),
 					   tx_ch, ARRAY_SIZE(rx_ch), rx_ch);
 }
+
+#ifndef CONFIG_TDM_DISABLE
+static void msm_add_tdm_snd_controls(struct snd_soc_component *component)
+{
+	snd_soc_add_component_controls(component, msm_tdm_snd_controls,
+				ARRAY_SIZE(msm_tdm_snd_controls));
+}
+#else
+static void msm_add_tdm_snd_controls(struct snd_soc_component *component)
+{
+	return;
+}
+#endif
+
+#ifndef CONFIG_MI2S_DISABLE
+static void msm_add_mi2s_snd_controls(struct snd_soc_component *component)
+{
+	snd_soc_add_component_controls(component, msm_mi2s_snd_controls,
+				ARRAY_SIZE(msm_mi2s_snd_controls));
+}
+#else
+static void msm_add_mi2s_snd_controls(struct snd_soc_component *component)
+{
+	return;
+}
+#endif
+
+#ifndef CONFIG_AUXPCM_DISABLE
+static void msm_add_auxpcm_snd_controls(struct snd_soc_component *component)
+{
+	snd_soc_add_component_controls(component, msm_auxpcm_snd_controls,
+				ARRAY_SIZE(msm_auxpcm_snd_controls));
+}
+#else
+static void msm_add_auxpcm_snd_controls(struct snd_soc_component *component)
+{
+	return;
+}
+#endif
 
 static int msm_int_audrx_init(struct snd_soc_pcm_runtime *rtd)
 {
@@ -6039,6 +6210,10 @@ static int msm_int_audrx_init(struct snd_soc_pcm_runtime *rtd)
 		return ret;
 	}
 
+	msm_add_tdm_snd_controls(component);
+	msm_add_mi2s_snd_controls(component);
+	msm_add_auxpcm_snd_controls(component);
+
 	snd_soc_dapm_new_controls(dapm, msm_int_dapm_widgets,
 				ARRAY_SIZE(msm_int_dapm_widgets));
 
@@ -6063,8 +6238,10 @@ static int msm_int_audrx_init(struct snd_soc_pcm_runtime *rtd)
 	snd_soc_dapm_ignore_suspend(dapm, "VIINPUT_WSA");
 
 #ifdef CONFIG_SND_SOC_CS35L41
-	snd_soc_dapm_ignore_suspend(dapm, "L SPK");
-	snd_soc_dapm_ignore_suspend(dapm, "R SPK");
+	snd_soc_dapm_ignore_suspend(dapm, "AMP0 SPK");
+	snd_soc_dapm_ignore_suspend(dapm, "AMP1 SPK");
+	snd_soc_dapm_ignore_suspend(dapm, "AMP2 SPK");
+	snd_soc_dapm_ignore_suspend(dapm, "AMP3 SPK");
 #endif
 
 	snd_soc_dapm_sync(dapm);
@@ -6152,6 +6329,7 @@ static void *def_wcd_mbhc_cal(void)
 
 #ifdef CONFIG_SND_SOC_CS35L41
 static struct snd_soc_dai_link_component cs35l41_spk[] = {
+#ifdef CONFIG_SND_SOC_CS35L41_4SPK
 	{
 		.name = "cs35l41-codec.0.auto",
 		.dai_name = "cs35l41-pcm",
@@ -6160,6 +6338,30 @@ static struct snd_soc_dai_link_component cs35l41_spk[] = {
 		.name = "cs35l41-codec.4.auto",
 		.dai_name = "cs35l41-pcm",
 	},
+	{
+		.name = "cs35l41-codec.8.auto",
+		.dai_name = "cs35l41-pcm",
+	},
+	{
+		.name = "cs35l41-codec.12.auto",
+		.dai_name = "cs35l41-pcm",
+	},
+#else
+	{
+		.name = "cs35l41-codec.0.auto",
+		.dai_name = "cs35l41-pcm",
+	},
+	{
+		.name = "cs35l41-codec.4.auto",
+		.dai_name = "cs35l41-pcm",
+	},
+#ifdef CONFIG_SND_SOC_CS35L41_3SPK
+	{
+		.name = "cs35l41-codec.8.auto",
+		.dai_name = "cs35l41-pcm",
+	},
+#endif
+#endif
 };
 
 static struct snd_soc_ops kona_tdm_cirrus_be_ops = {
@@ -6843,7 +7045,21 @@ static struct snd_soc_dai_link msm_common_misc_fe_dai_links[] = {
 		.codec_name = "snd-soc-dummy",
 	},
 #endif /* CONFIG_SEC_SND_ADAPTATION */
-
+	{/* hw:x,41 */
+		.name = "Quaternary MI2S_RX Hostless",
+		.stream_name = "Quaternary MI2S_RX Hostless",
+		.cpu_dai_name = "QUAT_MI2S_RX_HOSTLESS",
+		.platform_name = "msm-pcm-hostless",
+		.dynamic = 1,
+		.dpcm_playback = 1,
+		.trigger = {SND_SOC_DPCM_TRIGGER_POST,
+			    SND_SOC_DPCM_TRIGGER_POST},
+		.no_host_mode = SND_SOC_DAI_LINK_NO_HOST,
+		.ignore_suspend = 1,
+		.ignore_pmdown_time = 1,
+		.codec_dai_name = "snd-soc-dummy-dai",
+		.codec_name = "snd-soc-dummy",
+	},
 };
 
 static struct snd_soc_dai_link msm_common_be_dai_links[] = {
@@ -6962,6 +7178,10 @@ static struct snd_soc_dai_link msm_common_be_dai_links[] = {
 		.be_hw_params_fixup = msm_be_hw_params_fixup,
 		.ignore_suspend = 1,
 	},
+};
+
+
+static struct snd_soc_dai_link msm_tdm_be_dai_links[] = {
 	{
 #ifdef CONFIG_SND_SOC_CS35L41
 		.name = LPASS_BE_PRI_TDM_RX_0,
@@ -7874,7 +8094,8 @@ static struct snd_soc_dai_link msm_kona_dai_links[
 			ARRAY_SIZE(ext_disp_be_dai_link) +
 			ARRAY_SIZE(msm_wcn_be_dai_links) +
 			ARRAY_SIZE(msm_afe_rxtx_lb_be_dai_link) +
-			ARRAY_SIZE(msm_wcn_btfm_be_dai_links)];
+			ARRAY_SIZE(msm_wcn_btfm_be_dai_links) +
+			ARRAY_SIZE(msm_tdm_be_dai_links)];
 
 static int msm_populate_dai_link_component_of_node(
 					struct snd_soc_card *card)
@@ -8189,6 +8410,16 @@ static struct snd_soc_card *populate_snd_card_dailinks(struct device *dev)
 				sizeof(msm_afe_rxtx_lb_be_dai_link));
 			total_links +=
 				ARRAY_SIZE(msm_afe_rxtx_lb_be_dai_link);
+		}
+
+		rc = of_property_read_u32(dev->of_node, "qcom,tdm-audio-intf",
+				&val);
+		if (!rc && val) {
+			memcpy(msm_kona_dai_links + total_links,
+				msm_tdm_be_dai_links,
+				sizeof(msm_tdm_be_dai_links));
+			total_links +=
+				ARRAY_SIZE(msm_tdm_be_dai_links);
 		}
 
 		rc = of_property_read_u32(dev->of_node, "qcom,wcn-btfm",
@@ -8694,7 +8925,7 @@ static void msm_i2s_auxpcm_deinit(void)
 	}
 }
 
-#ifdef CONFIG_SEC_FACTORY_INTERPOSER
+#if defined(CONFIG_SEC_FACTORY_INTERPOSER) || defined(CONFIG_SEC_FACTORY)
 /*
 * If external components(Amplifier) is not connected to main PCB,
 * update the dai-link information and force to register soundcard
@@ -8736,18 +8967,18 @@ static void msm_update_dai_link(struct platform_device *pdev,
 	}
 	dev_info(&pdev->dev, "dai name: %s\n", dai_name);
 
-	for (i = 0; i < ARRAY_SIZE(msm_common_be_dai_links); i++) {
-		if ((msm_common_be_dai_links[i].codecs != NULL) &&
-			(!strcmp(msm_common_be_dai_links[i].codecs->dai_name, dai_name))) {
-			msm_common_be_dai_links[i].codecs = NULL;
-			msm_common_be_dai_links[i].num_codecs = 0;
-			msm_common_be_dai_links[i].codec_name = "msm-stub-codec.1";
-			msm_common_be_dai_links[i].init = NULL;
-			if (msm_common_be_dai_links[i].dpcm_playback)
-				msm_common_be_dai_links[i].codec_dai_name = "msm-stub-rx";
+	for (i = 0; i < ARRAY_SIZE(msm_tdm_be_dai_links); i++) {
+		if ((msm_tdm_be_dai_links[i].codecs != NULL) &&
+			(!strcmp(msm_tdm_be_dai_links[i].codecs->dai_name, dai_name))) {
+			msm_tdm_be_dai_links[i].codecs = NULL;
+			msm_tdm_be_dai_links[i].num_codecs = 0;
+			msm_tdm_be_dai_links[i].codec_name = "msm-stub-codec.1";
+			msm_tdm_be_dai_links[i].init = NULL;
+			if (msm_tdm_be_dai_links[i].dpcm_playback)
+				msm_tdm_be_dai_links[i].codec_dai_name = "msm-stub-rx";
 			else
-				msm_common_be_dai_links[i].codec_dai_name = "msm-stub-tx";
-			msm_common_be_dai_links[i].ops = &kona_tdm_be_ops;
+				msm_tdm_be_dai_links[i].codec_dai_name = "msm-stub-tx";
+			msm_tdm_be_dai_links[i].ops = &kona_tdm_be_ops;
 		}
 	}
 }
@@ -8840,6 +9071,10 @@ static int msm_asoc_machine_probe(struct platform_device *pdev)
 	struct msm_asoc_mach_data *pdata = NULL;
 	const char *mbhc_audio_jack_type = NULL;
 	int ret = 0;
+#if !defined(CONFIG_SEC_FACTORY_INTERPOSER) && defined(CONFIG_SEC_FACTORY)
+	int subpcb_gpio = -1;
+	int gpio_level = 0;
+#endif
 	uint index = 0;
 	struct clk *lpass_audio_hw_vote = NULL;
 
@@ -8901,8 +9136,17 @@ static int msm_asoc_machine_probe(struct platform_device *pdev)
 
 	ret = devm_snd_soc_register_card(&pdev->dev, card);
 	if (ret == -EPROBE_DEFER) {
-#ifdef CONFIG_SEC_FACTORY_INTERPOSER
+#if defined(CONFIG_SEC_FACTORY_INTERPOSER)
 		msm_update_dai_link(pdev, card);
+#elif defined(CONFIG_SEC_FACTORY)
+		subpcb_gpio = of_get_named_gpio(pdev->dev.of_node, "subpcb-ep-gpio", 0);
+		if (gpio_is_valid(subpcb_gpio)) {
+			gpio_level = gpio_get_value(subpcb_gpio);
+			dev_info(&pdev->dev, "%s: subpcb gpio(%d) is %s\n",
+					__func__, subpcb_gpio, gpio_level? "disconnected":"connected");
+			if (gpio_level)
+				msm_update_dai_link(pdev, card);
+		}
 #endif
 		if (codec_reg_done)
 			ret = -EINVAL;

@@ -186,7 +186,7 @@ int calibration_trx_data(struct wacom_i2c *wac_i2c)
 		edata->yy_yy[i] = edata->cal_yy * edata->yy[i];
 	}
 
-	input_info(true, &wac_i2c->client->dev, "%s: cal_xx(%ld), cal_xy(%ld), cal_yx(%ld), cal_yy(%ld)\n", 
+	input_info(true, &wac_i2c->client->dev, "%s: cal_xx(%lld), cal_xy(%lld), cal_yx(%lld), cal_yy(%lld)\n", 
 			__func__, edata->cal_xx, edata->cal_xy, edata->cal_yx, edata->cal_yy);
 
 	kfree(cal_xx_raw);
@@ -315,7 +315,7 @@ void print_elec_data(struct wacom_i2c *wac_i2c)
 
 		for (j = 0; j < chsize; j++) {
 			snprintf(ptmp, sizeof(ptmp), " %4d",
-				 edata->elec_data[(i * chsize) + j]);
+					edata->elec_data[(i * chsize) + j]);
 
 			strlcat(pstr, ptmp, lsize);
 		}
@@ -416,7 +416,7 @@ void print_cal_trx_data(struct wacom_i2c *wac_i2c)
 	memset(tmp_buf, 0x00, CMD_RESULT_WORD_LEN);
 
 	for (i = 0; i < edata->max_x_ch; i++) {
-		snprintf(tmp_buf, CMD_RESULT_WORD_LEN, "%ld ", edata->xx_xx[i]);
+		snprintf(tmp_buf, CMD_RESULT_WORD_LEN, "%lld ", edata->xx_xx[i]);
 		strlcat(buff, tmp_buf, buff_size);
 		memset(tmp_buf, 0x00, CMD_RESULT_WORD_LEN);
 	}
@@ -429,7 +429,7 @@ void print_cal_trx_data(struct wacom_i2c *wac_i2c)
 	memset(tmp_buf, 0x00, CMD_RESULT_WORD_LEN);
 
 	for (i = 0; i < edata->max_x_ch; i++) {
-		snprintf(tmp_buf, CMD_RESULT_WORD_LEN, "%ld ", edata->xy_xy[i]);
+		snprintf(tmp_buf, CMD_RESULT_WORD_LEN, "%lld ", edata->xy_xy[i]);
 		strlcat(buff, tmp_buf, buff_size);
 		memset(tmp_buf, 0x00, CMD_RESULT_WORD_LEN);
 	}
@@ -442,7 +442,7 @@ void print_cal_trx_data(struct wacom_i2c *wac_i2c)
 	memset(tmp_buf, 0x00, CMD_RESULT_WORD_LEN);
 
 	for (i = 0; i < edata->max_y_ch; i++) {
-		snprintf(tmp_buf, CMD_RESULT_WORD_LEN, "%ld ", edata->yx_yx[i]);
+		snprintf(tmp_buf, CMD_RESULT_WORD_LEN, "%lld ", edata->yx_yx[i]);
 		strlcat(buff, tmp_buf, buff_size);
 		memset(tmp_buf, 0x00, CMD_RESULT_WORD_LEN);
 	}
@@ -455,7 +455,7 @@ void print_cal_trx_data(struct wacom_i2c *wac_i2c)
 	memset(tmp_buf, 0x00, CMD_RESULT_WORD_LEN);
 
 	for (i = 0; i < edata->max_y_ch; i++) {
-		snprintf(tmp_buf, CMD_RESULT_WORD_LEN, "%ld ", edata->yy_yy[i]);
+		snprintf(tmp_buf, CMD_RESULT_WORD_LEN, "%lld ", edata->yy_yy[i]);
 		strlcat(buff, tmp_buf, buff_size);
 		memset(tmp_buf, 0x00, CMD_RESULT_WORD_LEN);
 	}
@@ -487,7 +487,7 @@ void print_ratio_trx_data(struct wacom_i2c *wac_i2c)
 	memset(tmp_buf, 0x00, CMD_RESULT_WORD_LEN);
 
 	for (i = 0; i < edata->max_x_ch; i++) {
-		snprintf(tmp_buf, CMD_RESULT_WORD_LEN, "%ld ", edata->rxx[i]);
+		snprintf(tmp_buf, CMD_RESULT_WORD_LEN, "%lld ", edata->rxx[i]);
 		strlcat(buff, tmp_buf, buff_size);
 		memset(tmp_buf, 0x00, CMD_RESULT_WORD_LEN);
 	}
@@ -500,7 +500,7 @@ void print_ratio_trx_data(struct wacom_i2c *wac_i2c)
 	memset(tmp_buf, 0x00, CMD_RESULT_WORD_LEN);
 
 	for (i = 0; i < edata->max_x_ch; i++) {
-		snprintf(tmp_buf, CMD_RESULT_WORD_LEN, "%ld ", edata->rxy[i]);
+		snprintf(tmp_buf, CMD_RESULT_WORD_LEN, "%lld ", edata->rxy[i]);
 		strlcat(buff, tmp_buf, buff_size);
 		memset(tmp_buf, 0x00, CMD_RESULT_WORD_LEN);
 	}
@@ -513,7 +513,7 @@ void print_ratio_trx_data(struct wacom_i2c *wac_i2c)
 	memset(tmp_buf, 0x00, CMD_RESULT_WORD_LEN);
 
 	for (i = 0; i < edata->max_y_ch; i++) {
-		snprintf(tmp_buf, CMD_RESULT_WORD_LEN, "%ld ", edata->ryx[i]);
+		snprintf(tmp_buf, CMD_RESULT_WORD_LEN, "%lld ", edata->ryx[i]);
 		strlcat(buff, tmp_buf, buff_size);
 		memset(tmp_buf, 0x00, CMD_RESULT_WORD_LEN);
 	}
@@ -526,7 +526,7 @@ void print_ratio_trx_data(struct wacom_i2c *wac_i2c)
 	memset(tmp_buf, 0x00, CMD_RESULT_WORD_LEN);
 
 	for (i = 0; i < edata->max_y_ch; i++) {
-		snprintf(tmp_buf, CMD_RESULT_WORD_LEN, "%ld ", edata->ryy[i]);
+		snprintf(tmp_buf, CMD_RESULT_WORD_LEN, "%lld ", edata->ryy[i]);
 		strlcat(buff, tmp_buf, buff_size);
 		memset(tmp_buf, 0x00, CMD_RESULT_WORD_LEN);
 	}
@@ -558,7 +558,7 @@ void print_difference_ratio_trx_data(struct wacom_i2c *wac_i2c)
 	memset(tmp_buf, 0x00, CMD_RESULT_WORD_LEN);
 
 	for (i = 0; i < edata->max_x_ch; i++) {
-		snprintf(tmp_buf, CMD_RESULT_WORD_LEN, "%ld ", edata->drxx[i]);
+		snprintf(tmp_buf, CMD_RESULT_WORD_LEN, "%lld ", edata->drxx[i]);
 		strlcat(buff, tmp_buf, buff_size);
 		memset(tmp_buf, 0x00, CMD_RESULT_WORD_LEN);
 	}
@@ -571,7 +571,7 @@ void print_difference_ratio_trx_data(struct wacom_i2c *wac_i2c)
 	memset(tmp_buf, 0x00, CMD_RESULT_WORD_LEN);
 
 	for (i = 0; i < edata->max_x_ch; i++) {
-		snprintf(tmp_buf, CMD_RESULT_WORD_LEN, "%ld ", edata->drxy[i]);
+		snprintf(tmp_buf, CMD_RESULT_WORD_LEN, "%lld ", edata->drxy[i]);
 		strlcat(buff, tmp_buf, buff_size);
 		memset(tmp_buf, 0x00, CMD_RESULT_WORD_LEN);
 	}
@@ -584,7 +584,7 @@ void print_difference_ratio_trx_data(struct wacom_i2c *wac_i2c)
 	memset(tmp_buf, 0x00, CMD_RESULT_WORD_LEN);
 
 	for (i = 0; i < edata->max_y_ch; i++) {
-		snprintf(tmp_buf, CMD_RESULT_WORD_LEN, "%ld ", edata->dryx[i]);
+		snprintf(tmp_buf, CMD_RESULT_WORD_LEN, "%lld ", edata->dryx[i]);
 		strlcat(buff, tmp_buf, buff_size);
 		memset(tmp_buf, 0x00, CMD_RESULT_WORD_LEN);
 	}
@@ -597,7 +597,7 @@ void print_difference_ratio_trx_data(struct wacom_i2c *wac_i2c)
 	memset(tmp_buf, 0x00, CMD_RESULT_WORD_LEN);
 
 	for (i = 0; i < edata->max_y_ch; i++) {
-		snprintf(tmp_buf, CMD_RESULT_WORD_LEN, "%ld ", edata->dryy[i]);
+		snprintf(tmp_buf, CMD_RESULT_WORD_LEN, "%lld ", edata->dryy[i]);
 		strlcat(buff, tmp_buf, buff_size);
 		memset(tmp_buf, 0x00, CMD_RESULT_WORD_LEN);
 	}

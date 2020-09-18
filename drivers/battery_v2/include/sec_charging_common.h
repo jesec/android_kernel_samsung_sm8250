@@ -90,6 +90,7 @@ enum power_supply_ext_property {
 	POWER_SUPPLY_EXT_PROP_AUTO_SHIPMODE_CONTROL,
 	POWER_SUPPLY_EXT_PROP_WIRELESS_TIMER_ON,
 	POWER_SUPPLY_EXT_PROP_CALL_EVENT,
+	POWER_SUPPLY_EXT_PROP_GEAR_PHM_EVENT,
 	POWER_SUPPLY_EXT_PROP_DEFAULT_CURRENT,
 	POWER_SUPPLY_PROP_WIRELESS_RX_POWER,
 	POWER_SUPPLY_PROP_WIRELESS_MAX_VOUT,
@@ -143,11 +144,16 @@ enum power_supply_ext_property {
 	POWER_SUPPLY_EXT_PROP_CHANGE_CHARGING_SOURCE,
 	POWER_SUPPLY_EXT_PROP_DIRECT_CLEAR_ERR,
 	POWER_SUPPLY_EXT_PROP_DIRECT_SEND_UVDM,
+#if defined(CONFIG_DUAL_BATTERY_CELL_SENSING)
+	POWER_SUPPLY_EXT_PROP_DIRECT_VBAT_CHECK,
+#endif
 #endif
 	POWER_SUPPLY_EXT_PROP_SRCCAP,
 	POWER_SUPPLY_EXT_PROP_CHARGE_BOOST,
+	POWER_SUPPLY_EXT_PROP_FULL_CONDITION,
 	POWER_SUPPLY_EXT_PROP_WPC_EN,
 	POWER_SUPPLY_EXT_PROP_WPC_EN_MST,
+	POWER_SUPPLY_EXT_PROP_INBAT_VOLTAGE,
 };
 
 enum rx_device_type {
@@ -497,6 +503,13 @@ enum sec_battery_wpc_en_ctrl {
 	WPC_EN_CHARGING = 0x4,
 	WPC_EN_TX = 0x8,
 	WPC_EN_MST = 0x10,
+	WPC_EN_FW = 0x20,
+};
+
+enum sec_battery_direct_charging_source_ctrl {
+	SEC_TEST_MODE = 0x1,
+	SEC_SEND_UVDM = 0x2,
+	SEC_STORE_MODE = 0x4,
 };
 
 /* tx_event */
@@ -516,11 +529,12 @@ enum sec_battery_wpc_en_ctrl {
 #define BATT_TX_EVENT_WIRELESS_TX_MISALIGN      0x00002000
 #define BATT_TX_EVENT_WIRELESS_TX_ETC			0x00004000
 #define BATT_TX_EVENT_WIRELESS_TX_RETRY			0x00008000
-#define BATT_TX_EVENT_WIRELESS_ALL_MASK			0x0000ffff
+#define BATT_TX_EVENT_WIRELESS_TX_5V_TA			0x00010000
+#define BATT_TX_EVENT_WIRELESS_ALL_MASK			0x0001ffff
 #define BATT_TX_EVENT_WIRELESS_TX_ERR			(BATT_TX_EVENT_WIRELESS_TX_FOD | BATT_TX_EVENT_WIRELESS_TX_HIGH_TEMP | \
 	BATT_TX_EVENT_WIRELESS_RX_UNSAFE_TEMP | BATT_TX_EVENT_WIRELESS_RX_CHG_SWITCH | BATT_TX_EVENT_WIRELESS_RX_CS100 | \
 	BATT_TX_EVENT_WIRELESS_TX_OTG_ON | BATT_TX_EVENT_WIRELESS_TX_LOW_TEMP | BATT_TX_EVENT_WIRELESS_TX_SOC_DRAIN | \
-	BATT_TX_EVENT_WIRELESS_TX_CRITICAL_EOC | BATT_TX_EVENT_WIRELESS_TX_CAMERA_ON | BATT_TX_EVENT_WIRELESS_TX_OCP | BATT_TX_EVENT_WIRELESS_TX_MISALIGN | BATT_TX_EVENT_WIRELESS_TX_ETC)
+	BATT_TX_EVENT_WIRELESS_TX_CRITICAL_EOC | BATT_TX_EVENT_WIRELESS_TX_CAMERA_ON | BATT_TX_EVENT_WIRELESS_TX_OCP | BATT_TX_EVENT_WIRELESS_TX_MISALIGN | BATT_TX_EVENT_WIRELESS_TX_ETC | BATT_TX_EVENT_WIRELESS_TX_5V_TA)
 
 #define SEC_BAT_TX_RETRY_NONE			0x0000
 #define SEC_BAT_TX_RETRY_MISALIGN		0x0001
@@ -854,9 +868,6 @@ struct sec_age_data {
 	unsigned int recharge_condition_vcell;
 	unsigned int full_condition_vcell;
 	unsigned int full_condition_soc;
-#if defined(CONFIG_STEP_CHARGING)
-	unsigned int step_charging_condition;
-#endif
 };
 
 #define sec_age_data_t \
@@ -919,8 +930,7 @@ struct sec_battery_platform_data {
 	/* NO NEED TO BE CHANGED */
 	unsigned int pre_afc_input_current;
 	unsigned int pre_wc_afc_input_current;
-	unsigned int store_mode_afc_input_current;
-	unsigned int store_mode_hv_wireless_input_current;
+	unsigned int store_mode_max_input_power;
 	unsigned int prepare_ta_delay;
 
 	char *pmic_name;
@@ -971,12 +981,14 @@ struct sec_battery_platform_data {
 	unsigned int swelling_wc_low_temp_current_2nd;
 	unsigned int swelling_wc_low_temp_current_3rd;
 #if defined(CONFIG_DUAL_BATTERY)
+	unsigned int swelling_main_high_temp_current;
+	unsigned int swelling_sub_high_temp_current;
 	unsigned int swelling_main_low_temp_current;
 	unsigned int swelling_sub_low_temp_current;
 	unsigned int swelling_main_low_temp_current_2nd;
 	unsigned int swelling_sub_low_temp_current_2nd;
-	unsigned int swelling_main_high_temp_current;
-	unsigned int swelling_sub_high_temp_current;
+	unsigned int swelling_main_low_temp_current_3rd;
+	unsigned int swelling_sub_low_temp_current_3rd;
 #endif
 
 	unsigned int swelling_normal_float_voltage;
@@ -1000,18 +1012,21 @@ struct sec_battery_platform_data {
 
 #if defined(CONFIG_STEP_CHARGING)
 	/* step charging */
-	unsigned int *step_charging_condition;
+	unsigned int **step_charging_condition;
+#if defined(CONFIG_DUAL_BATTERY)
+	unsigned int **step_charging_condition_vsub;
+#endif
 	unsigned int *step_charging_condition_curr;
-	unsigned int *step_charging_current;
-	unsigned int *step_charging_float_voltage;
+	unsigned int **step_charging_current;
+	unsigned int **step_charging_float_voltage;
 #if defined(CONFIG_DIRECT_CHARGING)
 	unsigned int *dc_step_chg_cond_vol;
-	unsigned int *dc_step_chg_cond_soc;
+	unsigned int **dc_step_chg_cond_soc;
 	unsigned int *dc_step_chg_cond_iin;
 	int dc_step_chg_iin_check_cnt;
 
-	unsigned int *dc_step_chg_val_iout;
-	unsigned int *dc_step_chg_val_vfloat;
+	unsigned int **dc_step_chg_val_iout;
+	unsigned int **dc_step_chg_val_vfloat;
 #endif
 #endif
 
@@ -1154,6 +1169,9 @@ struct sec_battery_platform_data {
 	unsigned int charging_limit_current_by_tx;
 	unsigned int wpc_input_limit_by_tx_check; /* check limited wpc input current with tx device */
 	unsigned int wpc_input_limit_current_by_tx;
+	unsigned int non_wc20_wpc_charging_limit;
+	int non_wc20_wpc_high_temp;
+	int non_wc20_wpc_high_temp_recovery;
 
 	/* If these is NOT full check type or NONE full check type,
 	 * it is skipped
@@ -1235,7 +1253,12 @@ struct sec_battery_platform_data {
 	char *sub_limiter_name;
 	bool support_dual_battery;
 	int main_bat_enb_gpio;
-	int sub_bat_enb_gpio;	
+	int sub_bat_enb_gpio;
+#endif
+
+#if defined(CONFIG_DUAL_BATTERY_CELL_SENSING)
+	unsigned int main_cell_margin_cc;
+	unsigned int main_cell_margin_cv;
 #endif
 
 #if defined(CONFIG_BATTERY_AGE_FORECAST)
@@ -1254,6 +1277,7 @@ struct sec_battery_platform_data {
 #endif	
 	int siop_hv_input_limit_current;
 	int siop_hv_input_limit_current_2nd;
+	int siop_store_hv_input_limit_current_2nd;
 	int siop_hv_charging_limit_current;
 #if defined(CONFIG_DUAL_BATTERY)
 	int siop_main_hv_charging_limit_current;
@@ -1320,6 +1344,8 @@ struct sec_battery_platform_data {
 	/* main + sub value should be over 110% */
 	unsigned int main_charging_rate;
 	unsigned int sub_charging_rate;
+	unsigned int dc_main_charging_rate;
+	unsigned int dc_sub_charging_rate;
 	unsigned int force_recharge_margin;
 	unsigned int max_main_charging_current;
 	unsigned int min_main_charging_current;
@@ -1343,12 +1369,17 @@ struct sec_battery_platform_data {
 	unsigned int tx_minduty_5V;
 	unsigned int tx_minduty_default;
 
+	unsigned int tx_uno_vout;
 	unsigned int tx_uno_iout;
+	unsigned int tx_gear_vout;
+	unsigned int tx_gear_vout_delay;
 	unsigned int tx_mfc_iout_gear;
 	unsigned int tx_mfc_iout_phone;
 	unsigned int tx_mfc_iout_phone_5v;
 	unsigned int tx_mfc_iout_lcd_on;
 
+	int batt_temp_adj_gap_inc;
+	int batt_temp_adj_gap_dec;
 	/* ADC type for each channel */
 	unsigned int adc_type[];
 };
@@ -1461,8 +1492,8 @@ static inline struct power_supply *get_power_supply_by_name(char *name)
 			ret = psy->desc->function##_property(psy, \
 				(enum power_supply_property) (property), &(value)); \
 			if (ret < 0) {	\
-				pr_err("%s: Fail to %s "#function" (%d=>%d)\n", \
-						__func__, name, (property), ret);	\
+				pr_err("%s: Fail to %s "#function" "#property" (%d)\n", \
+						__func__, name, ret);	\
 				value.intval = 0;	\
 			}	\
 		} else {	\

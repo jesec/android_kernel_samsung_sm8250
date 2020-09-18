@@ -327,6 +327,7 @@ enum dsi_cmd_set_type {
 	TX_MTP_WRITE_SYSFS,
 	TX_TEMP_DSC,
 	TX_DISPLAY_ON,
+	TX_FIRST_DISPLAY_ON,
 	TX_DISPLAY_OFF,
 	TX_BRIGHT_CTRL,
 	TX_MANUFACTURE_ID_READ_PRE,
@@ -341,6 +342,7 @@ enum dsi_cmd_set_type {
 	TX_MDNIE_ADB_TEST,
 	TX_SELF_GRID_ON,
 	TX_SELF_GRID_OFF,
+	TX_LPM_ON_PRE,
 	TX_LPM_ON,
 	TX_LPM_OFF,
 	TX_LPM_AOD_ON,
@@ -375,11 +377,16 @@ enum dsi_cmd_set_type {
 	TX_HMT_REVERSE,
 	TX_HMT_FORWARD,
 	TX_FFC,
+	TX_FFC_OFF,
+	TX_DYNAMIC_FFC_PRE_SET,
 	TX_DYNAMIC_FFC_SET,
 	TX_CABC_ON,
 	TX_CABC_OFF,
 	TX_TFT_PWM,
-	TX_GAMMA_MODE2,
+	TX_GAMMA_MODE2_NORMAL,
+	TX_GAMMA_MODE2_HBM,
+	TX_GAMMA_MODE2_HBM_60HZ,
+	TX_GAMMA_MODE2_HMT,
 	TX_BLIC_DIMMING,
 	TX_LDI_SET_VDD_OFFSET,
 	TX_LDI_SET_VDDM_OFFSET,
@@ -397,6 +404,10 @@ enum dsi_cmd_set_type {
 	TX_MCD_READ_RESISTANCE_PRE, /* For read real MCD R/L resistance */
 	TX_MCD_READ_RESISTANCE, /* For read real MCD R/L resistance */
 	TX_MCD_READ_RESISTANCE_POST, /* For read real MCD R/L resistance */
+	TX_BRIGHTDOT_ON,
+	TX_BRIGHTDOT_OFF,
+	TX_BRIGHTDOT_LF_ON,
+	TX_BRIGHTDOT_LF_OFF,
 	TX_GRADUAL_ACL,
 	TX_HW_CURSOR,
 	TX_DYNAMIC_HLPM_ENABLE,
@@ -603,6 +614,13 @@ enum dsi_cmd_set_type {
 	TX_FD_OFF,
 
 	TX_VRR,
+	TX_VRR_GM2_GAMMA_COMP,
+
+	TX_DFPS,
+
+	TX_ADJUST_TE,
+
+	TX_FG_ERR,
 
 	TX_CMD_END,
 
@@ -620,6 +638,11 @@ enum dsi_cmd_set_type {
 	RX_DDI_ID,
 	RX_CELL_ID,
 	RX_OCTA_ID,
+	RX_OCTA_ID1,
+	RX_OCTA_ID2,
+	RX_OCTA_ID3,
+	RX_OCTA_ID4,
+	RX_OCTA_ID5,
 	RX_RDDPM,
 	RX_MTP_READ_SYSFS,
 	RX_ELVSS,
@@ -634,6 +657,7 @@ enum dsi_cmd_set_type {
 	RX_LDI_DEBUG3, /* 0x0E : RDDSM */
 	RX_LDI_DEBUG4, /* 0x05 : DSI_ERR */
 	RX_LDI_DEBUG5, /* 0x0F : OTP loading error count */
+	RX_LDI_DEBUG6, /* 0xE9 : MIPI protocol error  */
 	RX_LDI_DEBUG_LOGBUF, /* 0x9C : command log buffer */
 	RX_LDI_DEBUG_PPS1, /* 0xA2 : PPS data (0x00 ~ 0x2C) */
 	RX_LDI_DEBUG_PPS2, /* 0xA2 : PPS data (0x2d ~ 0x58)*/
@@ -647,6 +671,10 @@ enum dsi_cmd_set_type {
 	RX_MCD_READ_RESISTANCE,  /* For read real MCD R/L resistance */
 	RX_FLASH_GAMMA,
 	RX_CCD_STATE,
+	RX_GRAYSPOT_RESTORE_VALUE,
+	RX_VBIAS_MTP,	/* HOP display */
+	RX_DDI_FW_ID,
+	RX_ALPM_SET_VALUE,
 	RX_CMD_END,
 
 	SS_DSI_CMD_SET_MAX,
@@ -803,6 +831,15 @@ struct dsi_mode_info {
 	struct msm_display_dsc_info *dsc;
 	struct msm_roi_caps roi_caps;
 #if defined(CONFIG_DISPLAY_SAMSUNG)
+	/* Identify VRR HS by drm_mode's name.
+	 * drm_mode's name is defined by dsi_mode->timing.sot_hs_mode parsed
+	 * from samsung,mdss-dsi-sot-hs-mode in panel dtsi file.
+	 * ex) drm_mode->name is "1080x2316x60x193345cmdHS" for HS mode.
+	 *     drm_mode->name is "1080x2316x60x193345cmdNS" for NS mode.
+	 * To use this feature, declare different porch between HS and NS modes,
+	 * in panel dtsi file.
+	 * Refer to ss_is_sot_hs_from_drm_mode().
+	 */
 	bool sot_hs_mode;
 #endif
 };
@@ -846,6 +883,7 @@ struct dsi_split_link_config {
  *                       true.
  * @ext_bridge_mode:     External bridge is connected.
  * @force_hs_clk_lane:   Send continuous clock to the panel.
+ * @phy_type:            DPHY/CPHY is enabled for this panel.
  * @dsi_split_link_config:  Split Link Configuration.
  * @byte_intf_clk_div:   Determines the factor for calculating byte intf clock.
  */
@@ -870,6 +908,7 @@ struct dsi_host_common_cfg {
 	bool append_tx_eot;
 	bool ext_bridge_mode;
 	bool force_hs_clk_lane;
+	enum dsi_phy_type phy_type;
 	struct dsi_split_link_config split_link;
 	u32 byte_intf_clk_div;
 };
@@ -899,7 +938,6 @@ struct dsi_video_engine_cfg {
 	bool hsa_lp11_en;
 	bool eof_bllp_lp11_en;
 	bool bllp_lp11_en;
-	bool force_clk_lane_hs;
 	enum dsi_video_traffic_mode traffic_mode;
 	u32 vc_id;
 	u32 dma_sched_line;

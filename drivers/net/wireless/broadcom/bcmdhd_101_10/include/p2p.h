@@ -1,7 +1,7 @@
 /*
  * Fundamental types and constants relating to WFA P2P (aka WiFi Direct)
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,7 +18,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #ifndef _P2P_H_
@@ -92,7 +92,7 @@ typedef struct wifi_p2p_ie wifi_p2p_ie_t;
 #define P2P_SEID_SESSION_INFO_RESP	29	/* Session Information Response */
 #define P2P_SEID_VNDR			221	/* Vendor-specific subelement */
 
-#define P2P_SE_VS_ID_SERVICES	0x1b /* xxx BRCM proprietary subel: L2 Services */
+#define P2P_SE_VS_ID_SERVICES	0x1b /* BRCM proprietary subel: L2 Services */
 
 /* WiFi P2P IE subelement: P2P Capability (capabilities info) */
 BWL_PRE_PACKED_STRUCT struct wifi_p2p_info_se_s {

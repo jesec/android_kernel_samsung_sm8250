@@ -3725,6 +3725,8 @@ void mmc_rescan(struct work_struct *work)
 	/* check if hw interrupt is triggered */
 	if (!host->trigger_card_event && !host->card) {
 		pr_err("%s: no detect irq, skipping mmc_rescan\n", mmc_hostname(host));
+		if (wake_lock_active(&host->detect_wake_lock))
+			wake_unlock(&host->detect_wake_lock);
 		return;
 	}
 
@@ -3739,10 +3741,6 @@ void mmc_rescan(struct work_struct *work)
 	if (!mmc_card_is_removable(host) && host->rescan_entered)
 		return;
 	host->rescan_entered = 1;
-
-	/* if there is a card present */
-	if (host->card)
-		extend_wakelock = true;
 
 	if (host->trigger_card_event && host->ops->card_event) {
 		mmc_claim_host(host);
@@ -3774,7 +3772,6 @@ void mmc_rescan(struct work_struct *work)
 	/* if there still is a card present, stop here */
 	if (host->bus_ops != NULL) {
 		mmc_bus_put(host);
-		extend_wakelock = false;
 		goto out;
 	}
 

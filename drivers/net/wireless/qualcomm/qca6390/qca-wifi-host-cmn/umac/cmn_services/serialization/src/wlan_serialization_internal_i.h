@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2019 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2017-2020 The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -128,9 +128,9 @@ wlan_serialization_dequeue_cmd(struct wlan_serialization_command *cmd,
  * timed-out command from active queue and move any pending command to active
  * queue of same cmd_type.
  *
- * Return: none
+ * Return: QDF_STATUS
  */
-void wlan_serialization_generic_timer_cb(void *arg);
+QDF_STATUS wlan_serialization_generic_timer_cb(void *arg);
 
 /**
  * wlan_serialization_find_and_start_timer() - to find and start the timer
@@ -205,6 +205,7 @@ wlan_serialization_find_and_cancel_cmd(
  * @vdev: pointer to vdev
  * @cmd_type: pointer to cmd_type
  * @queue_type: If active queue or pending queue
+ * @cmd_attr: Attrbute to indicate a blocking or a non-blocking command
  *
  * This API will decide from which queue, command needs to be cancelled
  * and pass that queue and other parameter required to cancel the command
@@ -219,5 +220,6 @@ wlan_serialization_cmd_cancel_handler(
 				      struct wlan_objmgr_pdev *pdev,
 				      struct wlan_objmgr_vdev *vdev,
 				      enum wlan_serialization_cmd_type cmd_type,
-				      uint8_t queue_type);
+				      uint8_t queue_type,
+				      enum wlan_ser_cmd_attr cmd_attr);
 #endif

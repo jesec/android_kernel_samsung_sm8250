@@ -823,10 +823,10 @@ static BLOCKING_NOTIFIER_HEAD(sec_input_notifier_list);
  * register universal notifier for any development issue.
  * ex) folder open/close, seucre touch enable/disable ...
  */
-void sec_input_register_notify(struct notifier_block *nb, notifier_fn_t notifier_call)
+void sec_input_register_notify(struct notifier_block *nb, notifier_fn_t notifier_call, int priority)
 {
 	nb->notifier_call = notifier_call;
-	nb->priority = 1;
+	nb->priority = priority;
 	blocking_notifier_chain_register(&sec_input_notifier_list, nb);
 }
 
@@ -844,13 +844,14 @@ void sec_input_unregister_notify(struct notifier_block *nb)
 /*
  * sec_input_notify
  * @nb: pointer of blocking notifier chain structure
- * data: notifier data is defined in sec_cmd.h(enum sec_input_notify)
+ * data: notifier type is defined in sec_cmd.h(enum sec_input_notify_t)
+ * v: structure data
  *
  * notifier call function
  */
-int sec_input_notify(struct notifier_block *nb, unsigned long data)
+int sec_input_notify(struct notifier_block *nb, unsigned long noti, void *v)
 {
-	return blocking_notifier_call_chain(&sec_input_notifier_list, data, NULL);
+	return blocking_notifier_call_chain(&sec_input_notifier_list, noti, v);
 }
 
 /*
@@ -861,7 +862,7 @@ int sec_input_notify(struct notifier_block *nb, unsigned long data)
  */
 int sec_input_self_request_notify(struct notifier_block *nb)
 {
-	return nb->notifier_call(nb, SEC_INPUT_CUSTOM_NOTIFIER_NOTHING, NULL);
+	return nb->notifier_call(nb, NOTIFIER_NOTHING, NULL);
 }
 
 MODULE_DESCRIPTION("Samsung factory command");

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2019 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2017-2020 The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -29,8 +29,9 @@
 #include <qdf_mc_timer.h>
 #include <wlan_cmn.h>
 #include <wlan_cmn_ieee80211.h>
-
-struct wlan_objmgr_psoc;
+#ifdef FEATURE_RUNTIME_PM
+#include <wlan_pmo_common_public_struct.h>
+#endif
 
 #define WLAN_TDLS_STA_MAX_NUM                        8
 #define WLAN_TDLS_STA_P_UAPSD_OFFCHAN_MAX_NUM        1
@@ -51,14 +52,21 @@ struct wlan_objmgr_psoc;
 
 #define AC_PRIORITY_NUM                 4
 
-/* default tdls serialize timeout is set to 4 secs */
-#define TDLS_DEFAULT_SERIALIZE_CMD_TIMEOUT 4000
+/* Default tdls serialize timeout is set to 4 (peer delete) + 1 secs */
+#ifdef FEATURE_RUNTIME_PM
+/* Add extra PMO_RESUME_TIMEOUT for runtime PM resume timeout */
+#define TDLS_DELETE_PEER_CMD_TIMEOUT (4000 + 1000 + PMO_RESUME_TIMEOUT)
+#else
+#define TDLS_DELETE_PEER_CMD_TIMEOUT (4000 + 1000)
+#endif
+
+/** Maximum time(ms) to wait for tdls del sta to complete **/
+#define WAIT_TIME_TDLS_DEL_STA  (TDLS_DELETE_PEER_CMD_TIMEOUT + 1000)
+
+#define TDLS_DEFAULT_SERIALIZE_CMD_TIMEOUT (4000)
 
 /** Maximum time(ms) to wait for tdls add sta to complete **/
 #define WAIT_TIME_TDLS_ADD_STA  (TDLS_DEFAULT_SERIALIZE_CMD_TIMEOUT + 1000)
-
-/** Maximum time(ms) to wait for tdls del sta to complete **/
-#define WAIT_TIME_TDLS_DEL_STA  (TDLS_DEFAULT_SERIALIZE_CMD_TIMEOUT + 1000)
 
 /** Maximum time(ms) to wait for Link Establish Req to complete **/
 #define WAIT_TIME_TDLS_LINK_ESTABLISH_REQ      1500
@@ -78,11 +86,7 @@ struct wlan_objmgr_psoc;
 #define TDLS_TEARDOWN_PEER_UNREACHABLE   25
 #define TDLS_TEARDOWN_PEER_UNSPEC_REASON 26
 
-#define INVALID_TDLS_PEER_ID 0xFF
 #define INVALID_TDLS_PEER_INDEX 0xFF
-
-#define TDLS_STA_INDEX_CHECK(sta_id) \
-	(((sta_id) >= 0) && ((sta_id) < 0xFF))
 
 /**
  * enum tdls_add_oper - add peer type
@@ -451,11 +455,13 @@ enum tdls_feature_bit {
  * @tdls_pre_off_chan_num: tdls off channel number
  * @tdls_pre_off_chan_bw: tdls off channel bandwidth
  * @tdls_peer_kickout_threshold: sta kickout threshold for tdls peer
+ * @tdls_discovery_wake_timeout: tdls discovery wake timeout
  * @delayed_trig_framint: delayed trigger frame interval
  * @tdls_vdev_nss_2g: tdls NSS setting for 2G band
  * @tdls_vdev_nss_5g: tdls NSS setting for 5G band
  * @tdls_buffer_sta_enable: tdls buffer station enable
  * @tdls_off_chan_enable: tdls off channel enable
+ * @tdls_off_chan_enable_orig: original tdls off channel enable
  * @tdls_wmm_mode_enable: tdls wmm mode enable
  * @tdls_external_control: tdls external control enable
  * @tdls_implicit_trigger_enable: tdls implicit trigger enable
@@ -481,11 +487,13 @@ struct tdls_user_config {
 	uint32_t tdls_pre_off_chan_num;
 	uint32_t tdls_pre_off_chan_bw;
 	uint32_t tdls_peer_kickout_threshold;
+	uint32_t tdls_discovery_wake_timeout;
 	uint32_t delayed_trig_framint;
 	uint8_t tdls_vdev_nss_2g;
 	uint8_t tdls_vdev_nss_5g;
 	bool tdls_buffer_sta_enable;
 	bool tdls_off_chan_enable;
+	bool tdls_off_chan_enable_orig;
 	bool tdls_wmm_mode_enable;
 	bool tdls_external_control;
 	bool tdls_implicit_trigger_enable;
@@ -537,7 +545,7 @@ struct tdls_tx_cnf {
 /**
  * struct tdls_rx_mgmt_frame - rx mgmt frame structure
  * @frame_len: frame length
- * @rx_chan: rx channel
+ * @rx_freq: rx freq
  * @vdev_id: vdev id
  * @frm_type: frame type
  * @rx_rssi: rx rssi
@@ -545,7 +553,7 @@ struct tdls_tx_cnf {
  */
 struct tdls_rx_mgmt_frame {
 	uint32_t frame_len;
-	uint32_t rx_chan;
+	uint32_t rx_freq;
 	uint32_t vdev_id;
 	uint32_t frm_type;
 	uint32_t rx_rssi;
@@ -591,18 +599,18 @@ typedef void (*tdls_evt_callback) (void *data,
 typedef QDF_STATUS (*tdls_register_peer_callback)(void *userdata,
 						  uint32_t vdev_id,
 						  const uint8_t *mac,
-						  uint16_t stat_id,
 						  uint8_t qos);
 
 /* This callback is used to deregister TDLS peer from the datapath */
-typedef QDF_STATUS (*tdls_deregister_peer_callback)(void *userdata,
-						    uint32_t vdev_id,
-						    uint8_t sta_id);
+typedef QDF_STATUS
+(*tdls_deregister_peer_callback)(void *userdata,
+				 uint32_t vdev_id,
+				 struct qdf_mac_addr *peer_mac);
 
 /* This callback is used to update datapath vdev flags */
 typedef QDF_STATUS
 (*tdls_dp_vdev_update_flags_callback)(void *cbk_data,
-				      uint8_t sta_id,
+				      uint8_t vdev_id,
 				      uint32_t vdev_param,
 				      bool is_link_up);
 
@@ -642,7 +650,6 @@ typedef void (*tdls_vdev_deinit_cb)(struct wlan_objmgr_vdev *vdev);
  * @tdls_evt_cb_data: tdls event data
  * @tdls_peer_context: userdata for register/deregister TDLS peer
  * @tdls_reg_peer: register tdls peer with datapath
- * @tdls_dereg_peer: deregister tdls peer from datapath
  * @tdls_dp_vdev_update: update vdev flags in datapath
  * @tdls_osif_init_cb: callback to initialize the tdls priv
  * @tdls_osif_deinit_cb: callback to deinitialize the tdls priv
@@ -663,7 +670,6 @@ struct tdls_start_params {
 	void *tdls_evt_cb_data;
 	void *tdls_peer_context;
 	tdls_register_peer_callback tdls_reg_peer;
-	tdls_deregister_peer_callback tdls_dereg_peer;
 	tdls_dp_vdev_update_flags_callback tdls_dp_vdev_update;
 	tdls_vdev_init_cb tdls_osif_init_cb;
 	tdls_vdev_deinit_cb tdls_osif_deinit_cb;
@@ -765,6 +771,7 @@ struct tdls_update_peer_params {
 	uint8_t supported_oper_classes_len;
 	uint8_t supported_oper_classes[WLAN_MAX_SUPP_OPER_CLASSES];
 	bool is_qos_wmm_sta;
+	bool is_pmf;
 };
 
 struct tdls_update_peer_request {
@@ -821,6 +828,7 @@ struct tdls_oper_config_force_peer_request {
  * @teardown_notification_ms: tdls teardown notification interval
  * @tdls_peer_kickout_threshold: tdls packets threshold
  *    for peer kickout operation
+ * @tdls_discovery_wake_timeout: tdls discovery wake timeout
  */
 struct tdls_info {
 	uint32_t vdev_id;
@@ -838,6 +846,7 @@ struct tdls_info {
 	uint32_t puapsd_rx_frame_threshold;
 	uint32_t teardown_notification_ms;
 	uint32_t tdls_peer_kickout_threshold;
+	uint32_t tdls_discovery_wake_timeout;
 };
 
 /**
@@ -869,9 +878,10 @@ struct tdls_ch_params {
  * @peer_chan: peer channel list
  * @peer_oper_classlen: peer operating class length
  * @peer_oper_class: peer operating class
- * @pref_off_channum: peer offchannel number
+ * @pref_off_channum: preferred offchannel number
  * @pref_off_chan_bandwidth: peer offchannel bandwidth
  * @opclass_for_prefoffchan: operating class for offchannel
+ * @pref_offchan_freq: preferred offchannel frequency
  */
 struct tdls_peer_params {
 	uint8_t is_peer_responder;
@@ -888,6 +898,7 @@ struct tdls_peer_params {
 	uint8_t pref_off_channum;
 	uint8_t pref_off_chan_bandwidth;
 	uint8_t opclass_for_prefoffchan;
+	uint32_t pref_offchan_freq;
 };
 
 /**
@@ -913,15 +924,17 @@ struct tdls_peer_update_state {
  * @tdls_off_ch: Target Off Channel
  * @oper_class: Operating class for target channel
  * @is_responder: Responder or initiator
+ * @tdls_off_chan_freq: Target Off Channel frequency
  */
 struct tdls_channel_switch_params {
 	uint32_t    vdev_id;
 	uint8_t     peer_mac_addr[QDF_MAC_ADDR_SIZE];
-	uint16_t    tdls_off_ch_bw_offset;
+	uint8_t    tdls_off_ch_bw_offset;
 	uint8_t     tdls_off_ch;
 	uint8_t     tdls_sw_mode;
 	uint8_t     oper_class;
 	uint8_t     is_responder;
+	uint32_t    tdls_off_chan_freq;
 };
 
 /**
@@ -1172,24 +1185,24 @@ enum legacy_result_code {
 
 /**
  * struct tdls_send_mgmt_rsp - TDLS Response struct PE --> TDLS module
- * @session_id: session id
+ * @vdev_id: vdev id
  * @status_code: status code as tSirResultCodes
  * @psoc: soc object
  */
 struct tdls_send_mgmt_rsp {
-	uint8_t session_id;
+	uint8_t vdev_id;
 	enum legacy_result_code status_code;
 	struct wlan_objmgr_psoc *psoc;
 };
 
 /**
  * struct tdls_mgmt_tx_completion_ind - TDLS TX completion PE --> TDLS module
- * @session_id: session id
+ * @vdev_id: vdev_id
  * @tx_complete_status: tx complete status
  * @psoc: soc object
  */
 struct tdls_mgmt_tx_completion_ind {
-	uint8_t session_id;      /* Session ID */
+	uint8_t vdev_id;
 	uint32_t tx_complete_status;
 	struct wlan_objmgr_psoc *psoc;
 };
@@ -1199,7 +1212,6 @@ struct tdls_mgmt_tx_completion_ind {
  * @status_code: status code as tSirResultCodes
  * @peermac: MAC address of the TDLS peer
  * @session_id: session id
- * @sta_id: sta id
  * @sta_type: sta type
  * @tdls_oper: add peer type
  * @psoc: soc object
@@ -1208,7 +1220,6 @@ struct tdls_add_sta_rsp {
 	QDF_STATUS status_code;
 	struct qdf_mac_addr peermac;
 	uint8_t session_id;
-	uint16_t sta_id;
 	uint16_t sta_type;
 	enum tdls_add_oper tdls_oper;
 	struct wlan_objmgr_psoc *psoc;
@@ -1219,14 +1230,12 @@ struct tdls_add_sta_rsp {
  * @session_id: session id
  * @status_code: status code as tSirResultCodes
  * @peermac: MAC address of the TDLS peer
- * @sta_id: sta id
  * @psoc: soc object
  */
 struct tdls_del_sta_rsp {
 	uint8_t session_id;
 	QDF_STATUS status_code;
 	struct qdf_mac_addr peermac;
-	uint16_t sta_id;
 	struct wlan_objmgr_psoc *psoc;
 };
 
@@ -1298,6 +1307,7 @@ struct tdls_add_sta_req {
 	struct vhtcap vht_cap;
 	uint8_t uapsd_queues;
 	uint8_t max_sp;
+	bool is_pmf;
 };
 
 /**

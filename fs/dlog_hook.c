@@ -23,6 +23,7 @@
 #include <linux/hashtable.h>
 #include <linux/ctype.h>
 #include <linux/module.h>
+#include <linux/magic.h>
 #include "mount.h"
 
 #define DEFINE_DLOG(_name) extern int fslog_##_name(const char *fmt, ...)

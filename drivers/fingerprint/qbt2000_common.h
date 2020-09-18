@@ -43,6 +43,7 @@
 #define IPC_MSG_ID_CBGE_REQUIRED 29
 #define IPC_MSG_ID_FINGER_ON_SENSOR 55
 #define IPC_MSG_ID_FINGER_OFF_SENSOR 56
+#define QBT2000_WAKELOCK_HOLD_TIME 500
 
 #define MINOR_NUM_FD 0
 #define MINOR_NUM_IPC 1
@@ -52,6 +53,26 @@
 
 #define FINGER_DOWN_GPIO_STATE 1
 #define FINGER_LEAVE_GPIO_STATE 0
+
+#if defined(CONFIG_EPEN_WACOM_W9020) || defined(CONFIG_EPEN_WACOM_W9021)
+#define QBT2000_AVOID_NOISE
+#define QBT2000_NOISE_BLOCK_DELAY 40
+
+enum qbt2000_noise_status {
+	QBT2000_NOISE_NO_CHARGING = 0,
+	QBT2000_NOISE_CHARGING = 1,
+	QBT2000_NOISE_MODE_CHANGED = 2,
+	QBT2000_NOISE_I2C_FAILED = 3,
+};
+
+enum qbt2000_noise_onoff {
+	QBT2000_NOISE_BLOCK = 0,
+	QBT2000_NOISE_UNBLOCK = 1,
+};
+
+extern int get_wacom_scan_info(bool mode);
+extern int set_wacom_ble_charge_mode(bool mode);
+#endif
 
 enum qbt2000_commands {
 	QBT2000_POWER_CONTROL = 21,
@@ -70,6 +91,8 @@ enum qbt2000_commands {
 	QBT2000_NOISE_REQUEST_START = 34,
 	QBT2000_NOISE_STATUS_GET = 35,
 	QBT2000_NOISE_I2C_RESULT_GET = 36,
+	QBT2000_NOISE_REQUEST_STATUS = 37,
+	QBT2000_GET_MODELINFO = 38,
 	QBT2000_IS_WHUB_CONNECTED = 105,
 };
 
@@ -92,17 +115,16 @@ enum qbt2000_fw_event {
 	FW_EVENT_CBGE_REQUIRED = 3,
 };
 
-struct qbt2000_wuhb_connected_status {
-	uint8_t is_wuhb_connected;
-};
-
 struct finger_detect_gpio {
 	int gpio;
 	int active_low;
 	int irq;
 	struct work_struct work;
+#ifdef QBT2000_AVOID_NOISE
+	struct work_struct work_noise_down;
+	struct delayed_work delayed_noise_down_work;
+#endif
 	int last_gpio_state;
-	int event_reported;
 };
 
 struct fw_event_desc {
@@ -132,7 +154,6 @@ struct qbt2000_drvdata {
 	DECLARE_KFIFO(ipc_events, struct fw_event_desc, MAX_FW_EVENTS);
 	wait_queue_head_t read_wait_queue_fd;
 	wait_queue_head_t read_wait_queue_ipc;
-	uint8_t is_wuhb_connected;
 
 	int ldogpio;
 	int spi_speed;
@@ -148,8 +169,20 @@ struct qbt2000_drvdata {
 	bool tz_mode;
 	bool wuhb_test_flag;
 	int wuhb_test_result;
-	int pm_lock;
-
+	const char *model_info;
+#ifdef QBT2000_AVOID_NOISE
+	int noise_status;
+	int noise_onoff_flag;
+	int ignored_cbge_count;
+	int noise_i2c_result;
+	int i2c_error_set;
+	int i2c_error_get;
+	int i2c_charging;
+	struct mutex fod_event_mutex;
+	struct work_struct work_ipc_noise_status;
+	struct work_struct work_noise_control;
+	struct delayed_work delayed_work_noiseon;
+#endif
 	struct pinctrl *p;
 	struct pinctrl_state *pins_poweron;
 	struct pinctrl_state *pins_poweroff;
@@ -165,10 +198,10 @@ struct qbt2000_drvdata {
 	unsigned int min_cpufreq_limit;
 };
 
-int fps_qbt2000_set_clk(struct qbt2000_drvdata *drvdata, bool onoff);
-int fps_qbt2000_set_cpu_speedup(struct qbt2000_drvdata *drvdata, int onoff);
-int fps_qbt2000_register_platform_variable(struct qbt2000_drvdata *drvdata);
-int fps_qbt2000_unregister_platform_variable(struct qbt2000_drvdata *drvdata);
+int qbt2000_set_clk(struct qbt2000_drvdata *drvdata, bool onoff);
+int qbt2000_set_cpu_speedup(struct qbt2000_drvdata *drvdata, int onoff);
+int qbt2000_register_platform_variable(struct qbt2000_drvdata *drvdata);
+int qbt2000_unregister_platform_variable(struct qbt2000_drvdata *drvdata);
 
 #ifdef CONFIG_BATTERY_SAMSUNG
 extern unsigned int lpcharge;

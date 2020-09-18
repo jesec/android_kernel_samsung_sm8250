@@ -938,6 +938,14 @@ config HUGEPAGE_POOL_ALLOW_ALL
 	help
 	  allow 2MB page for all to debug hugepage pool
 
+config MEMCG_HEIMDALL
+	bool "memcg optimization for heimdall"
+	depends on MEMCG
+	default y
+	help
+	  Enable this will change the memcg-related logics in the way Heimdall
+	  prefers.
+
 config HIGHATOMIC_PAGEBLOCKS
 	int "limit max number of highatomic pageblocks"
 	default 1
@@ -946,3 +954,4 @@ config HIGHATOMIC_PAGEBLOCKS
 	  highatomic pageblocks.
 	  This value limits max number of highatomic pageblocks.
 
+source "mm/sec_mm/Kconfig"

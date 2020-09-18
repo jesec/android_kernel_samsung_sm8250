@@ -168,7 +168,7 @@ static ssize_t show_last_dcvs(struct device *dev,
 {
 	ssize_t info_size = 0;
 	unsigned int reset_reason;
-	char *prefix[MAX_CLUSTER_NUM] = { "L3", "SC", "GC" };
+	char *prefix[MAX_CLUSTER_NUM] = { "L3", "SC", "GC", "GP"};
 	size_t i;
 
 	if (!phealth)
@@ -1295,7 +1295,7 @@ out:
 	kfree(p_rst_exinfo);
 
 	if (offset != 0)
-		seq_printf(m, buf);
+		seq_puts(m, buf);
 
 	return 0;
 }
@@ -1341,7 +1341,7 @@ static int __init sec_hw_param_init(void)
 	struct device *sec_hw_param_dev;
 	struct device *sec_reset_reason_dev;
 	int err_hw_param;
-	int err_errp_extra;
+	int err_errp_extra = 0;
 
 	dbg_partition_notifier_register(&sec_hw_param_dbg_part_notifier);
 

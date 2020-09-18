@@ -142,8 +142,8 @@ enum wl_cfgp2p_status {
 #define CFGP2P_ERR(args)									\
 	do {										\
 		if (wl_dbg_level & WL_DBG_ERR) {				\
-			printk(KERN_INFO CFGP2P_ERROR_TEXT "%s : ", __func__);	\
-			printk args;						\
+			pr_info(CFGP2P_ERROR_TEXT "%s : ", __func__);	\
+			pr_cont args;					\
 			DHD_LOG_DUMP_WRITE("[%s] %s: ",	\
 			dhd_log_dump_get_timestamp(), __func__);	\
 			DHD_LOG_DUMP_WRITE args;	\
@@ -152,8 +152,8 @@ enum wl_cfgp2p_status {
 #define	CFGP2P_INFO(args)									\
 	do {										\
 		if (wl_dbg_level & WL_DBG_INFO) {				\
-			printk(KERN_INFO "CFGP2P-INFO) %s : ", __func__);	\
-			printk args;						\
+			pr_info("CFGP2P-INFO) %s : ", __func__);	\
+			pr_cont args;					\
 			DHD_LOG_DUMP_WRITE("[%s] %s: ",	\
 			dhd_log_dump_get_timestamp(), __func__);	\
 			DHD_LOG_DUMP_WRITE args;	\
@@ -163,7 +163,7 @@ enum wl_cfgp2p_status {
 	do {									\
 		if (wl_dbg_level & WL_DBG_P2P_ACTION) {			\
 			printk(KERN_DEBUG "CFGP2P-ACTION) %s :", __func__);	\
-			printk args;							\
+			pr_cont args;					\
 			DHD_LOG_DUMP_WRITE("[%s] %s: ",	\
 			dhd_log_dump_get_timestamp(), __func__);	\
 			DHD_LOG_DUMP_WRITE args;	\
@@ -173,22 +173,22 @@ enum wl_cfgp2p_status {
 #define CFGP2P_ERR(args)									\
 	do {										\
 		if (wl_dbg_level & WL_DBG_ERR) {				\
-			printk(KERN_INFO CFGP2P_ERROR_TEXT "%s : ", __func__);	\
-			printk args;						\
+			pr_info(CFGP2P_ERROR_TEXT "%s : ", __func__);	\
+			pr_cont args;					\
 		}									\
 	} while (0)
 #define	CFGP2P_INFO(args)									\
 	do {										\
 		if (wl_dbg_level & WL_DBG_INFO) {				\
-			printk(KERN_INFO "CFGP2P-INFO) %s : ", __func__);	\
-			printk args;						\
+			pr_info("CFGP2P-INFO) %s : ", __func__);	\
+			pr_cont args;					\
 		}									\
 	} while (0)
 #define	CFGP2P_ACTION(args)								\
 	do {									\
 		if (wl_dbg_level & WL_DBG_P2P_ACTION) {			\
 			printk(KERN_DEBUG "CFGP2P-ACTION) %s :", __func__);	\
-			printk args;							\
+			pr_cont args;					\
 		}									\
 	} while (0)
 #endif /* DHD_LOG_DUMP */
@@ -197,7 +197,7 @@ enum wl_cfgp2p_status {
 	do {									\
 		if (wl_dbg_level & WL_DBG_DBG) {			\
 			printk(KERN_DEBUG "CFGP2P-DEBUG) %s :", __func__);	\
-			printk args;							\
+			pr_cont args;					\
 		}									\
 	} while (0)
 

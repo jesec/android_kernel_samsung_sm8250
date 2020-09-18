@@ -40,6 +40,7 @@
 #include <linux/reset.h>
 #include <linux/clk/qcom.h>
 #include <linux/sec_class.h>
+#include <linux/usb_notify.h>
 
 #include "power.h"
 #include "core.h"
@@ -1953,8 +1954,28 @@ int dwc3_set_vbus_current(int state)
 static void dwc3_msm_set_vbus_current_work(struct work_struct *w)
 {
 	struct dwc3 *dwc = container_of(w, struct dwc3,	set_vbus_current_work);
+	struct otg_notify *o_notify = get_otg_notify();
 
+	pr_info("%s: dwc->vbus_current = %d\n", __func__, dwc->vbus_current);
+
+	switch (dwc->vbus_current) {
+	case USB_CURRENT_SUSPENDED:
+	/* set vbus current for suspend state is called in usb_notify. */
+		send_otg_notify(o_notify, NOTIFY_EVENT_USBD_SUSPENDED, 1);
+		goto skip;
+	case USB_CURRENT_UNCONFIGURED:
+		send_otg_notify(o_notify, NOTIFY_EVENT_USBD_UNCONFIGURED, 1);
+		break;
+	case USB_CURRENT_HIGH_SPEED:
+	case USB_CURRENT_SUPER_SPEED:
+		send_otg_notify(o_notify, NOTIFY_EVENT_USBD_CONFIGURED, 1);
+		break;
+	default:
+		break;
+	}
 	dwc3_set_vbus_current(dwc->vbus_current);
+skip:
+	return;
 }
 #endif
 
@@ -3111,7 +3132,7 @@ static void dwc3_resume_work(struct work_struct *w)
 	dbg_event(0xFF, "cc_state", mdwc->typec_orientation);
 
 	dwc->maximum_speed = (speed_setting == 1) ? USB_SPEED_HIGH : dwc->max_hw_supp_speed;
-	dev_info(mdwc->dev, "%s : max_speed = %d, typec_orientation = %d\n", 
+	dev_info(mdwc->dev, "%s : max_speed = %d, typec_orientation = %d\n",
 			__func__, dwc->maximum_speed, mdwc->typec_orientation);
 	if (mdwc->dwc3_msm_current_speed_mode != USB_SPEED_UNKNOWN &&
 			dwc->maximum_speed != mdwc->dwc3_msm_current_speed_mode) {
@@ -3919,7 +3940,7 @@ static int dwc3_msm_probe(struct platform_device *pdev)
 		pr_err("%s: cc_dir gpio not specified\n", __func__);
 	}
 	else {
-		gpio_direction_input(mdwc->cc_dir);	
+		gpio_direction_input(mdwc->cc_dir);
 		pr_debug("%s : mdwc->cc_dir: %d\n", __func__, mdwc->cc_dir);
 	}
 
@@ -4237,7 +4258,7 @@ static int dwc3_msm_probe(struct platform_device *pdev)
 	device_create_file(&pdev->dev, &dev_attr_speed);
 	device_create_file(&pdev->dev, &dev_attr_usb_compliance_mode);
 	device_create_file(&pdev->dev, &dev_attr_bus_vote);
-	
+
 	mdwc->dwc3_msm_probe_done = 1;
 	mdwc->dwc3_msm_current_speed_mode = USB_SPEED_UNKNOWN;
 

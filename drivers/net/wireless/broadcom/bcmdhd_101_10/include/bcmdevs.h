@@ -1,7 +1,7 @@
 /*
  * Broadcom device-specific manifest constants.
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,7 +18,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #ifndef	_BCMDEVS_H
@@ -52,7 +52,6 @@
 #define BCM_DNGL_BL_PID_4328	0xbd12
 #define BCM_DNGL_BL_PID_4332	0xbd18
 #define BCM_DNGL_BL_PID_4360	0xbd1d
-#define BCM_DNGL_BL_PID_4349	0xbd25
 
 #define BCM_DNGL_BDC_PID	0x0bdc
 #define BCM_DNGL_JTAG_PID	0x4a44
@@ -109,15 +108,7 @@
 #define BCM43602_D11AC_ID	0x43ba		/* ac dualband PCI devid SPROM programmed */
 #define BCM43602_D11AC2G_ID	0x43bb		/* 43602 802.11ac 2.4G device */
 #define BCM43602_D11AC5G_ID	0x43bc		/* 43602 802.11ac 5G device */
-#define BCM4349_D11AC_ID	0x4349		/* 4349 802.11ac dualband device */
-#define BCM4349_D11AC2G_ID	0x43dd		/* 4349 802.11ac 2.4G device */
-#define BCM4349_D11AC5G_ID	0x43de		/* 4349 802.11ac 5G device */
-#define BCM4355_D11AC_ID	0x43dc		/* 4355 802.11ac dualband device */
-#define BCM4355_D11AC2G_ID	0x43fc		/* 4355 802.11ac 2.4G device */
-#define BCM4355_D11AC5G_ID	0x43fd		/* 4355 802.11ac 5G device */
-#define BCM4359_D11AC_ID	0x43ef		/* 4359 802.11ac dualband device */
-#define BCM4359_D11AC2G_ID	0x43fe		/* 4359 802.11ac 2.4G device */
-#define BCM4359_D11AC5G_ID	0x43ff		/* 4359 802.11ac 5G device */
+
 #define BCM43012_D11N_ID	0xA804		/* 43012 802.11n dualband device */
 #define BCM43012_D11N2G_ID	0xA805		/* 43012 802.11n 2.4G device */
 #define BCM43012_D11N5G_ID	0xA806		/* 43012 802.11n 5G device */
@@ -141,6 +132,7 @@
 #define BCM4388_D11AX_ID	0x4434		/* 4388 802.11ax dualband device */
 #define BCM4385_D11AX_ID	0x4442		/* 4385 802.11ax dualband device */
 #define BCM4389_D11AX_ID	0x4441		/* 4389 802.11ax dualband device */
+#define BCM4397_D11AX_ID	0x4443		/* 4397 802.11ax dualband device */
 
 #define BCM4362_D11AX_ID	0x4490		/* 4362 802.11ax dualband device */
 #define BCM4362_D11AX2G_ID	0x4491		/* 4362 802.11ax 2.4G device */
@@ -186,18 +178,6 @@
 #define	BCM4369_CHIP_ID		0x4369          /* 4369 chipcommon chipid */
 #define BCM4375_CHIP_ID		0x4375          /* 4375 chipcommon chipid */
 #define BCM4376_CHIP_ID		0x4376          /* 4376 chipcommon chipid */
-#define BCM4349_CHIP_ID		0x4349		/* 4349 chipcommon chipid */
-#define BCM4355_CHIP_ID		0x4355		/* 4355 chipcommon chipid */
-#define BCM4359_CHIP_ID		0x4359		/* 4359 chipcommon chipid */
-#define BCM4349_CHIP(chipid)	((CHIPID(chipid) == BCM4349_CHIP_ID) || \
-				(CHIPID(chipid) == BCM4355_CHIP_ID) || \
-				(CHIPID(chipid) == BCM4359_CHIP_ID))
-
-#define BCM4355_CHIP(chipid)	(CHIPID(chipid) == BCM4355_CHIP_ID)
-
-#define BCM4349_CHIP_GRPID		BCM4349_CHIP_ID: \
-					case BCM4355_CHIP_ID: \
-					case BCM4359_CHIP_ID
 
 #define BCM4368_CHIP_ID		0x4368		/* 4368 chipcommon chipid */
 #define BCM4368_CHIP(chipid)	(CHIPID(chipid) == BCM4368_CHIP_ID)
@@ -244,6 +224,9 @@
 #define BCM4389_CHIP(chipid)	(CHIPID(chipid) == BCM4389_CHIP_ID)
 #define BCM4389_CHIP_GRPID	BCM4389_CHIP_ID
 
+#define BCM4397_CHIP(chipid)	(CHIPID(chipid) == BCM4397_CHIP_ID)
+#define BCM4397_CHIP_GRPID	BCM4397_CHIP_ID
+
 #define BCM43602_CHIP_ID	0xaa52		/* 43602 chipcommon chipid */
 #define BCM43462_CHIP_ID	0xa9c6		/* 43462 chipcommon chipid */
 #define BCM43522_CHIP_ID	0xaa02		/* 43522 chipcommon chipid */
@@ -271,7 +254,7 @@
     http://confluence.broadcom.com/display/WLAN/BCM43012+Variants%2Cpackage%2Cballmap%2Cfloorplan#
     BCM43012Variants,package,ballmap,floorplan-PackageOptions
 */
-#define BCM943012_WLCSPOLY_PKG_ID	0x0	/* WLCSP Olympic package */
+#define BCM943012_WLCSPOLY_PKG_ID	0x0	/* WLCSP Oly package */
 #define BCM943012_FCBGA_PKG_ID		0x3	/* FCBGA debug package */
 #define BCM943012_WLCSPWE_PKG_ID	0x1	/* WLCSP WE package */
 #define BCM943012_FCBGAWE_PKG_ID	0x5	/* FCBGA WE package */

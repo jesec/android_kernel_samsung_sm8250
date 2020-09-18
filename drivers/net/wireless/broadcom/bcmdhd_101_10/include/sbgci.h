@@ -1,7 +1,7 @@
 /*
  * SiliconBackplane GCI core hardware definitions
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,7 +18,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #ifndef _SBGCI_H
@@ -269,6 +269,26 @@ typedef volatile struct {
 	uint32 lhl_lp_dn_ctl5_adr;			/* 0xeec */
 	uint32 lhl_top_pwrdn3_ctl_adr;			/* 0xEF0 */
 	uint32 lhl_top_pwrup3_ctl_adr;			/* 0xEF4 */
+	uint32 PAD[PADSZ(0xef8, 0xf00)];
+	uint32 error_status;				/* 0xF04 */
+	uint32 error_parity;				/* 0xF08 */
+	uint32 PAD;					/* 0xF0C */
+	uint32 msg_buf_0[8];				/* 0xF10 - 0xF2C */
+	uint32 PAD[PADSZ(0xf30, 0xf3c)];		/* 0xF30 - 0xF3C */
+	uint32 CTRL_REG0;				/* 0xF40 */
+	uint32 CTRL_REG1;				/* 0xF44 */
+	uint32 chipID;					/* 0xF48 */
+	uint32 PAD[PADSZ(0xf4c, 0xf5c)];		/* 0xF4C - 0xF5C */
+	uint32 wl_event_rdAddress;			/* 0xF60 */
+	uint32 bt_event_rdAddress;			/* 0xF64 */
+	uint32 interrupt_Address;			/* 0xF68 */
+	uint32 PAD[PADSZ(0xf6c, 0xfdc)];		/* 0xF6C - 0xFDC */
+	uint32 spmi_shared_reg_status_intMask_adr;	/* 0xFE0 */
+	uint32 spmi_shared_reg_status_intStatus_adr;	/* 0xFE4 */
+	uint32 spmi_shared_reg_status_wakeMask_adr;	/* 0xFE8 */
+	uint32 spmi_shared_event_map_idx_adr;		/* 0xFEC */
+	uint32 spmi_shared_event_map_data_adr;		/* 0xFF0 */
+	uint32 spmi_coex_event_gpr_status_adr;		/* 0xFF4 */
 } gciregs_t;
 
 #define	GCI_CAP0_REV_MASK	0x000000ff

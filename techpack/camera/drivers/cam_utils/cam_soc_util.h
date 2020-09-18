@@ -30,7 +30,7 @@
 #define CAM_SOC_MAX_BASE            CAM_SOC_MAX_BLOCK
 
 /* maximum number of device regulator */
-#define CAM_SOC_MAX_REGULATOR       10
+#define CAM_SOC_MAX_REGULATOR       11
 
 /* maximum number of device clock */
 #define CAM_SOC_MAX_CLK             32
@@ -649,4 +649,10 @@ int cam_soc_util_reg_dump_to_cmd_buf(void *ctx,
 	struct cam_cmd_buf_desc *cmd_desc, uint64_t req_id,
 	cam_soc_util_regspace_data_cb reg_data_cb);
 
+#if defined(CONFIG_SAMSUNG_ACTUATOR_PREVENT_SHAKING)
+int cam_soc_util_force_regulator_disable(struct regulator *rgltr,
+	const char *rgltr_name, uint32_t rgltr_min_volt,
+	uint32_t rgltr_max_volt, uint32_t rgltr_op_mode,
+	uint32_t rgltr_delay_ms);
+#endif
 #endif /* _CAM_SOC_UTIL_H_ */

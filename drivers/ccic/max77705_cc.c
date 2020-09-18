@@ -344,10 +344,11 @@ static irqreturn_t max77705_vconnsc_irq(int irq, void *data)
 {
 	struct max77705_usbc_platform_data *usbc_data = data;
 	struct max77705_cc_data *cc_data = usbc_data->cc_data;
-	u8 connstat = 0;
+	u8 connstat = 0, usbc_status2 = 0;
 
 	pr_debug("%s: IRQ(%d)_IN\n", __func__, irq);
 	max77705_read_reg(usbc_data->muic, REG_CC_STATUS1, &cc_data->cc_status1);
+	max77705_read_reg(usbc_data->muic, REG_USBC_STATUS2, &usbc_status2);
 	connstat = (cc_data->cc_status1 & BIT_ConnStat)
 				>> FFS(BIT_ConnStat);
 
@@ -368,7 +369,7 @@ static irqreturn_t max77705_vconnsc_irq(int irq, void *data)
 		break;
 
 	case WATER:
-		msg_maxim("== WATER DETECT ==");
+		msg_maxim("== WATER DETECT == sysmsg[0x%x]", usbc_status2);
 
 		if (usbc_data->current_connstat != WATER) {
 			usbc_data->prev_connstat = usbc_data->current_connstat;

@@ -20,7 +20,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
+ * <<Broadcom-WL-IPTag/Dual:>>
  *
  * -----------------------------------------------------------------------------
  *
@@ -105,6 +105,7 @@ typedef BWL_PRE_PACKED_STRUCT struct bcm_dngl_healthcheck {
 #define HEALTH_CHECK_PCIEDEV_LINKSPEED_FALLBACK_IND	0x7
 #define HEALTH_CHECK_PCIEDEV_DSACK_STALL_IND	0x8
 #define HEALTH_CHECK_PCIEDEV_FLOWRING_IND	0x9
+#define HEALTH_CHECK_PCIEDEV_HW_ASSERT_LONG_IND 0xA
 
 #define HC_PCIEDEV_CONFIG_REGLIST_MAX	25
 typedef BWL_PRE_PACKED_STRUCT struct bcm_dngl_pcie_hc {

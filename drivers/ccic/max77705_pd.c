@@ -514,6 +514,7 @@ void max77705_vbus_turn_on_ctrl(struct max77705_usbc_platform_data *usbc_data, b
 	struct otg_notify *o_notify = get_otg_notify();
 	bool must_block_host = 0;
 	bool unsupport_host = 0;
+	static int reserve_booster = 0;
 	if (o_notify)
 		must_block_host = is_blocked(o_notify, NOTIFY_BLOCK_TYPE_HOST);
 
@@ -565,6 +566,20 @@ void max77705_vbus_turn_on_ctrl(struct max77705_usbc_platform_data *usbc_data, b
 #endif
 
 	pr_info("%s : enable=%d\n", __func__, enable);
+
+	if (o_notify && o_notify->booting_delay_sec && enable) {
+		pr_info("%s %d, is booting_delay_sec. skip to control booster\n",
+			__func__, __LINE__);
+		reserve_booster = 1;
+		send_otg_notify(o_notify, NOTIFY_EVENT_RESERVE_BOOSTER, 1);
+		return;
+	}
+	if (!enable) {
+		if (reserve_booster) {
+			reserve_booster = 0;
+			send_otg_notify(o_notify, NOTIFY_EVENT_RESERVE_BOOSTER, 0);
+		}
+	}
 
 	psy_otg = power_supply_get_by_name("otg");
 	if (psy_otg) {
@@ -632,7 +647,7 @@ void max77705_pdo_list(struct max77705_usbc_platform_data *usbc_data, unsigned c
 	}
 
 	if (usbc_data->pd_data->pdo_list && do_power_nego) {
-		pr_info("%s : PDO list is changed, so power negotiation is need\n",
+		pr_info("%s : PDO list is changed, so power negotiation is need (%d)\n",
 			__func__, pd_noti.sink_status.selected_pdo_num);
 		pd_noti.sink_status.selected_pdo_num = 0;
 		pd_noti.event = PDIC_NOTIFY_EVENT_PD_SINK_CAP;
@@ -689,6 +704,8 @@ void max77705_current_pdo(struct max77705_usbc_platform_data *usbc_data, unsigne
 			pPower_list->max_voltage = pdo_obj.BITS_pdo_fixed.voltage * UNIT_FOR_VOLTAGE;
 			pPower_list->min_voltage = 0;
 			pPower_list->max_current = pdo_obj.BITS_pdo_fixed.max_current * UNIT_FOR_CURRENT;
+			pPower_list->comm_capable = pdo_obj.BITS_pdo_fixed.usb_communications_capable;
+			pPower_list->suspend = pdo_obj.BITS_pdo_fixed.usb_suspend_supported;			
 			if (pPower_list->max_voltage > AVAILABLE_VOLTAGE)
 				pPower_list->accept = false;
 			else
@@ -721,13 +738,14 @@ void max77705_current_pdo(struct max77705_usbc_platform_data *usbc_data, unsigne
 		do_power_nego = true;
 
 	pd_noti.sink_status.available_pdo_num = available_pdo_num;
-	pr_info("%s : current_pdo_num(%d), available_pdo_num(%d/%d)\n", __func__,
-		pd_noti.sink_status.current_pdo_num, pd_noti.sink_status.available_pdo_num, num_of_pdo);
+	pr_info("%s : current_pdo_num(%d), available_pdo_num(%d/%d) comm(%d) suspend(%d)\n", __func__,
+		pd_noti.sink_status.current_pdo_num, pd_noti.sink_status.available_pdo_num, num_of_pdo,
+		pd_noti.sink_status.power_list[sel_pdo_pos].comm_capable, pd_noti.sink_status.power_list[sel_pdo_pos].suspend);
 
 	pd_noti.event = PDIC_NOTIFY_EVENT_PD_SINK;
 
 	if (usbc_data->pd_data->pdo_list && do_power_nego) {
-		pr_info("%s : PDO list is changed, so power negotiation is need\n",
+		pr_info("%s : PDO list is changed, so power negotiation is need (%d)\n",
 			__func__, pd_noti.sink_status.selected_pdo_num);
 		pd_noti.sink_status.selected_pdo_num = 0;
 		pd_noti.event = PDIC_NOTIFY_EVENT_PD_SINK_CAP;
@@ -816,7 +834,7 @@ void max77705_current_pdo(struct max77705_usbc_platform_data *usbc_data, unsigne
 	}
 
 	if (usbc_data->pd_data->pdo_list && do_power_nego) {
-		pr_info("%s : PDO list is changed, so power negotiation is need\n",
+		pr_info("%s : PDO list is changed, so power negotiation is need (%d)\n",
 			__func__, pd_noti.sink_status.selected_pdo_num);
 		pd_noti.sink_status.selected_pdo_num = 0;
 		pd_noti.event = PDIC_NOTIFY_EVENT_PD_SINK_CAP;
@@ -1230,9 +1248,6 @@ static irqreturn_t max77705_psrdy_irq(int irq, void *data)
 #if defined(CONFIG_TYPEC)
 	enum typec_pwr_opmode mode = TYPEC_PWR_MODE_USB;
 #endif
-#ifdef CONFIG_USB_NOTIFY_PROC_LOG
-	int pd_state = 0;
-#endif
 
 	msg_maxim("IN");
 	max77705_read_reg(usbc_data->muic, REG_PD_STATUS1, &usbc_data->pd_status1);
@@ -1264,10 +1279,6 @@ static irqreturn_t max77705_psrdy_irq(int irq, void *data)
 	if (usbc_data->pd_data->cc_status == CC_SNK && psrdy_received) {
 		max77705_check_pdo(usbc_data);
 		usbc_data->pd_data->psrdy_received = true;
-#ifdef CONFIG_USB_NOTIFY_PROC_LOG
-		pd_state = max77705_State_PE_SNK_Ready;
-		store_usblog_notify(NOTIFY_FUNCSTATE, (void *)&pd_state, NULL);
-#endif
 	}
 
 	if (psrdy_received && usbc_data->pd_data->cc_status != CC_NO_CONN) {

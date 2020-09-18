@@ -1,7 +1,7 @@
 /*
  * Broadcom Dongle Host Driver (DHD), RTT
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,7 +18,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 #include <typedefs.h>
 #include <osl.h>
@@ -186,7 +186,7 @@ static int
 dhd_rtt_convert_results_to_host_v2(rtt_result_t *rtt_result, const uint8 *p_data,
 	uint16 tlvid, uint16 len);
 
-static wifi_rate_t
+static wifi_rate_v1
 dhd_rtt_convert_rate_to_host(uint32 ratespec);
 
 #if defined(WL_CFG80211) && defined(RTT_DEBUG)
@@ -250,6 +250,7 @@ static const ftm_strmap_entry_t ftm_event_type_loginfo[] = {
 	{ WL_PROXD_EVENT_RANGING,		"ranging " },
 	{ WL_PROXD_EVENT_COLLECT,		"collect" },
 	{ WL_PROXD_EVENT_MF_STATS,		"mf_stats" },
+	{ WL_PROXD_EVENT_START_WAIT,		"start-wait"}
 };
 
 /*
@@ -356,12 +357,12 @@ rate_mcs2rate(uint mcs, uint nss, uint bw, int sgi)
 
 		/* find the number of complex numbers per symbol */
 		if (RSPEC_IS20MHZ(bw)) {
-			/* XXX 4360 TODO: eliminate Phy const in rspec bw, then just compare
+			/* 4360 TODO: eliminate Phy const in rspec bw, then just compare
 			 * as in 80 and 160 case below instead of RSPEC_IS20MHZ(bw)
 			 */
 			rate = Nsd_20MHz;
 		} else if (RSPEC_IS40MHZ(bw)) {
-			/* XXX 4360 TODO: eliminate Phy const in rspec bw, then just compare
+			/* 4360 TODO: eliminate Phy const in rspec bw, then just compare
 			 * as in 80 and 160 case below instead of RSPEC_IS40MHZ(bw)
 			 */
 			rate = Nsd_40MHz;
@@ -1042,7 +1043,7 @@ rtt_unpack_xtlv_cbfn(void *ctx, const uint8 *p_data, uint16 tlvid, uint16 len)
 		break;
 	case WL_PROXD_TLV_ID_COLLECT_DATA:
 		DHD_RTT(("WL_PROXD_TLV_ID_COLLECT_DATA\n"));
-		/* XXX: we do not have handle to wl in the context of
+		/* we do not have handle to wl in the context of
 		 * xtlv callback without changing the xtlv API.
 		 */
 		rtt_collect_event_data_display(
@@ -1297,15 +1298,6 @@ dhd_rtt_nan_start_session(dhd_pub_t *dhd, rtt_target_info_t *rtt_target)
 		goto done;
 	}
 
-	/* check if new ranging session allowed */
-	if (!wl_cfgnan_ranging_allowed(cfg)) {
-		/* responder should be in progress because initiator requests are
-		* queued in DHD. Since initiator has more proef cancel responder
-		* sessions
-		*/
-		wl_cfgnan_cancel_rng_responders(dev, cfg);
-	}
-
 	ranging_inst = wl_cfgnan_get_ranging_inst(cfg,
 			&rtt_target->addr, NAN_RANGING_ROLE_INITIATOR);
 	if (!ranging_inst) {
@@ -1409,7 +1401,7 @@ dhd_rtt_get_version(dhd_pub_t *dhd, int *out_version)
 #endif /* WL_CFG80211 */
 
 chanspec_t
-dhd_rtt_convert_to_chspec(wifi_channel_info_t channel)
+dhd_rtt_convert_to_chspec(wifi_channel_info channel)
 {
 	int bw;
 	chanspec_t chanspec = 0;
@@ -1485,6 +1477,8 @@ dhd_rtt_set_cfg(dhd_pub_t *dhd, rtt_config_params_t *params)
 			NULL, RTT_GEO_SUSPN_HOST_DIR_RTT_TRIG, 0)) != BCME_OK) {
 			goto exit;
 		}
+		/* cancel ongoing nan-rtt responder sessions */
+		wl_cfgnan_cancel_rng_responders(dev);
 #endif /* WL_NAN */
 	} else {
 		err = BCME_BADARG;
@@ -1859,19 +1853,20 @@ dhd_rtt_remove_geofence_target(dhd_pub_t *dhd, struct ether_addr *peer_addr)
 	}
 
 	/* left shift all the valid entries, as we dont keep holes in list */
-	for (j = index; (j+1) < geofence_target_cnt; j++) {
-		if (geofence_target_info[j].valid == TRUE) {
-			/*
-			 * src and dest buffer len same, pointers of same DS
-			 * statically allocated
-			 */
+	for (j = index; j < geofence_target_cnt; j++) {
+		/*
+		 * src and dest buffer len same, pointers of same DS
+		 * statically allocated
+		 */
+		if ((j + 1) < geofence_target_cnt) {
 			(void)memcpy_s(&geofence_target_info[j], sizeof(geofence_target_info[j]),
-				&geofence_target_info[j + 1],
-				sizeof(geofence_target_info[j + 1]));
+				&geofence_target_info[j + 1], sizeof(geofence_target_info[j + 1]));
 		} else {
-			break;
+			/* reset the last target info */
+			bzero(&geofence_target_info[j], sizeof(rtt_geofence_target_info_t));
 		}
 	}
+
 	rtt_status->geofence_cfg.geofence_target_cnt--;
 	if ((rtt_status->geofence_cfg.geofence_target_cnt == 0) ||
 		(index == rtt_status->geofence_cfg.cur_target_idx)) {
@@ -1946,6 +1941,9 @@ dhd_rtt_sched_geofencing_target(dhd_pub_t *dhd)
 		rtt_invalid_reason = dhd_rtt_invalid_states(dev,
 				&geofence_target_info->peer_addr);
 		if (rtt_invalid_reason != RTT_STATE_VALID) {
+			/* TODO: see if we can move to next target..
+			* i.e, if invalid state is due to DP with same peer
+			*/
 			ret = BCME_BUSY;
 			DHD_RTT_ERR(("DRV State is not valid for RTT, "
 				"invalid_state = %d\n", rtt_invalid_reason));
@@ -2748,12 +2746,12 @@ dhd_rtt_unregister_noti_callback(dhd_pub_t *dhd, dhd_rtt_compl_noti_fn noti_fn)
 	return err;
 }
 
-static wifi_rate_t
+static wifi_rate_v1
 dhd_rtt_convert_rate_to_host(uint32 rspec)
 {
-	wifi_rate_t host_rate;
+	wifi_rate_v1 host_rate;
 	uint32 bandwidth;
-	memset(&host_rate, 0, sizeof(wifi_rate_t));
+	memset(&host_rate, 0, sizeof(wifi_rate_v1));
 	if (RSPEC_ISLEGACY(rspec)) {
 		host_rate.preamble = 0;
 	} else if (RSPEC_ISHT(rspec)) {
@@ -3591,6 +3589,11 @@ dhd_rtt_handle_nan_burst_end(dhd_pub_t *dhd, struct ether_addr *peer_addr,
 		goto exit;
 	}
 
+	if (rng_inst->range_role == NAN_RANGING_ROLE_RESPONDER) {
+		ret = BCME_OK;
+		goto exit;
+	}
+
 	bzero(&nan_rtt_res, sizeof(nan_rtt_res));
 	ret = dhd_rtt_parse_result_event(proxd_ev_data, tlvs_len, &nan_rtt_res);
 	if (ret != BCME_OK) {
@@ -3642,7 +3645,10 @@ dhd_rtt_handle_nan_burst_end(dhd_pub_t *dhd, struct ether_addr *peer_addr,
 exit:
 	mutex_unlock(&rtt_status->rtt_mutex);
 	if (ret == BCME_OK) {
-		dhd_rtt_nan_range_report(cfg, rtt_result, geofence_rtt);
+		/* Nothing to do for Responder */
+		if (rng_inst->range_role == NAN_RANGING_ROLE_INITIATOR) {
+			dhd_rtt_nan_range_report(cfg, rtt_result, geofence_rtt);
+		}
 	} else {
 		DHD_RTT_ERR(("nan-rtt: Burst End handling failed err %d is_geofence %d "
 			"retry cnt %d burst status %d", ret, geofence_rtt,
@@ -4003,7 +4009,7 @@ dhd_rtt_enable_responder(dhd_pub_t *dhd, wifi_channel_info *channel_info)
 	int pm = PM_OFF;
 	int ftm_cfg_cnt = 0;
 	chanspec_t chanspec;
-	wifi_channel_info_t channel;
+	wifi_channel_info channel;
 	struct net_device *dev = dhd_linux_get_primary_netdev(dhd);
 	ftm_config_options_info_t ftm_configs[FTM_MAX_CONFIGS];
 	ftm_config_param_info_t ftm_params[FTM_MAX_PARAMS];
@@ -4226,7 +4232,7 @@ dhd_rtt_init(dhd_pub_t *dhd)
 	ret = dhd_rtt_get_version(dhd, &version);
 	if (ret == BCME_OK && (version == WL_PROXD_API_VERSION)) {
 		DHD_RTT_ERR(("%s : FTM is supported\n", __FUNCTION__));
-		/* XXX : TODO :  need to find a way to check rtt capability */
+		/* TODO :  need to find a way to check rtt capability */
 		/* rtt_status->rtt_capa.proto |= RTT_CAP_ONE_WAY; */
 		rtt_status->rtt_capa.proto |= RTT_CAP_FTM_WAY;
 
@@ -4275,6 +4281,21 @@ dhd_rtt_deinit(dhd_pub_t *dhd)
 	NULL_CHECK(dhd, "dhd is NULL", err);
 	rtt_status = GET_RTTSTATE(dhd);
 	NULL_CHECK(rtt_status, "rtt_status is NULL", err);
+
+#ifdef WL_NAN
+	if (delayed_work_pending(&rtt_status->rtt_retry_timer)) {
+		cancel_delayed_work_sync(&rtt_status->rtt_retry_timer);
+	}
+#endif /* WL_NAN */
+
+	if (work_pending(&rtt_status->work)) {
+		cancel_work_sync(&rtt_status->work);
+	}
+
+	if (delayed_work_pending(&rtt_status->proxd_timeout)) {
+		cancel_delayed_work_sync(&rtt_status->proxd_timeout);
+	}
+
 	rtt_status->status = RTT_STOPPED;
 	DHD_RTT(("rtt is stopped %s \n", __FUNCTION__));
 	/* clear evt callback list */
@@ -4298,16 +4319,6 @@ dhd_rtt_deinit(dhd_pub_t *dhd)
 		}
 	}
 	GCC_DIAGNOSTIC_POP();
-
-#ifdef WL_NAN
-	if (delayed_work_pending(&rtt_status->rtt_retry_timer)) {
-		cancel_delayed_work_sync(&rtt_status->rtt_retry_timer);
-	}
-#endif /* WL_NAN */
-
-	if (delayed_work_pending(&rtt_status->proxd_timeout)) {
-		cancel_delayed_work_sync(&rtt_status->proxd_timeout);
-	}
 #endif /* WL_CFG80211 */
 	return err;
 }

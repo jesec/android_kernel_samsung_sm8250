@@ -1,7 +1,7 @@
 /*
  * Definitions for nl80211 vendor command/event access to host driver
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,7 +18,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
+ * <<Broadcom-WL-IPTag/Dual:>>
  *
  */
 
@@ -37,7 +37,9 @@ enum wl_vendor_subcmd {
 	BRCM_VENDOR_SCMD_SET_PMK	= 4,
 	BRCM_VENDOR_SCMD_GET_FEATURES	= 5,
 	BRCM_VENDOR_SCMD_SET_MAC	= 6,
-	BRCM_VENDOR_SCMD_MAX		= 7
+	BRCM_VENDOR_SCMD_SET_CONNECT_PARAMS	= 7,
+	BRCM_VENDOR_SCMD_SET_START_AP_PARAMS	= 8,
+	BRCM_VENDOR_SCMD_MAX			= 9
 };
 
 struct bcm_nlmsg_hdr {

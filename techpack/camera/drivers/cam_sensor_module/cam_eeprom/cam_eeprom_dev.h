@@ -102,9 +102,9 @@
 	X(ADDR_M2_BP)              \
 	X(ADDR_M2_PLC)             \
 	X(ADDR_M_AF)               \
-	X(ADDR_M0_AWB)             \
-	X(ADDR_M1_AWB)             \
-	X(ADDR_M2_AWB)             \
+	X(ADDR_M0_MODULE_AWB)      \
+	X(ADDR_M1_MODULE_AWB)      \
+	X(ADDR_M2_MODULE_AWB)      \
 	X(ADDR_M0_AE)              \
 	X(ADDR_M1_AE)              \
 	X(ADDR_M2_AE)              \
@@ -117,14 +117,15 @@
 	X(ADDR_S0_BP)              \
 	X(ADDR_S0_PLC)             \
 	X(ADDR_S0_AF)              \
-	X(ADDR_S0_AWB)             \
+	X(ADDR_S0_MODULE_AWB)      \
 	X(ADDR_S0_AE)              \
 	X(ADDR_S_DUAL_CAL)         \
 	X(ADDR_S_OIS)              \
 	X(ADDR_4PDC_CAL)           \
-    X(ADDR_TCLSC_CAL)          \
-    X(ADDR_SPDC_CAL)           \
-    X(ADDR_PDXTC_CAL)          \
+	X(ADDR_TCLSC_CAL)          \
+	X(ADDR_SPDC_CAL)           \
+	X(ADDR_PDXTC_CAL)          \
+	X(ADDR_M_XTALK_CAL)        \
 	X(ADDR_TOFCAL_START)       \
 	X(ADDR_TOFCAL_SIZE)        \
 	X(ADDR_TOFCAL_UID)         \
@@ -176,7 +177,7 @@ typedef enum {
 #if defined(CONFIG_SAMSUNG_FRONT_TOF)
 	CAM_EEPROM_IDX_FRONT_TOF,
 #endif
-#if defined(CONFIG_SEC_Z3Q_PROJECT)
+#if defined(CONFIG_SEC_Z3Q_PROJECT) || defined(CONFIG_SEC_C2Q_PROJECT) || defined(CONFIG_SEC_R8Q_PROJECT)
 	CAM_EEPROM_IDX_BACK3,
 #endif
 	CAM_EEPROM_IDX_MAX
@@ -259,7 +260,7 @@ typedef struct _cam_eeprom_af_idx_t {
 } AfIdx_t;
 
 #define AF_CAL_PAN_OFFSET_FROM_AF                   0x0004
-#if defined(CONFIG_SEC_Z3Q_PROJECT)
+#if defined(CONFIG_SEC_Z3Q_PROJECT) || defined(CONFIG_SEC_C2Q_PROJECT) || defined(CONFIG_SEC_R8Q_PROJECT)
 #define AF_CAL_D70_OFFSET_FROM_AF                   0x0008
 #define AF_CAL_D10_OFFSET_FROM_AF                   0x0010
 #define AF_CAL_D80_OFFSET_FROM_AF                   0x0010
@@ -335,16 +336,18 @@ typedef struct _cam_eeprom_af_idx_t {
 #endif
 
 /*************************************************************************************************/
-#if defined(CONFIG_SAMSUNG_OIS_MCU_STM32)
+#if defined(CONFIG_SAMSUNG_OIS_MCU_STM32) || defined(CONFIG_SAMSUNG_OIS_RUMBA_S4)
 #define OIS_XYGG_SIZE                               8
 #define OIS_CENTER_SHIFT_SIZE                       4
 #define OIS_XYSR_SIZE                               4
+#define OIS_CROSSTALK_SIZE                          4
 #define OIS_CAL_MARK_START_OFFSET                   0x30
 #define OIS_XYGG_START_OFFSET                       0x10
 #define OIS_XYSR_START_OFFSET                       0x38
 #if defined(CONFIG_SAMSUNG_REAR_TRIPLE)
 #define WIDE_OIS_CENTER_SHIFT_START_OFFSET          0x2AE
 #define TELE_OIS_CENTER_SHIFT_START_OFFSET          0x2AA
+#define TELE_OIS_CROSSTALK_START_OFFSET             0x1C
 #endif
 #endif
 
@@ -388,7 +391,7 @@ extern char cam_fw_ver[SYSFS_FW_VER_SIZE];
 extern char cam_fw_full_ver[SYSFS_FW_VER_SIZE];
 extern char cam_fw_factory_ver[SYSFS_FW_VER_SIZE];
 extern char cam_fw_user_ver[SYSFS_FW_VER_SIZE];
-#if defined(CONFIG_SEC_Z3Q_PROJECT)
+#if defined(CONFIG_SEC_Z3Q_PROJECT) || defined(CONFIG_SEC_C2Q_PROJECT) || defined(CONFIG_SEC_R8Q_PROJECT)
 extern char cam3_fw_factory_ver[SYSFS_FW_VER_SIZE];
 extern char cam3_fw_user_ver[SYSFS_FW_VER_SIZE];
 #endif
@@ -429,7 +432,11 @@ extern char front_sensor_id[FROM_SENSOR_ID_SIZE + 1];
 extern char front2_sensor_id[FROM_SENSOR_ID_SIZE + 1];
 #endif
 #if defined(CONFIG_SAMSUNG_FRONT_TOP)
+#if defined(CONFIG_SAMSUNG_FRONT_DUAL)
 extern char front3_sensor_id[FROM_SENSOR_ID_SIZE + 1];
+#else
+extern char front2_sensor_id[FROM_SENSOR_ID_SIZE + 1];
+#endif
 #endif
 extern uint8_t front_module_id[FROM_MODULE_ID_SIZE + 1];
 #if defined(CONFIG_SAMSUNG_FRONT_DUAL)
@@ -437,7 +444,11 @@ extern uint8_t front2_module_id[FROM_MODULE_ID_SIZE + 1];
 #endif
 extern char front_mtf_exif[FROM_MTF_SIZE + 1];
 #if defined(CONFIG_SAMSUNG_FRONT_TOP)
+#if defined(CONFIG_SAMSUNG_FRONT_DUAL)
 extern uint8_t front3_module_id[FROM_MODULE_ID_SIZE + 1];
+#else
+extern uint8_t front2_module_id[FROM_MODULE_ID_SIZE + 1];
+#endif
 #endif
 
 extern char front_cam_fw_ver[SYSFS_FW_VER_SIZE];
@@ -454,11 +465,19 @@ extern char front2_cam_fw_user_ver[SYSFS_FW_VER_SIZE];
 extern char front2_cam_fw_factory_ver[SYSFS_FW_VER_SIZE];
 #endif
 #if defined(CONFIG_SAMSUNG_FRONT_TOP)
+#if defined(CONFIG_SAMSUNG_FRONT_DUAL)
 extern char front3_module_info[SYSFS_MODULE_INFO_SIZE];
 extern char front3_cam_fw_ver[SYSFS_FW_VER_SIZE];
 extern char front3_cam_fw_full_ver[SYSFS_FW_VER_SIZE];
 extern char front3_cam_fw_user_ver[SYSFS_FW_VER_SIZE];
 extern char front3_cam_fw_factory_ver[SYSFS_FW_VER_SIZE];
+#else
+extern char front2_module_info[SYSFS_MODULE_INFO_SIZE];
+extern char front2_cam_fw_ver[SYSFS_FW_VER_SIZE];
+extern char front2_cam_fw_full_ver[SYSFS_FW_VER_SIZE];
+extern char front2_cam_fw_user_ver[SYSFS_FW_VER_SIZE];
+extern char front2_cam_fw_factory_ver[SYSFS_FW_VER_SIZE];
+#endif
 #endif
 
 #if defined(CONFIG_SAMSUNG_REAR_TOF)

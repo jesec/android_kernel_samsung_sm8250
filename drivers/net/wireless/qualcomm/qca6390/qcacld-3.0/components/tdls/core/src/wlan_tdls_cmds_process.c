@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2019 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2017-2020 The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -36,6 +36,7 @@
 #include "wlan_tdls_cmds_process.h"
 #include "wlan_tdls_tgt_api.h"
 #include "wlan_policy_mgr_api.h"
+#include "nan_ucfg_api.h"
 
 static uint16_t tdls_get_connected_peer(struct tdls_soc_priv_obj *soc_obj)
 {
@@ -306,6 +307,7 @@ static QDF_STATUS tdls_pe_update_peer(struct tdls_update_peer_request *req)
 		     &update_peer->vht_cap,
 		     sizeof(update_peer->vht_cap));
 	addstareq->supported_rates_length = update_peer->supported_rates_len;
+	addstareq->is_pmf = update_peer->is_pmf;
 	qdf_mem_copy(&addstareq->supported_rates,
 		     update_peer->supported_rates,
 		     update_peer->supported_rates_len);
@@ -458,9 +460,9 @@ static QDF_STATUS tdls_activate_add_peer(struct tdls_add_peer_request *req)
 
 	/* in add station, we accept existing valid sta_id if there is */
 	if ((peer->link_status > TDLS_LINK_CONNECTING) ||
-	    (TDLS_STA_INDEX_CHECK((peer->sta_id)))) {
-		tdls_notice("link_status %d sta_id %d add peer ignored",
-			    peer->link_status, peer->sta_id);
+	    (peer->valid_entry)) {
+		tdls_notice("link_status %d add peer ignored",
+			    peer->link_status);
 		status = QDF_STATUS_SUCCESS;
 		goto addrsp;
 	}
@@ -488,8 +490,11 @@ static QDF_STATUS tdls_activate_add_peer(struct tdls_add_peer_request *req)
 				  TDLS_LINK_CONNECTING, TDLS_LINK_SUCCESS);
 
 	status = tdls_pe_add_peer(req);
-	if (QDF_IS_STATUS_ERROR(status))
+	if (QDF_IS_STATUS_ERROR(status)) {
+		tdls_err(QDF_MAC_ADDR_STR " add peer failed with status %d",
+			 QDF_MAC_ADDR_ARRAY(mac), status);
 		goto setlink;
+	}
 
 	return QDF_STATUS_SUCCESS;
 
@@ -520,7 +525,6 @@ tdls_add_peer_serialize_callback(struct wlan_serialization_command *cmd,
 	}
 
 	req = cmd->umac_cmd;
-	tdls_debug("reason: %d, req %pK", reason, req);
 
 	switch (reason) {
 	case WLAN_SER_CB_ACTIVATE_CMD:
@@ -678,6 +682,11 @@ int tdls_validate_mgmt_request(struct tdls_action_frame_request *tdls_mgmt_req)
 
 	/* other than teardown frame, mgmt frames are not sent if disabled */
 	if (TDLS_TEARDOWN != tdls_validate->action_code) {
+		if (ucfg_is_nan_disc_active(tdls_soc->soc)) {
+			tdls_err("NAN active. NAN+TDLS not supported");
+			return -EPERM;
+		}
+
 		if (!tdls_check_is_tdls_allowed(vdev)) {
 			tdls_err("TDLS not allowed, reject MGMT, action = %d",
 				tdls_validate->action_code);
@@ -750,7 +759,7 @@ int tdls_validate_mgmt_request(struct tdls_action_frame_request *tdls_mgmt_req)
 		}
 	}
 
-	tdls_notice("tdls_mgmt" QDF_MAC_ADDR_STR " action %d, dialog_token %d status %d, len = %zu",
+	tdls_debug("tdls_mgmt" QDF_MAC_ADDR_STR " action %d, dialog_token %d status %d, len = %zu",
 		   QDF_MAC_ADDR_ARRAY(tdls_validate->peer_mac),
 		   tdls_validate->action_code, tdls_validate->dialog_token,
 		   tdls_validate->status_code, tdls_validate->len);
@@ -799,14 +808,25 @@ QDF_STATUS tdls_process_add_peer(struct tdls_add_peer_request *req)
 	struct wlan_serialization_command cmd = {0,};
 	enum wlan_serialization_status ser_cmd_status;
 	struct wlan_objmgr_vdev *vdev;
-	QDF_STATUS status = QDF_STATUS_SUCCESS;
+	QDF_STATUS status = QDF_STATUS_E_INVAL;
+	struct wlan_objmgr_psoc *psoc;
 
 	if (!req || !req->vdev) {
 		tdls_err("req: %pK", req);
-		status = QDF_STATUS_E_INVAL;
-		goto error;
+		goto free_req;
 	}
 	vdev = req->vdev;
+	psoc = wlan_vdev_get_psoc(vdev);
+	if (!psoc) {
+		tdls_err("can't get psoc");
+		goto error;
+	}
+	if (ucfg_is_nan_disc_active(psoc)) {
+		tdls_err("NAN active. NAN+TDLS not supported");
+		goto error;
+	}
+	status = QDF_STATUS_SUCCESS;
+
 	cmd.cmd_type = WLAN_SER_CMD_TDLS_ADD_PEER;
 	cmd.cmd_id = 0;
 	cmd.cmd_cb = tdls_add_peer_serialize_callback;
@@ -828,26 +848,16 @@ QDF_STATUS tdls_process_add_peer(struct tdls_add_peer_request *req)
 	case WLAN_SER_CMD_ACTIVE:
 		/* command moved to active list. Do nothing */
 		break;
-	case WLAN_SER_CMD_DENIED_LIST_FULL:
-	case WLAN_SER_CMD_DENIED_RULES_FAILED:
-	case WLAN_SER_CMD_DENIED_UNSPECIFIED:
-		/* notify os interface about internal error*/
-		status = tdls_internal_add_peer_rsp(req, QDF_STATUS_E_FAILURE);
-		wlan_objmgr_vdev_release_ref(vdev, WLAN_TDLS_NB_ID);
-		/* cmd can't be serviced.
-		 * release tdls_add_peer_request memory
-		 */
-		qdf_mem_free(req);
-		break;
 	default:
-		QDF_ASSERT(0);
-		status = QDF_STATUS_E_INVAL;
 		goto error;
 	}
 
 	return status;
 error:
+	/* notify os interface about internal error*/
 	status = tdls_internal_add_peer_rsp(req, QDF_STATUS_E_FAILURE);
+	wlan_objmgr_vdev_release_ref(req->vdev, WLAN_TDLS_NB_ID);
+free_req:
 	qdf_mem_free(req);
 	return status;
 }
@@ -894,19 +904,17 @@ tdls_activate_update_peer(struct tdls_update_peer_request *req)
 
 	/* in change station, we accept only when sta_id is valid */
 	if (curr_peer->link_status ==  TDLS_LINK_TEARING ||
-	    !(TDLS_STA_INDEX_CHECK(curr_peer->sta_id))) {
-		tdls_err(QDF_MAC_ADDR_STR " link %d. sta %d. update peer rejected",
-			 QDF_MAC_ADDR_ARRAY(mac), curr_peer->link_status,
-			 curr_peer->sta_id);
+	    !curr_peer->valid_entry) {
+		tdls_err(QDF_MAC_ADDR_STR " link %d. update peer rejected",
+			 QDF_MAC_ADDR_ARRAY(mac), curr_peer->link_status);
 		status = QDF_STATUS_E_PERM;
 		goto updatersp;
 	}
 
 	if (curr_peer->link_status ==  TDLS_LINK_CONNECTED &&
-	    TDLS_STA_INDEX_CHECK(curr_peer->sta_id)) {
-		tdls_err(QDF_MAC_ADDR_STR " link %d. sta %d. update peer is igonored as tdls state is already connected ",
-			 QDF_MAC_ADDR_ARRAY(mac), curr_peer->link_status,
-			 curr_peer->sta_id);
+	    curr_peer->valid_entry) {
+		tdls_err(QDF_MAC_ADDR_STR " link %d. update peer is igonored as tdls state is already connected ",
+			 QDF_MAC_ADDR_ARRAY(mac), curr_peer->link_status);
 		status = QDF_STATUS_SUCCESS;
 		goto updatersp;
 	}
@@ -935,8 +943,11 @@ tdls_activate_update_peer(struct tdls_update_peer_request *req)
 
 	tdls_set_peer_caps(vdev_obj, mac, &req->update_peer_req);
 	status = tdls_pe_update_peer(req);
-	if (QDF_IS_STATUS_ERROR(status))
+	if (QDF_IS_STATUS_ERROR(status)) {
+		tdls_err(QDF_MAC_ADDR_STR " update peer failed with status %d",
+			 QDF_MAC_ADDR_ARRAY(mac), status);
 		goto setlink;
+	}
 
 	return QDF_STATUS_SUCCESS;
 
@@ -967,7 +978,6 @@ tdls_update_peer_serialize_callback(struct wlan_serialization_command *cmd,
 	}
 
 	req = cmd->umac_cmd;
-	tdls_debug("reason: %d, req %pK", reason, req);
 
 	switch (reason) {
 	case WLAN_SER_CB_ACTIVATE_CMD:
@@ -1018,7 +1028,7 @@ QDF_STATUS tdls_process_update_peer(struct tdls_update_peer_request *req)
 	if (!req || !req->vdev) {
 		tdls_err("req: %pK", req);
 		status = QDF_STATUS_E_FAILURE;
-		goto error;
+		goto free_req;
 	}
 
 	vdev = req->vdev;
@@ -1043,27 +1053,16 @@ QDF_STATUS tdls_process_update_peer(struct tdls_update_peer_request *req)
 	case WLAN_SER_CMD_ACTIVE:
 		/* command moved to active list. Do nothing */
 		break;
-	case WLAN_SER_CMD_DENIED_LIST_FULL:
-	case WLAN_SER_CMD_DENIED_RULES_FAILED:
-	case WLAN_SER_CMD_DENIED_UNSPECIFIED:
-		/* notify os interface about internal error*/
-		status = tdls_internal_update_peer_rsp(req,
-						       QDF_STATUS_E_FAILURE);
-		wlan_objmgr_vdev_release_ref(vdev, WLAN_TDLS_NB_ID);
-		/* cmd can't be serviced.
-		 * release tdls_add_peer_request memory
-		 */
-		qdf_mem_free(req);
-		break;
 	default:
-		QDF_ASSERT(0);
-		status = QDF_STATUS_E_INVAL;
-		break;
+		goto error;
 	}
 
 	return status;
 error:
+	/* notify os interface about internal error*/
 	status = tdls_internal_update_peer_rsp(req, QDF_STATUS_E_FAILURE);
+	wlan_objmgr_vdev_release_ref(req->vdev, WLAN_TDLS_NB_ID);
+free_req:
 	qdf_mem_free(req);
 	return status;
 }
@@ -1091,7 +1090,6 @@ tdls_del_peer_serialize_callback(struct wlan_serialization_command *cmd,
 	}
 
 	req = cmd->umac_cmd;
-	tdls_debug("reason: %d, req %pK", reason, req);
 
 	switch (reason) {
 	case WLAN_SER_CB_ACTIVATE_CMD:
@@ -1169,11 +1167,18 @@ QDF_STATUS tdls_process_del_peer(struct tdls_oper_request *req)
 		goto error;
 	}
 
+	if (!peer->valid_entry) {
+		tdls_err("invalid peer:" QDF_MAC_ADDR_STR " link state %d",
+			 QDF_MAC_ADDR_ARRAY(mac), peer->link_status);
+		status = QDF_STATUS_E_INVAL;
+		goto error;
+	}
+
 	if (soc_obj->tdls_dp_vdev_update)
 		soc_obj->tdls_dp_vdev_update(&soc_obj->soc,
-					peer->sta_id,
-					soc_obj->tdls_update_dp_vdev_flags,
-					false);
+					     wlan_vdev_get_id(vdev),
+					     soc_obj->tdls_update_dp_vdev_flags,
+					     false);
 
 	cmd.cmd_type = WLAN_SER_CMD_TDLS_DEL_PEER;
 	cmd.cmd_id = 0;
@@ -1181,7 +1186,7 @@ QDF_STATUS tdls_process_del_peer(struct tdls_oper_request *req)
 	cmd.umac_cmd = req;
 	cmd.source = WLAN_UMAC_COMP_TDLS;
 	cmd.is_high_priority = false;
-	cmd.cmd_timeout_duration = TDLS_DEFAULT_SERIALIZE_CMD_TIMEOUT;
+	cmd.cmd_timeout_duration = TDLS_DELETE_PEER_CMD_TIMEOUT;
 	cmd.vdev = vdev;
 	cmd.is_blocking = true;
 
@@ -1196,27 +1201,15 @@ QDF_STATUS tdls_process_del_peer(struct tdls_oper_request *req)
 	case WLAN_SER_CMD_ACTIVE:
 		/* command moved to active list. Do nothing */
 		break;
-	case WLAN_SER_CMD_DENIED_LIST_FULL:
-	case WLAN_SER_CMD_DENIED_RULES_FAILED:
-	case WLAN_SER_CMD_DENIED_UNSPECIFIED:
-		/* notify os interface about internal error*/
-		status = tdls_internal_del_peer_rsp(req);
-		wlan_objmgr_vdev_release_ref(vdev, WLAN_TDLS_NB_ID);
-		/* cmd can't be serviced.
-		 * release tdls_add_peer_request memory
-		 */
-		qdf_mem_free(req);
-		break;
 	default:
-		QDF_ASSERT(0);
-		status = QDF_STATUS_E_INVAL;
-		break;
+		goto error;
 	}
 
 	return status;
 error:
+	/* notify os interface about internal error*/
 	status = tdls_internal_del_peer_rsp(req);
-	wlan_objmgr_vdev_release_ref(vdev, WLAN_TDLS_NB_ID);
+	wlan_objmgr_vdev_release_ref(req->vdev, WLAN_TDLS_NB_ID);
 free_req:
 	qdf_mem_free(req);
 	return status;
@@ -1281,7 +1274,7 @@ QDF_STATUS tdls_process_send_mgmt_rsp(struct tdls_send_mgmt_rsp *rsp)
 	struct tdls_osif_indication ind;
 
 	psoc = rsp->psoc;
-	vdev = wlan_objmgr_get_vdev_by_id_from_psoc(psoc, rsp->session_id,
+	vdev = wlan_objmgr_get_vdev_by_id_from_psoc(psoc, rsp->vdev_id,
 						    WLAN_TDLS_SB_ID);
 	if (!vdev) {
 		tdls_err("invalid vdev");
@@ -1334,7 +1327,7 @@ QDF_STATUS tdls_send_mgmt_tx_completion(
 
 	psoc = tx_complete->psoc;
 	vdev = wlan_objmgr_get_vdev_by_id_from_psoc(psoc,
-						    tx_complete->session_id,
+						    tx_complete->vdev_id,
 						    WLAN_TDLS_SB_ID);
 
 	if (!vdev) {
@@ -1403,23 +1396,22 @@ static QDF_STATUS tdls_add_peer_rsp(struct tdls_add_sta_rsp *rsp)
 		conn_rec = soc_obj->tdls_conn_info;
 		for (sta_idx = 0; sta_idx < soc_obj->max_num_tdls_sta;
 		     sta_idx++) {
-			if (INVALID_TDLS_PEER_ID == conn_rec[sta_idx].sta_id) {
+			if (!conn_rec[sta_idx].valid_entry) {
 				conn_rec[sta_idx].session_id = rsp->session_id;
-				conn_rec[sta_idx].sta_id = rsp->sta_id;
+				conn_rec[sta_idx].valid_entry = true;
 				conn_rec[sta_idx].index = sta_idx;
 				qdf_copy_macaddr(&conn_rec[sta_idx].peer_mac,
 						 &rsp->peermac);
-				tdls_warn("TDLS: STA IDX at %d is %d of mac "
-					  QDF_MAC_ADDR_STR, sta_idx,
-					  rsp->sta_id, QDF_MAC_ADDR_ARRAY
-					  (rsp->peermac.bytes));
+				tdls_debug("TDLS: Add sta mac "
+					   QDF_MAC_ADDR_STR,
+					   QDF_MAC_ADDR_ARRAY
+					   (rsp->peermac.bytes));
 				break;
 			}
 		}
 
 		if (sta_idx < soc_obj->max_num_tdls_sta) {
-			status = tdls_set_sta_id(vdev_obj, rsp->peermac.bytes,
-						 rsp->sta_id);
+			status = tdls_set_valid(vdev_obj, rsp->peermac.bytes);
 			if (QDF_IS_STATUS_ERROR(status)) {
 				tdls_err("set staid failed");
 				status = QDF_STATUS_E_FAILURE;
@@ -1490,11 +1482,12 @@ QDF_STATUS tdls_process_del_peer_rsp(struct tdls_del_sta_rsp *rsp)
 	conn_rec = soc_obj->tdls_conn_info;
 	for (sta_idx = 0; sta_idx < soc_obj->max_num_tdls_sta; sta_idx++) {
 		if (conn_rec[sta_idx].session_id != rsp->session_id ||
-		    conn_rec[sta_idx].sta_id != rsp->sta_id)
+			qdf_mem_cmp(conn_rec[sta_idx].peer_mac.bytes,
+				    rsp->peermac.bytes, QDF_MAC_ADDR_SIZE))
 			continue;
 
 		macaddr = rsp->peermac.bytes;
-		tdls_warn("TDLS: del STA IDX = %x", rsp->sta_id);
+		tdls_debug("TDLS: del STA");
 		curr_peer = tdls_find_peer(vdev_obj, macaddr);
 		if (curr_peer) {
 			tdls_debug(QDF_MAC_ADDR_STR " status is %d",
@@ -1503,20 +1496,11 @@ QDF_STATUS tdls_process_del_peer_rsp(struct tdls_del_sta_rsp *rsp)
 
 			id = wlan_vdev_get_id(vdev);
 
-			if (TDLS_IS_LINK_CONNECTED(curr_peer)) {
-				soc_obj->tdls_dereg_peer(
-					soc_obj->tdls_peer_context,
-					id, curr_peer->sta_id);
+			if (TDLS_IS_LINK_CONNECTED(curr_peer))
 				tdls_decrement_peer_count(soc_obj);
-			} else if (TDLS_LINK_CONNECTING ==
-				   curr_peer->link_status) {
-				soc_obj->tdls_dereg_peer(
-					soc_obj->tdls_peer_context,
-					id, curr_peer->sta_id);
-			}
 		}
 		tdls_reset_peer(vdev_obj, macaddr);
-		conn_rec[sta_idx].sta_id = INVALID_TDLS_PEER_ID;
+		conn_rec[sta_idx].valid_entry = false;
 		conn_rec[sta_idx].session_id = 0xff;
 		conn_rec[sta_idx].index = INVALID_TDLS_PEER_INDEX;
 		qdf_mem_zero(&conn_rec[sta_idx].peer_mac,
@@ -1577,64 +1561,6 @@ tdls_wma_update_peer_state(struct tdls_soc_priv_obj *soc_obj,
 	return status;
 }
 
-static QDF_STATUS
-tdls_update_uapsd(struct wlan_objmgr_psoc *psoc, struct wlan_objmgr_vdev *vdev,
-		  uint8_t sta_id, uint32_t srvc_int, uint32_t sus_int,
-		  uint8_t dir, uint8_t psb, uint32_t delay_interval)
-{
-	uint8_t i;
-	static const uint8_t ac[AC_PRIORITY_NUM] = {UAPSD_AC_VO, UAPSD_AC_VI,
-						    UAPSD_AC_BK, UAPSD_AC_BE};
-	static const uint8_t tid[AC_PRIORITY_NUM] = {7, 5, 2, 3};
-	uint32_t vdev_id;
-
-	struct sta_uapsd_params tdls_uapsd_params;
-	struct sta_uapsd_trig_params tdls_trig_params;
-	struct wlan_objmgr_peer *bsspeer;
-	uint8_t macaddr[QDF_MAC_ADDR_SIZE];
-	QDF_STATUS status;
-
-	if (!psb) {
-		tdls_debug("No need to configure auto trigger:psb is 0");
-		return QDF_STATUS_SUCCESS;
-	}
-	vdev_id = wlan_vdev_get_id(vdev);
-	bsspeer = wlan_objmgr_vdev_try_get_bsspeer(vdev, WLAN_TDLS_SB_ID);
-	if (!bsspeer) {
-		tdls_err("bss peer is NULL");
-		return QDF_STATUS_E_FAILURE;
-	}
-	wlan_vdev_obj_lock(vdev);
-	qdf_mem_copy(macaddr,
-		     wlan_peer_get_macaddr(bsspeer), QDF_MAC_ADDR_SIZE);
-	wlan_vdev_obj_unlock(vdev);
-	wlan_objmgr_peer_release_ref(bsspeer, WLAN_TDLS_SB_ID);
-
-	tdls_debug("TDLS uapsd id %d, srvc %d, sus %d, dir %d psb %d delay %d",
-		   sta_id, srvc_int, sus_int, dir, psb, delay_interval);
-	for (i = 0; i < AC_PRIORITY_NUM; i++) {
-		tdls_uapsd_params.wmm_ac = ac[i];
-		tdls_uapsd_params.user_priority = tid[i];
-		tdls_uapsd_params.service_interval = srvc_int;
-		tdls_uapsd_params.delay_interval = delay_interval;
-		tdls_uapsd_params.suspend_interval = sus_int;
-
-		tdls_trig_params.vdevid = vdev_id;
-		tdls_trig_params.num_ac = 1;
-		tdls_trig_params.auto_triggerparam = &tdls_uapsd_params;
-
-		qdf_mem_copy(tdls_trig_params.peer_addr,
-			     macaddr, QDF_MAC_ADDR_SIZE);
-		status = tgt_tdls_set_uapsd(psoc, &tdls_trig_params);
-		if (QDF_IS_STATUS_ERROR(status)) {
-			tdls_err("Failed to set uapsd for vdev %d, status %d",
-				 vdev_id, status);
-		}
-	}
-
-	return QDF_STATUS_SUCCESS;
-}
-
 QDF_STATUS tdls_process_enable_link(struct tdls_oper_request *req)
 {
 	struct tdls_peer *peer;
@@ -1676,9 +1602,9 @@ QDF_STATUS tdls_process_enable_link(struct tdls_oper_request *req)
 
 	tdls_debug("enable link for peer " QDF_MAC_ADDR_STR " link state %d",
 		   QDF_MAC_ADDR_ARRAY(mac), peer->link_status);
-	if (!TDLS_STA_INDEX_CHECK(peer->sta_id)) {
-		tdls_err("invalid sta idx %u for " QDF_MAC_ADDR_STR,
-			 peer->sta_id, QDF_MAC_ADDR_ARRAY(mac));
+	if (!peer->valid_entry) {
+		tdls_err("invalid entry " QDF_MAC_ADDR_STR,
+			 QDF_MAC_ADDR_ARRAY(mac));
 		status = QDF_STATUS_E_INVAL;
 		goto error;
 	}
@@ -1690,8 +1616,7 @@ QDF_STATUS tdls_process_enable_link(struct tdls_oper_request *req)
 
 	id = wlan_vdev_get_id(vdev);
 	status = soc_obj->tdls_reg_peer(soc_obj->tdls_peer_context,
-					id, mac, peer->sta_id,
-					peer->qos);
+					id, mac, peer->qos);
 	if (QDF_IS_STATUS_ERROR(status)) {
 		tdls_err("TDLS register peer fail, status %d", status);
 		goto error;
@@ -1717,21 +1642,17 @@ QDF_STATUS tdls_process_enable_link(struct tdls_oper_request *req)
 	feature = soc_obj->tdls_configs.tdls_feature_flags;
 
 	if (soc_obj->tdls_dp_vdev_update)
-		soc_obj->tdls_dp_vdev_update(&soc_obj->soc,
-					peer->sta_id,
-					soc_obj->tdls_update_dp_vdev_flags,
-					((peer->link_status ==
-					TDLS_LINK_CONNECTED) ? true : false));
+		soc_obj->tdls_dp_vdev_update(
+				&soc_obj->soc,
+				wlan_vdev_get_id(vdev),
+				soc_obj->tdls_update_dp_vdev_flags,
+				((peer->link_status == TDLS_LINK_CONNECTED) ?
+				 true : false));
 
 	tdls_debug("TDLS buffer sta: %d, uapsd_mask %d",
 		   TDLS_IS_BUFFER_STA_ENABLED(feature),
 		   soc_obj->tdls_configs.tdls_uapsd_mask);
 
-	if (TDLS_IS_BUFFER_STA_ENABLED(feature) ||
-	    soc_obj->tdls_configs.tdls_uapsd_mask)
-		tdls_update_uapsd(soc_obj->soc,
-				  vdev, peer->sta_id, 0, 0, BI_DIR, 1,
-				  soc_obj->tdls_configs.delayed_trig_framint);
 error:
 	wlan_objmgr_vdev_release_ref(vdev, WLAN_TDLS_NB_ID);
 	qdf_mem_free(req);
@@ -1760,11 +1681,10 @@ static QDF_STATUS tdls_config_force_peer(
 	const uint8_t *macaddr;
 	uint32_t feature;
 	QDF_STATUS status;
+	uint32_t chan_freq;
 	struct tdls_peer_update_state *peer_update_param;
 
 	macaddr = req->peer_addr;
-	tdls_debug("NL80211_TDLS_SETUP for " QDF_MAC_ADDR_STR,
-		   QDF_MAC_ADDR_ARRAY(macaddr));
 
 	vdev = req->vdev;
 	pdev = wlan_vdev_get_pdev(vdev);
@@ -1817,9 +1737,10 @@ static QDF_STATUS tdls_config_force_peer(
 	}
 
 	soc_obj->tdls_external_peer_count++;
+	chan_freq = wlan_reg_legacy_chan_to_freq(pdev, req->chan);
 
 	/* Validate if off channel is DFS channel */
-	if (wlan_reg_is_dfs_ch(pdev, req->chan)) {
+	if (wlan_reg_is_dfs_for_freq(pdev, chan_freq)) {
 		tdls_err("Resetting TDLS off-channel from %d to %d",
 			 req->chan, WLAN_TDLS_PREFERRED_OFF_CHANNEL_NUM_DEF);
 		req->chan = WLAN_TDLS_PREFERRED_OFF_CHANNEL_NUM_DEF;
@@ -1933,13 +1854,14 @@ QDF_STATUS tdls_process_remove_force_peer(struct tdls_oper_request *req)
 		status = QDF_STATUS_E_NULL_VALUE;
 		goto error;
 	}
-
-	tdls_set_peer_link_status(peer, TDLS_LINK_TEARING,
-				  TDLS_LINK_UNSPECIFIED);
+	if (peer->link_status == TDLS_LINK_CONNECTED)
+		tdls_set_peer_link_status(peer, TDLS_LINK_TEARING,
+					  TDLS_LINK_UNSPECIFIED);
 
 	if (soc_obj->tdls_dp_vdev_update)
-		soc_obj->tdls_dp_vdev_update(&soc_obj->soc,
-				peer->sta_id,
+		soc_obj->tdls_dp_vdev_update(
+				&soc_obj->soc,
+				wlan_vdev_get_id(vdev),
 				soc_obj->tdls_update_dp_vdev_flags,
 				false);
 
@@ -2200,7 +2122,7 @@ static int tdls_teardown_links(struct tdls_soc_priv_obj *soc_obj, uint32_t mode)
 
 	conn_rec = soc_obj->tdls_conn_info;
 	for (staidx = 0; staidx < soc_obj->max_num_tdls_sta; staidx++) {
-		if (conn_rec[staidx].sta_id == INVALID_TDLS_PEER_ID)
+		if (!conn_rec[staidx].valid_entry)
 			continue;
 
 		curr_peer = tdls_find_all_peer(soc_obj,
@@ -2212,8 +2134,9 @@ static int tdls_teardown_links(struct tdls_soc_priv_obj *soc_obj, uint32_t mode)
 		if (curr_peer->spatial_streams == HW_MODE_SS_1x1)
 			continue;
 
-		tdls_debug("Indicate TDLS teardown (staId %d)",
-			   curr_peer->sta_id);
+		tdls_debug("Indicate TDLS teardown peer bssid "
+			   QDF_MAC_ADDR_STR, QDF_MAC_ADDR_ARRAY(
+			   curr_peer->peer_mac.bytes));
 		tdls_indicate_teardown(curr_peer->vdev_priv, curr_peer,
 				       TDLS_TEARDOWN_PEER_UNSPEC_REASON);
 
@@ -2286,9 +2209,11 @@ QDF_STATUS tdls_process_antenna_switch(struct tdls_antenna_switch_request *req)
 
 	vdev_id = wlan_vdev_get_id(vdev);
 	opmode = wlan_vdev_mlme_get_opmode(vdev);
-	channel = policy_mgr_get_channel(soc_obj->soc,
+	channel = wlan_freq_to_chan(
+			policy_mgr_get_channel(
+			soc_obj->soc,
 			policy_mgr_convert_device_mode_to_qdf_type(opmode),
-			&vdev_id);
+			&vdev_id));
 
 	/* Check supported nss for TDLS, if is 1x1, no need to teardown links */
 	if (WLAN_REG_IS_24GHZ_CH(channel))

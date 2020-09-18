@@ -25,6 +25,9 @@
 #ifndef __REG_DB_H
 #define __REG_DB_H
 
+/* Alpha2 code for world reg domain */
+#define REG_WORLD_ALPHA2 "00"
+
 /**
  * struct regulatory_rule
  * @start_freq: start frequency
@@ -101,4 +104,12 @@ QDF_STATUS reg_get_default_country(uint16_t *default_country);
  * Return: true or false
  */
 bool reg_etsi13_regdmn(uint8_t reg_dmn);
+
+/**
+ * reg_en302_502_regdmn() - Check if the reg domain is en302_502 applicable.
+ * @reg_dmn: Regulatory domain pair ID.
+ *
+ * Return: True if EN302_502 applicable, else false.
+ */
+bool reg_en302_502_regdmn(uint16_t reg_dmn);
 #endif

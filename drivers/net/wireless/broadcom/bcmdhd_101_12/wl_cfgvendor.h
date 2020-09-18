@@ -688,6 +688,11 @@ typedef struct wifi_roaming_capabilities {
 	u32 max_whitelist_size;
 } wifi_roaming_capabilities_t;
 
+typedef enum {
+	SET_HAL_START_ATTRIBUTE_DEINIT = 0x0001,
+	SET_HAL_START_ATTRIBUTE_PRE_INIT = 0x0002
+} SET_HAL_START_ATTRIBUTE;
+
 /* Capture the BRCM_VENDOR_SUBCMD_PRIV_STRINGS* here */
 #define BRCM_VENDOR_SCMD_CAPA	"cap"
 #define MEMDUMP_PATH_LEN	128

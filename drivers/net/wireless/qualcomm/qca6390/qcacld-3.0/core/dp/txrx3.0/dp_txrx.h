@@ -94,11 +94,12 @@ dp_txrx_get_pdev_from_ext_handle(struct dp_txrx_handle_cmn *txrx_cmn_hdl)
 /**
  * dp_txrx_init() - initialize DP TXRX module
  * @soc: ol_txrx_soc_handle
+ * @pdev_id: id of dp pdev handle
  * @config: configuration for DP TXRX modules
  *
  * Return: QDF_STATUS_SUCCESS on success, error qdf status on failure
  */
-QDF_STATUS dp_txrx_init(ol_txrx_soc_handle soc, struct cdp_pdev *pdev,
+QDF_STATUS dp_txrx_init(ol_txrx_soc_handle soc, uint8_t pdev_id,
 			struct dp_txrx_config *config);
 
 /**
@@ -108,6 +109,35 @@ QDF_STATUS dp_txrx_init(ol_txrx_soc_handle soc, struct cdp_pdev *pdev,
  * Return: QDF_STATUS_SUCCESS on success, error qdf status on failure
  */
 QDF_STATUS dp_txrx_deinit(ol_txrx_soc_handle soc);
+
+/**
+ * dp_txrx_flush_pkts_by_vdev_id() - flush rx packets for a vdev_id
+ * @soc: ol_txrx_soc_handle object
+ * @vdev_id: vdev_id for which rx packets are to be flushed
+ *
+ * Return: QDF_STATUS_SUCCESS on success, error qdf status on failure
+ */
+static inline QDF_STATUS dp_txrx_flush_pkts_by_vdev_id(ol_txrx_soc_handle soc,
+						       uint8_t vdev_id)
+{
+	struct dp_txrx_handle *dp_ext_hdl;
+	QDF_STATUS qdf_status = QDF_STATUS_SUCCESS;
+
+	if (!soc) {
+		qdf_status = QDF_STATUS_E_INVAL;
+		goto ret;
+	}
+
+	dp_ext_hdl = cdp_soc_get_dp_txrx_handle(soc);
+	if (!dp_ext_hdl) {
+		qdf_status = QDF_STATUS_E_FAULT;
+		goto ret;
+	}
+
+	qdf_status = dp_rx_tm_flush_by_vdev_id(&dp_ext_hdl->rx_tm_hdl, vdev_id);
+ret:
+	return qdf_status;
+}
 
 /**
  * dp_txrx_resume() - resume all threads
@@ -320,13 +350,19 @@ ret:
 #else
 
 static inline
-QDF_STATUS dp_txrx_init(ol_txrx_soc_handle soc, struct cdp_pdev *pdev,
-			    struct dp_txrx_config *config)
+QDF_STATUS dp_txrx_init(ol_txrx_soc_handle soc, uint8_t pdev_id,
+			struct dp_txrx_config *config)
 {
 	return QDF_STATUS_SUCCESS;
 }
 
 static inline QDF_STATUS dp_txrx_deinit(ol_txrx_soc_handle soc)
+{
+	return QDF_STATUS_SUCCESS;
+}
+
+static inline QDF_STATUS dp_txrx_flush_pkts_by_vdev_id(ol_txrx_soc_handle soc,
+						       uint8_t vdev_id)
 {
 	return QDF_STATUS_SUCCESS;
 }

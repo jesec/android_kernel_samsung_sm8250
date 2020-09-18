@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2019 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2020 The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -128,11 +128,19 @@ struct hdd_context;
 #define TDLS_MGMT_VERSION2 0
 #endif
 
+/**
+ * hdd_convert_cfgdot11mode_to_80211mode() - Function to convert cfg dot11 mode
+ *  to 80211 mode
+ * @mode: cfg dot11 mode
+ *
+ * Return: 80211 mode
+ */
+enum qca_wlan_802_11_mode
+hdd_convert_cfgdot11mode_to_80211mode(enum csr_cfgdot11mode mode);
 #endif
 
 #define HDD_SET_BIT(__param, __val)    ((__param) |= (1 << (__val)))
 
-#define MAX_CHANNEL (NUM_24GHZ_CHANNELS + NUM_5GHZ_CHANNELS)
 #define MAX_SCAN_SSID 10
 
 #define IS_CHANNEL_VALID(channel) ((channel >= 0 && channel < 15) \
@@ -214,7 +222,6 @@ typedef enum {
 
 #define CFG_NON_AGG_RETRY_MAX                  (31)
 #define CFG_AGG_RETRY_MAX                      (31)
-#define CFG_MGMT_RETRY_MAX                     (31)
 #define CFG_CTRL_RETRY_MAX                     (31)
 #define CFG_PROPAGATION_DELAY_MAX              (63)
 #define CFG_PROPAGATION_DELAY_BASE             (64)
@@ -317,9 +324,9 @@ void hdd_reg_notifier(struct wiphy *wiphy,
 				 struct regulatory_request *request);
 
 QDF_STATUS wlan_hdd_validate_operation_channel(struct hdd_adapter *adapter,
-					       int channel);
+					       uint32_t ch_freq);
 
-void hdd_select_cbmode(struct hdd_adapter *adapter, uint8_t operationChannel,
+void hdd_select_cbmode(struct hdd_adapter *adapter, uint32_t oper_freq,
 		       struct ch_params *ch_params);
 
 /**
@@ -335,7 +342,7 @@ void hdd_select_cbmode(struct hdd_adapter *adapter, uint8_t operationChannel,
  * Return: true or false based on findings
  */
 bool wlan_hdd_is_ap_supports_immediate_power_save(uint8_t *ies, int length);
-void wlan_hdd_del_station(struct hdd_adapter *adapter);
+int wlan_hdd_del_station(struct hdd_adapter *adapter);
 
 #if defined(USE_CFG80211_DEL_STA_V2)
 int wlan_hdd_cfg80211_del_station(struct wiphy *wiphy,
@@ -360,11 +367,14 @@ int wlan_hdd_send_avoid_freq_event(struct hdd_context *hdd_ctx,
  * wlan_hdd_send_hang_reason_event() - Send hang reason to the userspace
  * @hdd_ctx: Pointer to hdd context
  * @reason: cds recovery reason
+ * @data: Hang Data
+ * @data_len: Hang Data len
  *
  * Return: 0 on success or failure reason
  */
 int wlan_hdd_send_hang_reason_event(struct hdd_context *hdd_ctx,
-				    uint32_t reason);
+				    uint32_t reason, void *data,
+				    size_t data_len);
 
 int wlan_hdd_send_avoid_freq_for_dnbs(struct hdd_context *hdd_ctx,
 				      uint8_t op_chan);
@@ -399,6 +409,19 @@ void wlan_hdd_cfg80211_unlink_bss(struct hdd_adapter *adapter,
 void wlan_hdd_cfg80211_acs_ch_select_evt(struct hdd_adapter *adapter);
 
 #ifdef WLAN_FEATURE_ROAM_OFFLOAD
+/**
+ * hdd_send_roam_scan_ch_list_event() - roam scan ch list event to user space
+ * @hdd_ctx: HDD context
+ * @vdev_id: vdev id
+ * @buf_len: length of frequency list
+ * @buf: pointer to buffer of frequency list
+ *
+ * Return: None
+ */
+void hdd_send_roam_scan_ch_list_event(struct hdd_context *hdd_ctx,
+				      uint8_t vdev_id, uint16_t buf_len,
+				      uint8_t *buf);
+
 int wlan_hdd_send_roam_auth_event(struct hdd_adapter *adapter, uint8_t *bssid,
 		uint8_t *req_rsn_ie, uint32_t req_rsn_length, uint8_t
 		*rsp_rsn_ie, uint32_t rsp_rsn_length, struct csr_roam_info
@@ -411,10 +434,28 @@ static inline int wlan_hdd_send_roam_auth_event(struct hdd_adapter *adapter,
 {
 	return 0;
 }
+
+static inline
+void hdd_send_roam_scan_ch_list_event(struct hdd_context *hdd_ctx,
+				      uint8_t vdev_id, uint16_t buf_len,
+				      uint8_t *buf)
+{
+}
 #endif
 
 int wlan_hdd_cfg80211_update_apies(struct hdd_adapter *adapter);
-int wlan_hdd_request_pre_cac(struct hdd_context *hdd_ctx, uint8_t channel);
+
+/**
+ * wlan_hdd_request_pre_cac() - Start pre CAC in the driver
+ * @hdd_ctx: the HDD context to operate against
+ * @chan_freq: channel freq option provided by userspace
+ *
+ * Sets the driver to the required hardware mode and start an adapter for
+ * pre CAC which will mimic an AP.
+ *
+ * Return: Zero on success, non-zero value on error
+ */
+int wlan_hdd_request_pre_cac(struct hdd_context *hdd_ctx, uint32_t chan_freq);
 int wlan_hdd_sap_cfg_dfs_override(struct hdd_adapter *adapter);
 
 int wlan_hdd_enable_dfs_chan_scan(struct hdd_context *hdd_ctx,
@@ -437,39 +478,25 @@ int wlan_hdd_cfg80211_update_band(struct hdd_context *hdd_ctx,
 				  enum band_info new_band);
 
 /**
- * wlan_hdd_try_disconnect() - try disconnnect from previous connection
+ * wlan_hdd_cfg80211_indicate_disconnect() - Indicate disconnnect to userspace
  * @adapter: Pointer to adapter
+ * @locally_generated: True if the disconnection is internally generated.
+ *                     False if the disconnection is received from peer.
+ * @reason: Disconnect reason as per @enum eSirMacReasonCodes
+ * @disconnect_ies: IEs received in Deauth/Disassoc from peer
+ * @disconnect_ies_len: Length of @disconnect_ies
  *
- * This function is used to disconnect from previous connection
+ * This function is indicate disconnect to the kernel which thus indicates
+ * to the userspace.
  *
- * Return: 0 for success, non-zero for failure
+ * Return: None
  */
-int wlan_hdd_try_disconnect(struct hdd_adapter *adapter);
-
-#if defined(CFG80211_DISCONNECTED_V2) || \
-(LINUX_VERSION_CODE >= KERNEL_VERSION(4, 2, 0))
-static inline void
-wlan_hdd_cfg80211_indicate_disconnect(struct net_device *dev,
+void
+wlan_hdd_cfg80211_indicate_disconnect(struct hdd_adapter *adapter,
 				      bool locally_generated,
-				      int reason,
+				      enum eSirMacReasonCodes reason,
 				      uint8_t *disconnect_ies,
-				      uint16_t disconnect_ies_len)
-{
-	cfg80211_disconnected(dev, reason, disconnect_ies, disconnect_ies_len,
-			      locally_generated, GFP_KERNEL);
-}
-#else
-static inline void
-wlan_hdd_cfg80211_indicate_disconnect(struct net_device *dev,
-				      bool locally_generated,
-				      int reason,
-				      uint8_t *disconnect_ies,
-				      uint16_t disconnect_ies_len)
-{
-	cfg80211_disconnected(dev, reason, disconnect_ies, disconnect_ies_len,
-			      GFP_KERNEL);
-}
-#endif
+				      uint16_t disconnect_ies_len);
 
 /**
  * wlan_hdd_inform_bss_frame() - inform bss details to NL80211
@@ -487,7 +514,7 @@ wlan_hdd_inform_bss_frame(struct hdd_adapter *adapter,
 /**
  * wlan_hdd_change_hw_mode_for_given_chnl() - change HW mode for given channel
  * @adapter: pointer to adapter
- * @channel: given channel number
+ * @chan_freq: given channel frequency
  * @reason: reason for HW mode change is needed
  *
  * This API decides and sets hardware mode to DBS based on given channel.
@@ -497,8 +524,8 @@ wlan_hdd_inform_bss_frame(struct hdd_adapter *adapter,
  * Return: 0 for success and non-zero for failure
  */
 int wlan_hdd_change_hw_mode_for_given_chnl(struct hdd_adapter *adapter,
-				uint8_t channel,
-				enum policy_mgr_conn_update_reason reason);
+					   uint32_t chan_freq,
+					   enum policy_mgr_conn_update_reason reason);
 
 /**
  * hdd_rate_info_bw: an HDD internal rate bandwidth representation
@@ -537,34 +564,27 @@ uint8_t hdd_get_sap_operating_band(struct hdd_context *hdd_ctx);
 /**
  * wlan_hdd_try_disconnect() - try disconnnect from previous connection
  * @adapter: Pointer to adapter
+ * @reason: Mac Disconnect reason code as per @enum eSirMacReasonCodes
  *
  * This function is used to disconnect from previous connection
  *
  * Return: 0 for success, non-zero for failure
  */
-int wlan_hdd_try_disconnect(struct hdd_adapter *adapter);
+int wlan_hdd_try_disconnect(struct hdd_adapter *adapter,
+			    enum eSirMacReasonCodes reason);
 
 /**
  * wlan_hdd_disconnect() - hdd disconnect api
  * @adapter: Pointer to adapter
- * @reason: Disconnect reason code
+ * @reason: CSR disconnect reason code as per @enum eCsrRoamDisconnectReason
+ * @mac_reason: Mac Disconnect reason code as per @enum eSirMacReasonCodes
  *
  * This function is used to issue a disconnect request to SME
  *
  * Return: 0 for success, non-zero for failure
  */
-int wlan_hdd_disconnect(struct hdd_adapter *adapter, u16 reason);
-
-/**
- * hdd_update_cca_info_cb() - stores congestion value in station context
- * @hdd_handle: HDD handle
- * @congestion: congestion
- * @vdev_id: vdev id
- *
- * Return: None
- */
-void hdd_update_cca_info_cb(hdd_handle_t hdd_handle, uint32_t congestion,
-			    uint32_t vdev_id);
+int wlan_hdd_disconnect(struct hdd_adapter *adapter, u16 reason,
+			tSirMacReasonCodes mac_reason);
 
 /**
  * wlan_hdd_get_adjacent_chan(): Gets next/previous channel

@@ -639,7 +639,13 @@
 			3	94	255	60
 		>;
 
-		samsung,gamma_mode2_tx_cmds_revA=[
+		samsung,gamma_mode2_normal_tx_cmds_revA=[
+			39 00 00 00 00 00 02 53 28
+			39 00 00 00 00 00 30 B7 00 01 53 28 4D 00 90 04 00 00 1D 00 00 01 01 02 02 42 43 43 43 43 43 83 C3 83 C3 83 C3 03 03 03 03 03 03 03 03 03 00 00 00 00 00 00 00 00 00
+			39 01 00 00 00 00 03 51 03 FF
+		]; /* B7 9th para:(Normal Elvss Offset),10th para:(HBM Elvss Offset) OTP, 47th para: TSET */
+
+		samsung,gamma_mode2_hbm_tx_cmds_revA=[
 			39 00 00 00 00 00 02 53 28
 			39 00 00 00 00 00 30 B7 00 01 53 28 4D 00 90 04 00 00 1D 00 00 01 01 02 02 42 43 43 43 43 43 83 C3 83 C3 83 C3 03 03 03 03 03 03 03 03 03 00 00 00 00 00 00 00 00 00
 			39 01 00 00 00 00 03 51 03 FF

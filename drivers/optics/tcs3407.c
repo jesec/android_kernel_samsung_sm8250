@@ -385,7 +385,7 @@ static void tcs3407_debug_var(struct tcs3407_device_data *data)
 	ALS_dbg("%s als_sampling_rate %d\n", __func__, data->sampling_period_ns);
 	ALS_dbg("%s regulator_state %d\n", __func__, data->regulator_state);
 	ALS_dbg("%s als_int %d\n", __func__, data->pin_als_int);
-#if !defined(CONFIG_SEC_Y2Q_PROJECT)	
+#if !defined(CONFIG_SEC_Y2Q_PROJECT)
 	ALS_dbg("%s als_en %d\n", __func__, data->pin_als_en);
 #endif
 	ALS_dbg("%s als_irq %d\n", __func__, data->dev_irq);
@@ -671,6 +671,7 @@ static int amsAlg_als_processData(amsAlsContext_t *ctx, amsAlsDataSet_t *inputDa
 		ctx->results.irrClear = ((inputData->datasetArray->clearADC * (AMS_ALS_Cc / CPU_FRIENDLY_FACTOR_1024))) / ctx->uvir_cpl;
 		ctx->results.irrBlue = ((inputData->datasetArray->blueADC * (AMS_ALS_Bc / CPU_FRIENDLY_FACTOR_1024))) / ctx->uvir_cpl;
 		ctx->results.irrGreen = ((inputData->datasetArray->greenADC * (AMS_ALS_Gc / CPU_FRIENDLY_FACTOR_1024))) / ctx->uvir_cpl;
+		ctx->results.irrWideband = ((inputData->datasetArray->widebandADC * (AMS_ALS_Wbc / CPU_FRIENDLY_FACTOR_1024))) / ctx->uvir_cpl;
 
 		UVIR_Clear = (inputData->datasetArray->clearADC * (AMS_ALS_Cc / CPU_FRIENDLY_FACTOR_1024)) / ctx->uvir_cpl;
 		UVIR_wideband = (inputData->datasetArray->widebandADC * (AMS_ALS_Wbc / CPU_FRIENDLY_FACTOR_1024)) / ctx->uvir_cpl;
@@ -680,23 +681,23 @@ static int amsAlg_als_processData(amsAlsContext_t *ctx, amsAlsDataSet_t *inputDa
 			tempClear = (CLEAR_CONST * UVIR_Clear) >> 1;
 
 			if (tempWb < tempClear)
-				ctx->results.irrWideband = 0;
+				ctx->results.irrIR = 0;
 			else
-				ctx->results.irrWideband = tempWb - tempClear;
+				ctx->results.irrIR = tempWb - tempClear;
 		} else {
 			tempWb = (WIDEBAND_CONST * UVIR_wideband) * AMS_ALS_FACTOR;
 			tempClear = (1400 * UVIR_Clear);
 
 			if (tempWb < tempClear)
-				ctx->results.irrWideband = 0;
+				ctx->results.irrIR = 0;
 			else
-				ctx->results.irrWideband = (tempWb - tempClear) / AMS_ALS_FACTOR;
+				ctx->results.irrIR = (tempWb - tempClear) / AMS_ALS_FACTOR;
 		}
 	}
 
-	ALS_info("%s - cal: %d, %d, %d, %d, %d, %d, %d\n", __func__,
+	ALS_info("%s - cal: %d, %d, %d, %d, %d, %d, %d, %d\n", __func__,
 				ctx->results.irrClear, ctx->results.irrRed, ctx->results.irrGreen,
-				ctx->results.irrBlue, ctx->results.irrWideband,	UVIR_Clear,	UVIR_wideband);
+				ctx->results.irrBlue, ctx->results.irrIR, ctx->results.irrWideband, UVIR_Clear, UVIR_wideband);
 
 	return 0;
 }
@@ -1168,7 +1169,8 @@ static void ccb_alsGetResult(void *dcbCtx, ams_ccb_als_result_t *exportData)
 	exportData->red = ccbCtx->ctxAlgAls.results.irrRed;
 	exportData->green = ccbCtx->ctxAlgAls.results.irrGreen;
 	exportData->blue = ccbCtx->ctxAlgAls.results.irrBlue;
-	exportData->ir = ccbCtx->ctxAlgAls.results.irrWideband;
+	exportData->ir = ccbCtx->ctxAlgAls.results.irrIR;
+	exportData->wideband = ccbCtx->ctxAlgAls.results.irrWideband;
 	exportData->time_us = ccbCtx->ctxAlgAls.time_us;
 	exportData->gain = ccbCtx->ctxAlgAls.gain;
 	exportData->rawClear = ccbCtx->ctxAlgAls.results.rawClear;
@@ -1428,6 +1430,7 @@ static int amsAlg_als_getResult(amsAlsContext_t *ctx, amsAlsResult_t *outData)
 	outData->irrGreen = ctx->results.irrGreen;
 	outData->irrRed   = ctx->results.irrRed;
 	outData->irrWideband = ctx->results.irrWideband;
+	outData->irrIR = ctx->results.irrIR;
 	outData->mLux_ave  = ctx->results.mLux_ave / AMS_LUX_AVERAGE_COUNT;
 	outData->IR  = ctx->results.IR;
 	outData->CCT = ctx->results.CCT;
@@ -1496,7 +1499,7 @@ static int ams_smux_set(ams_deviceCtx_t *ctx)
 		AMS_READ_S_MUX();
 		ams_setByte(ctx->portHndl, DEVREG_ENABLE, 0x11);//PON + SMUXEN excute
 		udelay(1000); //Now 0x80 needs to be read back until SMUXEN has been cleared , wait 1msec
-		ams_setByte(ctx->portHndl,DEVREG_SMUX13_PRX_TO_FLICKER,0x06); // 0x66 : ficker+flicker, 0x76: only one flikcer, 0x00 flicker off
+		ams_setByte(ctx->portHndl,DEVREG_SMUX13_PRX_TO_FLICKER,0x06); // 0x66 : ficker+flicker, 0x76: only one flikcer, 0x00 flicker off , 0x06 only ir fliter cut Flicker PD en
 		/* SMUX write command */
 		AMS_WRITE_S_MUX();//SMUX Write from RAM to chain
 		ams_setByte(ctx->portHndl, DEVREG_ENABLE, 0x11);//PON + SMUXEN
@@ -1593,7 +1596,7 @@ static int tcs3407_power_ctrl(struct tcs3407_device_data *data, int onoff)
 	}
 
 	regulator_vdd_1p8 =
-		regulator_get(&data->client->dev, data->vdd_1p8);
+		regulator_get(&data->client->dev, "vdd_1p8");
 	if (IS_ERR(regulator_vdd_1p8) || regulator_vdd_1p8 == NULL) {
 		ALS_dbg("%s - get vdd_1p8 regulator failed\n", __func__);
 		rc = PTR_ERR(regulator_vdd_1p8);
@@ -1704,12 +1707,12 @@ static void report_als(struct tcs3407_device_data *chip)
 		input_sync(chip->als_input_dev);
 
 		if (als_cnt++ > 10) {
-			ALS_dbg("%s - I:%d, R:%d, G:%d, B:%d, C:%d TIME:%d, GAIN:%d\n", __func__,
-				outData.ir, outData.red, outData.green, outData.blue, outData.clear, outData.time_us, outData.gain);
+			ALS_dbg("%s - I:%d, R:%d, G:%d, B:%d, C:%d, W:%d, TIME:%d, GAIN:%d\n", __func__,
+				outData.ir, outData.red, outData.green, outData.blue, outData.clear, outData.wideband, outData.time_us, outData.gain);
 			als_cnt = 0;
 		} else {
-			ALS_info("%s - I:%d, R:%d, G:%d, B:%d, C:%d TIME:%d, GAIN:%d\n", __func__,
-				outData.ir, outData.red, outData.green, outData.blue, outData.clear, outData.time_us, outData.gain);
+			ALS_info("%s - I:%d, R:%d, G:%d, B:%d, C:%d, W:%d, TIME:%d, GAIN:%d\n", __func__,
+				outData.ir, outData.red, outData.green, outData.blue, outData.clear, outData.wideband, outData.time_us, outData.gain);
 		}
 
 		chip->user_ir_data = outData.ir;
@@ -1717,6 +1720,7 @@ static void report_als(struct tcs3407_device_data *chip)
 		if (chip->eol_enable && chip->eol_count >= EOL_SKIP_COUNT) {
 			chip->eol_awb += outData.ir;
 			chip->eol_clear += outData.clear;
+			chip->eol_wideband += outData.wideband;
 		}
 #endif
 	}
@@ -1809,6 +1813,17 @@ static ssize_t als_clear_show(struct device *dev,
 	ams_deviceGetAls(chip->deviceCtx, &outData);
 
 	return snprintf(buf, PAGE_SIZE, "%d\n", outData.clear);
+}
+
+static ssize_t als_wideband_show(struct device *dev,
+	struct device_attribute *attr, char *buf)
+{
+	ams_apiAls_t outData;
+	struct tcs3407_device_data *chip = dev_get_drvdata(dev);
+
+	ams_deviceGetAls(chip->deviceCtx, &outData);
+
+	return snprintf(buf, PAGE_SIZE, "%d\n", outData.wideband);
 }
 
 static ssize_t als_raw_data_show(struct device *dev,
@@ -2341,32 +2356,49 @@ static int tcs3407_eol_mode(struct tcs3407_device_data *data)
 	int period_100 = 10000000; /* nano secs */
 	int period_120 = 8333333; /* nano secs */
 	int duty = 20;
+	s32 pin_eol_en = 0, eol_led_mode;
 
 	data->eol_state = EOL_STATE_INIT;
 	data->eol_enable = 1;
 	data->eol_result_status = 1;
 
+	if (data->eol_flash_type == EOL_FLASH) {
+		ALS_dbg("%s - flash gpio", __func__);
+		pin_eol_en = data->pin_flash_en;
+		eol_led_mode = S2MPB02_FLASH_LED_1;
+	} else {
+		ALS_dbg("%s - torch gpio", __func__);
+		pin_eol_en = data->pin_torch_en;
+		eol_led_mode = S2MPB02_TORCH_LED_1;
+	}
+
 	if (data->pwm == NULL || debug_pwm_duty > period_100) {
-		ret = gpio_request(data->pin_led_en, NULL);
+		ret = gpio_request(pin_eol_en, NULL);
 		if (ret < 0)
 			return ret;
 
-		s2mpb02_led_en(S2MPB02_TORCH_LED_1, led_curr, S2MPB02_LED_TURN_WAY_GPIO);
+		s2mpb02_led_en(eol_led_mode, led_curr, S2MPB02_LED_TURN_WAY_GPIO);
 
-		switch (ctx->deviceId) {
-		case AMS_TCS3407:
-		case AMS_TCS3407_UNTRIM:
-			led_curr = S2MPB02_TORCH_OUT_I_100MA;
-			break;
-		case AMS_TCS3408:
-		case AMS_TCS3408_UNTRIM:
-			led_curr = S2MPB02_TORCH_OUT_I_20MA;
-			break;
-		default:
-			led_curr = S2MPB02_TORCH_OUT_I_20MA;
-			break;
+		/* set min flash current */
+		if (data->eol_flash_type == EOL_FLASH) {
+			led_curr = S2MPB02_FLASH_OUT_I_100MA;
+		} else {
+			switch (ctx->deviceId) {
+				case AMS_TCS3407:
+				case AMS_TCS3407_UNTRIM:
+					led_curr = S2MPB02_TORCH_OUT_I_100MA;
+					break;
+				case AMS_TCS3408:
+				case AMS_TCS3408_UNTRIM:
+					led_curr = S2MPB02_TORCH_OUT_I_80MA;
+					break;
+				default:
+					led_curr = S2MPB02_TORCH_OUT_I_80MA;
+					break;
+			}
 		}
 
+		ALS_dbg("%s - eol_loop start",__func__);
 		while (data->eol_state < EOL_STATE_DONE) {
 			switch (data->eol_state) {
 			case EOL_STATE_INIT:
@@ -2383,21 +2415,22 @@ static int tcs3407_eol_mode(struct tcs3407_device_data *data)
 
 			if (data->eol_state >= EOL_STATE_100) {
 				if (curr_state != data->eol_state) {
-					s2mpb02_led_en(S2MPB02_TORCH_LED_1, led_curr, S2MPB02_LED_TURN_WAY_GPIO);
+					s2mpb02_led_en(eol_led_mode, led_curr, S2MPB02_LED_TURN_WAY_GPIO);
 					curr_state = data->eol_state;
 				} else
-					gpio_direction_output(data->pin_led_en, 1);
-				
+					gpio_direction_output(pin_eol_en, 1);
+
 				udelay(pulse_duty);
 
-				gpio_direction_output(data->pin_led_en, 0);
+				gpio_direction_output(pin_eol_en, 0);
 
 				data->eol_pulse_count++;
 			}
 			udelay(pulse_duty);
 		}
-		s2mpb02_led_en(S2MPB02_TORCH_LED_1, 0, S2MPB02_LED_TURN_WAY_GPIO);
-		gpio_free(data->pin_led_en);
+		ALS_dbg("%s - eol loop end",__func__);
+		s2mpb02_led_en(eol_led_mode, 0, S2MPB02_LED_TURN_WAY_GPIO);
+		gpio_free(pin_eol_en);
 	} else {
 		ALS_dbg("%s - PWM torch set 0x%x 0x%x\n", __func__, data->pinctrl_pwm, data->pinctrl_out);
 		pinctrl_select_state(data->als_pinctrl, data->pinctrl_pwm);
@@ -2405,7 +2438,7 @@ static int tcs3407_eol_mode(struct tcs3407_device_data *data)
 		pwm_get_state(data->pwm, &state);
 
 		ALS_dbg("%s - debug duty = %d\n", __func__, debug_pwm_duty);
-	
+
 		while (data->eol_state < EOL_STATE_DONE) {
 			switch (data->eol_state) {
 			case EOL_STATE_INIT:
@@ -2437,16 +2470,16 @@ static int tcs3407_eol_mode(struct tcs3407_device_data *data)
 					pwm_apply_state(data->pwm, &state);
 
 					curr_state = data->eol_state;
-				} 
+				}
 
 				data->eol_pulse_count++;
 			}
 			udelay(1000);
 		}
 		state.enabled = 0;
-		
+
 		pwm_apply_state(data->pwm, &state);
-		
+
 		ALS_dbg("%s - pinctrl out = 0x%x\n", __func__, data->pinctrl_out);
 		pinctrl_select_state(data->als_pinctrl, data->pinctrl_out);
 	}
@@ -2461,8 +2494,8 @@ static int tcs3407_eol_mode(struct tcs3407_device_data *data)
 			"%d, %s, %d, %s, %d, %s, %d, %s, %d, %s, %d, %s, %d, %s, %d, %s\n",
 			data->eol_flicker_awb[EOL_STATE_100][0], FREQ100_SPEC_IN(data->eol_flicker_awb[EOL_STATE_100][0]),
 			data->eol_flicker_awb[EOL_STATE_120][0], FREQ120_SPEC_IN(data->eol_flicker_awb[EOL_STATE_120][0]),
-			data->eol_flicker_awb[EOL_STATE_100][1], IR_SPEC_IN(data->eol_flicker_awb[EOL_STATE_100][1]),
-			data->eol_flicker_awb[EOL_STATE_120][1], IR_SPEC_IN(data->eol_flicker_awb[EOL_STATE_120][1]),
+			data->eol_flicker_awb[EOL_STATE_100][3], IR_SPEC_IN(data->eol_flicker_awb[EOL_STATE_100][3]),
+			data->eol_flicker_awb[EOL_STATE_120][3], IR_SPEC_IN(data->eol_flicker_awb[EOL_STATE_120][3]),
 			data->eol_flicker_awb[EOL_STATE_100][2], CLEAR_SPEC_IN(data->eol_flicker_awb[EOL_STATE_100][2]),
 			data->eol_flicker_awb[EOL_STATE_120][2], CLEAR_SPEC_IN(data->eol_flicker_awb[EOL_STATE_120][2]),
 			icRatio100, ICRATIO_SPEC_IN(icRatio100),
@@ -2517,6 +2550,8 @@ struct device_attribute *attr, const char *buf, size_t size)
 		return err;
 	}
 
+	data->eol_flash_type = EOL_TORCH;
+
 	switch (mode) {
 	case 1:
 		gSpec_ir_min = data->eol_ir_spec[0];
@@ -2536,12 +2571,29 @@ struct device_attribute *attr, const char *buf, size_t size)
 		gSpec_icratio_max = data->eol_icratio_spec[3];
 		break;
 
+	case 100:
+		// USE OPEN SPEC
+		gSpec_ir_min = DEFAULT_IR_SPEC_MIN;
+		gSpec_ir_max = DEFAULT_IR_SPEC_MAX;
+		gSpec_clear_min = DEFAULT_IR_SPEC_MIN;
+		gSpec_clear_max = DEFAULT_IR_SPEC_MAX;
+		gSpec_icratio_min = DEFAULT_IC_SPEC_MIN;
+		gSpec_icratio_max = DEFAULT_IC_SPEC_MAX;
+
+		if (data->pin_flash_en >= 0) {
+			data->eol_flash_type = EOL_FLASH;
+			ALS_dbg("%s - use flash gpio", __func__);
+		} else {
+			ALS_dbg("%s - flash gpio not setted. use torch gpio", __func__);
+		}
+		break;
+
 	default:
 		break;
 	}
 
-	ALS_dbg("%s - mode = %d-%d, gSpec_ir = %d - %d, gSpec_clear = %d - %d, gSpec_icratio = %d - %d\n",	__func__, mode,
-		preEnalble, gSpec_ir_min, gSpec_ir_max, gSpec_clear_min, gSpec_clear_max, gSpec_icratio_min, gSpec_icratio_max);
+	ALS_dbg("%s - mode = %d-%d, gSpec_ir = %d - %d, gSpec_clear = %d - %d, gSpec_icratio = %d - %d eol_flash_type : %d\n",	__func__, mode,
+		preEnalble, gSpec_ir_min, gSpec_ir_max, gSpec_clear_min, gSpec_clear_max, gSpec_icratio_min, gSpec_icratio_max, data->eol_flash_type);
 
 	mutex_lock(&data->activelock);
 
@@ -2634,7 +2686,7 @@ struct device_attribute *attr, char *buf)
 		data->eol_ir_spec[0], data->eol_ir_spec[1], data->eol_ir_spec[2], data->eol_ir_spec[3],
 		data->eol_clear_spec[0], data->eol_clear_spec[1], data->eol_clear_spec[2], data->eol_clear_spec[3],
 		data->eol_icratio_spec[0], data->eol_icratio_spec[1], data->eol_icratio_spec[2], data->eol_icratio_spec[3]);
-	
+
 	return snprintf(buf, PAGE_SIZE, "%d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d\n",
 		data->eol_ir_spec[0], data->eol_ir_spec[1], data->eol_ir_spec[2], data->eol_ir_spec[3],
 		data->eol_clear_spec[0], data->eol_clear_spec[1], data->eol_clear_spec[2], data->eol_clear_spec[3],
@@ -2664,6 +2716,7 @@ static DEVICE_ATTR(als_red, S_IRUGO, als_red_show, NULL);
 static DEVICE_ATTR(als_green, S_IRUGO, als_green_show, NULL);
 static DEVICE_ATTR(als_blue, S_IRUGO, als_blue_show, NULL);
 static DEVICE_ATTR(als_clear, S_IRUGO, als_clear_show, NULL);
+static DEVICE_ATTR(als_wideband, S_IRUGO, als_wideband_show, NULL);
 static DEVICE_ATTR(als_raw_data, S_IRUGO, als_raw_data_show, NULL);
 #ifdef CONFIG_AMS_OPTICAL_SENSOR_FLICKER
 static DEVICE_ATTR(flicker_data, S_IRUGO, flicker_data_show, NULL);
@@ -2694,6 +2747,7 @@ static struct device_attribute *tcs3407_sensor_attrs[] = {
 	&dev_attr_als_green,
 	&dev_attr_als_blue,
 	&dev_attr_als_clear,
+	&dev_attr_als_wideband,
 	&dev_attr_als_raw_data,
 #ifdef CONFIG_AMS_OPTICAL_SENSOR_FLICKER
 	&dev_attr_flicker_data,
@@ -2842,10 +2896,12 @@ static int tcs3407_eol_mode_handler(struct tcs3407_device_data *data)
 			data->eol_flicker_awb[i][0] = 0;
 			data->eol_flicker_awb[i][1] = 0;
 			data->eol_flicker_awb[i][2] = 0;
+			data->eol_flicker_awb[i][3] = 0;
 		}
 		data->eol_count = 0;
 		data->eol_awb = 0;
 		data->eol_clear = 0;
+		data->eol_wideband = 0;
 		data->eol_flicker = 0;
 		data->eol_flicker_count = 0;
 		data->eol_state = EOL_STATE_100;
@@ -2853,16 +2909,18 @@ static int tcs3407_eol_mode_handler(struct tcs3407_device_data *data)
 		break;
 	default:
 		data->eol_count++;
-		ALS_dbg("%s - %d, %d, %d, %d, %d\n", __func__,
-			data->eol_state, data->eol_count, data->eol_flicker, data->eol_awb, data->eol_clear);
-		ALS_dbg("%s - raw: %d, %d, %d, %d, %d\n", __func__, ctx->ccbAlsCtx.ctxAlgAls.uvir_cpl,
+		ALS_dbg("%s - %d, %d, %d, %d, %d, %d\n", __func__,
+			data->eol_state, data->eol_count, data->eol_flicker, data->eol_awb, data->eol_clear, data->eol_wideband);
+		ALS_dbg("%s - raw: %d, %d, %d, %d, %d, %d\n", __func__, ctx->ccbAlsCtx.ctxAlgAls.uvir_cpl,
 			ctx->ccbAlsCtx.ctxAlgAls.results.rawClear, ctx->ccbAlsCtx.ctxAlgAls.results.rawWideband,
-			ctx->ccbAlsCtx.ctxAlgAls.results.irrClear, ctx->ccbAlsCtx.ctxAlgAls.results.irrWideband);
+			ctx->ccbAlsCtx.ctxAlgAls.results.irrClear, ctx->ccbAlsCtx.ctxAlgAls.results.irrIR, ctx->ccbAlsCtx.ctxAlgAls.results.irrWideband);
 
 		if (data->eol_count >= (EOL_COUNT + EOL_SKIP_COUNT)) {
 			data->eol_flicker_awb[data->eol_state][0] = data->eol_flicker / data->eol_flicker_count;
 			data->eol_flicker_awb[data->eol_state][1] = data->eol_awb / EOL_COUNT;
 			data->eol_flicker_awb[data->eol_state][2] = data->eol_clear / EOL_COUNT;
+			data->eol_flicker_awb[data->eol_state][3] = data->eol_wideband / EOL_COUNT;
+
 
 			ALS_dbg("%s - eol_state = %d, pulse_duty = %d %d, pulse_count = %d\n",
 				__func__, data->eol_state, data->eol_pulse_duty[0], data->eol_pulse_duty[1], data->eol_pulse_count);
@@ -2870,6 +2928,7 @@ static int tcs3407_eol_mode_handler(struct tcs3407_device_data *data)
 			data->eol_count = 0;
 			data->eol_awb = 0;
 			data->eol_clear = 0;
+			data->eol_wideband = 0;
 			data->eol_flicker = 0;
 			data->eol_flicker_count = 0;
 			data->eol_pulse_count = 0;
@@ -3012,17 +3071,19 @@ static int tcs3407_parse_dt(struct tcs3407_device_data *data)
 #endif
 
 #ifdef CONFIG_AMS_OPTICAL_SENSOR_EOL_MODE
-	data->pin_led_en = of_get_named_gpio_flags(dNode,
+	data->pin_torch_en = of_get_named_gpio_flags(dNode,
 		"als_rear,led_en-gpio", 0, &flags);
-	if (data->pin_led_en < 0) {
-		ALS_err("%s - get pin_led_en error\n", __func__);
+	if (data->pin_torch_en < 0) {
+		ALS_err("%s - get pin_torch_en error\n", __func__);
 		return -ENODEV;
 	}
-#endif
 
-	if (of_property_read_string(dNode, "als_rear,vdd_1p8",
-		(char const **)&data->vdd_1p8) < 0)
-		ALS_dbg("%s - vdd_1p8 doesn`t exist\n", __func__);
+	data->pin_flash_en = of_get_named_gpio_flags(dNode,
+		"als_rear,flash_en-gpio", 0, &flags);
+	if (data->pin_flash_en < 0) {
+		ALS_err("%s - get pin_flash_en error\n", __func__);
+	}
+#endif
 
 	if (of_property_read_string(dNode, "als_rear,i2c_1p8",
 		(char const **)&data->i2c_1p8) < 0)
@@ -3305,7 +3366,7 @@ static bool ams_deviceGetAls(ams_deviceCtx_t *ctx, ams_apiAls_t *exportData)
 	exportData->ir          = result.ir;
 	exportData->time_us		= result.time_us;
 	exportData->gain		= result.gain;
-//	exportData->wideband    = result.wideband;
+	exportData->wideband    = result.wideband;
 	exportData->rawClear    = result.rawClear;
 	exportData->rawRed      = result.rawRed;
 	exportData->rawGreen    = result.rawGreen;
@@ -3520,9 +3581,9 @@ static int ams_deviceInit(ams_deviceCtx_t *ctx, AMS_PORT_portHndl *portHndl, ams
 
 #ifdef TCS3408_USE_SMUX
 /*
-S-MUX Read/Write 
-1  read configuration to ram Read smux configuration to RAM from smux chain  
-2  write configuration from ram Write smux configuration from RAM to smux chain 
+S-MUX Read/Write
+1  read configuration to ram Read smux configuration to RAM from smux chain
+2  write configuration from ram Write smux configuration from RAM to smux chain
 */
 
 	ams_smux_set(ctx);

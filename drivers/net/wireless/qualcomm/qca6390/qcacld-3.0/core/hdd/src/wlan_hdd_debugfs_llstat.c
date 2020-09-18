@@ -91,7 +91,7 @@ void hdd_debugfs_process_iface_stats(struct hdd_adapter *adapter,
 	buffer += len;
 	ll_stats.len += len;
 	len = scnprintf(buffer, DEBUGFS_LLSTATS_BUF_SIZE - ll_stats.len,
-			"\nbeacon_rx: %u, mgmt_rx: %u, mgmt_action_rx: %u, mgmt_action_tx: %u, rssi_mgmt: %u, rssi_data: %u, rssi_ack: %u, is_leaky_ap: %u, avg_rx_frms_leaked: %u, rx_leak_window: %u, average_tsf_offset: %llu, Tx RTS success count: %u, Tx RTS fail count: %u, Tx ppdu success count: %u, Tx ppdu fail count: %u, Connected duration: %u, Disconnected duration: %u, RTT ranging duration: %u, RTT responder duration: %u, Num tx probes: %u, Num beacon miss: %u,\n\nNumber of AC: %d",
+			"\nbeacon_rx: %u, mgmt_rx: %u, mgmt_action_rx: %u, mgmt_action_tx: %u, rssi_mgmt: %d, rssi_data: %d, rssi_ack: %d, is_leaky_ap: %u, avg_rx_frms_leaked: %u, rx_leak_window: %u, average_tsf_offset: %llu, Tx RTS success count: %u, Tx RTS fail count: %u, Tx ppdu success count: %u, Tx ppdu fail count: %u, Connected duration: %u, Disconnected duration: %u, RTT ranging duration: %u, RTT responder duration: %u, Num tx probes: %u, Num beacon miss: %u,\n\nNumber of AC: %d",
 			link_stats->beacon_rx, link_stats->mgmt_rx,
 			link_stats->mgmt_action_rx, link_stats->mgmt_action_tx,
 			link_stats->rssi_mgmt, link_stats->rssi_data,
@@ -386,7 +386,7 @@ static ssize_t __wlan_hdd_read_ll_stats_debugfs(struct net_device *net_dev,
 
 	/* All the events are received and buffer is populated */
 	ret = hdd_debugfs_stats_update(buf, count, pos);
-	hdd_info("%zu characters written into debugfs", ret);
+	hdd_debug("%zu characters written into debugfs", ret);
 
 	hdd_exit();
 

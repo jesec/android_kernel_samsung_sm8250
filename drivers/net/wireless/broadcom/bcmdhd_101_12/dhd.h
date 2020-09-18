@@ -829,7 +829,8 @@ enum {
 
 #define DHD_LOG_DUMP_TS_MULTIPLIER_VALUE    60
 #define DHD_LOG_DUMP_TS_FMT_YYMMDDHHMMSSMSMS    "%02d%02d%02d%02d%02d%02d%04d"
-#define DHD_DEBUG_DUMP_TYPE		"debug_dump_FORUSER"
+#define DHD_LOG_DUMP_TS_FMT_YYMMDDHHMMSS        "%02d%02d%02d%02d%02d%02d"
+#define DHD_DEBUG_DUMP_TYPE		"debug_dump"
 #define DHD_DUMP_SUBSTR_UNWANTED	"_unwanted"
 #define DHD_DUMP_SUBSTR_DISCONNECTED	"_disconnected"
 
@@ -1457,6 +1458,10 @@ typedef struct dhd_pub {
 		wl_roam_stats_v1_t v1;
 	} roam_evt;
 	bool dhd_chk_m4acked;		/* check acked for sending M4 packet */
+	bool check_trap_rot;
+#ifdef DHD_GRO_ENABLE_HOST_CTRL
+	bool permitted_gro;
+#endif /* DHD_GRO_ENABLE_HOST_CTRL */
 } dhd_pub_t;
 
 #if defined(__linux__)
@@ -2289,6 +2294,9 @@ extern void dhd_sendup_log(dhd_pub_t *dhdp, void *data, int len);
 #if defined(SHOW_LOGTRACE) && defined(EWP_EDL)
 void dhd_sendup_info_buf(dhd_pub_t *dhdp, uint8 *msg);
 #endif
+#if defined(WIFI_TURNON_USE_HALINIT)
+extern int dhd_open(struct net_device *net);
+#endif /* WIFI_TURNON_USE_HALINIT */
 extern int dhd_bus_devreset(dhd_pub_t *dhdp, uint8 flag);
 extern uint dhd_bus_status(dhd_pub_t *dhdp);
 extern int  dhd_bus_start(dhd_pub_t *dhdp);
@@ -2594,6 +2602,13 @@ extern int dhd_roam_rssi_limit_set(dhd_pub_t *dhd, int lmt2g, int lmt5g);
 #define CUSTOM_ROAMRSSI_5G		ROAMRSSI_5G_DEFAULT
 #endif /* CUSTOM_ROAMRSSI_5G */
 #endif /* CONFIG_ROAM_RSSI_LIMIT */
+#ifdef CONFIG_ROAM_MIN_DELTA
+extern int dhd_roam_min_delta_get(dhd_pub_t *dhd, uint32 *dt2g, uint32 *dt5g);
+extern int dhd_roam_min_delta_set(dhd_pub_t *dhd, uint32 dt2g, uint32 dt5g);
+#ifndef CUSTOM_ROAM_MIN_DELTA
+#define CUSTOM_ROAM_MIN_DELTA		ROAM_MIN_DELTA_DEFAULT
+#endif /* CUSTOM_ROAM_MIN_DELTA */
+#endif /* CONFIG_ROAM_MIN_DELTA */
 
 #define NO_DTIM_SKIP 1
 #ifdef SDTEST
@@ -2697,7 +2712,18 @@ extern int dhd_write_macaddr(struct ether_addr *mac);
 static INLINE int dhd_write_macaddr(struct ether_addr *mac) { return 0; }
 #endif /* WRITE_MACADDR */
 #ifdef USE_CID_CHECK
+#if defined(BCM4361_CHIP) || defined(BCM4375_CHIP) || defined(BCM4389_CHIP_DEF)
+#define DHD_USE_CISINFO_FROM_OTP
+#endif /* CONFIG_BCM4361 || CONFIG_BCM4375 || CONFIG_BCM4389_DEF */
 #define MAX_VNAME_LEN		64
+#define MAX_VID_LEN		8
+#define MODULE_NAME_INDEX_MAX	3
+#define MAX_EXTENSION 20
+typedef struct {
+	char cid_ext[MAX_EXTENSION];
+	char nvram_ext[MAX_EXTENSION];
+	char fw_ext[MAX_EXTENSION];
+} naming_info_t;
 #ifdef DHD_EXPORT_CNTL_FILE
 extern char cidinfostr[MAX_VNAME_LEN];
 #endif /* DHD_EXPORT_CNTL_FILE */
@@ -2730,6 +2756,9 @@ extern int dhd_check_module_b90(void);
 #endif /* defined(SUPPORT_MULTIPLE_MODULE_CIS) && defined(USE_CID_CHECK) */
 #if defined(USE_CID_CHECK)
 extern int dhd_check_module_bcm(char *module_type, int index, bool *is_murata_fem);
+extern naming_info_t *
+dhd_find_naming_info(dhd_pub_t *dhdp, char *module_type);
+extern naming_info_t * dhd_find_naming_info_by_chip_rev(dhd_pub_t *dhdp, bool *is_murata_fem);
 #endif /* defined(USE_CID_CHECK) */
 #else
 static INLINE int dhd_read_cis(dhd_pub_t *dhdp) { return 0; }
@@ -3534,6 +3563,11 @@ extern void dhd_dump_file_manage_enqueue(dhd_pub_t *dhd, char *dump_path, char *
 #define HD_PREFIX_SIZE  2   /* hexadecimal prefix size */
 #define HD_BYTE_SIZE    2   /* hexadecimal byte size */
 
+#if !defined(PCIE_FULL_DONGLE) && defined(P2P_IF_STATE_EVENT_CTRL)
+int dhd_throttle_p2p_interface_event(void *handle, bool onoff);
+void dhd_reset_p2p_interface_event(void *handle);
+#endif /* !PCIE_FULL_DONGLE & P2P_IF_STATE_EVENT_CTRL */
+
 #ifdef DNGL_AXI_ERROR_LOGGING
 extern void dhd_axi_error(dhd_pub_t *dhd);
 #ifdef DHD_USE_WQ_FOR_DNGL_AXI_ERROR
@@ -3595,4 +3629,16 @@ extern void dhd_chk_m4_acked(dhd_pub_t *dhdp);
 #define CHK_M4_WAIT_MAX_TIME	200 /* ms */
 #define CHK_M4_WAIT_INTV_TIME	10 /* ms */
 #endif /* DHD_CHECK_4WAY_M4ACKED */
+
+#ifdef DHD_SUPPORT_HDM
+extern bool hdm_trigger_init;
+extern int dhd_module_init_hdm(void);
+extern void dhd_hdm_wlan_sysfs_init(void);
+extern void dhd_hdm_wlan_sysfs_deinit(struct work_struct *);
+#define SYSFS_DEINIT_MS 10
+#endif /* DHD_SUPPORT_HDM */
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 19, 0) && defined(DHD_TCP_LIMIT_OUTPUT)
+void dhd_ctrl_tcp_limit_output_bytes(int level);
+#endif /* LINUX_VERSION_CODE > 4.19.0 && DHD_TCP_LIMIT_OUTPUT */
 #endif /* _dhd_h_ */

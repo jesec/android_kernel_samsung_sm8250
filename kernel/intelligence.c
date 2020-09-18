@@ -157,7 +157,7 @@ static ssize_t task_state_proc_write(struct file *file,
 	int i;
 	int ret;
 
-	if (count > 8 * 2048)
+	if (!count || count > 8 * 2048)
 		return -EINVAL;
 
 	// + 1 to safeguard string termination

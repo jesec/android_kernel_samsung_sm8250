@@ -1871,7 +1871,7 @@ dhdsdio_bussleep(dhd_bus_t *bus, bool sleep)
 			}
 		} else {
 			err = dhdsdio_clk_devsleep_iovar(bus, FALSE /* wake */);
-#ifdef BT_OVER_SDIO
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 27))
 			if (err < 0) {
 				struct net_device *net = NULL;
 				dhd_pub_t *dhd = bus->dhd;
@@ -1885,7 +1885,7 @@ dhdsdio_bussleep(dhd_bus_t *bus, bool sleep)
 					DHD_ERROR(("<< WIFI HANG Fail because net is NULL\n"));
 				}
 			}
-#endif /* BT_OVER_SDIO */
+#endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 27) && OEM_ANDROID */
 		}
 
 		if (err == 0) {
@@ -7644,12 +7644,20 @@ dhd_bus_console_in(dhd_pub_t *dhdp, uchar *msg, uint msglen)
 
 	/* Zero cbuf_index */
 	addr = bus->console_addr + OFFSETOF(hnd_cons_t, cbuf_idx);
+	/* handle difference in definition of hnd_log_t in certain branches */
+	if (dhdp->wlc_ver_major < 14) {
+		addr -= sizeof(uint32);
+	}
 	val = htol32(0);
 	if ((rv = dhdsdio_membytes(bus, TRUE, addr, (uint8 *)&val, sizeof(val))) < 0)
 		goto done;
 
 	/* Write message into cbuf */
 	addr = bus->console_addr + OFFSETOF(hnd_cons_t, cbuf);
+	/* handle difference in definition of hnd_log_t in certain branches */
+	if (dhdp->wlc_ver_major < 14) {
+		addr -= sizeof(uint32);
+	}
 	if ((rv = dhdsdio_membytes(bus, TRUE, addr, (uint8 *)msg, msglen)) < 0)
 		goto done;
 
@@ -8019,7 +8027,7 @@ dhdsdio_probe_attach(struct dhd_bus *bus, osl_t *osh, void *sdh, void *regsva,
 #ifdef DHD_DEBUG
 	if (DHD_INFO_ON()) {
 		uint fn, numfn;
-		uint8 *cis[SDIOD_MAX_IOFUNCS];
+		uint8 *cis = NULL;
 		int local_err = 0;
 
 #ifndef BCMSPI
@@ -8040,26 +8048,22 @@ dhdsdio_probe_attach(struct dhd_bus *bus, osl_t *osh, void *sdh, void *regsva,
 		numfn = 0; /* internally func is hardcoded to 1 as gSPI has cis on F1 only */
 #endif /* !BCMSPI */
 #ifndef BCMSDIOLITE
+		if (!(cis = MALLOC(osh, SBSDIO_CIS_SIZE_LIMIT))) {
+			DHD_INFO(("dhdsdio_probe: cis malloc failed\n"));
+			goto fail;
+		}
+
 		for (fn = 0; fn <= numfn; fn++) {
-			if (!(cis[fn] = MALLOC(osh, SBSDIO_CIS_SIZE_LIMIT))) {
-				DHD_INFO(("dhdsdio_probe: fn %d cis malloc failed\n", fn));
+			bzero(cis, SBSDIO_CIS_SIZE_LIMIT);
+			if ((err = bcmsdh_cis_read(sdh, fn, cis,
+				SBSDIO_CIS_SIZE_LIMIT))) {
+				DHD_INFO(("dhdsdio_probe: fn %d cis read err %d\n",
+					fn, err));
 				break;
 			}
-			bzero(cis[fn], SBSDIO_CIS_SIZE_LIMIT);
-
-			if ((local_err = bcmsdh_cis_read(sdh, fn, cis[fn],
-			                                 SBSDIO_CIS_SIZE_LIMIT))) {
-				DHD_INFO(("dhdsdio_probe: fn %d cis read err %d\n", fn, local_err));
-				MFREE(osh, cis[fn], SBSDIO_CIS_SIZE_LIMIT);
-				break;
-			}
-			dhd_dump_cis(fn, cis[fn]);
+			dhd_dump_cis(fn, cis);
 		}
-
-		while (fn-- > 0) {
-			ASSERT(cis[fn]);
-			MFREE(osh, cis[fn], SBSDIO_CIS_SIZE_LIMIT);
-		}
+		MFREE(osh, cis, SBSDIO_CIS_SIZE_LIMIT);
 #else
 	BCM_REFERENCE(cis);
 	BCM_REFERENCE(fn);

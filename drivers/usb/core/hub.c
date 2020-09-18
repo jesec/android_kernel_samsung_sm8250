@@ -2181,16 +2181,6 @@ void usb_disconnect(struct usb_device **pdev)
 	struct usb_hub *hub = NULL;
 	int port1 = 1;
 
-#ifdef CONFIG_USB_AUDIO_ENHANCED_DETECT_TIME
-	if (time_before(jiffies, udev->connect_time + msecs_to_jiffies(800)) &&
-			is_known_usbaudio(udev)) {
-		dev_info(&udev->dev, "%s: time(%dms), add delay ++\n", __func__,
-				jiffies_to_msecs(jiffies - udev->connect_time));
-		msleep(500);
-		dev_info(&udev->dev, "%s: add delay --\n", __func__);
-	}
-#endif
-
 	/* mark the device as inactive, so any further urb submissions for
 	 * this device (and any of its children) will fail immediately.
 	 * this quiesces everything except pending urbs.

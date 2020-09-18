@@ -5,6 +5,20 @@ config SAMSUNG_OIS_MCU_STM32
 	---help---
 	Enables support for external ois module.
 
+config SAMSUNG_OIS_TAMODE_CONTROL
+	tristate "Use ois TAMODE control"
+	depends on SPECTRA_CAMERA
+	default n
+	---help---
+	Enables support for actuator softlanding
+
+config SAMSUNG_OIS_RUMBA_S4
+        tristate "External RUMBA S4 OIS support"
+	depends on SPECTRA_CAMERA
+	default n
+	---help---
+	Enables support for external ois module.
+
 config SAMSUNG_SBI
         tristate "External SBI support"
 	depends on SPECTRA_CAMERA
@@ -213,3 +227,24 @@ config SAMSUNG_ACTUATOR_PREVENT_SHAKING
 	default n
 	---help---
 	Enables support for actuator softlanding
+
+config SENSOR_RETENTION
+        tristate "2L4 sensor retention"
+        depends on SPECTRA_CAMERA
+        default n
+        ---help---
+        Enables support for 2L4 sensor retention
+
+config SAMSUNG_ACTUATOR_SOFTLANDING
+	tristate "actuator softlanding support"
+	depends on SPECTRA_CAMERA
+	default n
+	---help---
+	Enables support for actuator softlanding
+
+config USE_CAMERA_HW_BIG_DATA
+	bool "CAMERA HW SYS"
+	depends on SPECTRA_CAMERA
+	default n
+	---help---
+	CAMERA HW SYS.

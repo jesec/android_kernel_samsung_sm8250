@@ -122,11 +122,12 @@ void ss_mafpc_make_img_mass_cmds_HAB(struct samsung_display_driver_data *vdd, ch
 
 	payload_len = data_size + (data_size + MAFPC_MASS_CMD_ALIGN - 1)/MAFPC_MASS_CMD_ALIGN;
 	cmd_cnt = (payload_len + MAFPC_MAX_PAYLOAD_SIZE_MASS - 1) / MAFPC_MAX_PAYLOAD_SIZE_MASS;
-	LCD_INFO("Command [%d], Total data size [%d], total cmd len [%d], cmd count [%d]\n", cmd_type, data_size, payload_len, cmd_cnt);
+	LCD_INFO("Command [%s], Total data size [%d], total cmd len [%d], cmd count [%d]\n",
+			ss_get_cmd_name(cmd_type), data_size, payload_len, cmd_cnt);
 
 	pcmds = ss_get_cmds(vdd, cmd_type);
 	if (IS_ERR_OR_NULL(pcmds->cmds)) {
-		LCD_ERR("pcmds->cmds is null!!\n");
+		LCD_INFO("alloc mem for mafpc cmd\n");
 		pcmds->cmds = kzalloc(cmd_cnt * sizeof(struct dsi_cmd_desc), GFP_KERNEL);
 		if (IS_ERR_OR_NULL(pcmds->cmds)) {
 			LCD_ERR("fail to kzalloc for mafpc cmds \n");
@@ -203,7 +204,7 @@ void ss_mafpc_update_enable_cmds_HAB(struct samsung_display_driver_data *vdd)
 	memcpy(cmd_pload, cmd_buf, cmd_size);
 	loop = pos = 0;
 	for (loop = 0; (loop < cmd_size) && (pos < (BUF_LEN - 5)); loop++) {
-		pos += snprintf(show_buf + pos, sizeof(show_buf), "%02x ", cmd_pload[loop]);
+		pos += snprintf(show_buf + pos, sizeof(show_buf) - pos, "%02x ", cmd_pload[loop]);
 	}
 
 	mutex_unlock(&vdd->mafpc.vdd_mafpc_lock);
@@ -262,8 +263,8 @@ static void ss_mafpc_img_write(struct samsung_display_driver_data *vdd, bool is_
 {
 	char buf_1,buf_2,buf_3;
 	struct dsi_panel_cmd_set *pcmds;
-	struct dsi_panel *panel = GET_DSI_PANEL(vdd);
 	int fps, wait_time;
+	int wait_cnt = 1000; /* 1000 * 0.5ms = 500ms */
 
 	if (!vdd->mafpc.is_support) {
 		LCD_ERR("mafpc is not supported..(%d) \n", vdd->mafpc.is_support);
@@ -289,6 +290,9 @@ static void ss_mafpc_img_write(struct samsung_display_driver_data *vdd, bool is_
 
 	mutex_lock(&vdd->exclusive_tx.ex_tx_lock);
 	vdd->exclusive_tx.enable = 1;
+	while (!list_empty(&vdd->cmd_lock.wait_list) && --wait_cnt)
+		usleep_range(500, 500);
+
 	vdd->exclusive_tx.permit_frame_update = 0;
 
 	ss_set_exclusive_tx_packet(vdd, TX_LEVEL1_KEY_ENABLE, 1);
@@ -311,10 +315,7 @@ static void ss_mafpc_img_write(struct samsung_display_driver_data *vdd, bool is_
 
 	/* 2 Frame Delay (Worst Case of 48FPS) */
 	if (vdd->is_factory_mode || is_instant || vdd->mafpc.force_delay) {
-		if (!IS_ERR_OR_NULL(panel))
-			fps = panel->cur_mode->timing.refresh_rate;
-		else
-			fps = 48; // Worst Case
+		fps = vdd->vrr.cur_refresh_rate;
 
 		/*
 		 * +1 means padding.
@@ -342,6 +343,12 @@ static void ss_mafpc_img_write(struct samsung_display_driver_data *vdd, bool is_
 	}
 
 	ss_send_cmd(vdd, TX_MAFPC_SET_POST);
+
+	/* 1 frame Delay */
+	fps = vdd->vrr.cur_refresh_rate;
+	wait_time = (1000 / fps) + 1; /* add dummy 1ms */
+	usleep_range(wait_time * 1000, wait_time * 1000);
+
 	if (is_instant)
 		ss_send_cmd(vdd, TX_MAFPC_SET_POST_FOR_INSTANT);
 	ss_send_cmd(vdd, TX_LEVEL1_KEY_DISABLE);
@@ -386,6 +393,12 @@ static void ss_mafpc_enable(struct samsung_display_driver_data *vdd, int enable)
 		return;
 	}
 
+	/*
+	 * If mafpc enable cmd is comming from mdnie serivce befroe fist ss_panel_on_pre call,
+	 * it can cause wrong panel revision cmd update problem(default 'A').
+	 * So, we should update mafpc cmd every time before TX_MAFPC_ON cmd tx
+	 */
+	ss_mafpc_update_enable_cmds_HAB(vdd);
 	mutex_lock(&vdd->mafpc.vdd_mafpc_lock);
 
 	if (enable) {
@@ -393,6 +406,9 @@ static void ss_mafpc_enable(struct samsung_display_driver_data *vdd, int enable)
 			ss_send_cmd(vdd, TX_MAFPC_ON_FACTORY);
 		else
 			ss_send_cmd(vdd, TX_MAFPC_ON);
+
+		/* To update mAFPC brightness scale factor */
+		ss_brightness_dcs(vdd, USE_CURRENT_BL_LEVEL, BACKLIGHT_NORMAL);
 	} else
 		ss_send_cmd(vdd, TX_MAFPC_OFF);
 
@@ -406,6 +422,7 @@ static void ss_mafpc_enable(struct samsung_display_driver_data *vdd, int enable)
 static int ss_mafpc_crc_check(struct samsung_display_driver_data *vdd)
 {
 	int i, ret = 1;
+	int wait_cnt = 1000; /* 1000 * 0.5ms = 500ms */
 
 	if (IS_ERR_OR_NULL(vdd)) {
 		LCD_ERR("vdd is null or error\n");
@@ -441,6 +458,8 @@ static int ss_mafpc_crc_check(struct samsung_display_driver_data *vdd)
 
 	mutex_lock(&vdd->exclusive_tx.ex_tx_lock);
 	vdd->exclusive_tx.enable = 1;
+	while (!list_empty(&vdd->cmd_lock.wait_list) && --wait_cnt)
+		usleep_range(500, 500);
 
 	ss_set_exclusive_tx_packet(vdd, TX_MAFPC_CRC_CHECK_PRE1, 1);
 	ss_set_exclusive_tx_packet(vdd, TX_LEVEL0_KEY_ENABLE, 1);
@@ -503,8 +522,10 @@ static int ss_mafpc_debug(struct samsung_display_driver_data *vdd)
  */
 static long ss_mafpc_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
-	struct samsung_display_driver_data *vdd = file->private_data;
-	//void __user *argp = (void __user *)arg;
+	struct miscdevice *c = file->private_data;
+	struct dsi_display *display = dev_get_drvdata(c->parent);
+	struct dsi_panel *panel = display->panel;
+	struct samsung_display_driver_data *vdd = panel->panel_private;
 	int ret = 0;
 
 	if (IS_ERR_OR_NULL(vdd)) {
@@ -529,11 +550,13 @@ static long ss_mafpc_ioctl(struct file *file, unsigned int cmd, unsigned long ar
 		vdd->mafpc.en = true;
 		break;
 	case IOCTL_MAFPC_ON_INSTANT:
-		if (!ss_is_ready_to_send_cmd(vdd)) {
-			LCD_ERR("Panel is not ready. Panel State(%d)\n", vdd->panel_state);
-			return -ENODEV;
-		}
 		vdd->mafpc.en = true;
+		if (!ss_is_ready_to_send_cmd(vdd)) {
+			LCD_INFO("Panel is not ready(%d), will apply next display on\n",
+					vdd->panel_state);
+			break;
+		}
+
 		ss_mafpc_img_write(vdd, true);
 		ss_mafpc_enable(vdd, true);
 		break;
@@ -563,9 +586,12 @@ static long ss_mafpc_ioctl(struct file *file, unsigned int cmd, unsigned long ar
 static ssize_t ss_mafpc_write_from_user(struct file *file, const char __user *user_buf,
 			 size_t total_count, loff_t *ppos)
 {
-	struct samsung_display_driver_data *vdd = file->private_data;
+	struct miscdevice *c = file->private_data;
+	struct dsi_display *display = dev_get_drvdata(c->parent);
+	struct dsi_panel *panel = display->panel;
+	struct samsung_display_driver_data *vdd = panel->panel_private;
+
 	int ret = 0;
-	size_t t_count = total_count;
 
 	u32 enable_cmd_size = vdd->mafpc.enable_cmd_size;
 	char *enable_cmd_buf = vdd->mafpc.enable_cmd_buf;
@@ -593,19 +619,14 @@ static ssize_t ss_mafpc_write_from_user(struct file *file, const char __user *us
 		return -EINVAL;
 	}
 
-	if (total_count < enable_cmd_size) {
-		LCD_ERR("Invalid Size (%d)\n", (int)total_count);
+	if (total_count != (enable_cmd_size + 1 + img_size + br_table_size)) {
+		LCD_ERR("Invalid size %zu, should be %u\n",
+				total_count, (enable_cmd_size + 1 + img_size + br_table_size));
 		return -EINVAL;
 	}
 
-	if (total_count > enable_cmd_size + 1 + img_size + br_table_size) {
-		LCD_ERR("Buffer OverFlow Detected!! Total_Count(%d), cmd+img+table size(%d) \n",
-			(int)total_count, enable_cmd_size + 1 + img_size + br_table_size);
-		return -EINVAL;
-	}
-
-	LCD_INFO("Total_Count(%d), cmd_size(%d), img_size(%d), br_table_size(%d)\n",
-			(int)total_count, enable_cmd_size + 1, img_size, br_table_size);
+	LCD_INFO("Total_Count(%zu), cmd_size(%u), img_size(%u), br_table_size(%u)\n",
+			total_count, enable_cmd_size + 1, img_size, br_table_size);
 
 	/*
 	 * Get 40bytes Enable Command to match with mafpc image data
@@ -617,34 +638,21 @@ static ssize_t ss_mafpc_write_from_user(struct file *file, const char __user *us
 		return -EINVAL;
 	}
 
-	t_count = t_count - (enable_cmd_size + 1);
-	if (t_count < img_size) {
-		LCD_ERR("Buffer Count is not enough to copy Image Data t_count(%d), img_size(%d)\n", t_count, img_size);
-		goto skip;
-	}
-
 	/* Get 865,080 Bytes for mAFPC Image Data from user space (mDNIE Service) */
-	ret = copy_from_user(img_buf, user_buf + enable_cmd_size + 1, total_count - (enable_cmd_size + 1));
+	ret = copy_from_user(img_buf, user_buf + enable_cmd_size + 1, img_size);
 	if (unlikely(ret < 0)) {
 		LCD_ERR("failed to copy_from_user (Image Data)\n");
 		return -EINVAL;
 	}
 
-	t_count -= img_size;
-	if (t_count < br_table_size) {
-		LCD_ERR("Buffer Count is not enough to copy Brightness Scale Table t_count(%d), br_table_size(%d)\n", t_count, br_table_size);
-		goto skip;
-	}
-
 	/* Get 225(75 x 3)Bytes for brightness scale cmd table from user space (mDNIE Service) */
-	ret = copy_from_user(brightness_scale_table, user_buf + enable_cmd_size + 1 + img_size, total_count - (enable_cmd_size + 1 + img_size));
+	ret = copy_from_user(brightness_scale_table, user_buf + enable_cmd_size + 1 + img_size, br_table_size);
 	if (unlikely(ret < 0)) {
 		LCD_ERR("failed to copy_from_user (Brightness Scale Table)\n");
 		return -EINVAL;
 	}
 	vdd->mafpc.is_br_table_updated = true;
 
-skip:
 	ss_mafpc_update_enable_cmds_HAB(vdd);
 	ss_mafpc_make_img_mass_cmds_HAB(vdd, vdd->mafpc.img_buf, vdd->mafpc.img_size, TX_MAFPC_IMAGE);
 
@@ -653,15 +661,16 @@ skip:
 
 static int ss_mafpc_open(struct inode *inode, struct file *file)
 {
-	/* TODO: get appropriate vdd..primary or secondary... */
-	struct samsung_display_driver_data *vdd = ss_get_vdd(PRIMARY_DISPLAY_NDX);
+	struct miscdevice *c = file->private_data;
+	struct dsi_display *display = dev_get_drvdata(c->parent);
+	struct dsi_panel *panel = display->panel;
+	struct samsung_display_driver_data *vdd = panel->panel_private;
 
 	if (IS_ERR_OR_NULL(vdd)) {
 		LCD_ERR("vdd is null or error\n");
 		return -ENODEV;
 	}
 
-	file->private_data = vdd;
 	vdd->mafpc.file_open = true;
 
 	LCD_DEBUG("[OPEN]\n");
@@ -671,7 +680,10 @@ static int ss_mafpc_open(struct inode *inode, struct file *file)
 
 static int ss_mafpc_release(struct inode *inode, struct file *file)
 {
-	struct samsung_display_driver_data *vdd = file->private_data;
+	struct miscdevice *c = file->private_data;
+	struct dsi_display *display = dev_get_drvdata(c->parent);
+	struct dsi_panel *panel = display->panel;
+	struct samsung_display_driver_data *vdd = panel->panel_private;
 
 	if (IS_ERR_OR_NULL(vdd)) {
 		LCD_ERR("vdd is null or error\n");
@@ -699,6 +711,10 @@ int ss_mafpc_init_HAB(struct samsung_display_driver_data *vdd)
 	int ret = 0;
 	static char devname[DEV_NAME_SIZE] = {'\0', };
 
+	struct dsi_panel *panel = NULL;
+	struct mipi_dsi_host *host = NULL;
+	struct dsi_display *display = NULL;
+
 	if (IS_ERR_OR_NULL(vdd)) {
 		LCD_ERR("vdd is null or error\n");
 		return -ENODEV;
@@ -708,6 +724,10 @@ int ss_mafpc_init_HAB(struct samsung_display_driver_data *vdd)
 		LCD_ERR("mAFPC is not supported\n");
 		return -EINVAL;
 	}
+
+	panel = (struct dsi_panel *)vdd->msm_private;
+	host = panel->mipi_device.host;
+	display = container_of(host, struct dsi_display, host);
 
 	mutex_init(&vdd->mafpc.vdd_mafpc_lock);
 	mutex_init(&vdd->mafpc.vdd_mafpc_crc_check_lock);
@@ -720,7 +740,7 @@ int ss_mafpc_init_HAB(struct samsung_display_driver_data *vdd)
 	vdd->mafpc.dev.minor = MISC_DYNAMIC_MINOR;
 	vdd->mafpc.dev.name = devname;
 	vdd->mafpc.dev.fops = &mafpc_fops;
-	vdd->mafpc.dev.parent = NULL;
+	vdd->mafpc.dev.parent = &display->pdev->dev;;
 
 	vdd->mafpc.enable = ss_mafpc_enable;
 	vdd->mafpc.crc_check = ss_mafpc_crc_check;

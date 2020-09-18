@@ -30,6 +30,7 @@ static int cirrus_amp_probe(struct platform_device *pdev)
 	struct device_node *amp_node;
 	const char **mfd_suffixes;
 	const char **bd_suffixes;
+	bool *v_val_separate;
 	int ret, num_amps, i, j;
 
 	if (np) {
@@ -55,6 +56,13 @@ static int cirrus_amp_probe(struct platform_device *pdev)
 			return -ENOMEM;
 		}
 
+		v_val_separate = kzalloc(num_amps * sizeof(bool), GFP_KERNEL);
+		if (v_val_separate == NULL) {
+			dev_err(&pdev->dev,
+				"Failed to allocate\n");
+			return -ENOMEM;
+		}
+
 		for (i = 0; i < num_amps; i++) {
 			amp_node = of_parse_phandle(np, "cirrus,amps", i);
 			dev_dbg(&pdev->dev, "Found linked amp: %s\n",
@@ -75,6 +83,9 @@ static int cirrus_amp_probe(struct platform_device *pdev)
 				dev_dbg(&pdev->dev,
 					"No BD suffix found for amp: %s\n",
 					amp_node->full_name);
+
+			v_val_separate[i] = of_property_read_bool(amp_node,
+						"cirrus,v-val-separate");
 
 			of_node_put(amp_node);
 		}
@@ -137,7 +148,7 @@ static int cirrus_amp_probe(struct platform_device *pdev)
                 return -EINVAL;
         }
 
-	cirrus_cal_init(cirrus_amp_class, num_amps, mfd_suffixes);
+	cirrus_cal_init(cirrus_amp_class, num_amps, mfd_suffixes, v_val_separate);
 	cirrus_bd_init(cirrus_amp_class, num_amps, mfd_suffixes, bd_suffixes);
 	cirrus_pwr_init(cirrus_amp_class, num_amps, mfd_suffixes);
 

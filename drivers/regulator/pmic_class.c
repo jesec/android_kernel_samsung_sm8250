@@ -21,7 +21,7 @@ struct device *pmic_device_create(void *drvdata, const char *fmt)
 	}
 
 	dev = device_create(pmic_class, NULL, atomic_inc_return(&pmic_dev),
-			drvdata, fmt);
+			drvdata, "%s", fmt);
 	if (IS_ERR(dev))
 		pr_err("Failed to create device %s %ld\n", fmt, PTR_ERR(dev));
 	else

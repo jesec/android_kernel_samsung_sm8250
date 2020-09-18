@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2019 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2013-2020 The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -43,14 +43,38 @@ struct hdd_adapter *hdd_wlan_create_ap_dev(struct hdd_context *hdd_ctx,
 enum csr_akm_type
 hdd_translate_rsn_to_csr_auth_type(uint8_t auth_suite[4]);
 
+/**
+ * hdd_softap_set_channel_change() -
+ * This function to support SAP channel change with CSA IE
+ * set in the beacons.
+ *
+ * @dev: pointer to the net device.
+ * @target_chan_freq: target channel frequency.
+ * @target_bw: Target bandwidth to move.
+ * If no bandwidth is specified, the value is CH_WIDTH_MAX
+ * @forced: Force to switch channel, ignore SCC/MCC check
+ *
+ * Return: 0 for success, non zero for failure
+ */
 int hdd_softap_set_channel_change(struct net_device *dev,
-					int target_channel,
+					int target_chan_freq,
 					enum phy_ch_width target_bw,
 					bool forced);
 
 #ifdef FEATURE_WLAN_MCC_TO_SCC_SWITCH
+/**
+ * hdd_sap_restart_with_channel_switch() - SAP channel change with E/CSA
+ * @ap_adapter: HDD adapter
+ * @target_chan_freq: Channel frequency to which switch must happen
+ * @target_bw: Bandwidth of the target channel
+ * @forced: Force to switch channel, ignore SCC/MCC check
+ *
+ * Invokes the necessary API to perform channel switch for the SAP or GO
+ *
+ * Return: None
+ */
 void hdd_sap_restart_with_channel_switch(struct hdd_adapter *adapter,
-				uint32_t target_channel,
+				uint32_t target_chan_freq,
 				uint32_t target_bw,
 				bool forced);
 /**
@@ -58,7 +82,7 @@ void hdd_sap_restart_with_channel_switch(struct hdd_adapter *adapter,
  * a different channel
  * @psoc: PSOC object information
  * @vdev_id: vdev id
- * @channel: channel to switch
+ * @ch_freq: channel to switch
  * @forced: Force to switch channel, ignore SCC/MCC check
  *
  * This function restarts SAP with a different channel
@@ -67,7 +91,7 @@ void hdd_sap_restart_with_channel_switch(struct hdd_adapter *adapter,
  *
  */
 void hdd_sap_restart_chan_switch_cb(struct wlan_objmgr_psoc *psoc,
-				    uint8_t vdev_id, uint32_t channel,
+				    uint8_t vdev_id, uint32_t ch_freq,
 				    uint32_t channel_bw,
 				    bool forced);
 /**
@@ -75,8 +99,7 @@ void hdd_sap_restart_chan_switch_cb(struct wlan_objmgr_psoc *psoc,
  * suitable channel and restart SAP
  * @psoc: PSOC object information
  * @vdev_id: vdev id
- * @channel: channel to be returned
- * @sec_ch: secondary channel to be returned
+ * @ch_freq: channel to be returned
  *
  * This function gets the channel parameters to restart SAP
  *
@@ -85,8 +108,20 @@ void hdd_sap_restart_chan_switch_cb(struct wlan_objmgr_psoc *psoc,
  */
 QDF_STATUS wlan_hdd_get_channel_for_sap_restart(
 				struct wlan_objmgr_psoc *psoc,
-				uint8_t vdev_id, uint8_t *channel,
-				uint8_t *sec_ch);
+				uint8_t vdev_id, uint32_t *ch_freq);
+
+/**
+ * hdd_get_ap_6ghz_capable() - Get ap vdev 6ghz capable flags
+ * @psoc: PSOC object information
+ * @vdev_id: vdev id
+ *
+ * This function gets 6ghz capable information based on hdd ap adapter
+ * context.
+ *
+ * Return: uint32_t, vdev 6g capable flags from enum conn_6ghz_flag
+ */
+uint32_t hdd_get_ap_6ghz_capable(struct wlan_objmgr_psoc *psoc,
+				 uint8_t vdev_id);
 #endif
 
 /**
@@ -232,13 +267,34 @@ int wlan_hdd_disable_channels(struct hdd_context *hdd_ctx);
  * hdd_check_and_disconnect_sta_on_invalid_channel() - Disconnect STA if it is
  * on invalid channel
  * @hdd_ctx: pointer to hdd context
+ * @reason: Mac Disconnect reason code as per @enum eSirMacReasonCodes
  *
  * STA should be disconnected before starting the SAP if it is on indoor
  * channel.
  *
  * Return: void
  */
-void hdd_check_and_disconnect_sta_on_invalid_channel(
-						struct hdd_context *hdd_ctx);
+void
+hdd_check_and_disconnect_sta_on_invalid_channel(struct hdd_context *hdd_ctx,
+						tSirMacReasonCodes reason);
+
+/**
+ * hdd_stop_sap_due_to_invalid_channel() - to stop sap in case of invalid chnl
+ * @work: pointer to work structure
+ *
+ * Let's say SAP detected RADAR and trying to select the new channel and if no
+ * valid channel is found due to none of the channels are available or
+ * regulatory restriction then SAP needs to be stopped. so SAP state-machine
+ * will create a work to stop the bss
+ *
+ * stop bss has to happen through worker thread because radar indication comes
+ * from FW through mc thread or main host thread and if same thread is used to
+ * do stopbss then waiting for stopbss to finish operation will halt mc thread
+ * to freeze which will trigger stopbss timeout. Instead worker thread can do
+ * the stopbss operation while mc thread waits for stopbss to finish.
+ *
+ * Return: none
+ */
+void hdd_stop_sap_due_to_invalid_channel(struct work_struct *work);
 
 #endif /* end #if !defined(WLAN_HDD_HOSTAPD_H) */

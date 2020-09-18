@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2019 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2017-2020 The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -291,6 +291,18 @@ void ucfg_pmo_disable_wakeup_event(struct wlan_objmgr_psoc *psoc,
 QDF_STATUS ucfg_pmo_cache_arp_offload_req(struct pmo_arp_req *arp_req);
 
 /**
+ * ucfg_pmo_check_arp_offload(): API to check if arp offload cache/send is req
+ * @psoc: objmgr psoc handle
+ * @trigger: trigger reason
+ * @vdev_id: vdev_id
+ *
+ * Return QDF_STATUS -in case of success else return error
+ */
+QDF_STATUS ucfg_pmo_check_arp_offload(struct wlan_objmgr_psoc *psoc,
+				      enum pmo_offload_trigger trigger,
+				      uint8_t vdev_id);
+
+/**
  * ucfg_pmo_flush_arp_offload_req(): API to flush arp req from pmo vdev priv ctx
  * @vdev: objmgr vdev param
  *
@@ -341,6 +353,18 @@ ucfg_pmo_get_arp_offload_params(struct wlan_objmgr_vdev *vdev,
  * Return QDF_STATUS -in case of success else return error
  */
 QDF_STATUS ucfg_pmo_cache_ns_offload_req(struct pmo_ns_req *ns_req);
+
+/**
+ * ucfg_pmo_ns_offload_check(): API to check if offload cache/send is required
+ * @psoc: pbjmgr psoc handle
+ * @trigger: trigger reason to enable ns offload
+ * @vdev_id: vdev id
+ *
+ * Return QDF_STATUS -in case of success else return error
+ */
+QDF_STATUS ucfg_pmo_ns_offload_check(struct wlan_objmgr_psoc *psoc,
+				     enum pmo_offload_trigger trigger,
+				     uint8_t vdev_id);
 
 /**
  * ucfg_pmo_flush_ns_offload_req(): API to flush ns req from pmo vdev priv ctx
@@ -404,6 +428,28 @@ ucfg_pmo_ns_addr_scope(uint32_t ipv6_scope);
  * Return: QDF_STATUS
  */
 QDF_STATUS ucfg_pmo_enable_hw_filter_in_fwr(struct wlan_objmgr_vdev *vdev);
+
+/**
+ * ucfg_pmo_enable_action_frame_patterns() - enable the action frame wake up
+ * patterns as part of the enable host offloads.
+ * @vdev: objmgr vdev to configure
+ * @suspend_type: Suspend type. Runtime PM or System Suspend mode
+ *
+ * Return: QDF_STATUS
+ */
+QDF_STATUS
+ucfg_pmo_enable_action_frame_patterns(struct wlan_objmgr_vdev *vdev,
+				      enum qdf_suspend_type suspend_type);
+
+/**
+ * ucfg_pmo_disable_action_frame_patterns() - Reset the action frame wake up
+ * patterns as a part of suspend resume.
+ * @vdev: objmgr vdev to configure
+ *
+ * Return: QDF_STATUS
+ */
+QDF_STATUS
+ucfg_pmo_disable_action_frame_patterns(struct wlan_objmgr_vdev *vdev);
 
 /**
  * ucfg_pmo_disable_hw_filter_in_fwr() - disable previously configured hw filter
@@ -745,14 +791,14 @@ void ucfg_pmo_psoc_set_hif_handle(struct wlan_objmgr_psoc *psoc,
 				  void *hif_handle);
 
 /**
- * ucfg_pmo_psoc_set_txrx_handle() - Set psoc pdev txrx layer handle
+ * ucfg_pmo_psoc_set_txrx_pdev_id() - Set psoc pdev txrx layer handle
  * @psoc: objmgr psoc handle
- * @txrx_handle: pdev txrx context handle
+ * @txrx_pdev_id: txrx pdev identifier
  *
  * Return: None
  */
-void ucfg_pmo_psoc_set_txrx_handle(struct wlan_objmgr_psoc *psoc,
-				   void *txrx_handle);
+void ucfg_pmo_psoc_set_txrx_pdev_id(struct wlan_objmgr_psoc *psoc,
+				    uint8_t txrx_pdev_id);
 
 /**
  * ucfg_pmo_psoc_user_space_suspend_req() -  Handles user space suspend req
@@ -777,6 +823,30 @@ QDF_STATUS ucfg_pmo_psoc_user_space_suspend_req(struct wlan_objmgr_psoc *psoc,
  */
 QDF_STATUS ucfg_pmo_psoc_user_space_resume_req(struct wlan_objmgr_psoc *psoc,
 					       enum qdf_suspend_type type);
+
+/**
+ * ucfg_pmo_suspend_all_components() -  Suspend all components
+ * @psoc: objmgr psoc handle
+ * @type: type of suspend
+ *
+ * Suspend all components registered to pmo
+ *
+ * Return: QDF status
+ */
+QDF_STATUS ucfg_pmo_suspend_all_components(struct wlan_objmgr_psoc *psoc,
+					   enum qdf_suspend_type type);
+
+/**
+ * ucfg_pmo_resume_all_components() -  Resume all components
+ * @psoc: objmgr psoc handle
+ * @type: type of suspend from which resume needed
+ *
+ * Resume all components registered to pmo
+ *
+ * Return: QDF status
+ */
+QDF_STATUS ucfg_pmo_resume_all_components(struct wlan_objmgr_psoc *psoc,
+					  enum qdf_suspend_type type);
 
 /**
  * ucfg_pmo_psoc_bus_suspend_req(): handles bus suspend for psoc
@@ -1149,6 +1219,14 @@ ucfg_pmo_cache_arp_offload_req(struct pmo_arp_req *arp_req)
 	return QDF_STATUS_SUCCESS;
 }
 
+static inline
+QDF_STATUS ucfg_pmo_check_arp_offload(struct wlan_objmgr_psoc *psoc,
+				      enum pmo_offload_trigger trigger,
+				      uint8_t vdev_id)
+{
+	return QDF_STATUS_SUCCESS;
+}
+
 static inline QDF_STATUS
 ucfg_pmo_flush_arp_offload_req(struct wlan_objmgr_vdev *vdev)
 {
@@ -1180,6 +1258,13 @@ ucfg_pmo_get_arp_offload_params(struct wlan_objmgr_vdev *vdev,
 
 static inline QDF_STATUS
 ucfg_pmo_cache_ns_offload_req(struct pmo_ns_req *ns_req)
+{
+	return QDF_STATUS_SUCCESS;
+}
+
+QDF_STATUS ucfg_pmo_ns_offload_check(struct wlan_objmgr_psoc *psoc,
+				     enum pmo_offload_trigger trigger,
+				     uint8_t vdev_id)
 {
 	return QDF_STATUS_SUCCESS;
 }
@@ -1370,9 +1455,9 @@ ucfg_pmo_psoc_set_hif_handle(
 }
 
 static inline void
-ucfg_pmo_psoc_set_txrx_handle(
+ucfg_pmo_psoc_set_txrx_pdev_id(
 		struct wlan_objmgr_psoc *psoc,
-		void *txrx_handle)
+		uint8_t txrx_pdev_id)
 {
 }
 
@@ -1393,6 +1478,20 @@ static inline QDF_STATUS
 ucfg_pmo_psoc_user_space_resume_req(
 		struct wlan_objmgr_psoc *psoc,
 		enum qdf_suspend_type type)
+{
+	return QDF_STATUS_SUCCESS;
+}
+
+static inline QDF_STATUS
+ucfg_pmo_suspend_all_components(struct wlan_objmgr_psoc *psoc,
+				enum qdf_suspend_type type)
+{
+	return QDF_STATUS_SUCCESS;
+}
+
+static inline QDF_STATUS
+ucfg_pmo_resume_all_components(struct wlan_objmgr_psoc *psoc,
+			       enum qdf_suspend_type type)
 {
 	return QDF_STATUS_SUCCESS;
 }

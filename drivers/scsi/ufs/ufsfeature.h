@@ -48,6 +48,7 @@
 
 /* Constant value*/
 #define SECTOR					512
+#define SECTOR_SHIFT            9
 #define BLOCK					4096
 #define SECTORS_PER_BLOCK			(BLOCK / SECTOR)
 #define BITS_PER_DWORD				32
@@ -135,6 +136,7 @@ struct ufsf_feature {
 struct ufs_hba;
 struct ufshcd_lrb;
 
+int ufsf_hpb_dt_check(struct ufs_hba *hba);
 void ufsf_device_check(struct ufs_hba *hba);
 int ufsf_check_query(__u32 opcode);
 int ufsf_query_ioctl(struct ufsf_feature *ufsf, int lun, void __user *buffer,

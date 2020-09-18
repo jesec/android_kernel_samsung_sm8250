@@ -663,6 +663,65 @@ void ufshpb_end_pre_req(struct ufsf_feature *ufsf, struct request *req)
 	scmd->scsi_done(scmd);
 }
 
+static int ufshpb_fill_passthrough_rq(struct scsi_cmnd *cmd)
+{
+   struct request *rq = cmd->request;
+   struct scsi_device *sdp = cmd->device;
+   struct bio *bio = rq->bio;
+   sector_t sector = 0;
+   unsigned int data_len = 0;
+   u8 *p = NULL;
+
+   /*
+    * UFS is 4K block device.
+    */
+   if (unlikely(sdp->sector_size != BLOCK)) {
+       ERR_MSG("this device is not 4K block device");
+       return -EACCES;
+   }
+
+   switch (cmd->cmnd[0]) {
+   case UNMAP:
+       /*
+        * UNMAP command has just a block descriptor(=a phys_segment).
+        */
+       if (unlikely(!bio) ||
+           unlikely(bio->bi_vcnt != 1) ||
+           unlikely(bio->bi_phys_segments != 1)) {
+           ERR_MSG("UNMAP bio info is incorrect");
+           return -EINVAL;
+       }
+
+       p = page_address(bio->bi_io_vec->bv_page);
+       if (unlikely(!p)) {
+           ERR_MSG("can't get bio page address");
+           return -ENOMEM;
+       }
+
+       sector = LI_EN_64(p + 8);
+       data_len = LI_EN_32(p + 16);
+       break;
+   case READ_10:
+   case WRITE_10:
+       sector = LI_EN_32(cmd->cmnd + 2);
+       data_len = LI_EN_16(cmd->cmnd + 7);
+       break;
+   case READ_16:
+   case WRITE_16:
+       sector = LI_EN_64(cmd->cmnd + 2);
+       data_len = LI_EN_32(cmd->cmnd + 10);
+       break;
+   default:
+       return 0;
+   };
+
+   rq->__sector = sector << sects_per_blk_shift;
+   rq->__data_len = data_len << sects_per_blk_shift << SECTOR_SHIFT;
+
+   return 0;
+}
+
+
 int ufshpb_prepare_pre_req(struct ufsf_feature *ufsf, struct scsi_cmnd *cmd,
 			   int lun)
 {
@@ -679,6 +738,13 @@ int ufshpb_prepare_pre_req(struct ufsf_feature *ufsf, struct scsi_cmnd *cmd,
 	/* WKLU could not be HPB-LU */
 	if (!ufsf_is_valid_lun(lun))
 		return -ENODEV;
+
+    if (unlikely(blk_rq_is_passthrough(cmd->request) &&
+             cmd->request->__sector == (sector_t) -1)) {
+        ret = ufshpb_fill_passthrough_rq(cmd);
+        if (ret)
+            return ret;
+    }
 
 	hpb = ufsf->ufshpb_lup[lun];
 	ret = ufshpb_lu_get(hpb);
@@ -1704,6 +1770,12 @@ static int ufshpb_map_req_add_bio_page(struct ufshpb_lu *hpb,
 	return 0;
 }
 
+inline int ufshpb_support_device_active(struct ufshpb_lu *hpb)
+{
+        return hpb->hpb_ver >= UFSHPB_MIN_VER &&
+                hpb->hpb_ver <= UFSHPB_RTRESET_VER;
+}
+
 static int ufshpb_execute_map_req(struct ufshpb_lu *hpb,
 				  struct scsi_device *sdev,
 				  struct ufshpb_req *map_req)
@@ -1745,12 +1817,13 @@ static int ufshpb_execute_map_req(struct ufshpb_lu *hpb,
 	/* 2. scsi_request setup */
 	rq = scsi_req(req);
 
-	if (ufshpb_is_triggered_by_fs(rgn))
-		ufshpb_set_rt_cmd(rq->cmd, map_req->rgn_idx, map_req->srgn_idx,
-				  hpb->srgn_mem_size);
-	else
-		ufshpb_set_read_buf_cmd(rq->cmd, map_req->rgn_idx,
-					map_req->srgn_idx, hpb->srgn_mem_size);
+        if (ufshpb_support_device_active(hpb) &&
+            !ufshpb_is_triggered_by_fs(rgn))
+                ufshpb_set_read_buf_cmd(rq->cmd, map_req->rgn_idx,
+                                  map_req->srgn_idx, hpb->srgn_mem_size);
+        else
+                ufshpb_set_rt_cmd(rq->cmd, map_req->rgn_idx, map_req->srgn_idx,
+                                  hpb->srgn_mem_size);
 
 	rq->cmd_len = scsi_command_size(rq->cmd);
 #if defined(CONFIG_HPB_DEBUG)
@@ -2315,8 +2388,12 @@ static int ufshpb_load_region(struct ufshpb_lu *hpb, struct ufshpb_region *rgn)
 				ret = ufshpb_prepare_unset_rt_req(hpb, victim_rgn);
 				spin_lock_irqsave(&hpb->hpb_lock, flags);
 				if (ret) {
-					ERR_MSG("issue unset_rt failed. [%d] err %d",
-						rgn->rgn_idx, ret);
+					if (ret == -ENOMEM)
+						ERR_MSG("skip issue unset_rt. [%d] err %d",
+							rgn->rgn_idx, ret);
+					else
+						ERR_MSG("issue unset_rt failed. [%d] err %d",
+							rgn->rgn_idx, ret);
 					goto out;
 				}
 			}
@@ -2379,6 +2456,12 @@ static void ufshpb_rsp_req_region_update(struct ufshpb_lu *hpb,
 
 		if (ufshpb_is_triggered_by_fs(rgn))
 			continue;
+
+                if (!ufshpb_support_device_active(hpb)) {
+                        if ((rgn->rgn_state != HPBREGION_RT_PINNED) &&
+                            (rgn->rgn_state != HPBREGION_PINNED))
+                                continue;
+                }
 
 		spin_lock(&hpb->rsp_list_lock);
 		ufshpb_update_active_info(hpb, rgn_idx, srgn_idx,
@@ -2658,8 +2741,14 @@ static int ufshpb_issue_map_req_from_list(struct ufshpb_lu *hpb)
 		list_del_init(&srgn->list_act_srgn);
 		spin_unlock_irqrestore(&hpb->rsp_list_lock, flags);
 
-		ufshpb_set_read_buf_cmd(cmd, srgn->rgn_idx, srgn->srgn_idx,
-					hpb->srgn_mem_size);
+                if (ufshpb_support_device_active(hpb))
+                        ufshpb_set_read_buf_cmd(cmd, srgn->rgn_idx,
+                                                srgn->srgn_idx,
+                                                hpb->srgn_mem_size);
+                else
+                        ufshpb_set_rt_cmd(cmd, srgn->rgn_idx, srgn->srgn_idx,
+                                          hpb->srgn_mem_size);
+
 #if defined(CONFIG_HPB_DEBUG)
 		if (hpb->debug)
 			ufshpb_check_ppn(hpb, srgn->rgn_idx, srgn->srgn_idx,
@@ -3377,7 +3466,8 @@ static int ufshpb_lu_hpb_init(struct ufsf_feature *ufsf, int lun)
 
 	ufshpb_init_lu_constant(&ufsf->hpb_dev_info, hpb);
 
-	if (hpb->hpb_ver >= 0x0220) {
+        if ((hpb->hpb_ver >= UFSHPB_RTRESET_VER) &&
+            (hpb->hpb_ver <= UFSHPB_MAX_VER)) {
 		ret = ufshpb_issue_unset_rt_all_req(hpb);
 		if (ret) {
 			ERR_MSG("V2.2 spec cmd is not allowed.");
@@ -3510,13 +3600,15 @@ out:
 
 static inline int ufshpb_version_check(struct ufshpb_dev_info *hpb_dev_info)
 {
-	INIT_INFO("Support HPB Spec : Driver = %.4X  Device = %.4X",
-		  UFSHPB_VER, hpb_dev_info->hpb_ver);
+        INIT_INFO("Support HPB Spec : Driver(MIN) = %.4X Driver(MAX) = %.4X"
+                  "  Device = %.4X", UFSHPB_MIN_VER, UFSHPB_MAX_VER,
+                  hpb_dev_info->hpb_ver);
 
 	INIT_INFO("HPB Driver Version : %.6X%s", UFSHPB_DD_VER,
 		  UFSHPB_DD_VER_POST);
 
-	if (hpb_dev_info->hpb_ver != UFSHPB_VER) {
+        if ((hpb_dev_info->hpb_ver < UFSHPB_MIN_VER) ||
+            (hpb_dev_info->hpb_ver > UFSHPB_MAX_VER)) {
 		ERR_MSG("ERROR: HPB Spec Version mismatch. So HPB disabled.");
 		return -ENODEV;
 	}

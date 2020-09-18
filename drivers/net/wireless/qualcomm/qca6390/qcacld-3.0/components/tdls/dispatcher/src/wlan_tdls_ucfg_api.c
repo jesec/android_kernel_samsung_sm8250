@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2019 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2017-2020 The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -200,6 +200,8 @@ static QDF_STATUS tdls_object_init_params(
 			cfg_get(psoc, CFG_TDLS_PREFERRED_OFF_CHANNEL_BW);
 	tdls_soc_obj->tdls_configs.tdls_peer_kickout_threshold =
 			cfg_get(psoc, CFG_TDLS_PEER_KICKOUT_THRESHOLD);
+	tdls_soc_obj->tdls_configs.tdls_discovery_wake_timeout =
+			cfg_get(psoc, CFG_TDLS_DISCOVERY_WAKE_TIMEOUT);
 	tdls_soc_obj->tdls_configs.delayed_trig_framint =
 			cfg_get(psoc, CFG_TL_DELAYED_TRGR_FRM_INTERVAL);
 	tdls_soc_obj->tdls_configs.tdls_wmm_mode_enable =
@@ -296,7 +298,6 @@ QDF_STATUS ucfg_tdls_update_config(struct wlan_objmgr_psoc *psoc,
 
 	/* Save callbacks to register/deregister TDLS sta with datapath */
 	soc_obj->tdls_reg_peer = req->tdls_reg_peer;
-	soc_obj->tdls_dereg_peer = req->tdls_dereg_peer;
 	soc_obj->tdls_peer_context = req->tdls_peer_context;
 
 	/* Save legacy PE/WMA commands in TDLS soc object */
@@ -340,7 +341,7 @@ QDF_STATUS ucfg_tdls_update_config(struct wlan_objmgr_psoc *psoc,
 			soc_obj->max_num_tdls_sta = WLAN_TDLS_STA_MAX_NUM;
 
 	for (sta_idx = 0; sta_idx < soc_obj->max_num_tdls_sta; sta_idx++) {
-		soc_obj->tdls_conn_info[sta_idx].sta_id = INVALID_TDLS_PEER_ID;
+		soc_obj->tdls_conn_info[sta_idx].valid_entry = false;
 		soc_obj->tdls_conn_info[sta_idx].index =
 						INVALID_TDLS_PEER_INDEX;
 		soc_obj->tdls_conn_info[sta_idx].session_id = 255;
@@ -354,7 +355,7 @@ QDF_STATUS ucfg_tdls_psoc_enable(struct wlan_objmgr_psoc *psoc)
 {
 	QDF_STATUS status;
 
-	tdls_notice("psoc tdls enable: 0x%pK", psoc);
+	tdls_debug("psoc tdls enable: 0x%pK", psoc);
 	if (!psoc) {
 		tdls_err("NULL psoc");
 		return QDF_STATUS_E_FAILURE;
@@ -387,7 +388,7 @@ QDF_STATUS ucfg_tdls_psoc_disable(struct wlan_objmgr_psoc *psoc)
 	QDF_STATUS status;
 	struct tdls_soc_priv_obj *soc_obj = NULL;
 
-	tdls_notice("psoc tdls disable: 0x%pK", psoc);
+	tdls_debug("psoc tdls disable: 0x%pK", psoc);
 	if (!psoc) {
 		tdls_err("NULL psoc");
 		return QDF_STATUS_E_FAILURE;
@@ -419,7 +420,7 @@ QDF_STATUS ucfg_tdls_psoc_close(struct wlan_objmgr_psoc *psoc)
 	QDF_STATUS status = QDF_STATUS_SUCCESS;
 	struct tdls_soc_priv_obj *tdls_soc;
 
-	tdls_notice("tdls psoc close");
+	tdls_debug("tdls psoc close");
 	tdls_soc = wlan_objmgr_psoc_get_comp_private_obj(psoc,
 							WLAN_UMAC_COMP_TDLS);
 	if (!tdls_soc) {
@@ -856,8 +857,10 @@ QDF_STATUS ucfg_tdls_notify_sta_disconnect(
 	tdls_debug("Enter ");
 
 	notify = qdf_mem_malloc(sizeof(*notify));
-	if (!notify)
+	if (!notify) {
+		wlan_objmgr_vdev_release_ref(notify->vdev, WLAN_TDLS_NB_ID);
 		return QDF_STATUS_E_NULL_VALUE;
+	}
 
 	*notify = *notify_info;
 

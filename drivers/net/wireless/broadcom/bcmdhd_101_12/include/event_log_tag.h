@@ -18,7 +18,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #ifndef _EVENT_LOG_TAG_H_
@@ -351,7 +351,8 @@
 #define EVENT_LOG_TAG_WL_TDLS_ERR               317
 
 /* MSCH messages */
-#define EVENT_LOG_TAG_MSCH_DATASTRUCT		319
+#define EVENT_LOG_TAG_MSCH_DATASTRUCT		319 /* don't use, kept for backward compatibility */
+#define EVENT_LOG_TAG_MSCH_PROFILE		319
 #define EVENT_LOG_TAG_MSCH_REGISTER		320
 #define EVENT_LOG_TAG_MSCH_CALLBACK		321
 #define EVENT_LOG_TAG_MSCH_ERROR		322
@@ -432,8 +433,44 @@
 #define EVENT_LOG_TAG_SDTC_INFO			362
 #define EVENT_LOG_TAG_SDTC_ERR			363
 
+/* KEEPALIVE logging */
+#define EVENT_LOG_TAG_KEEPALIVE			364
+#define EVENT_LOG_TAG_DTIM_SCHED_LOG		365
+
+/* For printing PHY init time in the event logs for both slices. */
+#define EVENT_LOG_TAG_PHY_INIT_TM		366
+
+/* SensorC Coex logging */
+#define EVENT_LOG_TAG_SSCCX_ERR			367
+#define EVENT_LOG_TAG_SSCCX_INFO		368
+#define EVENT_LOG_TAG_SSCCX_TRACE		369
+/* TAG for channel info */
+#define EVENT_LOG_TAG_SCAN_CHANNEL_INFO		370
+/* Robust Audio Video (RAV) - Mirrored Stream Classification Service (MSCS) */
+#define EVENT_LOG_TAG_RAV_MSCS_ERROR		371
+#define EVENT_LOG_TAG_RAV_MSCS_INFO		372
+
+/* DVFS state machine related tag */
+#define EVENT_LOG_TAG_DVFS_SM			373
+
+/* IPL info */
+#define EVENT_LOG_TAG_IPL_INFO			374
+
+/* bcmtrace */
+#define EVENT_LOG_TAG_BCM_TRACE			375
+
+/* noise cal */
+#define EVENT_LOG_TAG_NOISE_CAL			376
+
+/* FTM hw */
+#define EVENT_LOG_TAG_FTM_HW_ERR		377
+#define EVENT_LOG_TAG_FTM_HW_INFO		378
+#define EVENT_LOG_TAG_FTM_HW_TRACE		379
+
+#define EVENT_LOG_TAG_NOISE_CAL_DBG		380
+
 /* EVENT_LOG_TAG_MAX	= Set to the same value of last tag, not last tag + 1 */
-#define EVENT_LOG_TAG_MAX			363
+#define EVENT_LOG_TAG_MAX			380
 
 typedef enum wl_el_set_type_def {
 	EVENT_LOG_SET_TYPE_DEFAULT = 0, /* flush the log buffer when it is full - Default option */

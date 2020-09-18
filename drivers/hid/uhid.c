@@ -24,7 +24,7 @@
 #include <linux/spinlock.h>
 #include <linux/uhid.h>
 #include <linux/wait.h>
-#include <linux/panel_notify.h>
+#include "../../../techpack/display/msm/samsung/ss_panel_notify.h"
 
 #define UHID_NAME	"uhid"
 #define UHID_BUFSIZE	32
@@ -823,13 +823,13 @@ static struct notifier_block light_panel_block = {
 
 static int __init uhid_init(void)
 {
-    panel_notifier_register(&light_panel_block);
+    ss_panel_notifier_register(&light_panel_block);
 	return misc_register(&uhid_misc);
 }
 
 static void __exit uhid_exit(void)
 {
-    panel_notifier_unregister(&light_panel_block);
+    ss_panel_notifier_unregister(&light_panel_block);
 	misc_deregister(&uhid_misc);
 }
 

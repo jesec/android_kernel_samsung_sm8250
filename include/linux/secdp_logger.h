@@ -10,12 +10,12 @@ int secdp_logger_init(void);
 
 #define secdp_proc_info(fmt, ...) \
 	do { \
-		printk(KERN_INFO pr_fmt(fmt), ##__VA_ARGS__); \
+		printk(KERN_INFO "[msm-dp] " pr_fmt(fmt), ##__VA_ARGS__); \
 		secdp_logger_print(fmt, ##__VA_ARGS__); \
 	} while (0)
 
 #define secdp_pr_info(fmt, ...) \
-		printk(KERN_INFO pr_fmt(fmt), ##__VA_ARGS__)
+		printk(KERN_INFO "[msm-dp] " pr_fmt(fmt), ##__VA_ARGS__)
 
 #ifdef pr_debug
 #undef pr_debug

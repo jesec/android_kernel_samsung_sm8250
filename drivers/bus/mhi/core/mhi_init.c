@@ -470,11 +470,7 @@ void mhi_deinit_dev_ctxt(struct mhi_controller *mhi_cntrl)
 	mhi_cmd = mhi_cntrl->mhi_cmd;
 	for (i = 0; i < NR_OF_CMD_RINGS; i++, mhi_cmd++) {
 		ring = &mhi_cmd->ring;
-		if (mhi_event->force_uncached)
-			mhi_free_uncached(mhi_cntrl, ring->alloc_size,
-				ring->pre_aligned, ring->dma_handle);
-		else
-			mhi_free_coherent(mhi_cntrl, ring->alloc_size,
+		mhi_free_coherent(mhi_cntrl, ring->alloc_size,
 				  ring->pre_aligned, ring->dma_handle);
 		ring->base = NULL;
 		ring->iommu_base = 0;

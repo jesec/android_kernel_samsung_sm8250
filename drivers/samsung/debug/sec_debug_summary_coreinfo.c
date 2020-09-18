@@ -23,6 +23,7 @@
 #include <asm/system_misc.h>
 #include <asm/page.h>
 #include <asm/sections.h>
+#include <linux/timekeeper_internal.h>
 
 #include <linux/sec_debug.h>
 
@@ -85,6 +86,20 @@ int __init summary_init_coreinfo(struct sec_debug_summary_data_apss *secdbg_apss
 	SUMMARY_COREINFO_SYMBOL(runqueues);
 	SUMMARY_COREINFO_STRUCT_SIZE(rq);
 	SUMMARY_COREINFO_OFFSET(rq, clock);
+	SUMMARY_COREINFO_OFFSET(rq, nr_running);
+
+	SUMMARY_COREINFO_OFFSET(task_struct, prio);
+
+	summary_coreinfo_append_str("OFFSET(tk_core.timekeeper)=%zu\n", 8);
+
+	SUMMARY_COREINFO_OFFSET(timekeeper, xtime_sec);
+#ifdef CONFIG_SCHED_WALT
+	SUMMARY_COREINFO_OFFSET(rq, cluster);
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5,4,0)
+	SUMMARY_COREINFO_OFFSET(sched_cluster, cur_freq);
+	SUMMARY_COREINFO_OFFSET(sched_cluster, max_mitigated_freq);
+#endif
+#endif
 
 	return 0;
 }

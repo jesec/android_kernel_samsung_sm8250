@@ -123,3 +123,17 @@ config MACH_Y2Q_JPN_SINGLE
 	bool "Samsung Y2Q JPN SINGLE"
 	help
 	  Support for Samsung Y2Q JPN SINGLE device.
+
+config MACH_Y2Q_JPN_DCMOLY
+	depends on SEC_Y2Q_PROJECT
+	default n
+	bool "Samsung Y2Q JPN OLY DCMOLY"
+	help
+	  Support for Samsung Y2Q JPN DCMOLY device.
+
+config MACH_Z3Q_JPN_SINGLE
+	depends on SEC_Z3Q_PROJECT
+	default n
+	bool "Samsung Z3Q JPN SINGLE"
+	help
+	  Support for Samsung Z3Q JPN SINGLE device.

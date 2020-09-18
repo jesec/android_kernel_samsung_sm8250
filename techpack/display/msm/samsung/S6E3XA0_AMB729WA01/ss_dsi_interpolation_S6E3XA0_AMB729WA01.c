@@ -26,10 +26,6 @@ Copyright (C) 2012, Samsung Electronics. All rights reserved.
  */
 #include "ss_dsi_interpolation_S6E3XA0_AMB729WA01.h"
 
-static unsigned int interpolation_vfp = 8;
-static unsigned int interpolation_vbp = 16;
-static unsigned int interpolation_resolution = 1536;
-
 static struct ss_interpolation_brightness_table hbm_interpolation_table[] = {
 	{255, 1, 420},
 	{269, 5, 443},
@@ -329,7 +325,8 @@ static unsigned char table_hmd_br_info[] = {
 	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x54,
 };
 
-int init_interpolation_S6E3XA0_AMB729WA01(struct samsung_display_driver_data *vdd, enum INTERPOLATION_MODE mode)
+int init_interpolation_S6E3XA0_AMB729WA01(struct samsung_display_driver_data *vdd,
+		struct brightness_table *br_tbl, enum INTERPOLATION_MODE mode)
 {
 	int loop;
 	struct PRINT_TABLE print_table[] = {
@@ -344,59 +341,55 @@ int init_interpolation_S6E3XA0_AMB729WA01(struct samsung_display_driver_data *vd
 
 	/* 1 st : update table data at  TABLE_INTERPOLATION mode*/
 	if (mode == TABLE_INTERPOLATION)
-		table_parsing_data_S6E3XA0_AMB729WA01(vdd);
+		table_parsing_data_S6E3XA0_AMB729WA01(vdd, br_tbl);
 
 	/* 2 st: init samsung interpolation data */
-	vdd->panel_br_info.itp_mode = mode;
-
-	vdd->panel_br_info.vfp = interpolation_vfp;
-	vdd->panel_br_info.vbp = interpolation_vbp;
-	vdd->panel_br_info.resolution = interpolation_resolution;
+	vdd->br_info.panel_br_info.itp_mode = mode;
 
 	/* 3 st: select interpolation info */
 	for (loop = 0; loop < BR_INFO_MAX; loop++)
-		clear_bit(loop, vdd->panel_br_info.br_info_select);
+		clear_bit(loop, vdd->br_info.panel_br_info.br_info_select);
 
-	set_bit(BR_HBM_AOR, vdd->panel_br_info.br_info_select);
-	set_bit(BR_HBM_VINT, vdd->panel_br_info.br_info_select);
-	set_bit(BR_HBM_ELVSS, vdd->panel_br_info.br_info_select);
-	set_bit(BR_HBM_IRC, vdd->panel_br_info.br_info_select);
+	set_bit(BR_HBM_AOR, vdd->br_info.panel_br_info.br_info_select);
+	set_bit(BR_HBM_VINT, vdd->br_info.panel_br_info.br_info_select);
+	set_bit(BR_HBM_ELVSS, vdd->br_info.panel_br_info.br_info_select);
+	set_bit(BR_HBM_IRC, vdd->br_info.panel_br_info.br_info_select);
 
-	set_bit(BR_NORMAL_GAMMA, vdd->panel_br_info.br_info_select);
-	set_bit(BR_NORMAL_AOR, vdd->panel_br_info.br_info_select);
-	set_bit(BR_NORMAL_VINT, vdd->panel_br_info.br_info_select);
-	set_bit(BR_NORMAL_ELVSS, vdd->panel_br_info.br_info_select);
-	set_bit(BR_NORMAL_IRC, vdd->panel_br_info.br_info_select);
+	set_bit(BR_NORMAL_GAMMA, vdd->br_info.panel_br_info.br_info_select);
+	set_bit(BR_NORMAL_AOR, vdd->br_info.panel_br_info.br_info_select);
+	set_bit(BR_NORMAL_VINT, vdd->br_info.panel_br_info.br_info_select);
+	set_bit(BR_NORMAL_ELVSS, vdd->br_info.panel_br_info.br_info_select);
+	set_bit(BR_NORMAL_IRC, vdd->br_info.panel_br_info.br_info_select);
 
-	set_bit(BR_HMD_GAMMA, vdd->panel_br_info.br_info_select);
-	set_bit(BR_HMD_AOR, vdd->panel_br_info.br_info_select);
+	set_bit(BR_HMD_GAMMA, vdd->br_info.panel_br_info.br_info_select);
+	set_bit(BR_HMD_AOR, vdd->br_info.panel_br_info.br_info_select);
 
 	/* 4 st: init alloc & parsing data */
-	set_up_br_info(vdd);
+	set_up_br_info(vdd, br_tbl);
 
 	/* 5 st: calculation of interpolation */
-	set_up_interpolation(vdd,
+	set_up_interpolation(vdd, br_tbl,
 		normal_interpolation_table, ARRAY_SIZE(normal_interpolation_table),
 		hbm_interpolation_table, ARRAY_SIZE(hbm_interpolation_table));
 
 	/* 6 st: update normal & hmd gamma at TABLE_INTERPOLATION mode*/
 	if (mode == TABLE_INTERPOLATION)
-		table_gamma_update_S6E3XA0_AMB729WA01(vdd);
+		table_gamma_update_S6E3XA0_AMB729WA01(vdd, br_tbl);
 
 	/* For debug */
 	if (vdd->debug_data->print_cmds) {
-		debug_br_info_log(vdd);
-		debug_interpolation_log(vdd);
+		debug_br_info_log(vdd, br_tbl);
+		debug_interpolation_log(vdd, br_tbl);
 	}
 
 	/* For printing */
-	vdd->panel_br_info.orig_normal_table = normal_interpolation_table;
-	vdd->panel_br_info.orig_hbm_table = hbm_interpolation_table;
+	br_tbl->orig_normal_table = normal_interpolation_table;
+	br_tbl->orig_hbm_table = hbm_interpolation_table;
 
-	vdd->panel_br_info.print_size = ARRAY_SIZE(print_table);
-	vdd->panel_br_info.print_table =
-		kmalloc(sizeof(struct PRINT_TABLE) * vdd->panel_br_info.print_size, GFP_KERNEL);
-	memcpy(vdd->panel_br_info.print_table, print_table, sizeof(print_table));
+	br_tbl->print_size = ARRAY_SIZE(print_table);
+	br_tbl->print_table =
+		kmalloc(sizeof(struct PRINT_TABLE) * br_tbl->print_size, GFP_KERNEL);
+	memcpy(br_tbl->print_table, print_table, sizeof(print_table));
 
 	LCD_INFO("mode [%d] -- \n", mode);
 
@@ -412,7 +405,8 @@ int flash_gamma_support_S6E3XA0_AMB729WA01(struct samsung_display_driver_data *v
 		return 0;
 }
 
-int table_parsing_data_S6E3XA0_AMB729WA01(struct samsung_display_driver_data *vdd)
+int table_parsing_data_S6E3XA0_AMB729WA01(struct samsung_display_driver_data *vdd,
+		struct brightness_table *br_tbl)
 {
 	struct hbm_table_format {
 		unsigned char aor[AOR_SIZE];
@@ -444,8 +438,11 @@ int table_parsing_data_S6E3XA0_AMB729WA01(struct samsung_display_driver_data *vd
 	int hmd_step = sizeof(table_hmd_br_info) / sizeof(struct hmd_table_format);
 
 	int input_table_size = sizeof(table_hbm_br_info) + sizeof(table_normal_br_info) + sizeof(table_hmd_br_info);
-	unsigned char *dst = vdd->panel_br_info.br_data_raw;
+
 	int loop;
+
+	struct flash_raw_table *gamma_tbl = br_tbl->gamma_tbl;
+	unsigned char *dst = gamma_tbl->br_data_raw;
 
 	if (IS_ERR_OR_NULL(dst)) {
 		panic("br_data_raw is not available");
@@ -455,9 +452,9 @@ int table_parsing_data_S6E3XA0_AMB729WA01(struct samsung_display_driver_data *vd
 	LCD_INFO("input_table_size (%d) = table_hbm_br_info (%d) + table_normal_br_info (%d) + table_hmd_br_info (%d)\n",
 		input_table_size, sizeof(table_hbm_br_info), sizeof(table_normal_br_info), sizeof(table_hmd_br_info));
 
-	if (input_table_size != vdd->panel_br_info.br_data_size) {
-		LCD_ERR("input_table_size : %d vdd->panel_br_info.br_data_size : %d\n",
-			input_table_size, vdd->panel_br_info.br_data_size);
+	if (input_table_size != gamma_tbl->br_data_size) {
+		LCD_ERR("input_table_size : %d vdd->br_info.panel_br_info.br_data_size : %d\n",
+			input_table_size, br_tbl->gamma_tbl->br_data_size);
 
 		panic("table size mismatch");
 	}
@@ -466,37 +463,41 @@ int table_parsing_data_S6E3XA0_AMB729WA01(struct samsung_display_driver_data *vd
 
 	/* hbm data update */
 	for (loop = 0; loop < hbm_step; loop++) {
-		memcpy(dst + vdd->dtsi_data.flash_table_hbm_aor_offset + (AOR_SIZE * loop), hbm_table[loop].aor, AOR_SIZE);
-		memcpy(dst + vdd->dtsi_data.flash_table_hbm_vint_offset + (VINT_SIZE * loop), hbm_table[loop].vint, VINT_SIZE);
-		memcpy(dst + vdd->dtsi_data.flash_table_hbm_elvss_offset + (ELVSS_SIZE * loop), hbm_table[loop].elvss, ELVSS_SIZE);
-		memcpy(dst + vdd->dtsi_data.flash_table_hbm_irc_offset + (IRC_SIZE * loop), hbm_table[loop].irc, IRC_SIZE);
+		memcpy(dst + gamma_tbl->flash_table_hbm_aor_offset + (AOR_SIZE * loop), hbm_table[loop].aor, AOR_SIZE);
+		memcpy(dst + gamma_tbl->flash_table_hbm_vint_offset + (VINT_SIZE * loop), hbm_table[loop].vint, VINT_SIZE);
+		memcpy(dst + gamma_tbl->flash_table_hbm_elvss_offset + (ELVSS_SIZE * loop), hbm_table[loop].elvss, ELVSS_SIZE);
+		memcpy(dst + gamma_tbl->flash_table_hbm_irc_offset + (IRC_SIZE * loop), hbm_table[loop].irc, IRC_SIZE);
 	}
 
 	/* normal data update */
 	for (loop = 0; loop < normal_step; loop++) {
-		memcpy(dst + vdd->dtsi_data.flash_table_normal_gamma_offset + (GAMMA_SIZE * loop), normal_table[loop].gamma, GAMMA_SIZE);
-		memcpy(dst + vdd->dtsi_data.flash_table_normal_aor_offset + (AOR_SIZE * loop), normal_table[loop].aor, AOR_SIZE);
-		memcpy(dst + vdd->dtsi_data.flash_table_normal_vint_offset + (VINT_SIZE * loop), normal_table[loop].vint, VINT_SIZE);
-		memcpy(dst + vdd->dtsi_data.flash_table_normal_elvss_offset + (ELVSS_SIZE * loop), normal_table[loop].elvss, ELVSS_SIZE);
-		memcpy(dst + vdd->dtsi_data.flash_table_normal_irc_offset + (IRC_SIZE * loop), normal_table[loop].irc, IRC_SIZE);
+		memcpy(dst + gamma_tbl->flash_table_normal_gamma_offset + (GAMMA_SIZE * loop), normal_table[loop].gamma, GAMMA_SIZE);
+		memcpy(dst + gamma_tbl->flash_table_normal_aor_offset + (AOR_SIZE * loop), normal_table[loop].aor, AOR_SIZE);
+		memcpy(dst + gamma_tbl->flash_table_normal_vint_offset + (VINT_SIZE * loop), normal_table[loop].vint, VINT_SIZE);
+		memcpy(dst + gamma_tbl->flash_table_normal_elvss_offset + (ELVSS_SIZE * loop), normal_table[loop].elvss, ELVSS_SIZE);
+		memcpy(dst + gamma_tbl->flash_table_normal_irc_offset + (IRC_SIZE * loop), normal_table[loop].irc, IRC_SIZE);
 	}
 
 	/* hmd data update */
 	for (loop = 0; loop < hmd_step; loop++) {
-		memcpy(dst + vdd->dtsi_data.flash_table_hmd_gamma_offset + (GAMMA_SIZE * loop), hmd_table[loop].gamma, GAMMA_SIZE);
-		memcpy(dst + vdd->dtsi_data.flash_table_hmd_aor_offset + (AOR_SIZE * loop), hmd_table[loop].aor, AOR_SIZE);
+		memcpy(dst + gamma_tbl->flash_table_hmd_gamma_offset + (GAMMA_SIZE * loop), hmd_table[loop].gamma, GAMMA_SIZE);
+		memcpy(dst + gamma_tbl->flash_table_hmd_aor_offset + (AOR_SIZE * loop), hmd_table[loop].aor, AOR_SIZE);
 	}
 
 	return 0;
 }
 
-int table_gamma_update_S6E3XA0_AMB729WA01(struct samsung_display_driver_data *vdd)
+int table_gamma_update_S6E3XA0_AMB729WA01(struct samsung_display_driver_data *vdd,
+		struct brightness_table *br_tbl)
 {
-	int normal_step = vdd->dtsi_data.normal_brightness_step;
-	int *normal_candela_table = vdd->panel_br_info.normal.candela_table;
+	struct dimming_tbl *normal_tbl = &br_tbl->normal_tbl;
+	struct dimming_tbl *hmd_tbl = &br_tbl->hmd_tbl;
 
-	int hmd_step = vdd->dtsi_data.hmd_brightness_step;
-	int *hmd_candela_table = vdd->panel_br_info.hmd.candela_table;
+	int normal_step = vdd->br_info.normal_brightness_step;
+	int hmd_step = vdd->br_info.hmd_brightness_step;
+
+	int *normal_candela_table = normal_tbl->candela_table;
+	int *hmd_candela_table = hmd_tbl->candela_table;
 
 	int loop;
 
@@ -507,18 +508,18 @@ int table_gamma_update_S6E3XA0_AMB729WA01(struct samsung_display_driver_data *vd
 
 	/* 1st : normal gamma update */
 	for (loop = 0; loop < normal_step; loop++)
-		vdd->smart_dimming_dsi->generate_gamma(
-					vdd->smart_dimming_dsi,
+		br_tbl->smart_dimming_dsi->generate_gamma(
+					br_tbl->smart_dimming_dsi,
 					normal_candela_table[loop],
-					vdd->panel_br_info.normal.gamma[loop]);
+					normal_tbl->gamma[loop]);
 
 	if (vdd->dtsi_data.hmt_enabled) {
 		/* 2st : hmd gamma update */
 		for (loop = 0; loop < hmd_step; loop++)
-			vdd->smart_dimming_dsi_hmt->generate_gamma(
-					vdd->smart_dimming_dsi_hmt,
+			br_tbl->smart_dimming_dsi_hmt->generate_gamma(
+					br_tbl->smart_dimming_dsi_hmt,
 					hmd_candela_table[loop],
-					vdd->panel_br_info.hmd.gamma[loop]);
+					hmd_tbl->gamma[loop]);
 	} else {
 		LCD_ERR("hmt is not support..\n");
 	}
@@ -527,14 +528,15 @@ int table_gamma_update_S6E3XA0_AMB729WA01(struct samsung_display_driver_data *vd
 }
 
 void gen_hbm_interpolation_gamma_S6E3XA0_AMB729WA01(struct samsung_display_driver_data *vdd,
+		struct brightness_table *br_tbl,
 		struct ss_interpolation_brightness_table *normal_table, int normal_table_size)
 {
 	int step_cnt, extend_index, gamma_index;
 	struct ss_interpolation *ss_itp;
 
-	unsigned char **normal_gamma = vdd->panel_br_info.normal.gamma;
+	unsigned char **normal_gamma = br_tbl->normal_tbl.gamma;
 	unsigned char **hbm_interpolation_gamma;
-	unsigned char *hbm_b3_read = vdd->panel_br_info.hbm_max_gamma;
+	unsigned char *hbm_b3_read = br_tbl->hbm_max_gamma;
 
 	int normal_interpolation_step;
 	int normal_max_candela;
@@ -545,7 +547,7 @@ void gen_hbm_interpolation_gamma_S6E3XA0_AMB729WA01(struct samsung_display_drive
 	int *hbm_interpolation_candela;
 	int **hbm_temp_gamma;
 
-	int gamma_size = vdd->dtsi_data.gamma_size;
+	int gamma_size = vdd->br_info.gamma_size;
 	int extension_gamma_size = gamma_size + V0_VT_BYTE - V255_START;
 	int *extend_normal_max_gamma;
 	int *extend_hbm_max_gamma;
@@ -558,10 +560,10 @@ void gen_hbm_interpolation_gamma_S6E3XA0_AMB729WA01(struct samsung_display_drive
 	int gen_rate;
 	int allocated_step;
 
-	if (vdd->panel_br_info.itp_mode == FLASH_INTERPOLATION)
-		ss_itp = &vdd->flash_itp;
+	if (vdd->br_info.panel_br_info.itp_mode == FLASH_INTERPOLATION)
+		ss_itp = &br_tbl->flash_itp;
 	else
-		ss_itp = &vdd->table_itp;
+		ss_itp = &br_tbl->table_itp;
 
 	hbm_interpolation_gamma = ss_itp->hbm.gamma;
 
@@ -733,26 +735,27 @@ alloc_fail1:
 }
 
 void gen_hbm_interpolation_irc_S6E3XA0_AMB729WA01(struct samsung_display_driver_data *vdd,
-		struct ss_interpolation_brightness_table *hbml_table, int hbm_table_size)
+		struct brightness_table *br_tbl,
+		struct ss_interpolation_brightness_table *normal_table, int normal_table_size)
 {
 	int loop;
 	struct ss_hbm_interpolation *hbm_itp;
 	int hbm_interpolation_step;
 
-	unsigned int irc_size = vdd->dtsi_data.irc_size;
-	unsigned char *normal_max_candela_irc = vdd->panel_br_info.normal.irc[0];
+	unsigned int irc_size = vdd->br_info.irc_size;
+	unsigned char *normal_max_candela_irc = br_tbl->normal_tbl.irc[0]; /* flash data write oder */
 
 	unsigned char **dest_irc;
-	unsigned int normal_max_br = vdd->panel_br_info.normal.candela_table[0];
+	unsigned int normal_max_br = br_tbl->normal_tbl.candela_table[0]; /* flash data write oder */
 
 	unsigned int cur_br_x10000, color, mtp;
 	int reg_idx, irc;
 	unsigned long long val1;
 
-	if (vdd->panel_br_info.itp_mode == FLASH_INTERPOLATION)
-		hbm_itp = &vdd->flash_itp.hbm;
+	if (vdd->br_info.panel_br_info.itp_mode == FLASH_INTERPOLATION)
+		hbm_itp = &br_tbl->flash_itp.hbm;
 	else
-		hbm_itp = &vdd->table_itp.hbm;
+		hbm_itp = &br_tbl->table_itp.hbm;
 
 	hbm_interpolation_step = hbm_itp->brightness_step;
 	dest_irc = hbm_itp->irc;
@@ -782,6 +785,7 @@ void gen_hbm_interpolation_irc_S6E3XA0_AMB729WA01(struct samsung_display_driver_
 }
 
 void gen_normal_interpolation_irc_S6E3XA0_AMB729WA01(struct samsung_display_driver_data *vdd,
+		struct brightness_table *br_tbl,
 		struct ss_interpolation_brightness_table *normal_table, int normal_table_size)
 {
 	int loop;
@@ -789,18 +793,18 @@ void gen_normal_interpolation_irc_S6E3XA0_AMB729WA01(struct samsung_display_driv
 	struct ss_normal_interpolation *normal_itp;
 	unsigned char **dest_irc;
 
-	unsigned int irc_size = vdd->dtsi_data.irc_size;
-	unsigned char *normal_max_candela_irc = vdd->panel_br_info.normal.irc[0];
-	unsigned int normal_max_br = vdd->panel_br_info.normal.candela_table[0];
+	unsigned int irc_size = vdd->br_info.irc_size;
+	unsigned char *normal_max_candela_irc = br_tbl->normal_tbl.irc[0];
+	unsigned int normal_max_br = br_tbl->normal_tbl.candela_table[0];
 
 	unsigned int cur_br_x10000, color, mtp;
 	int reg_idx, irc;
 	unsigned int val1;
 
-	if (vdd->panel_br_info.itp_mode == FLASH_INTERPOLATION)
-		normal_itp = &vdd->flash_itp.normal;
+	if (vdd->br_info.panel_br_info.itp_mode == FLASH_INTERPOLATION)
+		normal_itp = &br_tbl->flash_itp.normal;
 	else
-		normal_itp = &vdd->table_itp.normal;
+		normal_itp = &br_tbl->table_itp.normal;
 
 	normal_interpolation_step = normal_itp->brightness_step;
 	dest_irc = normal_itp->irc;

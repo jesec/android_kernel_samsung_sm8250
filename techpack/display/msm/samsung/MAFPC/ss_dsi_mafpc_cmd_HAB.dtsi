@@ -20,56 +20,55 @@
 		 *************************************************************************************************************************
 		 */
 
-		samsung,mafpc_flash_sel = [
+		samsung,mafpc_flash_sel_revA = [
  			29 01 00 00 00 00 03 B0 09 FE
 			29 01 00 00 00 00 02 FE 12
  		];
 
- 		samsung,mafpc_brightness_scale = [
+ 		samsung,mafpc_brightness_scale_revA = [
 			29 00 00 00 00 00 03 F0 5A 5A		/* Test Key Enable */
 			29 00 00 00 00 00 03 B0 08 87		/* Global Para */
 			29 00 00 00 00 00 04 87 FF FF FF	/* Scale Factor */
 			29 00 00 00 00 00 03 F0 A5 A5		/* Test Key Disable */
 		];
 
- 		samsung,mafpc_read_1 = [
+ 		samsung,mafpc_read_1_revA = [
  			06 01 00 00 00 00 01 97 01 00
  		];
 
- 		samsung,mafpc_read_2 = [
+ 		samsung,mafpc_read_2_revA = [
  			06 01 00 00 00 00 01 9A 01 00
  		];
 
-		samsung,mafpc_read_3 = [
+		samsung,mafpc_read_3_revA = [
  			06 01 00 00 00 00 01 96 01 00
  		];
 
- 		samsung,mafpc_setting_pre_for_instant = [
+ 		samsung,mafpc_setting_pre_for_instant_revA = [
 			29 01 00 00 00 00 02 97 0D
 			29 01 00 00 00 00 02 9A 71
 			29 01 00 00 00 00 02 96 19
 		];
 
-		samsung,mafpc_setting_pre = [
+		samsung,mafpc_setting_pre_revA = [
 			29 01 00 00 01 00 02 75 40
 			29 01 00 00 00 00 02 87 00
 			/* image data (4C,5C) ... */
 		];
 
-		samsung,mafpc_setting_post = [
+		samsung,mafpc_setting_post_revA = [
 			29 01 00 00 00 00 02 75 01
 			29 01 00 00 00 00 03 B0 09 FE
-			29 01 00 00 21 00 02 FE 10
-			/* 1Frame Delay (21ms - Worst Case of 48FPS) */
+			29 01 00 00 00 00 02 FE 10
 		];
 
-		samsung,mafpc_setting_post_for_instant = [
+		samsung,mafpc_setting_post_for_instant_revA = [
 			29 01 00 00 00 00 02 97 0e
 			29 01 00 00 00 00 02 9A 71
 			29 01 00 00 00 00 02 96 1a
 		];
 
-		samsung,mafpc_on = [
+		samsung,mafpc_on_revA = [
 			29 01 00 00 00 00 03 F0 5A 5A	/* TEST KEY Enable */
 			29 01 00 00 00 00 2D 87			/* Dummy Data Default */
 								11 09 0F 00 00 81 81 81	FF FF
@@ -80,7 +79,7 @@
 			29 01 00 00 00 00 03 F0 A5 A5	/* TEST KEY Disable */
 		];
 
-		samsung,mafpc_on_factory = [
+		samsung,mafpc_on_factory_revA = [
 			29 01 00 00 00 00 03 F0 5A 5A	/* TEST KEY Enable */
 			29 01 00 00 00 00 2D 87			/* Sample Data For Factory */
 								11 09 10 00 00 81 81 81	FF FF
@@ -91,19 +90,19 @@
 			29 01 00 00 00 00 03 F0 A5 A5	/* TEST KEY Disable */
 		];
 
-		samsung,mafpc_off = [
+		samsung,mafpc_off_revA = [
 			29 01 00 00 00 00 03 F0 5A 5A	/* TEST KEY Enable */
 			29 01 00 00 00 00 02 87 00
 			29 01 00 00 00 00 03 F0 A5 A5	/* TEST KEY Disable */
 		];
 
-		samsung,mafpc_te_on = [
+		samsung,mafpc_te_on_revA = [
 			29 01 00 00 00 00 03 9F A5 A5	/* TEST KEY Enable */
 			05 01 00 00 00 00 01 35
 			29 01 00 00 00 00 03 9F 5A 5A	/* TEST KEY Disable */
 		];
 
-		samsung,mafpc_te_off = [
+		samsung,mafpc_te_off_revA = [
 			29 01 00 00 00 00 03 9F A5 A5	/* TEST KEY Enable */
 			05 01 00 00 00 00 01 34
 			29 01 00 00 00 00 03 9F 5A 5A	/* TEST KEY Disable */
@@ -115,7 +114,7 @@
 		 *************************************************************************************************************************
 		 */
 
-		samsung,mafpc_check_tx_pre1 = [
+		samsung,mafpc_check_tx_pre1_revA = [
 			29 01 00 00 00 00 03 9F A5 A5	/* TEST KEY Enable */
 			29 01 00 00 00 00 03 F0 5A 5A	/* TEST KEY Enable */
 			29 01 00 00 00 00 03 FC 5A 5A	/* TEST KEY Enable */
@@ -144,9 +143,9 @@
 			29 01 00 00 00 00 03 9F 5A 5A	/* TEST KEY Enable */
 		];
 
-		samsung,mafpc_check_rx_cmds = [ 06 01 00 00 00 00 01 14 02 00];	/* read 14h 1st ~ 2nd */
+		samsung,mafpc_check_rx_cmds_revA = [ 06 01 00 00 00 00 01 14 02 00];	/* read 14h 1st ~ 2nd */
 
-		samsung,mafpc_check_tx_post = [
+		samsung,mafpc_check_tx_post_revA = [
 			29 01 00 00 00 00 03 9F A5 A5	/* TEST KEY Enable */
 			29 01 00 00 00 00 03 F0 5A 5A	/* TEST KEY Enable */
 			29 01 00 00 00 00 03 FC 5A 5A	/* TEST KEY Enable */

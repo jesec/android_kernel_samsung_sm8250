@@ -1,7 +1,7 @@
 /*
  * OS Abstraction Layer
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,7 +18,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #ifndef _osl_h_
@@ -182,6 +182,18 @@ do { \
 #endif
 #ifndef PKTISCHAINED
 #define PKTISCHAINED(skb)		FALSE
+#endif
+
+#ifndef PKTGETPROFILEIDX
+#define PKTGETPROFILEIDX(p)		(-1)
+#endif
+
+#ifndef PKTCLRPROFILEIDX
+#define PKTCLRPROFILEIDX(p)
+#endif
+
+#ifndef PKTSETPROFILEIDX
+#define PKTSETPROFILEIDX(p, idx)	BCM_REFERENCE(idx)
 #endif
 
 /* Lbuf with fraglist */
@@ -381,5 +393,14 @@ do { \
 #define PERF_TRACE_END2(id, mycounters)		do {} while (0)
 #define UPDATE_PERF_TRACE_COUNTER(counter, val)	do {} while (0)
 #endif /* OSL_MEMCHECK */
+
+/* Virtual/physical address translation. */
+#if !defined(OSL_VIRT_TO_PHYS_ADDR)
+	#define OSL_VIRT_TO_PHYS_ADDR(va)	((void*)(uintptr)(va))
+#endif
+
+#if !defined(OSL_PHYS_TO_VIRT_ADDR)
+	#define OSL_PHYS_TO_VIRT_ADDR(pa)	((void*)(uintptr)(pa))
+#endif
 
 #endif	/* _osl_h_ */

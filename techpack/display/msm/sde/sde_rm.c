@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2016-2019, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2016-2020, The Linux Foundation. All rights reserved.
  */
 
 #define pr_fmt(fmt)	"[drm:%s] " fmt, __func__
@@ -942,7 +942,7 @@ static bool _sde_rm_check_lm_and_get_connected_blks(
 	is_conn_secondary = (reqs->hw_res.display_type ==
 				 SDE_CONNECTOR_SECONDARY) ? true : false;
 
-	SDE_DEBUG("check lm %d: dspp %d ds %d pp %d features %d disp type %d\n",
+	SDE_DEBUG("check lm %d: dspp %d ds %d pp %d features %ld disp type %d\n",
 		 lm_cfg->id, lm_cfg->dspp, lm_cfg->ds, lm_cfg->pingpong,
 		 lm_cfg->features, (int)reqs->hw_res.display_type);
 
@@ -977,7 +977,7 @@ static bool _sde_rm_check_lm_and_get_connected_blks(
 	} else if ((!is_conn_primary && lm_primary_pref) ||
 			(!is_conn_secondary && lm_secondary_pref)) {
 		SDE_DEBUG(
-			"display preference is not met. display_type: %d lm_features: %x\n",
+			"display preference is not met. display_type: %d lm_features: %lx\n",
 			(int)reqs->hw_res.display_type, lm_cfg->features);
 		return false;
 	}
@@ -1863,12 +1863,15 @@ static struct drm_connector *_sde_rm_get_connector(
 		struct drm_encoder *enc)
 {
 	struct drm_connector *conn = NULL;
+	struct sde_connector *c_conn = NULL;
 	struct list_head *connector_list =
 			&enc->dev->mode_config.connector_list;
 
-	list_for_each_entry(conn, connector_list, head)
-		if (conn->encoder == enc)
+	list_for_each_entry(conn, connector_list, head) {
+		c_conn = to_sde_connector(conn);
+		if (c_conn->encoder == enc)
 			return conn;
+	}
 
 	return NULL;
 }
@@ -1987,8 +1990,8 @@ void sde_rm_release(struct sde_rm *rm, struct drm_encoder *enc, bool nxt)
 
 	conn = _sde_rm_get_connector(enc);
 	if (!conn) {
-		SDE_ERROR("failed to get connector for enc %d, nxt %d",
-				enc->base.id, nxt);
+		SDE_ERROR("failed to get conn for enc %d nxt %d rsvp[s%de%d]\n",
+				enc->base.id, nxt, rsvp->seq, rsvp->enc_id);
 		goto end;
 	}
 
@@ -2022,7 +2025,8 @@ static int _sde_rm_commit_rsvp(
 	/* Swap next rsvp to be the active */
 	for (type = 0; type < SDE_HW_BLK_MAX; type++) {
 		list_for_each_entry(blk, &rm->hw_blks[type], list) {
-			if (blk->rsvp_nxt) {
+			if (blk->rsvp_nxt && conn_state->best_encoder->base.id
+					 == blk->rsvp_nxt->enc_id) {
 				blk->rsvp = blk->rsvp_nxt;
 				blk->rsvp_nxt = NULL;
 				_sde_rm_dec_resource_info(rm,

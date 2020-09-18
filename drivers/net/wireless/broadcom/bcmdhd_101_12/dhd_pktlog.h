@@ -136,15 +136,16 @@ extern int dhd_pktlog_ring_get_nextbuf(dhd_pktlog_ring_t *ringbuf, void **data);
 extern int dhd_pktlog_ring_set_prevpos(dhd_pktlog_ring_t *ringbuf);
 extern int dhd_pktlog_ring_get_prevbuf(dhd_pktlog_ring_t *ringbuf, void **data);
 extern int dhd_pktlog_ring_get_writebuf(dhd_pktlog_ring_t *ringbuf, void **data);
-extern int dhd_pktlog_ring_add_pkts(dhd_pub_t *dhdp, void *pkt, uint32 pktid, bool direction);
+extern int dhd_pktlog_ring_add_pkts(dhd_pub_t *dhdp, void *pkt, uint32 pktid, uint32 direction);
 extern int dhd_pktlog_ring_tx_status(dhd_pub_t *dhdp, void *pkt, uint32 pktid,
 		uint16 status);
 extern dhd_pktlog_ring_t* dhd_pktlog_ring_change_size(dhd_pktlog_ring_t *ringbuf, int size);
 extern void dhd_pktlog_filter_pull_forward(dhd_pktlog_filter_t *filter,
 		uint32 del_filter_id, uint32 list_cnt);
 
-#define PKT_TX 1
 #define PKT_RX 0
+#define PKT_TX 1
+#define PKT_WAKERX 2
 #define DHD_INVALID_PKTID (0U)
 #define PKTLOG_TRANS_TX 0x01
 #define PKTLOG_TRANS_RX 0x02
@@ -233,6 +234,24 @@ extern void dhd_pktlog_filter_pull_forward(dhd_pktlog_filter_t *filter,
 						(&(dhdp)->pktlog->pktlog_ring->start))) { \
 					dhd_pktlog_ring_add_pkts(dhdp, pkt, \
 						DHD_INVALID_PKTID, PKT_RX); \
+				} \
+			} \
+			PKTLOG_CLEAR_IN_RX(dhdp); \
+		} \
+	} while (0); \
+}
+
+#define DHD_PKTLOG_WAKERX(dhdp, pkt) \
+{ \
+	do { \
+		if ((dhdp) && (dhdp)->pktlog && (pkt)) { \
+			PKTLOG_SET_IN_RX(dhdp); \
+			if (ntoh16((pkt)->protocol) != ETHER_TYPE_BRCM) { \
+				if ((dhdp)->pktlog->pktlog_ring && \
+					OSL_ATOMIC_READ((dhdp)->osh, \
+						(&(dhdp)->pktlog->pktlog_ring->start))) { \
+					dhd_pktlog_ring_add_pkts(dhdp, pkt, \
+						DHD_INVALID_PKTID, PKT_WAKERX); \
 				} \
 			} \
 			PKTLOG_CLEAR_IN_RX(dhdp); \

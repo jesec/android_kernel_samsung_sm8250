@@ -44,6 +44,7 @@ static void dump_hfi_queue(struct iris_hfi_device *device)
 			dprintk(CVP_ERR, "HFI queue not init, fail to dump\n");
 			return;
 		}
+
 		dprintk(CVP_ERR, "queue details: %d %d\n",
 				queue->qhdr_read_idx, queue->qhdr_write_idx);
 		if (queue->qhdr_read_idx != queue->qhdr_write_idx) {

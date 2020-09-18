@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
  *  usb notify header
  *
@@ -6,7 +7,7 @@
  *
  */
 
- /* usb notify layer v3.3 */
+ /* usb notify layer v3.4 */
 
 #ifndef __LINUX_USB_NOTIFY_H__
 #define __LINUX_USB_NOTIFY_H__
@@ -33,6 +34,8 @@ enum otg_notify_events {
 	NOTIFY_EVENT_MMDOCK,
 	NOTIFY_EVENT_HMT,
 	NOTIFY_EVENT_GAMEPAD,
+	NOTIFY_EVENT_POGO,
+	NOTIFY_EVENT_HOST_RELOAD,
 	NOTIFY_EVENT_DRIVE_VBUS,
 	NOTIFY_EVENT_ALL_DISABLE,
 	NOTIFY_EVENT_HOST_DISABLE,
@@ -42,15 +45,19 @@ enum otg_notify_events {
 	NOTIFY_EVENT_SMSC_OVC,
 	NOTIFY_EVENT_SMTD_EXT_CURRENT,
 	NOTIFY_EVENT_MMD_EXT_CURRENT,
+	NOTIFY_EVENT_NREALAR_EXT_CURRENT,
 	NOTIFY_EVENT_DEVICE_CONNECT,
 	NOTIFY_EVENT_GAMEPAD_CONNECT,
 	NOTIFY_EVENT_LANHUB_CONNECT,
 	NOTIFY_EVENT_POWER_SOURCE,
-	NOTIFY_EVENT_VBUSPOWER,
-	NOTIFY_EVENT_POGO,
 	NOTIFY_EVENT_PD_CONTRACT,
 	NOTIFY_EVENT_VBUS_RESET,
 	NOTIFY_EVENT_RESERVE_BOOSTER,
+	NOTIFY_EVENT_USB_CABLE,
+	NOTIFY_EVENT_USBD_SUSPENDED,
+	NOTIFY_EVENT_USBD_UNCONFIGURED,
+	NOTIFY_EVENT_USBD_CONFIGURED,
+	NOTIFY_EVENT_VBUSPOWER,
 	NOTIFY_EVENT_VIRTUAL,
 };
 
@@ -147,20 +154,18 @@ struct otg_notify {
 	int disable_control;
 	int device_check_sec;
 	int pre_peri_delay_us;
-	int sec_whitelist_enable;
 	int speed;
-	const char *muic_name;
 	int (*pre_gpio)(int gpio, int use);
 	int (*post_gpio)(int gpio, int use);
-	int (*vbus_drive)(bool);
-	int (*set_host)(bool);
-	int (*set_peripheral)(bool);
-	int (*set_charger)(bool);
-	int (*post_vbus_detect)(bool);
-	int (*set_lanhubta)(int);
-	int (*set_battcall)(int, int);
-	int (*set_chg_current)(int);
-	void (*set_ldo_onoff)(void *, unsigned int);
+	int (*vbus_drive)(bool enable);
+	int (*set_host)(bool enable);
+	int (*set_peripheral)(bool enable);
+	int (*set_charger)(bool enable);
+	int (*post_vbus_detect)(bool on);
+	int (*set_lanhubta)(int enable);
+	int (*set_battcall)(int event, int enable);
+	int (*set_chg_current)(int state);
+	void (*set_ldo_onoff)(void *data, unsigned int onoff);
 	int (*get_gadget_speed)(void);
 	void *o_data;
 	void *u_notify;
@@ -168,7 +173,7 @@ struct otg_notify {
 
 struct otg_booster {
 	char *name;
-	int (*booster)(bool);
+	int (*booster)(bool enable);
 };
 
 #ifdef CONFIG_USB_NOTIFY_LAYER

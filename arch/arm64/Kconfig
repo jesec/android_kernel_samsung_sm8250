@@ -542,6 +542,8 @@ config ARM64_ERRATUM_1542418
 	  Work around the erratum by ensuring that 60 ASIDs are selected
 	  before any ASID is reused.
 
+	  If unsure, say Y.
+
 config ARM64_ERRATUM_1542419
 	bool "Neoverse-N1: workaround mis-ordering of instruction fetches"
 	default y
@@ -1299,7 +1301,7 @@ config CFP
 
 config CFP_JOPP
 	bool "JOP Prevention"
-	depends on !SEC_FACTORY 
+	depends on !SEC_FACTORY
 	select CFP
 	default n
 	help
@@ -1312,7 +1314,7 @@ config CFP_JOPP_MAGIC
 
 config CFP_ROPP
 	bool "ROP Prevention"
-	depends on !SEC_FACTORY 
+	depends on !SEC_FACTORY
 	select CFP
 	default n
 	help

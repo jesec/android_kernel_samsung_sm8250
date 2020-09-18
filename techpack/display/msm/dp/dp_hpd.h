@@ -34,15 +34,9 @@ enum dp_hpd_type {
  * @attention: notify any attention message event.
  */
 struct dp_hpd_cb {
-#ifndef CONFIG_SEC_DISPLAYPORT
 	int (*configure)(struct device *dev);
 	int (*disconnect)(struct device *dev);
 	int (*attention)(struct device *dev);
-#else
-	int (*configure)(void);
-	int (*disconnect)(void);
-	int (*attention)(void);
-#endif
 };
 
 /**

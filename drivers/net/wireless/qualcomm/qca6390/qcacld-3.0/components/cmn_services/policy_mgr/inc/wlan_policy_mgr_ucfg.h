@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2018-2020 The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -135,6 +135,34 @@ ucfg_policy_mgr_get_mcc_adaptive_sch(struct wlan_objmgr_psoc *psoc,
 				     uint8_t *enable_mcc_adaptive_sch);
 
 /**
+ * ucfg_policy_mgr_get_dynamic_mcc_adaptive_sch() - to get dynamic mcc adaptive
+ *                                                  scheduler
+ * @psoc: pointer to psoc
+ * @dynamic_mcc_adaptive_sch: value to be filled
+ *
+ * This API is used to get dynamic mcc adaptive scheduler
+ *
+ * Return: QDF_STATUS_SUCCESS up on success and any other status for failure.
+ */
+QDF_STATUS
+ucfg_policy_mgr_get_dynamic_mcc_adaptive_sch(struct wlan_objmgr_psoc *psoc,
+					     bool *dynamic_mcc_adaptive_sch);
+
+/**
+ * ucfg_policy_mgr_set_dynamic_mcc_adaptive_sch() - to set dynamic mcc adaptive
+ *                                                  scheduler
+ * @psoc: pointer to psoc
+ * @dynamic_mcc_adaptive_sch: value to be set
+ *
+ * This API is used to set dynamic mcc adaptive scheduler
+ *
+ * Return: QDF_STATUS_SUCCESS up on success and any other status for failure.
+ */
+QDF_STATUS
+ucfg_policy_mgr_set_dynamic_mcc_adaptive_sch(struct wlan_objmgr_psoc *psoc,
+					     bool dynamic_mcc_adaptive_sch);
+
+/**
  * ucfg_policy_mgr_get_sta_cxn_5g_band() - to get STA's connection in 5G config
  *
  * @psoc: pointer to psoc
@@ -227,6 +255,47 @@ ucfg_policy_mgr_get_sta_sap_scc_on_dfs_chnl(struct wlan_objmgr_psoc *psoc,
 QDF_STATUS
 ucfg_policy_mgr_get_sta_sap_scc_lte_coex_chnl(struct wlan_objmgr_psoc *psoc,
 					      uint8_t *sta_sap_scc_lte_coex);
+
+/**
+ * ucfg_policy_mgr_get_dfs_master_dynamic_enabled() - support dfs master or not
+ *  AP interface when STA+SAP(GO) concurrency
+ * @psoc: pointer to psoc
+ * @vdev_id: sap vdev id
+ *
+ * This API is used to check SAP (GO) dfs master functionality enabled or not
+ * when STA+SAP(GO) concurrency.
+ * If g_sta_sap_scc_on_dfs_chan is non-zero, the STA+SAP(GO) is allowed on DFS
+ * channel SCC and the SAP's DFS master functionality should be enable/disable
+ * according to:
+ * 1. g_sta_sap_scc_on_dfs_chan is 0: function return true - dfs master
+ *     capability enabled.
+ * 2. g_sta_sap_scc_on_dfs_chan is 1: function return false - dfs master
+ *     capability disabled.
+ * 3. g_sta_sap_scc_on_dfs_chan is 2: dfs master capability based on STA on
+ *     5G or not:
+ *      a. 5G STA active - return false
+ *      b. no 5G STA active -return true
+ *
+ * Return: true if dfs master functionality should be enabled.
+ */
+bool
+ucfg_policy_mgr_get_dfs_master_dynamic_enabled(struct wlan_objmgr_psoc *psoc,
+					       uint8_t vdev_id);
+
+/**
+ * ucfg_policy_mgr_init_chan_avoidance() - init channel avoidance in policy
+ *					   manager
+ * @psoc: pointer to psoc
+ * @chan_freq_list: channel frequency list
+ * @chan_cnt: channel count
+ *
+ * Return: QDF_STATUS_SUCCESS up on success and any other status for failure.
+ */
+QDF_STATUS
+ucfg_policy_mgr_init_chan_avoidance(struct wlan_objmgr_psoc *psoc,
+				    qdf_freq_t *chan_freq_list,
+				    uint16_t chan_cnt);
+
 /**
  * ucfg_policy_mgr_get_sap_mandt_chnl() - to find out if SAP mandatory channel
  *					  support is enabled

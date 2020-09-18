@@ -1250,7 +1250,7 @@ static void Color_shift_compensation_hmt(struct SMART_DIM *pSmart, int *gamma_se
 
 	for (i = 3; i < RGB_COMPENSATION; i++) {
 		if (table_index == -1) {
-			table_index = LUMINANCE_MAX-1;
+			table_index = HMT_LUMINANCE_MAX-1;
 			pr_err("%s : fail RGB table_index cnt : %d brightness %d\n",
 				__func__, i, pSmart->brightness_level);
 		}

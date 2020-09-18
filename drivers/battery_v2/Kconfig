@@ -883,6 +883,11 @@ config DUAL_BATTERY
     help
 	  Say Y here to enable support for dual battery
 
+config DUAL_BATTERY_CELL_SENSING
+    tristate "DUAL BATTERY CELLSENSING support"
+    depends on I2C
+    help
+	  Say Y here to enable support for cell sensing of dual battery
 
 config ISDB_CHARGING_CONTROL
     tristate "ISDB CHARGING CONTROL support"
@@ -896,6 +901,15 @@ config PREVENT_USB_CONN_OVERHEAT
     help
 	  Say Y to enable CONFIG_PREVENT_USB_CONN_OVERHEAT
 
+config TX_5V_DISABLE
+    bool "disable TX in case of 5V"
+    default n
+    help
+	  Say Y to enable CONFIG_TX_5V_DISABLE
+	  Disable tx during 5V wired charging.
+	  Tx power efficiency is bad in projects that have small coil.
+	  apply this concept since bloom.
+
 config DISABLE_MFC_IC
     bool "disable mfc ic because of burnt issue"
     default n
@@ -904,3 +918,12 @@ config DISABLE_MFC_IC
 	  High vrect occurs when No load scenario.
 	  so mfc ic burnt.
 	  disable mfc ic in this case.
+
+config TX_GEAR_PHM_VOUT_CTRL
+    bool "control vout when gear`s phm"
+    default n
+    help
+	  Say Y to enable CONFIG_TX_GEAR_PHM_VOUT_CTRL
+	  Control vout 5v when enter gear`s phm with high voltage wired charging
+	  Recover vout when escape gear`s phm
+	  This is considered only if high vout with gear.

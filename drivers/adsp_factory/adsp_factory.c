@@ -56,6 +56,17 @@ static u8 msg_size[MSG_SENSOR_MAX] = {
 	MSG_TYPE_SIZE_ZERO,
 #endif
 	MSG_TYPE_SIZE_ZERO,
+#ifdef CONFIG_SUPPORT_AK0997X
+	MSG_DIGITAL_HALL_MAX,
+	MSG_DIGITAL_HALL_ANGLE_MAX,
+	MSG_DIGITAL_HALL_ANGLE_MAX,
+#endif
+#ifdef CONFIG_SUPPORT_DUAL_DDI_COPR_FOR_LIGHT_SENSOR
+	MSG_DDI_MAX,
+#endif
+#ifdef CONFIG_SUPPORT_LIGHT_MAIN2_SENSOR
+	MSG_LIGHT_MAX,
+#endif
 	MSG_TYPE_SIZE_ZERO,
 	MSG_TYPE_SIZE_ZERO
 };
@@ -193,6 +204,11 @@ int adsp_factory_register(unsigned int type,
 #ifdef CONFIG_SUPPORT_HIDDEN_HOLE_SUB
 	case MSG_HH_HOLE_SUB:
 		dev_name = "hidden_hole_sub";
+		break;
+#endif
+#ifdef CONFIG_SUPPORT_AK0997X
+	case MSG_DIGITAL_HALL:
+		dev_name = "digital_hall";
 		break;
 #endif
 	default:
@@ -393,6 +409,43 @@ void adsp_sub_mobeam_unregister(struct device_attribute *attributes[])
 #endif
 #endif
 
+#ifdef CONFIG_SUPPORT_AK0997X
+int get_hall_angle_data(int32_t *raw_data)
+{
+	uint8_t cnt = 0;
+
+	mutex_lock(&data->digital_hall_mutex);
+	adsp_unicast(NULL, 0, MSG_DIGITAL_HALL_ANGLE, 0, MSG_TYPE_GET_RAW_DATA);
+
+	while (!(data->ready_flag[MSG_TYPE_GET_RAW_DATA] & 1 << MSG_DIGITAL_HALL_ANGLE) &&
+		cnt++ < TIMEOUT_CNT)
+		usleep_range(500, 550);
+
+	data->ready_flag[MSG_TYPE_GET_RAW_DATA] &= ~(1 << MSG_DIGITAL_HALL_ANGLE);
+
+	if (cnt >= TIMEOUT_CNT) {
+		pr_err("[FACTORY] %s: Timeout!!!\n", __func__);
+                return -1;
+	}
+
+	pr_info("[FACTORY] %s - st %d/%d, akm %d/%d, lf %d/%d, hall %d/%d/%d(uT)\n",
+		__func__, data->msg_buf[MSG_DIGITAL_HALL_ANGLE][0],
+		data->msg_buf[MSG_DIGITAL_HALL_ANGLE][1],
+		data->msg_buf[MSG_DIGITAL_HALL_ANGLE][2],
+		data->msg_buf[MSG_DIGITAL_HALL_ANGLE][3],
+		data->msg_buf[MSG_DIGITAL_HALL_ANGLE][4],
+		data->msg_buf[MSG_DIGITAL_HALL_ANGLE][5],
+		data->msg_buf[MSG_DIGITAL_HALL_ANGLE][6],
+		data->msg_buf[MSG_DIGITAL_HALL_ANGLE][7],
+		data->msg_buf[MSG_DIGITAL_HALL_ANGLE][8]);
+
+	*raw_data = data->msg_buf[MSG_DIGITAL_HALL_ANGLE][2];
+	mutex_unlock(&data->digital_hall_mutex);
+
+	return 0;
+}
+#endif
+
 static int process_received_msg(struct sk_buff *skb, struct nlmsghdr *nlh)
 {
 	u16 sensor_type = nlh->nlmsg_type >> 8;
@@ -402,7 +455,7 @@ static int process_received_msg(struct sk_buff *skb, struct nlmsghdr *nlh)
 	if (msg_type >= MSG_TYPE_MAX || sensor_type >= MSG_SENSOR_MAX ||
 		nlh->nlmsg_len - (int32_t)sizeof(struct nlmsghdr) >
 	    	sizeof(int32_t) * msg_size[sensor_type]) {
-		pr_err("[FACTORY] %d, %d, %d\n", msg_type, sensor_type, nlh->nlmsg_len);
+		pr_err("[FACTORY] %s %d, %d, %d\n", __func__, msg_type, sensor_type, nlh->nlmsg_len);
 		return 0;
 	}
 
@@ -420,8 +473,14 @@ static int process_received_msg(struct sk_buff *skb, struct nlmsghdr *nlh)
 #ifdef CONFIG_SUPPORT_DEVICE_MODE
 		sns_device_mode_init_work();
 #endif
+#if defined(CONFIG_SUPPORT_DUAL_OPTIC) && defined(CONFIG_SUPPORT_DEVICE_MODE)
+		sns_flip_init_work();
+#endif
 #ifdef CONFIG_SUPPORT_AMS_PROX_CALIBRATION
 		prox_cal_init_work(data);
+#endif
+#ifdef CONFIG_SUPPORT_SSC_AOD_RECT
+		light_rect_init_work();
 #endif
 #ifdef CONFIG_SUPPORT_AMS_LIGHT_CALIBRATION
 		light_cal_init_work(data);
@@ -431,6 +490,9 @@ static int process_received_msg(struct sk_buff *skb, struct nlmsghdr *nlh)
 #endif
 #ifdef CONFIG_VBUS_NOTIFIER
 		sns_vbus_init_work();
+#endif
+#ifdef CONFIG_SUPPORT_AK0997X
+		digital_hall_factory_auto_cal_init_work();
 #endif
 		return 0;
 	}
@@ -499,6 +561,9 @@ static int __init factory_adsp_init(void)
 	mutex_init(&data->prox_factory_mutex);
 	mutex_init(&data->light_factory_mutex);
 	mutex_init(&data->remove_sysfs_mutex);
+#ifdef CONFIG_SUPPORT_AK0997X
+	mutex_init(&data->digital_hall_mutex);
+#endif
 #ifdef CONFIG_SUPPORT_AMS_LIGHT_CALIBRATION
 	INIT_DELAYED_WORK(&data->light_cal_work, light_cal_read_work_func);
 #endif
@@ -517,6 +582,9 @@ static void __exit factory_adsp_exit(void)
 	mutex_destroy(&data->prox_factory_mutex);
 	mutex_destroy(&data->light_factory_mutex);
 	mutex_destroy(&data->remove_sysfs_mutex);
+#ifdef CONFIG_SUPPORT_AK0997X
+	mutex_destroy(&data->digital_hall_mutex);
+#endif
 #ifdef CONFIG_SUPPORT_AMS_LIGHT_CALIBRATION
 	cancel_delayed_work_sync(&data->light_cal_work);
 #endif

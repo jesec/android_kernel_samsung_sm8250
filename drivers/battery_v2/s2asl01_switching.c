@@ -20,9 +20,11 @@
 #include <linux/kernel.h>
 
 static enum power_supply_property s2asl01_main_props[] = {
+	POWER_SUPPLY_PROP_HEALTH,
 };
 
 static enum power_supply_property s2asl01_sub_props[] = {
+	POWER_SUPPLY_PROP_HEALTH,
 };
 
 static struct device_attribute s2asl01_limiter_attrs[] = {
@@ -343,14 +345,16 @@ static void s2asl01_set_fast_charging_current_limit(
 		struct s2asl01_switching_data *switching, int charging_current)
 {
 	u8 data = 0;
+	int dest_current = 0;
 
-	if (switching->rev_id == 0) {
+	if (switching->rev_id == 0 || switching->rev_id >= 2) {
 		if (charging_current <= 50)
 			data = 0x00;
 		else if (charging_current > 50 && charging_current <= 3200)
 			data = (charging_current / 50) - 1;
 		else
 			data = 0x3F;
+		dest_current = (data + 1) * 50;
 	} else {
 		if (charging_current <= 50)
 			data = 0x00;
@@ -360,9 +364,15 @@ static void s2asl01_set_fast_charging_current_limit(
 			data = ((charging_current - 350) / 50) + 4;
 		else
 			data = 0x3F;
+
+		if ((data >= 0x00) && (data <= 0x04))
+			dest_current = (data * 75) + 50;
+		else
+			dest_current = ((data - 4) * 50) + 350;
 	}
 
-	pr_info("%s [%s]: current %d, 0x%02x\n", __func__, current_limiter_type_str[switching->pdata->bat_type], charging_current, data);
+	pr_info("%s [%s]: current %d -> %d, 0x%02x\n",
+		__func__, current_limiter_type_str[switching->pdata->bat_type], charging_current, dest_current, data);
 
 	s2asl01_update_reg(switching->client, S2ASL01_SWITCHING_CORE_CTRL4,
 			data, FCC_CHG_CURRENTLIMIT_MASK);
@@ -383,7 +393,7 @@ static int s2asl01_get_fast_charging_current_limit(
 		data = 0x3F;
 	}
 
-	if (switching->rev_id == 0)
+	if (switching->rev_id == 0 || switching->rev_id >= 2)
 		charging_current = (data + 1) * 50;
 	else {
 		if ((data >= 0x00) && (data <= 0x04))
@@ -400,7 +410,7 @@ static void s2asl01_set_trickle_charging_current_limit(
 {
 	u8 data = 0;
 
-	if (switching->rev_id == 0) {
+	if (switching->rev_id == 0 || switching->rev_id >= 2) {
 		if (charging_current <= 50)
 			data = 0x00;
 		else if (charging_current > 50 && charging_current <= 500)
@@ -434,7 +444,7 @@ static int s2asl01_get_trickle_charging_current_limit(
 
 	data = data & TRICKLE_CHG_CURRENT_LIMIT_MASK;
 
-	if (switching->rev_id == 0) {
+	if (switching->rev_id == 0 || switching->rev_id >= 2) {
 		if (data > 0x09) {
 			pr_err("%s: Invalid trickle charging current limit value\n", __func__);
 			data = 0x09;
@@ -622,7 +632,7 @@ static void s2asl01_tsd_onoff(
 {
 	pr_info("%s(%d)\n", __func__, onoff);
 
-	if (switching->rev_id > 0) {	
+	if (switching->rev_id == 0) {
 		if (onoff) {
 			s2asl01_update_reg(switching->client, S2ASL01_SWITCHING_COMMON1,
 					S2ASL01_COMMON1_CM_TSD_EN, S2ASL01_COMMON1_CM_TSD_EN);
@@ -657,6 +667,7 @@ static int s2asl01_get_property(struct power_supply *psy,
 			__func__,
 			current_limiter_type_str[switching->pdata->bat_type],
 			vchg, vbat, ichg, idischg);
+		val->intval = 0;
 		break;
 	case POWER_SUPPLY_PROP_MAX ... POWER_SUPPLY_EXT_PROP_MAX:
 		switch (ext_psp) {
@@ -890,7 +901,7 @@ static int s2asl01_switching_parse_dt(struct device *dev, struct s2asl01_platfor
 		ret = of_property_read_u32(np, "limiter,eoc",
 					&pdata->eoc);
 		if (ret < 0) {
-			pr_info("%s : Chg current limit is empty\n", __func__);
+			pr_info("%s : eoc is empty\n", __func__);
 			pdata->eoc = 200; /* for interrupt setting, not used */
 		}
 
@@ -953,7 +964,7 @@ static int s2asl01_switching_parse_dt(struct device *dev, struct s2asl01_switchi
 static int s2asl01_limiter_create_attrs(struct device *dev)
 {
 	int i, rc;
-
+	
 	for (i = 0; i < (int)ARRAY_SIZE(s2asl01_limiter_attrs); i++) {
 		rc = device_create_file(dev, &s2asl01_limiter_attrs[i]);
 		if (rc)
@@ -1034,25 +1045,13 @@ static void limiter_isr_work(struct work_struct *work)
 
 static void s2asl01_get_rev_id(struct s2asl01_switching_data *switching)
 {
-	u8 val1 = 0, val2 = 0;
+	u8 val1 = 0;
 
 	/* rev ID */
 	s2asl01_read_reg(switching->client, S2ASL01_SWITCHING_ID, &val1);
-	if ((val1 & 0xF0) == 0) {
-		s2asl01_read_reg(switching->client, S2ASL01_SWITCHING_CORE_CTRL3, &val2);
-		if (val2 != 0x0C) {
-			/* EVT0 0x11 address default value : 0x02 */
-			switching->es_num = 0;
-			switching->rev_id = 0;
-		} else {
-			/* EVT1 0x11 address default value : 0x0C */
-			switching->es_num = 1;
-			switching->rev_id = 1;
-		}
-	} else {
-		switching->es_num = (val1 & 0xC0) >> 6;
-		switching->rev_id = (val1 & 0x30) >> 4;
-	}
+
+	switching->es_num = (val1 & 0xC0) >> 6;
+	switching->rev_id = (val1 & 0x30) >> 4;
 
 	pr_info("%s [%s]: rev id : %d, es_num = %d\n",
 		__func__,
@@ -1069,7 +1068,7 @@ static void s2asl01_init_regs(struct s2asl01_switching_data *switching)
 
 	/* SUB_PWR_OFF_MODE enable */
 	s2asl01_update_reg(switching->client, S2ASL01_SWITCHING_CORE_CTRL2,
-			S2ASL01_SUB_PWR_OFF_MODE1, S2ASL01_SUB_PWR_OFF_MODE_MASK);
+		S2ASL01_SUB_PWR_OFF_MODE1, S2ASL01_SUB_PWR_OFF_MODE_MASK);
 
 	s2asl01_powermeter_onoff(switching, 1);
 
@@ -1194,8 +1193,9 @@ static int s2asl01_switching_probe(struct i2c_client *client,
 		    power_supply_register(switching->dev,
 					  &s2asl01_main_power_supply_desc,
 					  &psy_cfg);
-		if ((void *)switching->psy_sw < 0) {
-			pr_err("%s: Failed to Register psy_sw\n", __func__);
+		if (IS_ERR(switching->psy_sw)) {
+			ret = PTR_ERR(switching->psy_sw);
+			pr_err("%s: Failed to Register psy_sw(%d)\n", __func__, ret);
 			goto err_supply_unreg;
 		}
 	} else if(switching->pdata->bat_type & LIMITER_SUB) {
@@ -1204,10 +1204,11 @@ static int s2asl01_switching_probe(struct i2c_client *client,
 		    power_supply_register(switching->dev,
 					  &s2asl01_sub_power_supply_desc,
 					  &psy_cfg);
-		if ((void *)switching->psy_sw < 0) {
-			pr_err("%s: Failed to Register psy_sw\n", __func__);
+		if (IS_ERR(switching->psy_sw)) {
+			ret = PTR_ERR(switching->psy_sw);
+			pr_err("%s: Failed to Register psy_sw(%d)\n", __func__, ret);
 			goto err_supply_unreg;
-		}		
+		}
 	}
 
 	switching->wqueue = create_singlethread_workqueue("limiter_workqueue");
@@ -1215,8 +1216,6 @@ static int s2asl01_switching_probe(struct i2c_client *client,
 		pr_err("%s: Fail to Create Workqueue\n", __func__);
 		goto err_pdata_free;
 	}
-
-	wakeup_source_init(&switching->limiter_wake_lock, "limiter_wakelock");
 
 	switching->in_ok = false;
 	switching->supllement_mode = false;
@@ -1269,7 +1268,6 @@ static int s2asl01_switching_probe(struct i2c_client *client,
 
 err_irq:
 err_pdata_free:
-	wakeup_source_trash(&switching->limiter_wake_lock);
 	power_supply_unregister(switching->psy_sw);
 err_supply_unreg:
 	mutex_destroy(&switching->i2c_lock);

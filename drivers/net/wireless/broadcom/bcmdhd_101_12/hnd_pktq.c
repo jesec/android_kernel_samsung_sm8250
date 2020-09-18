@@ -104,7 +104,7 @@ BCMFASTPATH(spktq_enq_chain)(struct spktq *dspq, struct spktq *sspq)
 	sq = &sspq->q;
 
 	if (dq->head) {
-		PKTSETLINK(dq->tail, sq->head);
+		PKTSETLINK(OSL_PHYS_TO_VIRT_ADDR(dq->tail), OSL_VIRT_TO_PHYS_ADDR(sq->head));
 	}
 	else {
 		dq->head = sq->head;
@@ -158,7 +158,7 @@ BCMFASTPATH(spktq_enq)(struct spktq *spq, void *p)
 }
 
 void *
-BCMFASTPATH(pktq_penq_head)(struct pktq *pq, int prec, void *p)
+BCMPOSTTRAPFASTPATH(pktq_penq_head)(struct pktq *pq, int prec, void *p)
 {
 	struct pktq_prec *q;
 
@@ -276,6 +276,42 @@ BCMFASTPATH(spktq_deq)(struct spktq *spq)
 		goto done;
 
 	if ((q->head = PKTLINK(p)) == NULL)
+		q->tail = NULL;
+
+	q->n_pkts--;
+
+#ifdef WL_TXQ_STALL
+	q->dequeue_count++;
+#endif
+
+	PKTSETLINK(p, NULL);
+
+done:
+	/* protect shared resource */
+	if (HND_PKTQ_MUTEX_RELEASE(&spq->mutex) != OSL_EXT_SUCCESS)
+		return NULL;
+
+	return p;
+}
+
+void*
+BCMFASTPATH(spktq_deq_virt)(struct spktq *spq)
+{
+	struct pktq_prec *q;
+	void *p;
+
+	/* protect shared resource */
+	if (HND_PKTQ_MUTEX_ACQUIRE(&spq->mutex, OSL_EXT_TIME_FOREVER) != OSL_EXT_SUCCESS)
+		return NULL;
+
+	q = &spq->q;
+
+	if ((p = q->head) == NULL)
+		goto done;
+
+	p = (void *)OSL_PHYS_TO_VIRT_ADDR(p);
+
+	if ((q->head = (void*)PKTLINK(p)) == NULL)
 		q->tail = NULL;
 
 	q->n_pkts--;
@@ -1341,7 +1377,7 @@ done:
 }
 /* Priority dequeue from a specific set of precedences */
 void *
-BCMFASTPATH(pktq_mdeq)(struct pktq *pq, uint prec_bmp, int *prec_out)
+BCMPOSTTRAPFASTPATH(pktq_mdeq)(struct pktq *pq, uint prec_bmp, int *prec_out)
 {
 	struct pktq_prec *q;
 	void *p = NULL;

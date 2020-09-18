@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2018 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2017-2019 The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -72,18 +72,6 @@ QDF_STATUS tgt_tdls_set_offchan_mode(struct wlan_objmgr_psoc *psoc,
 	tdls_ops = wlan_psoc_get_tdls_txops(psoc);
 	if (tdls_ops && tdls_ops->set_offchan_mode)
 		return tdls_ops->set_offchan_mode(psoc, param);
-	else
-		return QDF_STATUS_SUCCESS;
-}
-
-QDF_STATUS tgt_tdls_set_uapsd(struct wlan_objmgr_psoc *psoc,
-			      struct sta_uapsd_trig_params *params)
-{
-	struct wlan_lmac_if_tdls_tx_ops *tdls_ops = NULL;
-
-	tdls_ops = wlan_psoc_get_tdls_txops(psoc);
-	if (tdls_ops && tdls_ops->tdls_set_uapsd)
-		return tdls_ops->tdls_set_uapsd(psoc, params);
 	else
 		return QDF_STATUS_SUCCESS;
 }
@@ -305,7 +293,7 @@ QDF_STATUS tgt_tdls_mgmt_frame_process_rx_cb(
 
 	pdata = (uint8_t *)qdf_nbuf_data(buf);
 	rx_mgmt->frame_len = mgmt_rx_params->buf_len;
-	rx_mgmt->rx_chan = mgmt_rx_params->channel;
+	rx_mgmt->rx_freq = mgmt_rx_params->chan_freq;
 	rx_mgmt->vdev_id = vdev_id;
 	rx_mgmt->frm_type = frm_type;
 	rx_mgmt->rx_rssi = mgmt_rx_params->rssi;

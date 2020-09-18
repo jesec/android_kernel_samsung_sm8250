@@ -26,6 +26,7 @@
 #include "cam_sensor_adaptive_mipi_s5kgh1.h"
 #include "cam_sensor_adaptive_mipi_s5k2l3.h"
 #include "cam_sensor_adaptive_mipi_s5khm1.h"
+#include "cam_sensor_adaptive_mipi_s5k3m5.h"
 #include "cam_sensor_dev.h"
 
 static struct cam_cp_noti_info g_cp_noti_info;
@@ -188,6 +189,11 @@ void cam_mipi_init_setting(struct cam_sensor_ctrl_t *s_ctrl)
 {
 	const struct cam_mipi_sensor_mode *cur_mipi_sensor_mode;
 
+#if defined(CONFIG_CAMERA_FRS_DRAM_TEST)
+	extern long rear_frs_test_mode;
+	
+	if (rear_frs_test_mode == 0) {
+#endif
 	if (s_ctrl->sensordata->slave_info.sensor_id == FRONT_SENSOR_ID_IMX374) {
 		s_ctrl->mipi_info = sensor_imx374_setfile_A_mipi_sensor_mode;
 		cur_mipi_sensor_mode = &(s_ctrl->mipi_info[0]);
@@ -255,9 +261,15 @@ void cam_mipi_init_setting(struct cam_sensor_ctrl_t *s_ctrl)
 	} else if (s_ctrl->sensordata->slave_info.sensor_id == SENSOR_ID_S5K2L3) {
 		s_ctrl->mipi_info = sensor_s5k2l3_setfile_A_mipi_sensor_mode;
 		cur_mipi_sensor_mode = &(s_ctrl->mipi_info[0]);
+	} else if (s_ctrl->sensordata->slave_info.sensor_id == SENSOR_ID_S5K3M5) {
+		s_ctrl->mipi_info = sensor_3m5_setfile_tx_sensor_full_mode;
+		cur_mipi_sensor_mode = &(s_ctrl->mipi_info[0]);
 	} else {
 		CAM_ERR(CAM_SENSOR, "[adaptive_mipi] Not support adaptive mipi : 0x%x", s_ctrl->sensordata->slave_info.sensor_id);
 	}
+#if defined(CONFIG_CAMERA_FRS_DRAM_TEST)
+	}
+#endif
 
 	s_ctrl->mipi_clock_index_cur = CAM_MIPI_NOT_INITIALIZED;
 	s_ctrl->mipi_clock_index_new = CAM_MIPI_NOT_INITIALIZED;

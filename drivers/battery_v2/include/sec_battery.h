@@ -102,6 +102,11 @@ extern char *sec_cable_type[];
 #define SEC_BAT_CURRENT_EVENT_USB_100MA         0x00000000
 #endif
 #define SEC_BAT_CURRENT_EVENT_USB_STATE        (SEC_BAT_CURRENT_EVENT_USB_SUSPENDED | SEC_BAT_CURRENT_EVENT_USB_SUPER | SEC_BAT_CURRENT_EVENT_USB_100MA)
+#if defined(CONFIG_DISABLE_MFC_IC)
+#define SEC_BAT_CURRENT_EVENT_WPC_EN		0x80000000
+#else
+#define SEC_BAT_CURRENT_EVENT_WPC_EN		0x00000000
+#endif
 
 /* misc_event */
 #define BATT_MISC_EVENT_UNDEFINED_RANGE_TYPE	0x00000001
@@ -178,6 +183,12 @@ enum misc_battery_health {
 #define HV_CHARGER_STATUS_STANDARD3 24500 /* mW */
 #define HV_CHARGER_STATUS_STANDARD4 40000 /* mW */
 
+#if defined(CONFIG_TABLET_MODEL_CONCEPT) && !defined(CONFIG_SEC_FACTORY)
+#define SLOW_CHARGING_CURRENT_STANDARD          1000
+#else
+#define SLOW_CHARGING_CURRENT_STANDARD          400
+#endif
+
 enum {
 	NORMAL_TA,
 	AFC_9V_OR_15W,
@@ -194,6 +205,8 @@ struct sec_bat_pdic_info {
 	unsigned int max_voltage;
 	unsigned int min_voltage;
 	unsigned int max_current;
+	unsigned int comm_capable;
+	unsigned int suspend;
 #else
 	unsigned int input_voltage;
 	unsigned int input_current;
@@ -338,6 +351,10 @@ struct sec_battery_info {
 	int voltage_avg_sub;		/* average voltage (mV) */
 	int current_now_main;		/* current (mA) */
 	int current_now_sub;		/* current (mA) */
+#if defined(CONFIG_DUAL_BATTERY_CELL_SENSING)
+	int voltage_cell_main;		/* cell voltage (mV) */
+	int voltage_cell_sub;		/* cell voltage (mV) */
+#endif
 #endif
 
 	unsigned int capacity;			/* SOC (%) */
@@ -517,8 +534,6 @@ struct sec_battery_info {
 	struct delayed_work parse_mode_dt_work;
 	struct wakeup_source parse_mode_dt_wake_lock;
 #endif
-	// temp for Z3 HWID07
-	struct wakeup_source tempforz3_wake_lock;
 	struct delayed_work init_chg_work;
 
 	char batt_type[48];
@@ -622,11 +637,14 @@ struct sec_battery_info {
 	struct delayed_work wpc_txpower_calc_work;
 #endif
 	struct delayed_work slowcharging_work;
+	int slow_charging;
+	struct delayed_work slow_chg_work;
 #if defined(CONFIG_BATTERY_AGE_FORECAST)
 	int batt_cycle;
 #endif
 	int batt_asoc;
 #if defined(CONFIG_STEP_CHARGING)
+	bool step_charging_skip_lcd_on;
 	unsigned int step_charging_type;
 	unsigned int step_charging_charge_power;
 	int step_charging_status;
@@ -660,6 +678,7 @@ struct sec_battery_info {
 	struct mutex current_eventlock;
 	struct mutex typec_notylock;
 	struct mutex voutlock;
+	struct mutex init_soc_updatelock;
 	unsigned long tx_misalign_start_time;
 	unsigned long tx_misalign_passed_time;
 
@@ -677,6 +696,7 @@ struct sec_battery_info {
 	int ta_alert_mode;
 
 	bool boot_complete;
+	int raw_bat_temp;
 };
 
 /* event check */

@@ -282,7 +282,6 @@ static ssize_t fts_report_rate_store(
 	return count;
 }
 
-
 /* read and write charger mode
  * read example: cat fts_glove_mode        ---read  glove mode
  * write example:echo 1 > fts_glove_mode   ---write glove mode to 01

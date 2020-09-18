@@ -2386,6 +2386,7 @@ int sec_ts_check_custom_library(struct sec_ts_data *ts)
 
 	sec_ts_set_custom_library(ts);
 	get_aod_active_area(ts);
+	get_fod_info(ts);
 
 	return ret;
 }
@@ -3471,8 +3472,7 @@ static int sec_ts_pm_suspend(struct device *dev)
 
 out:
 #endif
-	if (ts->lowpower_mode)
-		reinit_completion(&ts->resume_done);
+	reinit_completion(&ts->resume_done);
 
 	return 0;
 }
@@ -3481,8 +3481,7 @@ static int sec_ts_pm_resume(struct device *dev)
 {
 	struct sec_ts_data *ts = dev_get_drvdata(dev);
 
-	if (ts->lowpower_mode)
-		complete_all(&ts->resume_done);
+	complete_all(&ts->resume_done);
 
 	return 0;
 }

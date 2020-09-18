@@ -1614,18 +1614,18 @@ static int cam_sbi_hw_mgr_stop(void *hw_mgr_priv, void *stop_hw_args)
 	struct cam_sbi_hw_mgr *hw_mgr = hw_mgr_priv;
 	struct cam_hw_stop_args *stop_args =
 		(struct cam_hw_stop_args *)stop_hw_args;
-	 struct cam_sbi_stop_args  *sbi_stop_args = stop_args->args;
+	struct cam_sbi_stop_args  *sbi_stop_args = NULL;
 	struct cam_sbi_hw_mgr_res * hw_mgr_res;
 	struct cam_sbi_hw_mgr_ctx * hw_mgr_ctx;
 
 	struct cam_sbi_device *hw_device;
 	uint32_t device_index;
-	int csid_ref_count = 0;
 
 	if (!hw_mgr_priv || !stop_args) {
 		CAM_ERR(CAM_SBI, "Invalid arguments");
 		return -EINVAL;
 	}
+	sbi_stop_args = stop_args->args;
 
 	hw_mgr_ctx = (struct cam_sbi_hw_mgr_ctx *)stop_args->ctxt_to_hw_map;
 	if (!hw_mgr_ctx || !hw_mgr_ctx->ctx_in_use) {
@@ -1662,7 +1662,6 @@ static int cam_sbi_hw_mgr_stop(void *hw_mgr_priv, void *stop_hw_args)
 			CAM_ERR(CAM_SBI, "failed to stop hw %d",
 				hw_mgr_res->res_id);
 		}
-		csid_ref_count++;
 	}
 
 

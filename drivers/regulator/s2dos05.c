@@ -38,6 +38,7 @@
 #include <linux/regulator/of_regulator.h>
 #include <linux/debugfs.h>
 #include <linux/regulator/pmic_class.h>
+#include <linux/string.h>
 
 #ifdef CONFIG_SEC_PM
 #include <linux/sec_class.h>
@@ -73,7 +74,7 @@ int s2dos05_read_reg(struct i2c_client *i2c, u8 reg, u8 *dest)
 	ret = i2c_smbus_read_byte_data(i2c, reg);
 	mutex_unlock(&s2dos05->i2c_lock);
 	if (ret < 0) {
-		pr_err("%s:%s reg(0x%x), ret(%d)\n",
+		pr_info("%s:%s reg(0x%02hhx), ret(%d)\n",
 			 MFD_DEV_NAME, __func__, reg, ret);
 		return ret;
 	}
@@ -123,7 +124,7 @@ int s2dos05_write_reg(struct i2c_client *i2c, u8 reg, u8 value)
 	ret = i2c_smbus_write_byte_data(i2c, reg, value);
 	mutex_unlock(&s2dos05->i2c_lock);
 	if (ret < 0)
-		pr_info("%s:%s reg(0x%x), ret(%d)\n",
+		pr_info("%s:%s reg(0x%02hhx), ret(%d)\n",
 				MFD_DEV_NAME, __func__, reg, ret);
 
 	return ret;
@@ -188,9 +189,15 @@ static const struct file_operations s2dos05_regdump_operations = {
 	.release        = single_release,
 };
 
-static void s2dos05_debugfs_init(struct s2dos05_dev *s2dos05)
+static void s2dos05_debugfs_init(struct s2dos05_dev *s2dos05, struct s2dos05_platform_data *pdata)
 {
-	debugfs_create_file("s2dos05_regdump", 0440,
+
+	char file_name[25] = "regdump_";
+
+	if (pdata->sec_disp_pmic_name)
+		strcat(file_name, pdata->sec_disp_pmic_name);
+
+	debugfs_create_file(file_name, 0440,
 			NULL, s2dos05, &s2dos05_regdump_operations);
 }
 #endif
@@ -492,7 +499,7 @@ static irqreturn_t s2dos05_irq_thread(int irq, void *irq_data)
 #endif /* CONFIG_SEC_PM_DEBUG */
 
 	s2dos05_read_reg(s2dos05->iodev->i2c, S2DOS05_REG_IRQ, &val);
-	pr_info("%s:irq(%d) S2DOS05_REG_IRQ : 0x%x\n", __func__, irq, val);
+	pr_info("%s:irq(%d) S2DOS05_REG_IRQ : 0x%02hhx\n", __func__, irq, val);
 
 #ifdef CONFIG_SEC_PM_DEBUG
 	tmp = val;
@@ -550,6 +557,8 @@ static int s2dos05_pmic_dt_parse_pdata(struct device *dev,
 	if (ret)
 		return -EINVAL;
 	pdata->adc_sync_mode = val;
+
+	pdata->ocl_max = of_property_read_bool(pmic_np, "ocl_max");
 
 	regulators_np = of_find_node_by_name(pmic_np, "regulators");
 	if (!regulators_np) {
@@ -625,7 +634,7 @@ static ssize_t s2dos05_read_store(struct device *dev,
 	if (ret < 0)
 		pr_info("%s: fail to read i2c address\n", __func__);
 
-	pr_info("%s: reg(0x%02x) data(0x%02x)\n", __func__, reg_addr, val);
+	pr_info("%s: reg(0x%02hhx) data(0x%02hhx)\n", __func__, reg_addr, val);
 	s2dos05->read_addr = reg_addr;
 	s2dos05->read_val = val;
 
@@ -637,7 +646,7 @@ static ssize_t s2dos05_read_show(struct device *dev,
 				 char *buf)
 {
 	struct s2dos05_data *s2dos05 = dev_get_drvdata(dev);
-	return sprintf(buf, "0x%02x: 0x%02x\n", s2dos05->read_addr,
+	return sprintf(buf, "0x%02hhx: 0x%02hhx\n", s2dos05->read_addr,
 		       s2dos05->read_val);
 }
 
@@ -647,20 +656,20 @@ static ssize_t s2dos05_write_store(struct device *dev,
 {
 	struct s2dos05_data *s2dos05 = dev_get_drvdata(dev);
 	int ret;
-	u8 reg, data;
+	u8 reg = 0, data = 0;
 
 	if (buf == NULL) {
 		pr_info("%s: empty buffer\n", __func__);
 		return size;
 	}
 
-	ret = sscanf(buf, "%x %x", &reg, &data);
+	ret = sscanf(buf, "0x%02hhx 0x%02hhx", &reg, &data);
 	if (ret != 2) {
 		pr_info("%s: input error\n", __func__);
 		return size;
 	}
 
-	pr_info("%s: reg(0x%02x) data(0x%02x)\n", __func__, reg, data);
+	pr_info("%s: reg(0x%02hhxx) data(0x%02hhx)\n", __func__, reg, data);
 
 	ret = s2dos05_write_reg(s2dos05->iodev->i2c, reg, data);
 	if (ret < 0)
@@ -930,7 +939,7 @@ static int s2dos05_pmic_probe(struct i2c_client *i2c,
 	int ret = 0;
 	u8 val = 0, mask = 0;
 
-	pr_info("%s:%s\n", MFD_DEV_NAME, __func__);
+	pr_info("%s:%s is started!\n", MFD_DEV_NAME, __func__);
 
 	iodev = devm_kzalloc(&i2c->dev, sizeof(struct s2dos05_dev), GFP_KERNEL);
 	if (!iodev) {
@@ -1061,6 +1070,34 @@ static int s2dos05_pmic_probe(struct i2c_client *i2c,
 			goto err_s2dos05_data;
 		}
 	}
+
+	/*
+	   SM3080 products meet the max 700mA current capability
+	   at condition of Vin=2.9[V] and ELVSS>=-5.5[V]
+	   based on current mass production condition without any change
+	   and the electrical parameter spec based on datasheet.
+
+	   This code will increase OCL value from 1.7A(10) to 1.9A(11)
+	   to meet the max 700mA current capability
+	   OCL [0x10]: OCL_ELVDD [3:2], OCL_ELVSS [1:0]
+	*/
+	if (iodev->is_sm3080) {
+		if (pdata->ocl_max) {
+			ret = s2dos05_update_reg(iodev->i2c, S2DOS05_REG_OCL, 0xf, 0xf);
+			if (ret < 0) {
+				dev_err(&i2c->dev, "Failed to update S2DOS05_REG_OCL register\n");
+				goto err_s2dos05_data;
+			}
+
+			ret = s2dos05_read_reg(i2c, S2DOS05_REG_OCL, &val);
+			if (ret < 0) {
+				dev_err(&i2c->dev, "Failed to read S2DOS05_REG_OCL register\n");
+				goto err_s2dos05_data;
+			}
+			dev_info(&i2c->dev, "S2DOS05_REG_OCL: 0x%02X\n", val);
+		}
+	}
+
 #ifdef CONFIG_DRV_SAMSUNG_PMIC
 	/* create sysfs */
 	ret = create_s2dos05_sysfs(s2dos05);
@@ -1069,8 +1106,10 @@ static int s2dos05_pmic_probe(struct i2c_client *i2c,
 #endif
 
 #ifdef CONFIG_DEBUG_FS
-	s2dos05_debugfs_init(iodev);
+	s2dos05_debugfs_init(iodev, pdata);
 #endif
+
+	pr_info("%s:%s is successfully finished!\n", MFD_DEV_NAME, __func__);
 
 	return ret;
 
@@ -1156,6 +1195,7 @@ const struct dev_pm_ops s2dos05_pmic_pm = {
 #if defined(CONFIG_OF)
 static const struct i2c_device_id s2dos05_pmic_id[] = {
 	{"s2dos05-regulator", 0},
+	{"s2dos05-regulator1", 0},
 	{},
 };
 #endif

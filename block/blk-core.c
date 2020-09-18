@@ -327,6 +327,9 @@ void blk_queue_io_vol_add(struct request_queue *q, int opf, long long bytes)
 	struct block_io_volume *vol;
 	int op = opf & REQ_OP_MASK;
 
+	if (q->mq_ops)
+		return;
+
 	lockdep_assert_held(q->queue_lock);
 
 	if ((bytes > 0) && ((op == REQ_OP_READ) || (op == REQ_OP_WRITE))) {
@@ -348,6 +351,9 @@ void blk_queue_io_vol_del(struct request_queue *q, int opf, long long bytes)
 	struct block_io_volume *vol;
 	int op = opf & REQ_OP_MASK;
 	int idx;
+
+	if (q->mq_ops)
+		return;
 
 	lockdep_assert_held(q->queue_lock);
 
@@ -395,6 +401,9 @@ void blk_queue_io_vol_merge(struct request_queue *q, int opf, int rqs, long long
 {
 	struct block_io_volume *vol;
 	int op = opf & REQ_OP_MASK;
+
+	if (q->mq_ops)
+		return;
 
 	lockdep_assert_held(q->queue_lock);
 
@@ -2076,7 +2085,8 @@ EXPORT_SYMBOL_GPL(part_round_stats);
 #ifdef CONFIG_PM
 static void blk_pm_put_request(struct request *rq)
 {
-	if (rq->q->dev && !(rq->rq_flags & RQF_PM) && !--rq->q->nr_pending)
+	if (rq->q->dev && !(rq->rq_flags & RQF_PM) &&
+			(!--rq->q->nr_pending || rq->q->nr_pending == 1))
 		pm_runtime_mark_last_busy(rq->q->dev);
 }
 #else
@@ -3242,8 +3252,10 @@ static struct request *elv_next_request(struct request_queue *q)
 				return rq;
 
 			if (rq->rq_flags & RQF_SOFTBARRIER) {
+#ifdef CONFIG_PM
 	                        if(rq->q && (rq->q->rpm_status == RPM_SUSPENDING) && !(rq->rq_flags & RQF_PM))
         				continue;
+#endif
                                 break;
                         }
 		}

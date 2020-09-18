@@ -3503,9 +3503,14 @@ dhd_rtt_nan_range_report(struct bcm_cfg80211 *cfg,
 		rtt_result_t *rtt_result, bool is_geofence)
 {
 	wl_nan_ev_rng_rpt_ind_t range_res;
-	int rtt_status = rtt_result->report.status;
+	int rtt_status;
 
 	UNUSED_PARAMETER(range_res);
+
+	if (!rtt_result)
+		return;
+
+	rtt_status = rtt_result->report.status;
 	bzero(&range_res, sizeof(range_res));
 	range_res.dist_mm = rtt_result->report.distance;
 	/* same src and header len, ignoring ret val here */

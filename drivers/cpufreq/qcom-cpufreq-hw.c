@@ -18,6 +18,7 @@
 
 #include <linux/sec_debug.h>
 #include <linux/sec_smem.h>
+#include <trace/events/power.h>
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/dcvsh.h>
@@ -149,7 +150,7 @@ static unsigned long limits_mitigation_notify(struct cpufreq_qcom *c,
 	struct cpufreq_policy *policy;
 	u32 cpu;
 	unsigned long freq;
-
+	char lmh_debug[8] = {0};
 	if (limit) {
 		freq = readl_relaxed(c->reg_bases[REG_DOMAIN_STATE]) &
 				GENMASK(7, 0);
@@ -164,6 +165,8 @@ static unsigned long limits_mitigation_notify(struct cpufreq_qcom *c,
 	}
 
 	sched_update_cpu_freq_min_max(&c->related_cpus, 0, freq);
+	snprintf(lmh_debug, 8, "lmh_%d", cpumask_first(&c->related_cpus));
+	trace_clock_set_rate(lmh_debug, freq, raw_smp_processor_id());
 	trace_dcvsh_freq(cpumask_first(&c->related_cpus), freq);
 	c->dcvsh_freq_limit = freq;
 
@@ -203,7 +206,7 @@ static void limits_dcvsh_poll(struct work_struct *work)
 				msecs_to_jiffies(LIMITS_POLLING_DELAY_MS));
 	} else {
 		/* Update scheduler for throttle removal */
-		limits_mitigation_notify(c, false);
+		freq_limit = limits_mitigation_notify(c, false);
 
 		regval = readl_relaxed(c->reg_bases[REG_INTR_CLR]);
 		regval |= GT_IRQ_STATUS;
@@ -212,8 +215,9 @@ static void limits_dcvsh_poll(struct work_struct *work)
 		c->is_irq_enabled = true;
 		enable_irq(c->dcvsh_irq);
 #ifdef CONFIG_SEC_PM
-		THERMAL_IPC_LOG("Finished lmh cpu%d, lowest freq %lu, dcvsh freq %lu\n",
-						cpu, c->lowest_freq, dcvsh_freq);
+		THERMAL_IPC_LOG("Fin. lmh cpu%d, "
+			"lowest %lu, f_lim %lu, dcvsh %lu\n",
+			cpu, c->lowest_freq, freq_limit, dcvsh_freq);
 		c->limiting = false;
 		c->lowest_freq = UINT_MAX;
 #endif
@@ -325,7 +329,9 @@ qcom_cpufreq_hw_target_index(struct cpufreq_policy *policy,
 	} else {
 		writel_relaxed(index, c->reg_bases[REG_PERF_STATE]);
 	}
-	sec_smem_clk_osm_add_log_cpufreq(policy, index, policy->kobj.name);
+
+	sec_smem_clk_osm_add_log_cpufreq(policy->cpu,
+				policy->freq_table[index].frequency, policy->kobj.name);
 
 	arch_set_freq_scale(policy->related_cpus,
 			    policy->freq_table[index].frequency,
@@ -837,7 +843,7 @@ static int cpufreq_hw_register_cooling_device(struct platform_device *pdev)
 						cpu_cdev,
 						&cpufreq_hw_cooling_ops);
 				if (IS_ERR(cpu_cdev->cdev)) {
-					pr_err("Cooling register failed for %s, ret: %d\n",
+					pr_err("Cooling register failed for %s, ret: %zu\n",
 						cdev_name,
 						PTR_ERR(cpu_cdev->cdev));
 					c->skip_data.final_index =

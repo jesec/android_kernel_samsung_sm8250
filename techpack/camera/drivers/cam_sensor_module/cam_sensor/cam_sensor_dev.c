@@ -196,6 +196,11 @@ static int32_t cam_sensor_driver_i2c_probe(struct i2c_client *client,
 
 	s_ctrl->sensordata->power_info.dev = soc_info->dev;
 
+#if defined(CONFIG_CAMERA_FRAME_CNT_DBG)
+	s_ctrl->is_thread_started = false;
+	s_ctrl->sensor_thread = NULL;
+#endif
+
 	return rc;
 unreg_subdev:
 	cam_unregister_subdev(&(s_ctrl->v4l2_dev_str));
@@ -336,6 +341,11 @@ static int32_t cam_sensor_driver_platform_probe(
 	s_ctrl->sensordata->power_info.dev = &pdev->dev;
 	platform_set_drvdata(pdev, s_ctrl);
 	s_ctrl->sensor_state = CAM_SENSOR_INIT;
+
+#if defined(CONFIG_CAMERA_FRAME_CNT_DBG)
+	s_ctrl->is_thread_started = false;
+	s_ctrl->sensor_thread = NULL;
+#endif
 
 	return rc;
 unreg_subdev:

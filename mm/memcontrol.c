@@ -207,7 +207,11 @@ static struct move_charge_struct {
  * Maximum loops in mem_cgroup_hierarchical_reclaim(), used for soft
  * limit reclaim to prevent infinite loops, if they ever occur.
  */
+#ifdef CONFIG_MEMCG_HEIMDALL
+#define	MEM_CGROUP_MAX_RECLAIM_LOOPS		10
+#else
 #define	MEM_CGROUP_MAX_RECLAIM_LOOPS		100
+#endif
 #define	MEM_CGROUP_MAX_SOFT_LIMIT_RECLAIM_LOOPS	2
 
 enum charge_type {
@@ -2852,6 +2856,11 @@ unsigned long mem_cgroup_soft_limit_reclaim(pg_data_t *pgdat, int order,
 
 	if (order > 0)
 		return 0;
+
+#ifdef CONFIG_MEMCG_HEIMDALL
+	if (!current_is_kswapd())
+		return 0;
+#endif
 
 	mctz = soft_limit_tree_node(pgdat->node_id);
 

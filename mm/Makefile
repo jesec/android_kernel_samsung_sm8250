@@ -2,7 +2,7 @@
 #
 # Makefile for the linux memory manager.
 #
-
+subdir-ccflags-y := -Wformat
 KASAN_SANITIZE_slab_common.o := n
 KASAN_SANITIZE_slab.o := n
 KASAN_SANITIZE_slub.o := n
@@ -42,6 +42,8 @@ obj-y			:= filemap.o mempool.o oom_kill.o fadvise.o \
 			   debug.o $(mmu-y) showmem.o showmem_extra.o vmpressure.o
 
 obj-y += init-mm.o
+
+obj-y += sec_mm/
 
 ifdef CONFIG_KZEROD
 obj-y += kzerod.o
@@ -110,3 +112,11 @@ obj-$(CONFIG_HMM) += hmm.o
 obj-$(CONFIG_MEMFD_CREATE) += memfd.o
 obj-$(CONFIG_PROCESS_RECLAIM)	+= process_reclaim.o
 obj-$(CONFIG_PAGE_BOOST_RECORDING) += io_record.o
+
+# [IOPP-Wformat-v1.0.4.14.patch]
+# check calls to printf and scanf, etc.,
+# to make sure that the arguments supplied have types appropriate to the format string specified,
+# and that the conversions specified in the format string make sense.
+CFLAGS_backing-dev.o = -Wformat
+CFLAGS_page-writeback.o = -Wformat
+

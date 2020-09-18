@@ -33,11 +33,12 @@ enum {
 	OPTION_TYPE_GET_LIGHT_CAL,
 	OPTION_TYPE_SET_LIGHT_CAL,
 	OPTION_TYPE_SET_LCD_VERSION,
+	OPTION_TYPE_SET_UB_DISCONNECT,
 	OPTION_TYPE_MAX
 };
 
 #ifdef CONFIG_SUPPORT_BRIGHTNESS_NOTIFY_FOR_LIGHT_SENSOR
-#include <linux/panel_notify.h>
+#include "../../../techpack/display/msm/samsung/ss_panel_notify.h"
 #endif
 #ifdef CONFIG_SUPPORT_AMS_LIGHT_LCD_VERSION_DUALIZAION
 #define LIGHT_LCD_TYPE_PATH "/sys/class/lcd/panel/lcd_type"
@@ -252,17 +253,42 @@ void light_brightness_work_func(struct work_struct *work)
 	mutex_unlock(&data->light_factory_mutex);
 }
 
+#ifdef CONFIG_SUPPORT_SSC_AOD_RECT
+static ssize_t light_set_aod_rect_store(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t size)
+{
+	int32_t msg_buf[5] = {OPTION_TYPE_SSC_AOD_RECT, 0, 0, 0, 0};
+
+	if (sscanf(buf, "%3d,%3d,%3d,%3d",
+		&msg_buf[1], &msg_buf[2], &msg_buf[3], &msg_buf[4]) != 4) {
+		pr_err("[FACTORY]: %s - The number of data are wrong\n",
+			__func__);
+		return -EINVAL;
+	}
+
+	pr_info("[FACTORY] %s: rect:%d,%d,%d,%d \n", __func__,
+		msg_buf[1], msg_buf[2], msg_buf[3], msg_buf[4]);
+	adsp_unicast(msg_buf, sizeof(msg_buf),
+			MSG_SSC_CORE, 0, MSG_TYPE_OPTION_DEFINE);
+	return size;
+}
+#endif
+
 int light_panel_data_notify(struct notifier_block *nb,
 	unsigned long val, void *v)
 {
-	struct panel_bl_event_data *panel_data = v;
-	struct adsp_data *data;
 	static int32_t pre_bl_level = -1;
-	int32_t brightness_data[2] = {0, };
+	struct adsp_data *data = adsp_get_struct_data();
 
 	if (val == PANEL_EVENT_BL_CHANGED) {
-		data = adsp_get_struct_data();
+		struct panel_bl_event_data *panel_data = v;
+		int32_t brightness_data[2] = {0, };
+
+#if defined(CONFIG_SEC_C1Q_PROJECT) || defined(CONFIG_SEC_C2Q_PROJECT)
+		brightness_data[0] = panel_data->bl_level;
+#else
 		brightness_data[0] = panel_data->bl_level / 100;
+#endif
 		brightness_data[1] = panel_data->aor_data;
 		data->brightness_info[0] = brightness_data[0];
 		data->brightness_info[1] = brightness_data[1];
@@ -279,6 +305,18 @@ int light_panel_data_notify(struct notifier_block *nb,
 #endif
 		pr_info("[FACTORY] %s: %d, %d\n", __func__,
 			brightness_data[0], brightness_data[1]);
+	} else if (val == PANEL_EVENT_UB_CON_CHANGED) {
+		struct panel_ub_con_event_data *panel_data = v;
+		uint16_t light_idx = get_light_sidx(data);
+		int32_t msg_buf[2];
+
+		msg_buf[0] = OPTION_TYPE_SET_UB_DISCONNECT;
+		msg_buf[1] = (int32_t)panel_data->state;
+
+		pr_info("[FACTORY] %s: ub disconnected %d\n",
+			__func__, msg_buf[1]);
+		adsp_unicast(msg_buf, sizeof(msg_buf),
+			light_idx, 0, MSG_TYPE_OPTION_DEFINE);
 	}
 
 	return 0;
@@ -364,6 +402,12 @@ static ssize_t light_circle_show(struct device *dev,
 	return snprintf(buf, PAGE_SIZE, "42.6 8.0 2.4\n");
 #elif defined(CONFIG_SEC_Z3Q_PROJECT)
 	return snprintf(buf, PAGE_SIZE, "44.0 8.0 2.4\n");
+#elif defined(CONFIG_SEC_C1Q_PROJECT)
+	return snprintf(buf, PAGE_SIZE, "42.3 7.8 2.5\n");
+#elif defined(CONFIG_SEC_C2Q_PROJECT)
+	return snprintf(buf, PAGE_SIZE, "45.2 7.3 2.5\n");
+#elif defined(CONFIG_SEC_BLOOMXQ_PROJECT)
+	return snprintf(buf, PAGE_SIZE, "34.1 11.6 2.4\n");
 #else
 	return snprintf(buf, PAGE_SIZE, "0 0 0\n");
 #endif
@@ -603,6 +647,15 @@ void light_lcd_version_dualization(struct adsp_data *data)
 	pr_info("[FACTORY] %s: lcd version: %d\n", __func__, lcd_ver);
 }
 #endif /* CONFIG_SUPPORT_AMS_LIGHT_LCD_VERSION_DUALIZAION */
+
+#ifdef CONFIG_SUPPORT_SSC_AOD_RECT
+void light_rect_init_work(void)
+{
+	int32_t rect_msg[5] = {OPTION_TYPE_SSC_AOD_LIGHT_CIRCLE, 546, 170, 576, 200};
+	adsp_unicast(rect_msg, sizeof(rect_msg),
+		MSG_SSC_CORE, 0, MSG_TYPE_OPTION_DEFINE);
+}
+#endif
 
 #ifdef CONFIG_SUPPORT_AMS_LIGHT_CALIBRATION
 int light_get_cal_data(int32_t *cal_data)
@@ -1077,6 +1130,9 @@ static DEVICE_ATTR(name, 0444, light_name_show, NULL);
 static DEVICE_ATTR(lux, 0444, light_raw_data_show, NULL);
 static DEVICE_ATTR(raw_data, 0444, light_raw_data_show, NULL);
 static DEVICE_ATTR(dhr_sensor_info, 0444, light_get_dhr_sensor_info_show, NULL);
+#ifdef CONFIG_SUPPORT_SSC_AOD_RECT
+static DEVICE_ATTR(set_aod_rect, 0220, NULL, light_set_aod_rect_store);
+#endif
 
 static struct device_attribute *light_attrs[] = {
 	&dev_attr_vendor,
@@ -1102,6 +1158,9 @@ static struct device_attribute *light_attrs[] = {
 	&dev_attr_light_cal,
 	&dev_attr_light_test,
 #endif
+#ifdef CONFIG_SUPPORT_SSC_AOD_RECT
+	&dev_attr_set_aod_rect,
+#endif
 	NULL,
 };
 
@@ -1109,7 +1168,7 @@ static int __init tmd490x_light_factory_init(void)
 {
 	adsp_factory_register(MSG_LIGHT, light_attrs);
 #ifdef CONFIG_SUPPORT_BRIGHTNESS_NOTIFY_FOR_LIGHT_SENSOR
-	panel_notifier_register(&light_panel_data_notifier);
+	ss_panel_notifier_register(&light_panel_data_notifier);
 #endif
 	pr_info("[FACTORY] %s\n", __func__);
 
@@ -1120,7 +1179,7 @@ static void __exit tmd490x_light_factory_exit(void)
 {
 	adsp_factory_unregister(MSG_LIGHT);
 #ifdef CONFIG_SUPPORT_BRIGHTNESS_NOTIFY_FOR_LIGHT_SENSOR
-	panel_notifier_unregister(&light_panel_data_notifier);
+	ss_panel_notifier_unregister(&light_panel_data_notifier);
 #endif
 	pr_info("[FACTORY] %s\n", __func__);
 }

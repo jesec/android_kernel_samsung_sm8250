@@ -51,7 +51,7 @@ EXPORT_SYMBOL(hall_ic_register_notify);
 
 void hall_ic_request_notify(struct notifier_block *nb) {
 	if(!is_probe_done) {
-		pr_info("%s(): didn't probe done: %d\n", __func__);
+		pr_info("%s(): didn't probe done: %d\n", __func__, is_probe_done);
 		nb->notifier_call(nb, -1, NULL);
 		return;
 	}
@@ -89,7 +89,7 @@ static ssize_t sysfs_hall_value_store(struct device *dev,
 		return -EINVAL;
 	}
 
-	pr_info("%s():size = %d\n",	__func__, count);
+	pr_info("%s():size = %zu\n", __func__, count);
 	if (count > 255) {
 		pr_err("%s size(%zu) is too long.\n", __func__, count);
 		return -EINVAL;
@@ -102,7 +102,7 @@ static ssize_t sysfs_hall_value_store(struct device *dev,
 	else if (!strncmp(buf, "CLOSE", 5))
 		hall_value = 0;
 	else
-		pr_err("%s : parameter wrong!\n");
+		pr_err("%s : parameter wrong!\n", __func__);
 	
 	input_report_switch(ddata->input, SW_LID, !hall_value);
 	input_sync(ddata->input);
@@ -391,6 +391,8 @@ static int hall_probe(struct platform_device *pdev)
 	int error = 0;
 	int wakeup = 0;
 
+	pr_info("folder_hall_probe - start\n");
+
 	ddata = kzalloc(sizeof(struct hall_drvdata), GFP_KERNEL);
 	if (!ddata) {
 		dev_err(dev, "failed to allocate state\n");
@@ -439,7 +441,7 @@ static int hall_probe(struct platform_device *pdev)
 
 	init_hall_ic_irq(input);
 
-	dev = sec_device_create(0, NULL, "sec_flip");
+	dev = sec_device_create(NULL, "sec_flip");
 	if (device_create_file(dev, &dev_attr_flipStatus) < 0) {
 		pr_err("Failed to create device file(%s) !\n", dev_attr_flipStatus.attr.name);
 		goto fail2;
@@ -460,6 +462,8 @@ static int hall_probe(struct platform_device *pdev)
 	dev_set_drvdata(dev, ddata);
 
 	is_probe_done = 1;
+
+	pr_info("folder_hall_probe - end\n");
 
 	return 0;
 fail3:
@@ -548,7 +552,7 @@ static struct platform_driver hall_device_driver = {
 	.probe		= hall_probe,
 	.remove		= hall_remove,
 	.driver		= {
-		.name	= "hall",
+		.name	= "folder_hall",
 		.owner	= THIS_MODULE,
 		.pm	= &hall_pm_ops,
 #if defined(CONFIG_OF)

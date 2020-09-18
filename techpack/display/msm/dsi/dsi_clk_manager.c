@@ -10,6 +10,7 @@
 #include <linux/pm_runtime.h>
 #include "dsi_clk.h"
 #include "dsi_defs.h"
+#include "sde_dbg.h"
 #include <linux/sde_rsc.h>
 
 struct dsi_core_clks {
@@ -605,16 +606,10 @@ static int dsi_display_core_clk_enable(struct dsi_core_clks *clks,
 
 	m_clks = &clks[master_ndx];
 
-	rc = pm_runtime_get_sync(m_clks->clks.drm->dev);
-	if (rc < 0) {
-		DSI_ERR("Power resource enable failed, rc=%d\n", rc);
-		goto error;
-	}
-
 	rc = dsi_core_clk_start(m_clks);
 	if (rc) {
 		DSI_ERR("failed to turn on master clocks, rc=%d\n", rc);
-		goto error_disable_master_resource;
+		goto error;
 	}
 
 	/* Turn on rest of the core clocks */
@@ -623,16 +618,9 @@ static int dsi_display_core_clk_enable(struct dsi_core_clks *clks,
 		if (!clk || (clk == m_clks))
 			continue;
 
-		rc = pm_runtime_get_sync(m_clks->clks.drm->dev);
-		if (rc < 0) {
-			DSI_ERR("Power resource enable failed, rc=%d\n", rc);
-			goto error_disable_master;
-		}
-
 		rc = dsi_core_clk_start(clk);
 		if (rc) {
 			DSI_ERR("failed to turn on clocks, rc=%d\n", rc);
-			pm_runtime_put_sync(m_clks->clks.drm->dev);
 			goto error_disable_master;
 		}
 	}
@@ -640,8 +628,6 @@ static int dsi_display_core_clk_enable(struct dsi_core_clks *clks,
 error_disable_master:
 	(void)dsi_core_clk_stop(m_clks);
 
-error_disable_master_resource:
-	pm_runtime_put_sync(m_clks->clks.drm->dev);
 error:
 	return rc;
 }
@@ -673,6 +659,10 @@ static int dsi_display_link_clk_enable(struct dsi_link_clks *clks,
 			goto error;
 		}
 	}
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+	if ((l_type & DSI_LINK_LP_CLK) && (ctrl_count==1))
+		tcon_prepare();
+#endif
 
 	if (l_type & DSI_LINK_HS_CLK) {
 		rc = dsi_link_hs_clk_start(&m_clks->hs_clks,
@@ -749,8 +739,6 @@ static int dsi_display_core_clk_disable(struct dsi_core_clks *clks,
 			DSI_DEBUG("failed to turn off clocks, rc=%d\n", rc);
 			goto error;
 		}
-
-		pm_runtime_put_sync(m_clks->clks.drm->dev);
 	}
 
 	rc = dsi_core_clk_stop(m_clks);
@@ -759,10 +747,13 @@ static int dsi_display_core_clk_disable(struct dsi_core_clks *clks,
 		goto error;
 	}
 
-	pm_runtime_put_sync(m_clks->clks.drm->dev);
 error:
 	return rc;
 }
+
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+extern void force_sustain_lp11_for_sleep(void);
+#endif
 
 static int dsi_display_link_clk_disable(struct dsi_link_clks *clks,
 	enum dsi_lclk_type l_type, u32 ctrl_count, u32 master_ndx)
@@ -787,6 +778,9 @@ static int dsi_display_link_clk_disable(struct dsi_link_clks *clks,
 			continue;
 
 		if (l_type & DSI_LINK_LP_CLK) {
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+			force_sustain_lp11_for_sleep();
+#endif
 			rc = dsi_link_lp_clk_stop(&clk->lp_clks);
 			if (rc)
 				DSI_ERR("failed to turn off lp link clocks, rc=%d\n",
@@ -1193,6 +1187,7 @@ int dsi_clk_req_state(void *client, enum dsi_clk_type clk,
 	DSI_DEBUG("[%s]%s: CLK=%d, new_state=%d, core=%d, linkl=%d\n",
 	       mngr->name, c->name, clk, state, c->core_clk_state,
 	       c->link_clk_state);
+	SDE_EVT32(clk, state, c->core_refcount, c->core_clk_state, c->link_refcount, c->link_clk_state); // case 04627046
 
 	/*
 	 * Clock refcount handling as below:
@@ -1261,6 +1256,7 @@ int dsi_clk_req_state(void *client, enum dsi_clk_type clk,
 	DSI_DEBUG("[%s]%s: change=%d, Core (ref=%d, state=%d), Link (ref=%d, state=%d)\n",
 		 mngr->name, c->name, changed, c->core_refcount,
 		 c->core_clk_state, c->link_refcount, c->link_clk_state);
+	SDE_EVT32(changed, c->core_refcount, c->core_clk_state, c->link_refcount, c->link_clk_state); // case 04627046
 
 	if (changed) {
 		reg_log_dump(__func__, __LINE__);

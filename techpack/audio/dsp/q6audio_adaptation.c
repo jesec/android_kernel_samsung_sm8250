@@ -99,14 +99,11 @@ static struct common_data *common;
 static struct audio_session *session;
 
 struct afe_port {
-	unsigned int voice_tracking_id;
-	unsigned int amp_rx_id;
-	unsigned int amp_tx_id;
-	unsigned int rx_topology;
-	unsigned int tx_topology;
-	unsigned int usb_rx_id;
-	unsigned int bt_rx_id;
-	unsigned int headset_rx_id;
+	unsigned int device_tx_port;
+	unsigned int spk_rx_port;
+	unsigned int usb_rx_port;
+	unsigned int bt_rx_port;
+	unsigned int headset_rx_port;
 	unsigned int volume_monitor_port;
 };
 static struct afe_port afe_port;
@@ -118,21 +115,6 @@ static int loopback_prev_mode;
 static uint32_t upscaler_val;
 static uint32_t echo_ref_mute_val;
 
-int q6audio_get_afe_cal_validation(u16 port_id, u32 topology_id)
-{
-	int rc = 0;
-
-	if (((topology_id == afe_port.tx_topology) &&
-		(port_id == afe_port.amp_tx_id)) ||
-		((topology_id == afe_port.rx_topology) &&
-		(port_id == afe_port.amp_rx_id))) {
-		pr_info("%s: afe cal, port[0x%x] topology[0x%x]\n",
-				__func__, port_id, topology_id);
-		rc =  TRUE;
-	}
-
-	return rc;
-}
 /****************************************************************************/
 /*//////////////////////////// AUDIO SOLUTION //////////////////////////////*/
 /****************************************************************************/
@@ -619,7 +601,7 @@ static int sec_audio_voice_tracking_info_get(struct snd_kcontrol *kcontrol,
 
 	for (be_idx = 0; be_idx < MSM_BACKEND_DAI_MAX; be_idx++) {
 		msm_pcm_routing_get_bedai_info(be_idx, &msm_bedai);
-		if (msm_bedai.port_id == afe_port.voice_tracking_id)
+		if (msm_bedai.port_id == afe_port.device_tx_port)
 			break;
 	}
 	if ((be_idx < MSM_BACKEND_DAI_MAX) && msm_bedai.active) {
@@ -628,7 +610,7 @@ static int sec_audio_voice_tracking_info_get(struct snd_kcontrol *kcontrol,
 		param_hdr.instance_id = 0x8000;
 		param_hdr.param_id = PARAM_ID_PP_SS_REC_GETPARAMS;
 		param_hdr.param_size = param_size;
-		rc = adm_get_pp_params(afe_port.voice_tracking_id, 0,
+		rc = adm_get_pp_params(afe_port.device_tx_port, 0,
 				ADM_CLIENT_ID_DEFAULT, NULL, &param_hdr, param_value);
 		if (rc) {
 			pr_err("%s: get parameters failed:%d\n", __func__, rc);
@@ -698,11 +680,11 @@ static int sec_audio_volume_monitor_get(struct snd_kcontrol *kcontrol,
 		msm_pcm_routing_get_bedai_info(be_idx, &msm_bedai);
 
 		if (msm_bedai.active) {
-			if(msm_bedai.port_id == afe_port.headset_rx_id)
+			if(msm_bedai.port_id == afe_port.headset_rx_port)
 				break;
-			if(msm_bedai.port_id == afe_port.bt_rx_id)
+			if(msm_bedai.port_id == afe_port.bt_rx_port)
 				break;
-			if(msm_bedai.port_id == afe_port.usb_rx_id)
+			if(msm_bedai.port_id == afe_port.usb_rx_port)
 				break;
 		}
 	}
@@ -730,6 +712,12 @@ done:
 }
 
 static int sec_audio_volume_monitor_data_get(struct snd_kcontrol *kcontrol,
+			struct snd_ctl_elem_value *ucontrol)
+{
+	return 0;
+}
+
+static int sec_audio_sa_listenback_enable_get(struct snd_kcontrol *kcontrol,
 			struct snd_ctl_elem_value *ucontrol)
 {
 	return 0;
@@ -795,7 +783,7 @@ static int sec_audio_sb_rx_vol_put(struct snd_kcontrol *kcontrol,
 	int ret = 0;
 	int port_id, copp_idx;
 
-	port_id = afe_port.amp_rx_id;
+	port_id = afe_port.spk_rx_port;
 	ret = q6audio_get_copp_idx_from_port_id(port_id, SB_VOLUME, &copp_idx);
 	if (ret) {
 		pr_err("%s: Could not get copp idx for port_id=%d\n",
@@ -956,9 +944,9 @@ static int sec_audio_sound_boost_put(struct snd_kcontrol *kcontrol,
 {
 	int ret = 0;
 	int port_id, copp_idx;
-	enum sb_type func_type = ucontrol->value.integer.value[0];
+	enum sb_type func_type = (uint32_t)ucontrol->value.integer.value[0];
 
-	port_id = afe_port.amp_rx_id;
+	port_id = afe_port.spk_rx_port;
 	ret = q6audio_get_copp_idx_from_port_id(port_id, func_type, &copp_idx);
 	if (ret) {
 		pr_err("%s: Could not get copp idx for port_id=%d\n",
@@ -1005,7 +993,7 @@ static int sec_audio_sb_rotation_put(struct snd_kcontrol *kcontrol,
 	int ret = 0;
 	int port_id, copp_idx;
 
-	port_id = afe_port.amp_rx_id;
+	port_id = afe_port.spk_rx_port;
 	ret = q6audio_get_copp_idx_from_port_id(port_id, SB_ROTATION, &copp_idx);
 	if (ret) {
 		pr_err("%s: Could not get copp idx for port_id=%d\n",
@@ -1035,7 +1023,7 @@ static int sec_audio_sb_flatmotion_put(struct snd_kcontrol *kcontrol,
 	int ret = 0;
 	int port_id, copp_idx;
 
-	port_id = afe_port.amp_rx_id;
+	port_id = afe_port.spk_rx_port;
 	ret = q6audio_get_copp_idx_from_port_id(port_id, SB_FLATMOTION, &copp_idx);
 	if (ret) {
 		pr_err("%s: Could not get copp idx for port_id=%d\n",
@@ -1099,11 +1087,11 @@ static int sec_audio_volume_monitor_data_put(struct snd_kcontrol *kcontrol,
 		msm_pcm_routing_get_bedai_info(be_idx, &msm_bedai);
 
 		if (msm_bedai.active) {
-			if(msm_bedai.port_id == afe_port.headset_rx_id)
+			if(msm_bedai.port_id == afe_port.headset_rx_port)
 				break;
-			if(msm_bedai.port_id == afe_port.bt_rx_id)
+			if(msm_bedai.port_id == afe_port.bt_rx_port)
 				break;
-			if(msm_bedai.port_id == afe_port.usb_rx_id)
+			if(msm_bedai.port_id == afe_port.usb_rx_port)
 				break;
 		}
 	}
@@ -1122,6 +1110,50 @@ static int sec_audio_volume_monitor_data_put(struct snd_kcontrol *kcontrol,
 
 	if (ret) {
 		pr_err("%s: Error setting volume monitor, err=%d\n",
+			  __func__, ret);
+
+		ret = -EINVAL;
+		goto done;
+	}
+
+done:
+	return ret;
+}
+
+static int sec_audio_sa_listenback_enable_put(struct snd_kcontrol *kcontrol,
+			struct snd_ctl_elem_value *ucontrol)
+{
+	int ret = 0;
+	int port_id;
+	int be_idx = 0;
+	int enable = ucontrol->value.integer.value[0];
+
+	struct msm_pcm_routing_bdai_data msm_bedai;
+
+	for (be_idx = 0; be_idx < MSM_BACKEND_DAI_MAX; be_idx++) {
+		msm_pcm_routing_get_bedai_info(be_idx, &msm_bedai);
+		if (msm_bedai.active) {
+			if(msm_bedai.port_id == afe_port.usb_rx_port)
+				break;
+			if(msm_bedai.port_id == afe_port.headset_rx_port)
+				break;
+		}
+	}
+
+	if (be_idx == MSM_BACKEND_DAI_MAX) {
+		pr_info("%s: no active backend port\n",__func__);
+		goto done;
+	}
+
+	port_id = msm_bedai.port_id;
+
+	pr_info("%s: port_id : %x , enable : %d\n",
+			__func__, port_id, enable);
+
+	ret = afe_set_sa_listenback(port_id, enable);
+
+	if (ret) {
+		pr_err("%s: Error setting set listenback, err=%d\n",
 			  __func__, ret);
 
 		ret = -EINVAL;
@@ -2412,6 +2444,46 @@ int sec_voice_aec_effect(short enable)
 	return ret;
 }
 
+#if defined(CONFIG_SEC_AFE_REMOTE_MIC)
+static int sec_afe_remote_mic_vol(int index)
+{
+	int ret = 0;
+	int port_id;
+	int be_idx = 0;
+	struct msm_pcm_routing_bdai_data msm_bedai;
+
+	for (be_idx = 0; be_idx < MSM_BACKEND_DAI_MAX; be_idx++) {
+		msm_pcm_routing_get_bedai_info(be_idx, &msm_bedai);
+		if (msm_bedai.active) {
+			if(msm_bedai.port_id == afe_port.device_tx_port)
+				break;
+		}
+	}
+
+	if (be_idx == MSM_BACKEND_DAI_MAX) {
+		pr_info("%s: no active backend port\n",__func__);
+		goto done;
+	}
+
+	port_id = msm_bedai.port_id;
+
+	pr_info("%s: port_id : %x , index : %d\n",
+			__func__, port_id, index);
+	
+	ret = afe_set_remote_mic_vol(port_id, index);
+
+	if (ret) {
+		pr_err("%s: Error setting set listenback, err=%d\n",
+			  __func__, ret);
+
+		ret = -EINVAL;
+		goto done;
+	}
+
+done:
+	return ret;
+}
+#else
 static int sec_voice_remote_mic_vol_cmd(struct voice_data *v, int index)
 {
 	struct cvp_set_voice_remote_mic_cmd cvp_voice_remote_mic_cmd;
@@ -2504,6 +2576,7 @@ int sec_voice_remote_mic_vol(short index)
 
 	return ret;
 }
+#endif
 
 int sec_voice_get_loopback_enable(void)
 {
@@ -2713,13 +2786,13 @@ static int sec_voice_aec_effect_put(struct snd_kcontrol *kcontrol,
 	return sec_voice_aec_effect(enable);
 }
 
-static int sec_voice_remote_mic_vol_get(struct snd_kcontrol *kcontrol,
+static int sec_remote_mic_vol_get(struct snd_kcontrol *kcontrol,
 			struct snd_ctl_elem_value *ucontrol)
 {
 	return 0;
 }
 
-static int sec_voice_remote_mic_vol_put(struct snd_kcontrol *kcontrol,
+static int sec_remote_mic_vol_put(struct snd_kcontrol *kcontrol,
 			struct snd_ctl_elem_value *ucontrol)
 {
 	int volumeindex = ucontrol->value.integer.value[0];
@@ -2731,7 +2804,11 @@ static int sec_voice_remote_mic_vol_put(struct snd_kcontrol *kcontrol,
 
 	pr_debug("%s: volumeindex=%d\n", __func__, volumeindex);
 
+#if defined(CONFIG_SEC_AFE_REMOTE_MIC)
+	return sec_afe_remote_mic_vol(volumeindex);
+#else
 	return sec_voice_remote_mic_vol(volumeindex);
+#endif
 }
 
 /*******************************************************/
@@ -2798,12 +2875,15 @@ static const struct snd_kcontrol_new samsung_solution_mixer_controls[] = {
 	SOC_ENUM_EXT("DSP AEC Effect", sec_aec_effect_enum[0],
 				sec_voice_aec_effect_get, sec_voice_aec_effect_put),
 	SOC_SINGLE_EXT("Remote Mic Vol Index", SND_SOC_NOPM, 0, 65535, 0,
-				sec_voice_remote_mic_vol_get,
-				sec_voice_remote_mic_vol_put),
+				sec_remote_mic_vol_get,
+				sec_remote_mic_vol_put),
 	SOC_SINGLE_MULTI_EXT("VM Energy", SND_SOC_NOPM, 0, 65535, 0, 61,
 				sec_audio_volume_monitor_get, sec_audio_volume_monitor_put),
 	SOC_SINGLE_MULTI_EXT("VM data", SND_SOC_NOPM, 0, 65535, 0, 4,
 				sec_audio_volume_monitor_data_get, sec_audio_volume_monitor_data_put),
+	SOC_SINGLE_EXT("Listenback Enable", SND_SOC_NOPM, 0, 65535, 0,
+				sec_audio_sa_listenback_enable_get,
+				sec_audio_sa_listenback_enable_put),
 };
 
 static int q6audio_adaptation_platform_probe(struct snd_soc_component *component)
@@ -2842,56 +2922,36 @@ static int samsung_q6audio_adaptation_probe(struct platform_device *pdev)
 	init_waitqueue_head(&this_cvp.wait);
 	mutex_init(&asm_lock);
 
-	afe_port.volume_monitor_port = 0;
-
 	ret = of_property_read_u32(pdev->dev.of_node,
-			"adaptation,voice-tracking-tx-port-id",
-			&afe_port.voice_tracking_id);
+			"adaptation,device-tx-port-id",
+			&afe_port.device_tx_port);
 	if (ret)
 		pr_err("%s : Unable to read Tx BE\n", __func__);
 
 	ret = of_property_read_u32(pdev->dev.of_node,
-			"adaptation,amp-rx-port-id",
-			&afe_port.amp_rx_id);
+			"adaptation,spk-rx-port-id",
+			&afe_port.spk_rx_port);
 	if (ret)
 		pr_debug("%s : Unable to find amp-rx-port\n", __func__);
 
 	ret = of_property_read_u32(pdev->dev.of_node,
-			"adaptation,amp-tx-port-id",
-			&afe_port.amp_tx_id);
-	if (ret)
-		pr_debug("%s : Unable to find amp-tx-port\n", __func__);
-
-	ret = of_property_read_u32(pdev->dev.of_node,
-			"adaptation,amp-rx-topology",
-			&afe_port.rx_topology);
-	if (ret)
-		pr_debug("%s : Unable to find amp-rx-topology\n", __func__);
-
-	ret = of_property_read_u32(pdev->dev.of_node,
-			"adaptation,amp-tx-topology",
-			&afe_port.tx_topology);
-	if (ret)
-		pr_debug("%s : Unable to find amp-tx-topology\n", __func__);
-
-	ret = of_property_read_u32(pdev->dev.of_node,
 			"adaptation,usb-rx-port-id",
-			&afe_port.usb_rx_id);
+			&afe_port.usb_rx_port);
 	if (ret)
 		pr_debug("%s : Unable to find usb-rx-port\n", __func__);	
-	
+
 	ret = of_property_read_u32(pdev->dev.of_node,
 			"adaptation,bt-rx-port-id",
-			&afe_port.bt_rx_id);
+			&afe_port.bt_rx_port);
 	if (ret)
 		pr_debug("%s : Unable to find bt-rx-port\n", __func__);
 
 	ret = of_property_read_u32(pdev->dev.of_node,
 			"adaptation,headset-rx-port-id",
-			&afe_port.headset_rx_id);
+			&afe_port.headset_rx_port);
 	if (ret)
 		pr_debug("%s : Unable to find headset-rx-port\n", __func__);
-		
+
 	return snd_soc_register_component(&pdev->dev,
 		&q6audio_adaptation, NULL, 0);
 }

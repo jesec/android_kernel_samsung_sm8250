@@ -1,7 +1,7 @@
 /*
  * Misc system wide definitions
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,7 +18,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #ifndef	_bcmdefs_h_
@@ -301,14 +301,12 @@ extern bool bcm_postattach_part_reclaimed;
 /* Allows size optimization for SPROM support */
 #if defined(BCMSPROMBUS)
 #define SPROMBUS	(BCMSPROMBUS)
-#elif defined(SI_PCMCIA_SROM)
-#define SPROMBUS	(PCMCIA_BUS)
 #else
 #define SPROMBUS	(PCI_BUS)
 #endif
 
 /* Allows size optimization for single-chip image */
-/* XXX These macros are NOT meant to encourage writing chip-specific code.
+/* These macros are NOT meant to encourage writing chip-specific code.
  * Use them only when it is appropriate for example in PMU PLL/CHIP/SWREG
  * controls and in chip-specific workarounds.
  */
@@ -484,7 +482,7 @@ typedef struct {
  * be a waste.).
 */
 /*
- * XXX: set the numbers to be MAX of all the devices, to avoid problems with ROM builds
+ * set the numbers to be MAX of all the devices, to avoid problems with ROM builds
  * USB BCMDONGLEHDRSZ and BCMDONGLEPADSZ is 0
  * SDIO BCMDONGLEHDRSZ 12 and BCMDONGLEPADSZ 16
 */
@@ -692,6 +690,10 @@ void* BCM_ASLR_CODE_FNPTR_RELOCATOR(void *func_ptr);
 #define BCM_MMU_MTH_STK_DATA(_data) __attribute__ ((__section__ (".mmu_mth_stack." #_data))) _data
 #endif /* STK_PRT_MMU */
 
+/* Special section for MMU page-tables. */
+#define BCM_MMU_PAGE_TABLE_DATA(_data) \
+	__attribute__ ((__section__ (".mmu_pagetable." #_data))) _data
+
 /* Some phy initialization code/data can't be reclaimed in dualband mode */
 #if defined(DBAND)
 #define WLBANDINITDATA(_data)	_data
@@ -699,6 +701,16 @@ void* BCM_ASLR_CODE_FNPTR_RELOCATOR(void *func_ptr);
 #else
 #define WLBANDINITDATA(_data)	_data
 #define WLBANDINITFN(_fn)	_fn
+#endif
+
+/* Tag struct members to make it explicitly clear that they are physical addresses. These are
+ * typically used in data structs shared by the firmware and host code (or off-line utilities). The
+ * use of the macro avoids customer visible API/name changes.
+ */
+#if defined(BCM_PHYS_ADDR_NAME_CONVERSION)
+	#define PHYS_ADDR_N(name) name ## _phys
+#else
+	#define PHYS_ADDR_N(name) name
 #endif
 
 #endif /* _bcmdefs_h_ */

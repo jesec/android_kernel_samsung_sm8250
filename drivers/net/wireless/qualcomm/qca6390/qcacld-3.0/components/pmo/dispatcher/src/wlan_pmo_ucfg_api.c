@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2019 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2017-2020 The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -32,6 +32,7 @@
 #include "wlan_pmo_pkt_filter.h"
 #include "wlan_pmo_hw_filter.h"
 #include "wlan_pmo_cfg.h"
+#include "wlan_pmo_static_config.h"
 #include "cfg_ucfg_api.h"
 
 QDF_STATUS ucfg_pmo_psoc_open(struct wlan_objmgr_psoc *psoc)
@@ -128,6 +129,13 @@ QDF_STATUS ucfg_pmo_cache_arp_offload_req(struct pmo_arp_req *arp_req)
 	return pmo_core_cache_arp_offload_req(arp_req);
 }
 
+QDF_STATUS ucfg_pmo_check_arp_offload(struct wlan_objmgr_psoc *psoc,
+				      enum pmo_offload_trigger trigger,
+				      uint8_t vdev_id)
+{
+	return pmo_core_arp_check_offload(psoc, trigger, vdev_id);
+}
+
 QDF_STATUS ucfg_pmo_flush_arp_offload_req(struct wlan_objmgr_vdev *vdev)
 {
 	return pmo_core_flush_arp_offload_req(vdev);
@@ -157,6 +165,13 @@ ucfg_pmo_get_arp_offload_params(struct wlan_objmgr_vdev *vdev,
 QDF_STATUS ucfg_pmo_cache_ns_offload_req(struct pmo_ns_req *ns_req)
 {
 	return pmo_core_cache_ns_offload_req(ns_req);
+}
+
+QDF_STATUS ucfg_pmo_ns_offload_check(struct wlan_objmgr_psoc *psoc,
+				     enum pmo_offload_trigger trigger,
+				     uint8_t vdev_id)
+{
+	return pmo_core_ns_check_offload(psoc, trigger, vdev_id);
 }
 
 QDF_STATUS ucfg_pmo_flush_ns_offload_req(struct wlan_objmgr_vdev *vdev)
@@ -355,10 +370,10 @@ void ucfg_pmo_psoc_set_hif_handle(struct wlan_objmgr_psoc *psoc,
 	pmo_core_psoc_set_hif_handle(psoc, hif_handle);
 }
 
-void ucfg_pmo_psoc_set_txrx_handle(struct wlan_objmgr_psoc *psoc,
-				   void *txrx_handle)
+void ucfg_pmo_psoc_set_txrx_pdev_id(struct wlan_objmgr_psoc *psoc,
+				    uint8_t txrx_pdev_id)
 {
-	pmo_core_psoc_set_txrx_handle(psoc, txrx_handle);
+	pmo_core_psoc_set_txrx_pdev_id(psoc, txrx_pdev_id);
 }
 
 void ucfg_pmo_psoc_handle_initial_wake_up(void *cb_ctx)
@@ -373,12 +388,23 @@ ucfg_pmo_psoc_user_space_suspend_req(struct wlan_objmgr_psoc *psoc,
 	return pmo_core_psoc_user_space_suspend_req(psoc, type);
 }
 
-
 QDF_STATUS
 ucfg_pmo_psoc_user_space_resume_req(struct wlan_objmgr_psoc *psoc,
 				    enum qdf_suspend_type type)
 {
 	return pmo_core_psoc_user_space_resume_req(psoc, type);
+}
+
+QDF_STATUS ucfg_pmo_suspend_all_components(struct wlan_objmgr_psoc *psoc,
+					   enum qdf_suspend_type type)
+{
+	return pmo_suspend_all_components(psoc, type);
+}
+
+QDF_STATUS ucfg_pmo_resume_all_components(struct wlan_objmgr_psoc *psoc,
+					  enum qdf_suspend_type type)
+{
+	return pmo_resume_all_components(psoc, type);
 }
 
 QDF_STATUS
@@ -465,6 +491,18 @@ void ucfg_pmo_psoc_wakeup_host_event_received(struct wlan_objmgr_psoc *psoc)
 QDF_STATUS ucfg_pmo_enable_hw_filter_in_fwr(struct wlan_objmgr_vdev *vdev)
 {
 	return pmo_core_enable_hw_filter_in_fwr(vdev);
+}
+
+QDF_STATUS
+ucfg_pmo_enable_action_frame_patterns(struct wlan_objmgr_vdev *vdev,
+				      enum qdf_suspend_type suspend_type)
+{
+	return pmo_register_action_frame_patterns(vdev, suspend_type);
+}
+
+QDF_STATUS ucfg_pmo_disable_action_frame_patterns(struct wlan_objmgr_vdev *vdev)
+{
+	return pmo_clear_action_frame_patterns(vdev);
 }
 
 QDF_STATUS ucfg_pmo_disable_hw_filter_in_fwr(struct wlan_objmgr_vdev *vdev)
@@ -675,20 +713,13 @@ ucfg_pmo_get_max_ps_poll(struct wlan_objmgr_psoc *psoc)
 uint8_t
 ucfg_pmo_power_save_offload_enabled(struct wlan_objmgr_psoc *psoc)
 {
-	uint8_t powersave_offload_enabled;
+	uint8_t powersave_offload_enabled = PMO_PS_ADVANCED_POWER_SAVE_ENABLE;
 	struct pmo_psoc_priv_obj *pmo_psoc_ctx = pmo_psoc_get_priv(psoc);
 
 	if (!pmo_psoc_ctx->psoc_cfg.max_ps_poll ||
 	    !pmo_psoc_ctx->psoc_cfg.power_save_mode)
 		powersave_offload_enabled =
 			pmo_psoc_ctx->psoc_cfg.power_save_mode;
-	else if ((pmo_psoc_ctx->psoc_cfg.power_save_mode ==
-		  PS_QPOWER_NODEEPSLEEP) ||
-		 (pmo_psoc_ctx->psoc_cfg.power_save_mode ==
-		  PS_LEGACY_NODEEPSLEEP))
-		powersave_offload_enabled = PS_LEGACY_NODEEPSLEEP;
-	else
-		powersave_offload_enabled = PS_LEGACY_DEEPSLEEP;
 
 	pmo_debug("powersave offload enabled type:%d",
 		  powersave_offload_enabled);

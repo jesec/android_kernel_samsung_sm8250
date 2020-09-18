@@ -31,6 +31,8 @@ static void dsi_catalog_cmn_init(struct dsi_ctrl_hw *ctrl,
 	ctrl->ops.trigger_command_dma    = dsi_ctrl_hw_cmn_trigger_command_dma;
 	ctrl->ops.get_interrupt_status   = dsi_ctrl_hw_cmn_get_interrupt_status;
 	ctrl->ops.get_error_status       = dsi_ctrl_hw_cmn_get_error_status;
+	ctrl->ops.dma_read_before_trigger   = dsi_ctrl_hw_cmn_dma_read_before_trigger;
+	ctrl->ops.read_mdp_line_count    = dsi_ctrl_hw_cmn_read_mdp_line_count;
 	ctrl->ops.clear_error_status     = dsi_ctrl_hw_cmn_clear_error_status;
 	ctrl->ops.clear_interrupt_status =
 		dsi_ctrl_hw_cmn_clear_interrupt_status;
@@ -190,6 +192,14 @@ static void dsi_catalog_phy_2_0_init(struct dsi_phy_hw *phy)
 		dsi_phy_hw_calculate_timing_params;
 	phy->ops.phy_timing_val = dsi_phy_hw_timing_val_v2_0;
 	phy->ops.clamp_ctrl = dsi_phy_hw_v2_0_clamp_ctrl;
+	phy->ops.dyn_refresh_ops.dyn_refresh_config =
+		dsi_phy_hw_v2_0_dyn_refresh_config;
+	phy->ops.dyn_refresh_ops.dyn_refresh_pipe_delay =
+		dsi_phy_hw_v2_0_dyn_refresh_pipe_delay;
+	phy->ops.dyn_refresh_ops.dyn_refresh_helper =
+		dsi_phy_hw_v2_0_dyn_refresh_helper;
+	phy->ops.dyn_refresh_ops.cache_phy_timings =
+		dsi_phy_hw_v2_0_cache_phy_timings;
 }
 
 /**

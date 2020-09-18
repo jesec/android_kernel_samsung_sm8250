@@ -61,7 +61,11 @@ typedef enum d11_lpbk_type {
 	M2M_NON_DMA_LPBK = 3,
 	D11_HOST_MEM_LPBK = 4,
 	BMC_HOST_MEM_LPBK = 5,
-	MAX_LPBK = 6
+	M2M_WRITE_TO_RAM = 6,
+	M2M_READ_FROM_RAM = 7,
+	D11_WRITE_TO_RAM = 8,
+	D11_READ_FROM_RAM = 9,
+	MAX_LPBK = 10
 } dma_xfer_type_t;
 
 typedef struct dmaxfer_info {
@@ -166,6 +170,12 @@ typedef enum dhd_iface_mgmt_policy {
  */
 #define	DHD_IOCTL_MAXLEN	(16384)	/* max length ioctl buffer required */
 #define	DHD_IOCTL_SMLEN		256		/* "small" length ioctl buffer required */
+
+/*
+ * For cases where 16K buf is not sufficient.
+ * Ex:- DHD dump output beffer is more than 16K.
+ */
+#define	DHD_IOCTL_MAXLEN_32K	(32768u)
 
 /* common ioctl definitions */
 #define DHD_GET_MAGIC				0

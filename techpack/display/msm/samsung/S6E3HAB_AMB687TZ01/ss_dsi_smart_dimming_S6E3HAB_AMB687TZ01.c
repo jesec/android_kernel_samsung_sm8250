@@ -1249,19 +1249,19 @@ static void wrap_smart_dimming_init(struct smartdim_conf *conf)
 	smart->rr = conf->rr;
 	smart->sot_hs = conf->sot_hs;
 
-	/* center gamma of 60NR is fixed value. 
+	/* center gamma of 60NR is fixed value.
 	 * center gamma of others is value read from ddi.
 	 */
 	memcpy(smart->CENTER_GAMMA_V, center_gamma, sizeof(center_gamma));
 
 	/* overwrite some values of center_gamma from read value */
-	if (conf->rr == 60 && conf->sot_hs) {		
+	if (conf->rr == 60 && conf->sot_hs) {
 		mtp_sorting(conf->center_gamma_60hs, smart->CENTER_GAMMA_60HS_V, false);
 		memcpy(smart->CENTER_GAMMA_V, smart->CENTER_GAMMA_60HS_V, sizeof(smart->CENTER_GAMMA_60HS_V));
 	} else if (conf->rr == 120) {
 		mtp_sorting(conf->center_gamma_120hs, smart->CENTER_GAMMA_120HS_V, false);
 		memcpy(smart->CENTER_GAMMA_V, smart->CENTER_GAMMA_120HS_V, sizeof(smart->CENTER_GAMMA_120HS_V));
-	}				
+	}
 
 	LCD_ERR("rr[%d] sot[%d]\n", smart->rr, smart->sot_hs);
 
@@ -1667,7 +1667,7 @@ static void wrap_smart_dimming_init_hmt(struct smartdim_conf *conf)
 	smart->ldi_revision = conf->man_id;
 	smart->panel_revision = conf->panel_revision;
 
-	/* center gamma of 60NR is fixed value. 
+	/* center gamma of 60NR is fixed value.
 	 * center gamma of others is value read from ddi.
 	 */
 	memcpy(smart->CENTER_GAMMA_V, center_gamma_hmt, sizeof(center_gamma_hmt));

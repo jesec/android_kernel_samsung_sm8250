@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2019 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2017-2020 The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -47,6 +47,8 @@
 	QDF_TRACE_ERROR(QDF_MODULE_ID_P2P, params)
 #define p2p_debug_rl(params...) \
 	QDF_TRACE_DEBUG_RL(QDF_MODULE_ID_P2P, params)
+#define p2p_info_rl(params...) \
+		QDF_TRACE_INFO_RL(QDF_MODULE_ID_P2P, params)
 
 #define p2p_alert(params ...) \
 	QDF_TRACE_FATAL(QDF_MODULE_ID_P2P, params)
@@ -229,7 +231,6 @@ struct p2p_soc_priv_obj {
 	qdf_list_t tx_q_ack;
 	wlan_scan_requester scan_req_id;
 	struct p2p_start_param *start_param;
-	qdf_event_t cancel_roc_done;
 	qdf_event_t cleanup_roc_done;
 	qdf_event_t cleanup_tx_done;
 	qdf_runtime_lock_t roc_runtime_lock;
@@ -465,6 +466,16 @@ QDF_STATUS p2p_msg_flush_callback(struct scheduler_msg *msg);
  * Return: QDF_STATUS_SUCCESS - in case of success
  */
 QDF_STATUS p2p_event_flush_callback(struct scheduler_msg *msg);
+
+/**
+ * p2p_check_oui_and_force_1x1() - Function to get P2P client device
+ * attributes from assoc request frame IE passed in.
+ * @assoc_ie:     Pointer to the IEs in the association req frame
+ * @assoc_ie_len: Total length of the IE in association req frame
+ *
+ * Return: true if the OUI is present else false
+ */
+bool p2p_check_oui_and_force_1x1(uint8_t *assoc_ie, uint32_t assoc_ie_len);
 
 #ifdef FEATURE_P2P_LISTEN_OFFLOAD
 /**

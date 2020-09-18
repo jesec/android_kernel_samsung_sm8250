@@ -160,6 +160,9 @@ typedef struct wlfc_mac_descriptor {
 #endif
 	struct wlfc_mac_descriptor* prev;
 	struct wlfc_mac_descriptor* next;
+#ifdef BULK_DEQUEUE
+	uint16 release_count[AC_COUNT + 1];
+#endif
 } wlfc_mac_descriptor_t;
 
 /** A 'commit' is the hand over of a packet from the host OS layer to the layer below (eg DBUS) */
@@ -333,6 +336,9 @@ typedef struct athost_wl_status_info {
 
 	bool	bcmc_credit_supported;
 
+#ifdef BULK_DEQUEUE
+	uint8	max_release_count;
+#endif /* total_credit */
 } athost_wl_status_info_t;
 
 /** Please be mindful that total pkttag space is 32 octets only */
@@ -517,6 +523,11 @@ int dhd_wlfc_commit_packets(dhd_pub_t *dhdp, f_commitpkt_t fcommit,
 	void* commit_ctx, void *pktbuf, bool need_toggle_host_if);
 int dhd_wlfc_txcomplete(dhd_pub_t *dhd, void *txp, bool success);
 int dhd_wlfc_init(dhd_pub_t *dhd);
+
+#if !defined(PCIE_FULL_DONGLE) && defined(P2P_IF_STATE_EVENT_CTRL)
+int dhd_wlfc_ctrl_if_state_event(dhd_pub_t *dhd, bool block);
+#endif /* !PCIE_FULL_DONGLE & P2P_IF_STATE_EVENT_CTRL */
+
 #ifdef SUPPORT_P2P_GO_PS
 int dhd_wlfc_suspend(dhd_pub_t *dhd);
 int dhd_wlfc_resume(dhd_pub_t *dhd);

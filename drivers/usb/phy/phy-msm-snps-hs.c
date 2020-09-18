@@ -284,9 +284,6 @@ static struct attribute_group hsphy_attr_grp = {
 };
 #endif
 
-#undef dev_dbg
-#define dev_dbg dev_err
-
 static void msm_hsphy_enable_clocks(struct msm_hsphy *phy, bool on)
 {
 	dev_dbg(phy->phy.dev, "%s(): clocks_enabled:%d on:%d\n",

@@ -2,7 +2,7 @@
  * Fundamental types and constants relating to WFA NAN
  * (Neighbor Awareness Networking)
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -19,7 +19,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 #ifndef _NAN_H_
 #define _NAN_H_
@@ -27,7 +27,7 @@
 #include <typedefs.h>
 #include <802.11.h>
 
-/* XXX: Do we want to include p2p.h for constants like P2P_WFDS_HASH_LEN and
+/* Do we want to include p2p.h for constants like P2P_WFDS_HASH_LEN and
  * maybe P2P_WFDS_MAX_SVC_NAME_LEN etc.?
  */
 

@@ -450,4 +450,5 @@ int dhd_enable_adps(dhd_pub_t *dhd, uint8 on);
 extern void dhd_reset_tcpsync_info_by_ifp(dhd_if_t *ifp);
 extern void dhd_reset_tcpsync_info_by_dev(struct net_device *dev);
 #endif /* DHDTCPSYNC_FLOOD_BLK */
+int dhd_get_fw_capabilities(dhd_pub_t * dhd);
 #endif /* __DHD_LINUX_H__ */

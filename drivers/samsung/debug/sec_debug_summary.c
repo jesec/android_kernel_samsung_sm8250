@@ -106,8 +106,16 @@ static inline void __summary_save_dying_msg_for_user_reset_debug(
 #define ARCH_INSTR_SIZE	0x4
 #endif
 
+#ifndef CONFIG_SAMSUNG_PRODUCT_SHIP
+unsigned long sec_delay_check __read_mostly = 1;
+EXPORT_SYMBOL(sec_delay_check);
+#endif
+
 int sec_debug_summary_save_die_info(const char *str, struct pt_regs *regs)
 {
+#ifndef CONFIG_SAMSUNG_PRODUCT_SHIP
+	sec_delay_check = 0;
+#endif
 	if (!secdbg_apss)
 		return -ENOMEM;
 
@@ -124,6 +132,9 @@ int sec_debug_summary_save_die_info(const char *str, struct pt_regs *regs)
 
 int sec_debug_summary_save_panic_info(const char *str, unsigned long caller)
 {
+#ifndef CONFIG_SAMSUNG_PRODUCT_SHIP
+	sec_delay_check = 0;
+#endif
 	if (!secdbg_apss)
 		return -ENOMEM;
 
@@ -201,6 +212,15 @@ void *sec_debug_summary_get_modem(void)
 {
 	if (secdbg_summary)
 		return (void *)&secdbg_summary->priv.modem;
+
+	pr_warn("secdbg_summary is null.\n");
+	return NULL;
+}
+
+struct sec_debug_summary_data_apss *sec_debug_summary_get_apss(void)
+{
+	if (secdbg_summary)
+		return &secdbg_summary->priv.apss;
 
 	pr_warn("secdbg_summary is null.\n");
 	return NULL;
@@ -345,8 +365,10 @@ static void __init summary_init_varmon(void)
 		pr_emerg("**** secdbg_log or secdbg_paddr is not initialized ****\n");
 
 #if defined(CONFIG_ARM) || defined(CONFIG_ARM64)
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5,4,0)
 	ADD_VAR_TO_VARMON(boot_reason);
 	ADD_VAR_TO_VARMON(cold_boot);
+#endif
 #endif
 
 	__summary_init_varmon_verbose();
@@ -392,10 +414,10 @@ static void __init summary_init_sched_log(void)
 #ifdef CONFIG_QCOM_MEMORY_DUMP_V2
 static struct sec_debug_summary_msm_dump_info msm_dump_info_cached;
 
-void sec_debug_summary_bark_dump(void *cpu_data, void *cpu_buf,
+void sec_debug_summary_bark_dump(void *s_cpu_data, void *cpu_buf,
 		uint32_t cpu_ctx_size)
 {
-	msm_dump_info_cached.cpu_data_paddr = (uint64_t)virt_to_phys(cpu_data);
+	msm_dump_info_cached.cpu_data_paddr = (uint64_t)virt_to_phys(s_cpu_data);
 	msm_dump_info_cached.cpu_buf_paddr = (uint64_t)virt_to_phys(cpu_buf);
 	msm_dump_info_cached.cpu_ctx_size = cpu_ctx_size;
 	msm_dump_info_cached.offset = 0x10;	/* 16 bytes */
@@ -597,7 +619,7 @@ static void __init sec_debug_summary_external_init(void)
 
 	sec_debug_summary_set_klog_info(secdbg_apss);
 	sec_debug_summary_set_msm_memdump_info(secdbg_apss);
-#ifdef CONFIG_QCOM_RTB
+#if IS_ENABLED(CONFIG_QCOM_RTB)
 	sec_debug_summary_set_rtb_info(secdbg_apss);
 #endif
 	summary_init_coreinfo(secdbg_apss);

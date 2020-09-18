@@ -927,6 +927,7 @@ static int __sec_nfc_probe(struct device *dev)
 	info->mode = SEC_NFC_MODE_OFF;
 
 	mutex_init(&info->mutex);
+	wake_lock_init(&info->nfc_wake_lock, WAKE_LOCK_SUSPEND, "nfc_wake_lock");
 	dev_set_drvdata(dev, info);
 
 	info->miscdev.minor = MISC_DYNAMIC_MINOR;
@@ -981,8 +982,6 @@ static int __sec_nfc_probe(struct device *dev)
 		}
 		gpio_direction_output(pdata->firm, SEC_NFC_FW_OFF);
 	}
-
-	wake_lock_init(&info->nfc_wake_lock, WAKE_LOCK_SUSPEND, "nfc_wake_lock");
 
 #ifdef FEATURE_SEC_NFC_TEST
 	g_nfc_info = info;

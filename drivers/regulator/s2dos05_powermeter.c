@@ -46,7 +46,7 @@ static const unsigned int power_coeffs[8] =
 static void s2m_adc_read_data(struct device *dev, int channel)
 {
 	struct adc_info *adc_meter = dev_get_drvdata(dev);
-	int i;
+	size_t i;
 	u8 data_l, data_h, temp;
 
 	/* ASYNCRD bit '1' --> 2ms delay --> read  in case of ADC Async mode */
@@ -221,9 +221,9 @@ static ssize_t adc_en_show(struct device *dev,
 
 	s2dos05_read_reg(adc_meter->i2c, S2DOS05_REG_PWRMT_CTRL2, &adc_ctrl3);
 	if ((adc_ctrl3 & 0x80) == 0x80)
-		return snprintf(buf, PAGE_SIZE, "ADC enable (%x)\n", adc_ctrl3);
+		return snprintf(buf, PAGE_SIZE, "ADC enable (0x%02hhx)\n", adc_ctrl3);
 	else
-		return snprintf(buf, PAGE_SIZE, "ADC disable (%x)\n", adc_ctrl3);
+		return snprintf(buf, PAGE_SIZE, "ADC disable (0x%02hhx)\n", adc_ctrl3);
 }
 
 static ssize_t adc_en_store(struct device *dev, struct device_attribute *attr,
@@ -269,7 +269,7 @@ static ssize_t adc_mode_show(struct device *dev,
 	case POWER_MODE:
 		return snprintf(buf, PAGE_SIZE, "POWER MODE (%d)\n", POWER_METER);
 	default:
-		return snprintf(buf, PAGE_SIZE, "error (%x)\n", adc_ctrl3);
+		return snprintf(buf, PAGE_SIZE, "error (0x%02hhx)\n", adc_ctrl3);
 	}
 }
 
@@ -431,7 +431,7 @@ static ssize_t adc_ctrl1_show(struct device *dev,
 			      struct device_attribute *attr, char *buf)
 {
 	struct adc_info *adc_meter = dev_get_drvdata(dev);
-	return snprintf(buf, PAGE_SIZE, "0x%2x\n", adc_meter->adc_ctrl1);
+	return snprintf(buf, PAGE_SIZE, "0x%02hhx\n", adc_meter->adc_ctrl1);
 }
 
 static ssize_t adc_ctrl1_store(struct device *dev, struct device_attribute *attr,
@@ -676,7 +676,7 @@ void s2dos05_powermeter_init(struct s2dos05_dev *s2dos05)
 #ifdef CONFIG_DRV_SAMSUNG_PMIC
 	ret = create_s2dos05_powermeter_sysfs(s2dos05);
 	if (ret) {
-		pr_info("%s: failed to create sysfs\n");
+		pr_info("%s: failed to create sysfs\n", __func__);
 
 		return;
 	}

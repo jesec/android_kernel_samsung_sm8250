@@ -45,6 +45,9 @@
 #include <linux/wireless.h>
 #include <linux/ieee80211.h>
 #include <linux/wait.h>
+#if defined(CONFIG_TIZEN)
+#include <linux/net_stat_tizen.h>
+#endif /* CONFIG_TIZEN */
 #include <net/cfg80211.h>
 #include <net/rtnetlink.h>
 
@@ -85,6 +88,7 @@
 
 #define WPS_ATTR_REQ_TYPE 0x103a
 #define WPS_REQ_TYPE_ENROLLEE 0x01
+#define SCAN_WAKE_LOCK_MARGIN_MS 500
 
 #if defined(WL_CFG80211_P2P_DEV_IF)
 #define CFG80211_READY_ON_CHANNEL(cfgdev, cookie, channel, channel_type, duration, flags) \
@@ -327,6 +331,9 @@ wl_cfg80211_remove_lowRSSI_info(wl_scan_results_t *list, removal_element_t *cand
 		for (idx2 = 0; idx2 < list->count; idx2++) {
 			bss = bss ? (wl_bss_info_t *)((uintptr)bss + dtoh32(bss->length)) :
 				list->bss_info;
+			if (!bss) {
+				continue;
+			}
 			if (!bcmp(&candidate[idx1].BSSID, &bss->BSSID, ETHER_ADDR_LEN) &&
 				candidate[idx1].RSSI == bss->RSSI &&
 				candidate[idx1].length == dtoh32(bss->length)) {
@@ -411,7 +418,7 @@ wl_escan_handler(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 #endif /* WL_BCNRECV */
 	if (!ndev || (!wl_get_drv_status(cfg, SCANNING, ndev) && !cfg->sched_scan_running)) {
 		WL_ERR_RLMT(("escan is not ready. drv_scan_status 0x%x"
-			" e_type %d e_states %d\n",
+			" e_type %d e_status %d\n",
 			wl_get_drv_status(cfg, SCANNING, ndev),
 			ntoh32(e->event_type), ntoh32(e->status)));
 		goto exit;
@@ -1363,6 +1370,7 @@ wl_run_escan(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 			struct ieee80211_channel tmp_channel_list[CH_MAX_2G_CHANNEL];
 			/* allow one 5G channel to add previous connected channel in 5G */
 			bool allow_one_5g_channel = TRUE;
+			int i, j;
 			j = 0;
 			for (i = 0; i < request->n_channels; i++) {
 				int tmp_chan = ieee80211_frequency_to_channel
@@ -1981,12 +1989,10 @@ __wl_cfg80211_scan(struct wiphy *wiphy, struct net_device *ndev,
 		ssids = this_ssid;
 	}
 
-	if (request && cfg->p2p_supported) {
-		WL_TRACE_HW4(("START SCAN\n"));
-		DHD_OS_SCAN_WAKE_LOCK_TIMEOUT((dhd_pub_t *)(cfg->pub),
-			SCAN_WAKE_LOCK_TIMEOUT);
-		DHD_DISABLE_RUNTIME_PM((dhd_pub_t *)(cfg->pub));
-	}
+	WL_TRACE_HW4(("START SCAN\n"));
+	DHD_OS_SCAN_WAKE_LOCK_TIMEOUT((dhd_pub_t *)(cfg->pub),
+		wl_get_scan_timeout_val(cfg) + SCAN_WAKE_LOCK_MARGIN_MS);
+	DHD_DISABLE_RUNTIME_PM((dhd_pub_t *)(cfg->pub));
 
 	if (cfg->p2p_supported) {
 		if (request && p2p_on(cfg) && p2p_scan(cfg)) {
@@ -2035,12 +2041,14 @@ scan_out:
 		if (scanbusy_err == BCME_NOTREADY) {
 			/* In case of bus failures avoid ioctl calls */
 			DHD_OS_SCAN_WAKE_UNLOCK((dhd_pub_t *)(cfg->pub));
+			DHD_ENABLE_RUNTIME_PM((dhd_pub_t *)(cfg->pub));
 			return -ENODEV;
 		}
 		err = scanbusy_err;
 	}
 
 	DHD_OS_SCAN_WAKE_UNLOCK((dhd_pub_t *)(cfg->pub));
+	DHD_ENABLE_RUNTIME_PM((dhd_pub_t *)(cfg->pub));
 	return err;
 }
 
@@ -2560,7 +2568,7 @@ wl_notify_scan_status(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 	const wl_event_msg_t *e, void *data)
 {
 	struct channel_info channel_inform;
-	struct wl_scan_results *bss_list;
+	wl_scan_results_t *bss_list;
 	struct net_device *ndev = NULL;
 	u32 len = WL_SCAN_BUF_MAX;
 	s32 err = 0;
@@ -2619,6 +2627,10 @@ scan_done_out:
 
 void wl_notify_scan_done(struct bcm_cfg80211 *cfg, bool aborted)
 {
+#if defined(CONFIG_TIZEN)
+	struct net_device *ndev = NULL;
+#endif /* CONFIG_TIZEN */
+
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 8, 0))
 	struct cfg80211_scan_info info;
 
@@ -2628,6 +2640,14 @@ void wl_notify_scan_done(struct bcm_cfg80211 *cfg, bool aborted)
 #else
 	cfg80211_scan_done(cfg->scan_request, aborted);
 #endif
+
+#if defined(CONFIG_TIZEN)
+	ndev = bcmcfg_to_prmry_ndev(cfg);
+	if (aborted)
+		net_stat_tizen_update_wifi(ndev, WIFISTAT_SCAN_ABORT);
+	else
+		net_stat_tizen_update_wifi(ndev, WIFISTAT_SCAN_DONE);
+#endif /* CONFIG_TIZEN */
 }
 
 #if defined(SUPPORT_RANDOM_MAC_SCAN)
@@ -3263,7 +3283,7 @@ static void wl_scan_timeout(unsigned long data)
 	struct bcm_cfg80211 *cfg = (struct bcm_cfg80211 *)data;
 	struct wireless_dev *wdev = NULL;
 	struct net_device *ndev = NULL;
-	struct wl_scan_results *bss_list;
+	wl_scan_results_t *bss_list;
 	wl_bss_info_t *bi = NULL;
 	s32 i;
 	u32 channel;
@@ -3375,11 +3395,21 @@ static void wl_scan_timeout(unsigned long data)
 	WL_ERR(("timer expired\n"));
 	dhdp->scan_timeout_occurred = TRUE;
 #ifdef BCMPCIE
-	(void)dhd_pcie_dump_int_regs(dhdp);
+	if (!dhd_pcie_dump_int_regs(dhdp)) {
+		WL_ERR(("%s : PCIe link might be down\n", __FUNCTION__));
+		dhd_bus_set_linkdown(dhdp, TRUE);
+		dhdp->hang_reason = HANG_REASON_PCIE_LINK_DOWN_EP_DETECT;
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 27))
+		dhd_os_send_hang_message(dhdp);
+#else
+		WL_ERR(("%s: HANG event is unsupported\n", __FUNCTION__));
+#endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 27) && OEM_ANDROID */
+	}
+
 	dhd_pcie_dump_rc_conf_space_cap(dhdp);
 #endif /* BCMPCIE */
 #ifdef DHD_FW_COREDUMP
-	if (dhdp->memdump_enabled) {
+	if (!dhd_bus_get_linkdown(dhdp) && dhdp->memdump_enabled) {
 		dhdp->memdump_type = DUMP_TYPE_SCAN_TIMEOUT;
 		dhd_bus_mem_dump(dhdp);
 	}
@@ -3397,6 +3427,8 @@ static void wl_scan_timeout(unsigned long data)
 	if (!wl_scan_timeout_dbg_enabled)
 		wl_scan_timeout_dbg_set();
 #endif /* CUSTOMER_HW4_DEBUG */
+
+	DHD_ENABLE_RUNTIME_PM(dhdp);
 }
 
 s32 wl_init_scan(struct bcm_cfg80211 *cfg)

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2019 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2018-2020 The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -26,7 +26,9 @@
 #include <wlan_objmgr_global_obj.h>
 #include <wlan_cmn.h>
 #include "wlan_fw_offload_main.h"
+#include "wlan_fwol_public_structs.h"
 
+#ifdef WLAN_FW_OFFLOAD
 /**
  * ucfg_fwol_psoc_open() - FWOL component Open
  * @psoc: pointer to psoc object
@@ -159,6 +161,16 @@ QDF_STATUS ucfg_get_enable_rts_sifsbursting(struct wlan_objmgr_psoc *psoc,
 					    bool *enable_rts_sifsbursting);
 
 /**
+ * ucfg_get_enable_sifs_burst() - Get the enable_sifs_burst value
+ * @psoc: pointer to the psoc object
+ * @enable_sifs_burst: pointer to return enable_sifs_burst value
+ *
+ * Return: QDF Status
+ */
+QDF_STATUS ucfg_get_enable_sifs_burst(struct wlan_objmgr_psoc *psoc,
+				      uint8_t *enable_sifs_burst);
+
+/**
  * ucfg_get_max_mpdus_inampdu() - Assigns the max_mpdus_inampdu value
  * @psoc: pointer to the psoc object
  *
@@ -166,15 +178,6 @@ QDF_STATUS ucfg_get_enable_rts_sifsbursting(struct wlan_objmgr_psoc *psoc,
  */
 QDF_STATUS ucfg_get_max_mpdus_inampdu(struct wlan_objmgr_psoc *psoc,
 				      uint8_t *max_mpdus_inampdu);
-
-/**
- * ucfg_get_arp_ac_category() - Assigns the arp_ac_category value
- * @psoc: pointer to the psoc object
- *
- * Return: QDF Status
- */
-QDF_STATUS ucfg_get_arp_ac_category(struct wlan_objmgr_psoc *psoc,
-				    uint32_t *arp_ac_category);
 
 /**
  * ucfg_get_enable_phy_reg_retention() - Assigns enable_phy_reg_retention value
@@ -273,6 +276,16 @@ QDF_STATUS ucfg_fwol_get_enable_fw_module_log_level(
 				uint8_t **enable_fw_module_log_level,
 				uint8_t *enable_fw_module_log_level_num);
 
+/**
+ * ucfg_fwol_get_sap_xlna_bypass() - Assigns sap_xlna_bypass value
+ * @psoc: pointer to the psoc object
+ * @sap_xlna_bypass: pointer to return sap_xlna_bypass bool
+ *
+ * Return: QDF Status
+ */
+QDF_STATUS ucfg_fwol_get_sap_xlna_bypass(struct wlan_objmgr_psoc *psoc,
+					 bool *sap_xlna_bypass);
+
 #ifdef FEATURE_WLAN_RA_FILTERING
 /**
  * ucfg_fwol_set_is_rate_limit_enabled() - Sets the is_rate_limit_enabled value
@@ -315,6 +328,19 @@ QDF_STATUS ucfg_fwol_get_tsf_gpio_pin(struct wlan_objmgr_psoc *psoc,
 QDF_STATUS
 ucfg_fwol_get_tsf_irq_host_gpio_pin(struct wlan_objmgr_psoc *psoc,
 				    uint32_t *tsf_irq_host_gpio_pin);
+#endif
+
+#ifdef WLAN_FEATURE_TSF_PLUS_EXT_GPIO_SYNC
+/**
+ * ucfg_fwol_get_tsf_sync_host_gpio_pin() - Assigns tsf_sync_host_gpio_pin value
+ * @psoc: pointer to the psoc object
+ *
+ * Return: QDF Status
+ */
+
+QDF_STATUS
+ucfg_fwol_get_tsf_sync_host_gpio_pin(struct wlan_objmgr_psoc *psoc,
+				     uint32_t *tsf_irq_host_gpio_pin);
 #endif
 
 #ifdef DHCP_SERVER_OFFLOAD
@@ -500,4 +526,342 @@ ucfg_fwol_set_adaptive_dwelltime_config(
 {
 	return fwol_set_adaptive_dwelltime_config(dwelltime_params);
 }
+
+#ifdef WLAN_FEATURE_ELNA
+/**
+ * ucfg_fwol_set_elna_bypass() - send set eLNA bypass request
+ * @vdev: vdev handle
+ * @req: set eLNA bypass request
+ *
+ * Return: QDF_STATUS_SUCCESS on success
+ */
+QDF_STATUS ucfg_fwol_set_elna_bypass(struct wlan_objmgr_vdev *vdev,
+				     struct set_elna_bypass_request *req);
+
+/**
+ * ucfg_fwol_get_elna_bypass() - send get eLNA bypass request
+ * @vdev: vdev handle
+ * @req: get eLNA bypass request
+ * @callback: get eLNA bypass response callback
+ * @context: request manager context
+ *
+ * Return: QDF_STATUS_SUCCESS on success
+ */
+QDF_STATUS ucfg_fwol_get_elna_bypass(struct wlan_objmgr_vdev *vdev,
+				     struct get_elna_bypass_request *req,
+				     void (*callback)(void *context,
+				     struct get_elna_bypass_response *response),
+				     void *context);
+#endif /* WLAN_FEATURE_ELNA */
+
+#ifdef WLAN_SEND_DSCP_UP_MAP_TO_FW
+/**
+ * ucfg_fwol_send_dscp_up_map_to_fw() - send dscp_up map to FW
+ * @vdev: vdev handle
+ * @dscp_to_up_map: DSCP to UP map array
+ *
+ * Return: QDF_STATUS_SUCCESS on success
+ */
+QDF_STATUS ucfg_fwol_send_dscp_up_map_to_fw(
+		struct wlan_objmgr_vdev *vdev,
+		uint32_t *dscp_to_up_map);
+#else
+static inline
+QDF_STATUS ucfg_fwol_send_dscp_up_map_to_fw(
+		struct wlan_objmgr_vdev *vdev,
+		uint32_t *dscp_to_up_map)
+{
+	return QDF_STATUS_SUCCESS;
+}
+#endif
+#else
+static inline QDF_STATUS ucfg_fwol_psoc_open(struct wlan_objmgr_psoc *psoc)
+{
+	return QDF_STATUS_SUCCESS;
+}
+
+static inline void ucfg_fwol_psoc_close(struct wlan_objmgr_psoc *psoc)
+{
+}
+
+static inline QDF_STATUS ucfg_fwol_init(void)
+{
+	return QDF_STATUS_SUCCESS;
+}
+
+static inline void ucfg_fwol_deinit(void)
+{
+}
+
+static inline QDF_STATUS
+ucfg_fwol_get_coex_config_params(struct wlan_objmgr_psoc *psoc,
+				 struct wlan_fwol_coex_config *coex_config)
+{
+	return QDF_STATUS_E_FAILURE;
+}
+
+static inline QDF_STATUS
+ucfg_fwol_get_thermal_temp(struct wlan_objmgr_psoc *psoc,
+			   struct wlan_fwol_thermal_temp *thermal_temp)
+{
+	return QDF_STATUS_E_FAILURE;
+}
+
+static inline QDF_STATUS
+ucfg_fwol_get_neighbor_report_cfg(struct wlan_objmgr_psoc *psoc,
+				  struct wlan_fwol_neighbor_report_cfg
+				  *fwol_neighbor_report_cfg)
+{
+	return QDF_STATUS_E_FAILURE;
+}
+
+static inline QDF_STATUS
+ucfg_fwol_is_neighbor_report_req_supported(struct wlan_objmgr_psoc *psoc,
+					   bool *neighbor_report_req)
+{
+	return QDF_STATUS_E_FAILURE;
+}
+
+static inline QDF_STATUS
+ucfg_fwol_get_ie_whitelist(struct wlan_objmgr_psoc *psoc, bool *ie_whitelist)
+{
+	return QDF_STATUS_E_FAILURE;
+}
+
+static inline QDF_STATUS
+ucfg_fwol_set_ie_whitelist(struct wlan_objmgr_psoc *psoc, bool ie_whitelist)
+{
+	return QDF_STATUS_E_FAILURE;
+}
+
+static inline QDF_STATUS
+ucfg_fwol_get_all_whitelist_params(struct wlan_objmgr_psoc *psoc,
+				   struct wlan_fwol_ie_whitelist *whitelist)
+{
+	return QDF_STATUS_E_FAILURE;
+}
+
+static inline QDF_STATUS
+ucfg_fwol_get_ani_enabled(struct wlan_objmgr_psoc *psoc,
+			  bool *ani_enabled)
+{
+	return QDF_STATUS_E_FAILURE;
+}
+
+static inline QDF_STATUS
+ucfg_get_enable_rts_sifsbursting(struct wlan_objmgr_psoc *psoc,
+				 bool *enable_rts_sifsbursting)
+{
+	return QDF_STATUS_E_FAILURE;
+}
+
+static inline QDF_STATUS
+ucfg_get_max_mpdus_inampdu(struct wlan_objmgr_psoc *psoc,
+			   uint8_t *max_mpdus_inampdu)
+{
+	return QDF_STATUS_E_FAILURE;
+}
+
+static inline QDF_STATUS
+ucfg_get_enable_phy_reg_retention(struct wlan_objmgr_psoc *psoc,
+				  uint8_t *enable_phy_reg_retention)
+{
+	return QDF_STATUS_E_FAILURE;
+}
+
+static inline QDF_STATUS
+ucfg_get_upper_brssi_thresh(struct wlan_objmgr_psoc *psoc,
+			    uint16_t *upper_brssi_thresh)
+{
+	return QDF_STATUS_E_FAILURE;
+}
+
+static inline QDF_STATUS
+ucfg_get_lower_brssi_thresh(struct wlan_objmgr_psoc *psoc,
+			    uint16_t *lower_brssi_thresh)
+{
+	return QDF_STATUS_E_FAILURE;
+}
+
+static inline QDF_STATUS
+ucfg_get_enable_dtim_1chrx(struct wlan_objmgr_psoc *psoc,
+			   bool *enable_dtim_1chrx)
+{
+	return QDF_STATUS_E_FAILURE;
+}
+
+static inline QDF_STATUS
+ucfg_get_alternative_chainmask_enabled(struct wlan_objmgr_psoc *psoc,
+				       bool *alternative_chainmask_enabled)
+{
+	return QDF_STATUS_E_FAILURE;
+}
+
+static inline QDF_STATUS
+ucfg_get_smart_chainmask_enabled(struct wlan_objmgr_psoc *psoc,
+				 bool *smart_chainmask_enabled)
+{
+	return QDF_STATUS_E_FAILURE;
+}
+
+static inline QDF_STATUS
+ucfg_fwol_get_rts_profile(struct wlan_objmgr_psoc *psoc,
+			  uint16_t *get_rts_profile)
+{
+	return QDF_STATUS_E_FAILURE;
+}
+
+static inline QDF_STATUS
+ucfg_fwol_get_enable_fw_log_level(struct wlan_objmgr_psoc *psoc,
+				  uint16_t *enable_fw_log_level)
+{
+	return QDF_STATUS_E_FAILURE;
+}
+
+static inline QDF_STATUS
+ucfg_fwol_get_enable_fw_log_type(struct wlan_objmgr_psoc *psoc,
+				 uint16_t *enable_fw_log_type)
+{
+	return QDF_STATUS_E_FAILURE;
+}
+
+static inline QDF_STATUS
+ucfg_fwol_get_enable_fw_module_log_level(
+				struct wlan_objmgr_psoc *psoc,
+				uint8_t **enable_fw_module_log_level,
+				uint8_t *enable_fw_module_log_level_num)
+{
+	return QDF_STATUS_E_FAILURE;
+}
+
+static inline QDF_STATUS
+ucfg_fwol_get_sap_xlna_bypass(struct wlan_objmgr_psoc *psoc,
+			      uint8_t *sap_xlna_bypass)
+{
+	return QDF_STATUS_E_FAILURE;
+}
+
+static inline QDF_STATUS
+ucfg_fwol_get_tsf_gpio_pin(struct wlan_objmgr_psoc *psoc,
+			   uint32_t *tsf_gpio_pin)
+{
+	return QDF_STATUS_E_FAILURE;
+}
+
+static inline QDF_STATUS
+ucfg_fwol_get_tsf_ptp_options(struct wlan_objmgr_psoc *psoc,
+			      uint32_t *tsf_ptp_options)
+{
+	return QDF_STATUS_E_FAILURE;
+}
+
+static inline QDF_STATUS
+ucfg_fwol_get_lprx_enable(struct wlan_objmgr_psoc *psoc,
+			  bool *lprx_enable)
+{
+	return QDF_STATUS_E_FAILURE;
+}
+
+static inline bool ucfg_fwol_get_sae_enable(struct wlan_objmgr_psoc *psoc)
+{
+	return false;
+}
+
+static inline bool ucfg_fwol_get_gcmp_enable(struct wlan_objmgr_psoc *psoc)
+{
+	return false;
+}
+
+static inline QDF_STATUS
+ucfg_fwol_get_enable_tx_sch_delay(struct wlan_objmgr_psoc *psoc,
+				  uint8_t *enable_tx_sch_delay)
+{
+	return QDF_STATUS_E_FAILURE;
+}
+
+static inline QDF_STATUS
+ucfg_fwol_get_enable_secondary_rate(struct wlan_objmgr_psoc *psoc,
+				    uint32_t *enable_secondary_rate)
+{
+	return QDF_STATUS_E_FAILURE;
+}
+
+static inline QDF_STATUS
+ucfg_fwol_get_all_adaptive_dwelltime_params(
+			struct wlan_objmgr_psoc *psoc,
+			struct adaptive_dwelltime_params *dwelltime_params)
+{
+	return QDF_STATUS_E_FAILURE;
+}
+
+static inline QDF_STATUS
+ucfg_fwol_get_adaptive_dwell_mode_enabled(struct wlan_objmgr_psoc *psoc,
+					  bool *adaptive_dwell_mode_enabled)
+{
+	return QDF_STATUS_E_FAILURE;
+}
+
+static inline QDF_STATUS
+ucfg_fwol_get_global_adapt_dwelltime_mode(struct wlan_objmgr_psoc *psoc,
+					  uint8_t *global_adapt_dwelltime_mode)
+{
+	return QDF_STATUS_E_FAILURE;
+}
+
+static inline QDF_STATUS
+ucfg_fwol_get_adapt_dwell_lpf_weight(struct wlan_objmgr_psoc *psoc,
+				     uint8_t *adapt_dwell_lpf_weight)
+{
+	return QDF_STATUS_E_FAILURE;
+}
+
+static inline QDF_STATUS
+ucfg_fwol_get_adapt_dwell_passive_mon_intval(
+				struct wlan_objmgr_psoc *psoc,
+				uint8_t *adapt_dwell_passive_mon_intval)
+{
+	return QDF_STATUS_E_FAILURE;
+}
+
+static inline QDF_STATUS
+ucfg_fwol_get_adapt_dwell_wifi_act_threshold(
+				struct wlan_objmgr_psoc *psoc,
+				uint8_t *adapt_dwell_wifi_act_threshold)
+{
+	return QDF_STATUS_E_FAILURE;
+}
+
+static inline QDF_STATUS
+ucfg_fwol_init_adapt_dwelltime_in_cfg(
+			struct wlan_objmgr_psoc *psoc,
+			struct adaptive_dwelltime_params *dwelltime_params)
+{
+	return QDF_STATUS_E_FAILURE;
+}
+
+static inline QDF_STATUS
+ucfg_fwol_set_adaptive_dwelltime_config(
+			struct adaptive_dwelltime_params *dwelltime_params)
+{
+	return QDF_STATUS_E_FAILURE;
+}
+
+#ifdef FEATURE_WLAN_RA_FILTERING
+static inline QDF_STATUS
+ucfg_fwol_set_is_rate_limit_enabled(struct wlan_objmgr_psoc *psoc,
+				    bool is_rate_limit_enabled)
+{
+	return QDF_STATUS_E_FAILURE;
+}
+
+static inline QDF_STATUS
+ucfg_fwol_get_is_rate_limit_enabled(struct wlan_objmgr_psoc *psoc,
+				    bool *is_rate_limit_enabled)
+{
+	return QDF_STATUS_E_FAILURE;
+}
+#endif /* FEATURE_WLAN_RA_FILTERING */
+
+#endif /* WLAN_FW_OFFLOAD */
+
 #endif /* _WLAN_FWOL_UCFG_API_H_ */

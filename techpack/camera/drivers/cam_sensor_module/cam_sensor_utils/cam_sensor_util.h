@@ -26,9 +26,7 @@
 #if defined(CONFIG_SENSOR_RETENTION)
 #define SENSOR_RETENTION_READ_RETRY_CNT 10
 #define RETENTION_SENSOR_ID 0x20C4
-#define RETENTION_SETTING_START_ADDR 0x6028 // initSettings
-#define STREAM_ON_ADDR_IMX316   0x1001
-#define STREAM_ON_ADDR_IMX516   0x1001
+#define STREAM_ON_ADDR   0x100
 
 enum sensor_retention_mode {
 	RETENTION_INIT = 0,
@@ -38,8 +36,6 @@ enum sensor_retention_mode {
 #endif
 
 #if defined(CONFIG_CAMERA_ADAPTIVE_MIPI)
-#define STREAM_ON_ADDR   0x100
-#define STREAM_ON_ADDR_IMX516   0x1001
 #define FRONT_SENSOR_ID_IMX374 0x0374
 #define FRONT_SENSOR_ID_S5K3J1 0x30A1
 #define TOF_SENSOR_ID_IMX518 0x0518
@@ -52,6 +48,7 @@ enum sensor_retention_mode {
 #define SENSOR_ID_S5KGH1 0x0881
 #define SENSOR_ID_S5K2L3 0x20C3
 #define SENSOR_ID_S5KHM1 0x1AD1
+#define SENSOR_ID_S5K3M5 0x30D5
 
 #define INVALID_MIPI_INDEX -1
 #endif
@@ -93,4 +90,9 @@ int32_t cam_sensor_update_power_settings(void *cmd_buf,
 
 int cam_sensor_bob_pwm_mode_switch(struct cam_hw_soc_info *soc_info,
 	int bob_reg_idx, bool flag);
+
+#if defined(CONFIG_SAMSUNG_ACTUATOR_PREVENT_SHAKING)
+int cam_sensor_util_force_power_down(struct cam_sensor_power_ctrl_t *ctrl,
+		struct cam_hw_soc_info *soc_info);
+#endif
 #endif /* _CAM_SENSOR_UTIL_H_ */

@@ -32,6 +32,8 @@
 #include <linux/vmalloc.h>
 #include <linux/bitops.h>
 #include <linux/msm_dma_iommu_mapping.h>
+#include <linux/jiffies.h>
+#include <linux/sched/cputime.h>
 #define CREATE_TRACE_POINTS
 #include <trace/events/ion.h>
 #include <soc/qcom/secure_buffer.h>
@@ -1042,7 +1044,11 @@ struct dma_buf *ion_alloc_dmabuf(size_t len, unsigned int heap_id_mask,
 	DEFINE_DMA_BUF_EXPORT_INFO(exp_info);
 	struct dma_buf *dmabuf;
 	char task_comm[TASK_COMM_LEN];
+	unsigned long jiffies_s = jiffies;
+	u64 utime, stime_s, stime_e, stime_d;
+	static DEFINE_RATELIMIT_STATE(show_mem_ratelimit, HZ * 10, 1);
 
+	task_cputime(current, &utime, &stime_s);
 	pr_debug("%s: len %zu heap_id_mask %u flags %x\n", __func__,
 		 len, heap_id_mask, flags);
 	/*
@@ -1098,6 +1104,16 @@ struct dma_buf *ion_alloc_dmabuf(size_t len, unsigned int heap_id_mask,
 		kfree(exp_info.exp_name);
 	}
 
+	task_cputime(current, &utime, &stime_e);
+	stime_d = stime_e - stime_s;
+	if (!IS_ERR(dmabuf) && stime_d / NSEC_PER_MSEC > 100) {
+		pr_info("%s ion_heap_id: %d mask=0x%x timeJS(ms):%u/%llu len:0x%zx",
+			__func__, heap->id, heap_id_mask,
+			jiffies_to_msecs(jiffies - jiffies_s),
+			stime_d / NSEC_PER_MSEC, len);
+		if (__ratelimit(&show_mem_ratelimit))
+			show_mem(0, NULL);
+	}
 	return dmabuf;
 }
 

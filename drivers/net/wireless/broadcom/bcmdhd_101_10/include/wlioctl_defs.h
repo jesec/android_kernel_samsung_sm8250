@@ -4,7 +4,7 @@
  *
  * Definitions subject to change without notice.
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -21,7 +21,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #ifndef wlioctl_defs_h
@@ -89,8 +89,8 @@
 #define OLD_NRATE_STF_STBC	2		/* stf mode STBC */
 #define OLD_NRATE_STF_SDM	3		/* stf mode SDM */
 
-#define WLC_11N_N_PROP_MCS	6		/* xxx number of proprietary 11n MCS'es */
-#define WLC_11N_FIRST_PROP_MCS	87		/* xxx first Broadcom proprietary MCS */
+#define WLC_11N_N_PROP_MCS	6		/* number of proprietary 11n MCS'es */
+#define WLC_11N_FIRST_PROP_MCS	87		/* first Broadcom proprietary MCS */
 #define WLC_11N_LAST_PROP_MCS	102
 
 #define MAX_CCA_CHANNELS 38	/* Max number of 20 Mhz wide channels */
@@ -107,9 +107,9 @@
 #define  CCA_FLAG_5G_ONLY		0x02	/* Return a channel from 2.4 Ghz band */
 #define  CCA_FLAG_IGNORE_DURATION	0x04	/* Ignore dwell time for each channel */
 #define  CCA_FLAGS_PREFER_1_6_11	0x10
-#define  CCA_FLAG_IGNORE_INTERFER 	0x20 /* do not exlude channel based on interfer level */
+#define  CCA_FLAG_IGNORE_INTERFER	0x20	/* do not exclude channel based on interfer level */
 
-#define CCA_ERRNO_BAND 		1	/* After filtering for band pref, no choices left */
+#define CCA_ERRNO_BAND		1	/* After filtering for band pref, no choices left */
 #define CCA_ERRNO_DURATION	2	/* After filtering for duration, no choices left */
 #define CCA_ERRNO_PREF_CHAN	3	/* After filtering for chan pref, no choices left */
 #define CCA_ERRNO_INTERFER	4	/* After filtering for interference, no choices left */
@@ -216,6 +216,7 @@
 
 /* Mask bit for LOW power scan, High accuracy scan, LOW span scan bit defines */
 #define WL_SCANFLAGS_SCAN_MODE_MASK	0x7000u
+#define WL_SCANFLAGS_SCAN_MODE_SHIFT	12u
 
 /* Bitmask for scan_type */
 /* Reserved flag precludes the use of 0xff for scan_type which is
@@ -937,9 +938,9 @@
 /* #define WLC_LAST				310 */	/* Never used - can be reused */
 #define WLC_SET_INTERFERENCE_OVERRIDE_MODE	311	/* set inter mode override */
 #define WLC_GET_INTERFERENCE_OVERRIDE_MODE	312	/* get inter mode override */
-/* #define WLC_GET_WAI_RESTRICT	313 */	/* xxx for WAPI, deprecated use iovar instead */
-/* #define WLC_SET_WAI_RESTRICT	314 */	/* xxx for WAPI, deprecated use iovar instead */
-/* #define WLC_SET_WAI_REKEY	315 */	/* xxx for WAPI, deprecated use iovar instead */
+/* #define WLC_GET_WAI_RESTRICT	313 */	/* for WAPI, deprecated use iovar instead */
+/* #define WLC_SET_WAI_RESTRICT	314 */	/* for WAPI, deprecated use iovar instead */
+/* #define WLC_SET_WAI_REKEY	315 */	/* for WAPI, deprecated use iovar instead */
 #define WLC_SET_NAT_CONFIG			316	/* for configuring NAT filter driver */
 #define WLC_GET_NAT_STATE			317
 #define WLC_GET_TXBF_RATESET			318
@@ -1022,7 +1023,7 @@
 #define WL_AUTH_FILS_SHARED		4	/* d11 fils shared key authentication */
 #define WL_AUTH_FILS_SHARED_PFS		5	/* d11 fils shared key w/ pfs authentication */
 #define WL_AUTH_FILS_PUBLIC		6	/* d11 fils public key authentication */
-/* xxx: Some branch use different define for WL_AUTH_OPEN_SHARED
+/* Some branch use different define for WL_AUTH_OPEN_SHARED
  * for example, PHOENIX2 Branch defined WL_AUTH_OPEN_SHARED as 3
  * But other branch defined WL_AUTH_OPEN_SHARED as 2
  * if it is mismatch, WEP association can be failed.
@@ -1107,6 +1108,7 @@
 #define WLC_MACMODE_DISABLED	0	/* MAC list disabled */
 #define WLC_MACMODE_DENY	1	/* Deny specified (i.e. allow unspecified) */
 #define WLC_MACMODE_ALLOW	2	/* Allow specified (i.e. deny unspecified) */
+#define WLC_MACMODE_AVOID	3	/* Avoid specified (i.e. conditionally avoid unspecified) */
 
 /*
  * 54g modes (basic bits may still be overridden)
@@ -1429,8 +1431,7 @@
 #define BCMIO_NBBY		8
 #define WL_EVENTING_MASK_LEN	16		/* Don't increase this without wl review */
 
-#define WL_EVENTING_MASK_EXT_LEN \
-    MAX(WL_EVENTING_MASK_LEN, (ROUNDUP(WLC_E_LAST, NBBY)/NBBY))
+#define WL_EVENTING_MASK_EXT_LEN	ROUNDUP(WLC_E_LAST, NBBY)/NBBY
 
 /* join preference types */
 #define WL_JOIN_PREF_RSSI	1	/* by RSSI */

@@ -30,6 +30,10 @@
 /* Include the master list of GPU cores that are supported */
 #include "adreno-gpulist.h"
 
+#if defined(CONFIG_SEC_ABC)
+#include <linux/sti/abc_common.h>
+#endif
+
 static void adreno_input_work(struct work_struct *work);
 static unsigned int counter_delta(struct kgsl_device *device,
 	unsigned int reg, unsigned int *counter);
@@ -561,6 +565,9 @@ void adreno_hang_int_callback(struct adreno_device *adreno_dev, int bit)
 {
 	dev_crit_ratelimited(KGSL_DEVICE(adreno_dev)->dev,
 				"MISC: GPU hang detected\n");
+#if defined(CONFIG_SEC_ABC)
+        sec_abc_send_event("MODULE=gpu_qc@ERROR=gpu_fault");
+#endif
 	adreno_irqctrl(adreno_dev, 0);
 
 	/* Trigger a fault in the dispatcher - this will effect a restart */
@@ -3062,7 +3069,7 @@ void adreno_spin_idle_debug(struct adreno_device *adreno_dev,
 	unsigned int status, status3, intstatus;
 	unsigned int hwfault, cx_status;
 
-	dev_err(device->dev, str);
+	dev_err(device->dev, "%s", str);
 
 	adreno_readreg(adreno_dev, ADRENO_REG_CP_RB_RPTR, &rptr);
 	adreno_readreg(adreno_dev, ADRENO_REG_CP_RB_WPTR, &wptr);

@@ -1518,7 +1518,7 @@ static int sugov_start(struct cpufreq_policy *policy)
 			memset(sg_cpu, 0, sizeof(*sg_cpu));
 			sg_cpu->util_vessel = vptr;
 		}
-#ifndef FFSI_CLUSTER_TRAVERSING		
+#ifndef FFSI_CLUSTER_TRAVERSING
 skip_subcpus:
 #endif
 #else

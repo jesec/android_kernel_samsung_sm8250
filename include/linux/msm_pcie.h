@@ -282,9 +282,16 @@ enum l1ss_ctrl_ids {
         L1SS_MAX
 };
 
+void sec_pcie_set_use_ep_loaded(struct pci_dev *dev);
+void sec_pcie_set_ep_driver_loaded(struct pci_dev *dev, bool is_loaded);
+
 int sec_pcie_l1ss_enable(int ctrl_id);
 int sec_pcie_l1ss_disable(int ctrl_id);
 #else
+
+#define sec_pcie_set_use_ep_loaded(dev) do { } while(0)
+#define sec_pcie_set_ep_driver_loaded(dev, is_loaded) do { } while(0)
+
 inline int sec_pcie_l1ss_enable(int ctrl_id)
 {
         return -ENODEV;

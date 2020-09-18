@@ -87,7 +87,7 @@ Copyright (C) 2012, Samsung Electronics. All rights reserved.
 #include "ss_interpolation_common.h"
 #include "ss_flash_table_data_common.h"
 
-#include <linux/panel_notify.h>
+#include "ss_panel_notify.h"
 
 #if defined(CONFIG_SEC_DEBUG)
 #include <linux/sec_debug.h>
@@ -121,8 +121,11 @@ extern bool enable_pr_debug;
 /* Register dump info */
 #define MAX_INTF_NUM 2
 
+/* Panel Unique Chip ID Byte count */
+#define MAX_CHIP_ID 6
+
 /* Panel Unique Cell ID Byte count */
-#define MAX_CELL_ID 11
+#define MAX_CELL_ID 16
 
 /* Panel Unique OCTA ID Byte count */
 #define MAX_OCTA_ID 20
@@ -147,9 +150,13 @@ extern bool enable_pr_debug;
 #define MDNIE_TUNE_MAX_SIZE 6
 //#define DYNAMIC_DSI_CLK
 
-extern int poweroff_charging;
 #define USE_CURRENT_BL_LEVEL 0xFFFFFF
 
+extern int poweroff_charging;
+
+struct vrr_info;
+struct lfd_base_str;
+enum LFD_SCOPE_ID;
 
 enum PANEL_LEVEL_KEY {
 	LEVEL_KEY_NONE = 0,
@@ -162,6 +169,7 @@ enum PANEL_LEVEL_KEY {
 enum backlight_origin {
 	BACKLIGHT_NORMAL,
 	BACKLIGHT_FINGERMASK_ON,
+	BACKLIGHT_FINGERMASK_ON_SUSTAIN,
 	BACKLIGHT_FINGERMASK_OFF,
 };
 
@@ -189,6 +197,14 @@ enum {
 	TE_FITTING_STEP1 = BIT(4),
 	TE_FITTING_STEP2 = BIT(5),
 };
+
+enum br_mode {
+	FLASH_GAMMA = 0, /* read gamma related data from flash memory */
+	TABLE_GAMMA,	 /* use gamma related data from fixed values */
+	GAMMA_MODE2,	 /* use gamma mode2 */
+	MAX_BR_MODE,
+};
+
 
 #if 0
 enum ACL_GRADUAL_MODE {
@@ -272,6 +288,9 @@ struct lpm_info {
 
 	struct mutex lpm_lock;
 
+	/* To prevent normal brightness patcket after tx LPM on */
+	struct mutex lpm_bl_lock;
+
 	struct lpm_pwr_ctrl lpm_pwr;
 };
 
@@ -320,6 +339,7 @@ enum CD_MAP_TABLE_LIST {
 	PAC_HBM,
 	AOD,
 	HMT,
+	MULTI_TO_ONE_NORMAL,
 	CD_MAP_TABLE_MAX,
 };
 
@@ -341,6 +361,7 @@ struct candela_map_table {
 		This is real measured brightness on panel.
 	*/
 	int *interpolation_cd;
+	int *gm2_wrdisbv;	/* Gamma mode2 WRDISBV Write Display Brightness */
 
 	int min_lv;
 	int max_lv;
@@ -356,7 +377,7 @@ struct samsung_display_dtsi_data {
 	bool samsung_support_factory_panel_swap;
 	u32  samsung_power_on_reset_delay;
 	u32  samsung_dsi_off_reset_delay;
-	u32 samsung_lpm_init_delay;
+	u32 samsung_lpm_init_delay;	/* 2C/3C memory access -> wait for samsung_lpm_init_delay ms -> HLPM on seq. */
 	u8	samsung_delayed_display_on;
 
 	/* Anapass DDI's unique power sequence:
@@ -365,6 +386,7 @@ struct samsung_display_dtsi_data {
 	 */
 	bool samsung_anapass_power_seq;
 	int samsung_tcon_rdy_gpio;
+	int samsung_delay_after_tcon_rdy;
 
 	/* If display->ctrl_count is 2, it broadcasts.
 	 * To prevent to send mipi cmd thru mipi dsi1, set samsung_cmds_unicast flag.
@@ -411,24 +433,17 @@ struct samsung_display_dtsi_data {
 struct display_status {
 	bool wait_disp_on;
 	int wait_actual_disp_on;
-	int aod_delay;
 	int hbm_mode;
 	int disp_on_pre; /* set to 1 at first ss_panel_on_pre(). it  means that kernel initialized display */
+	bool first_commit_disp_on;
 };
 
 struct hmt_status {
 	unsigned int hmt_on;
-	unsigned int hmt_reverse;
-	unsigned int hmt_is_first;
 
 	int hmt_bl_level;
 	int candela_level_hmt;
 	int cmd_idx_hmt;
-
-	int (*hmt_enable)(struct samsung_display_driver_data *vdd);
-	int (*hmt_reverse_update)(struct samsung_display_driver_data *vdd,
-			int enable);
-	int (*hmt_bright_update)(struct samsung_display_driver_data *vdd);
 };
 
 struct esd_recovery {
@@ -570,7 +585,16 @@ enum ss_panel_pwr_state {
 	MAX_PANEL_PWR,
 };
 
+/*  COMMON_DISPLAY_NDX
+ *   - ss_display ndx for common data such as debugging info
+ *    which do not need to be handled seperately by the panels
+ *  PRIMARY_DISPLAY_NDX
+ *   - ss_display ndx for data only for primary display
+ *  SECONDARY_DISPLAY_NDX
+ *   - ss_display ndx for data only for secondary display
+ */
 enum ss_display_ndx {
+	COMMON_DISPLAY_NDX = 0,
 	PRIMARY_DISPLAY_NDX = 0,
 	SECONDARY_DISPLAY_NDX,
 	MAX_DISPLAY_NDX,
@@ -751,6 +775,9 @@ struct brightness_info {
 
 	int cd_level;
 	int interpolation_cd;
+	int gm2_wrdisbv;	/* Gamma mode2 WRDISBV Write Display Brightness */
+	int gamma_mode2_support;
+	int multi_to_one_support;
 
 	/* SAMSUNG_FINGERPRINT */
 	int finger_mask_bl_level;
@@ -807,6 +834,7 @@ struct ub_con_detect {
 	unsigned long irqflag;
 	bool enabled;
 	int ub_con_cnt;
+	int current_wakeup_context_gpio_status;
 };
 
 struct motto_data {
@@ -820,6 +848,12 @@ struct motto_data {
 	u32 cmn_ctrl2_curr;
 };
 
+enum CHECK_SUPPORT_MODE {
+	CHECK_SUPPORT_MCD,
+	CHECK_SUPPORT_HMD,
+	CHECK_SUPPORT_BRIGHTDOT,
+};
+
 struct brightness_table {
 	int refresh_rate;
 	bool is_sot_hs_mode; /* Scan of Time is HS mode for VRR */
@@ -827,7 +861,7 @@ struct brightness_table {
 	int idx;
 
 	/* Copy MTP data from parent node, and skip reading MTP data
-	 * from DDI flash. 
+	 * from DDI flash.
 	 * Ex) 48hz and 96hz mode use same MTP data with 60hz and 120hz mode,
 	 * respectively. So, those modes copy MTP data from 60hz and 120hz mode.
 	 * But, those have different DDI VFP value, so have different AOR
@@ -848,14 +882,11 @@ struct brightness_table {
 	/*
 	 *  Smart Diming
 	 */
-	int smart_dimming_loaded_dsi;
 	struct smartdim_conf *smart_dimming_dsi;
 
 	/*
 	 *  HMT
 	 */
-	int smart_dimming_hmt_loaded_dsi;
-	struct hmt_status hmt_stat;
 	struct smartdim_conf *smart_dimming_dsi_hmt;
 
 	/* flash */
@@ -903,6 +934,7 @@ struct panel_func {
 	int (*samsung_mdnie_read)(struct samsung_display_driver_data *vdd);
 	int (*samsung_smart_dimming_init)(struct samsung_display_driver_data *vdd, struct brightness_table *br_tbl);
 
+	/* samsung_flash_gamma_support : check flash gamma support for specific contidion */
 	int (*samsung_flash_gamma_support)(struct samsung_display_driver_data *vdd);
 	int (*samsung_interpolation_init)(struct samsung_display_driver_data *vdd, struct brightness_table *br_tbl, enum INTERPOLATION_MODE mode);
 	int (*force_use_table_for_hmd)(struct samsung_display_driver_data *vdd, struct brightness_table *br_tbl);
@@ -926,6 +958,7 @@ struct panel_func {
 	struct dsi_panel_cmd_set * (*samsung_brightness_vint)(struct samsung_display_driver_data *vdd, int *level_key);
 	struct dsi_panel_cmd_set * (*samsung_brightness_irc)(struct samsung_display_driver_data *vdd, int *level_key);
 	struct dsi_panel_cmd_set * (*samsung_brightness_gamma)(struct samsung_display_driver_data *vdd, int *level_key);
+	struct dsi_panel_cmd_set * (*samsung_brightness_gm2_gamma_comp)(struct samsung_display_driver_data *vdd, int *level_key);
 	struct dsi_panel_cmd_set * (*samsung_brightness_ltps)(struct samsung_display_driver_data *vdd, int *level_key);
 	struct dsi_panel_cmd_set * (*samsung_brightness_normal_etc)(struct samsung_display_driver_data *vdd, int *level_key);
 	struct dsi_panel_cmd_set * (*samsung_brightness_vrr)(struct samsung_display_driver_data *vdd, int *level_key);
@@ -935,6 +968,9 @@ struct panel_func {
 	struct dsi_panel_cmd_set * (*samsung_hbm_etc)(struct samsung_display_driver_data *vdd, int *level_key);
 	struct dsi_panel_cmd_set * (*samsung_hbm_irc)(struct samsung_display_driver_data *vdd, int *level_key);
 	struct dsi_panel_cmd_set * (*samsung_brightness_vrr_hbm)(struct samsung_display_driver_data *vdd, int *level_key);
+
+	struct dsi_panel_cmd_set * (*samsung_hbm_acl_on)(struct samsung_display_driver_data *vdd, int *level_key);
+	struct dsi_panel_cmd_set * (*samsung_hbm_acl_off)(struct samsung_display_driver_data *vdd, int *level_key);
 	int (*get_hbm_candela_value)(int level);
 
 	/* Total level key in brightness */
@@ -966,9 +1002,6 @@ struct panel_func {
 	void (*samsung_tft_blic_init)(struct samsung_display_driver_data *vdd);
 	void (*samsung_brightness_tft_pwm)(struct samsung_display_driver_data *vdd, int level);
 	struct dsi_panel_cmd_set * (*samsung_brightness_tft_pwm_ldi)(struct samsung_display_driver_data *vdd, int *level_key);
-
-	/* GAMMAMODE2 */
-	struct dsi_panel_cmd_set * (*samsung_brightness_gamma_mode2)(struct samsung_display_driver_data *vdd, int *level_key);
 
 	void (*samsung_bl_ic_pwm_en)(int enable);
 	void (*samsung_bl_ic_i2c_ctrl)(int scaled_level);
@@ -1004,6 +1037,18 @@ struct panel_func {
 	int (*samsung_gct_read)(struct samsung_display_driver_data *vdd);
 	int (*samsung_gct_write)(struct samsung_display_driver_data *vdd);
 
+	/* GraySpot Test */
+	void (*samsung_gray_spot)(struct samsung_display_driver_data *vdd, int enable);
+
+	/* MCD Test */
+	void (*samsung_mcd_etc)(struct samsung_display_driver_data *vdd, int enable);
+
+	/* Gamma mode2 DDI flash */
+	int (*samsung_gm2_ddi_flash_prepare)(struct samsung_display_driver_data *vdd);
+
+	/* Gamma mode2 gamma compensation (for 48/96hz VRR mode) */
+	int (*samsung_gm2_gamma_comp_init)(struct samsung_display_driver_data *vdd);
+
 	/* PBA */
 	void (*samsung_pba_config)(struct samsung_display_driver_data *vdd, void *arg);
 
@@ -1024,6 +1069,83 @@ struct panel_func {
 	int (*get_gamma_V_size)(void);
 	void (*convert_GAMMA_to_V)(unsigned char* src, unsigned int *dst);
 	void (*convert_V_to_GAMMA)(unsigned int * src, unsigned char *dst);
+
+	int (*samsung_vrr_set_te_mod)(struct samsung_display_driver_data *vdd, int cur_rr, int cur_hs);
+	int (*samsung_lfd_get_base_val)(struct vrr_info *vrr,
+			enum LFD_SCOPE_ID scope, struct lfd_base_str *lfd_base);
+
+	/* check current mode (VRR, DMS, or etc..) to support tests (MCD, GCT, or etc..) */
+	bool (*samsung_check_support_mode)(struct samsung_display_driver_data *vdd,
+			enum CHECK_SUPPORT_MODE mode);
+
+	/*
+		For video panel :
+		dfps operation related panel update func.
+	*/
+	void (*samsung_dfps_panel_update)(struct samsung_display_driver_data *vdd, int fps);
+
+	/* Dynamic MIPI Clock */
+	int (*samsung_dyn_mipi_pre)(struct samsung_display_driver_data *vdd);
+	int (*samsung_dyn_mipi_post)(struct samsung_display_driver_data *vdd);
+};
+
+enum SS_VBIAS_MODE {
+	VBIAS_MODE_NS_WARM = 0,
+	VBIAS_MODE_NS_COOL,
+	VBIAS_MODE_NS_COLD,
+	VBIAS_MODE_HS_WARM,
+	VBIAS_MODE_HS_COOL,
+	VBIAS_MODE_HS_COLD,
+	VBIAS_MODE_MAX
+};
+
+enum PHY_STRENGTH_SETTING {
+	SS_PHY_CMN_VREG_CTRL_0 = 0,
+	SS_PHY_CMN_CTRL_2,
+	SS_PHY_CMN_GLBL_RESCODE_OFFSET_TOP_CTRL,
+	SS_PHY_CMN_GLBL_RESCODE_OFFSET_BOT_CTRL,
+	SS_PHY_CMN_GLBL_RESCODE_OFFSET_MID_CTRL,
+	SS_PHY_CMN_GLBL_STR_SWI_CAL_SEL_CTRL,
+	SS_PHY_CMN_MAX,
+};
+
+/* DDI flash buffer for HOP display */
+struct flash_gm2 {
+	bool flash_gm2_init_done;
+
+	u8 *ddi_flash_raw_buf;
+	int ddi_flash_raw_len;
+	int ddi_flash_start_addr;
+
+	u8 *vbias_data;	/* 2 modes (NS/HS), 3 temperature modes, 22 bytes cmd */
+
+	int off_ns_temp_warm;	/* NS mode, T > 0 */
+	int off_ns_temp_cool;	/* NS mode, -15 < T <= 0 */
+	int off_ns_temp_cold;	/* NS mode, T <= -15 */
+	int off_hs_temp_warm;	/* HS mode, T > 0 */
+	int off_hs_temp_cool;	/* HS mode, -15 < T <= 0 */
+	int off_hs_temp_cold;	/* HS mode, T <= -15 */
+
+	int off_gm2_flash_checksum;
+
+	u8 *mtp_one_vbias_mode;
+
+	int len_one_vbias_mode;
+	int len_mtp_one_vbias_mode;
+
+	u16 checksum_tot_flash;
+	u16 checksum_tot_cal;
+	u16 checksum_one_mode_flash;
+	u16 checksum_one_mode_mtp;
+	int is_diff_one_vbias_mode;
+	int is_flash_checksum_ok;
+};
+
+/* used for gamma compensation for 48/96hz VRR mode in gamma mode2 */
+struct mtp_gm2_info  {
+	bool mtp_gm2_init_done;
+	u8 *gamma_org; /* original MTP gamma value */
+	u8 *gamma_comp; /* compensated gamma value (for 48/96hz mode) */
 };
 
 struct ss_brightness_info {
@@ -1055,8 +1177,6 @@ struct ss_brightness_info {
 	void (*backlight_tft_pwm_control)(struct samsung_display_driver_data *vdd, int bl_lvl);
 	void (*ss_panel_tft_outdoormode_update)(struct samsung_display_driver_data *vdd);
 
-
-
 	struct candela_map_table candela_map_table[CD_MAP_TABLE_MAX][SUPPORT_PANEL_REVISION];
 	struct cmd_map aid_map_table[SUPPORT_PANEL_REVISION];
 	struct cmd_map vint_map_table[SUPPORT_PANEL_REVISION];
@@ -1065,15 +1185,6 @@ struct ss_brightness_info {
 	struct cmd_map smart_acl_elvss_map_table[SUPPORT_PANEL_REVISION];
 	struct cmd_map caps_map_table[SUPPORT_PANEL_REVISION];
 	struct cmd_map hmt_reverse_aid_map_table[SUPPORT_PANEL_REVISION];
-
-
-
-
-
-
-	/////////////////////////////////
-
-
 
 	/*
 	 *  AOR & IRC Interpolation feature
@@ -1097,6 +1208,7 @@ struct ss_brightness_info {
 	 */
 	bool support_early_gamma_flash;	/* prepare gamma flash at display driver probe timing */
 	bool flash_gamma_support;
+	char flash_gamma_type[10];
 	char flash_read_intf[10];
 
 	int flash_gamma_force_update;
@@ -1110,6 +1222,11 @@ struct ss_brightness_info {
 	int irc_size;
 	int dbv_size;
 
+	/* DDI flash buffer for HOP display */
+	struct flash_gm2 gm2_table;
+	/* used for gamma compensation for 48/96hz VRR mode in gamma mode2 */
+	struct mtp_gm2_info gm2_mtp;
+
 	/* In VRR, each refresh rate mode has its own brightness table includes flash gamma (MTP),
 	 * respectively.
 	 * Support multiple brightness table for VRR.
@@ -1121,6 +1238,10 @@ struct ss_brightness_info {
 	int br_tbl_flash_cnt;	/* count of real flash tble */
 
 	int force_use_table_for_hmd_done;
+
+	int smart_dimming_loaded_dsi;
+	int smart_dimming_hmt_loaded_dsi;
+	struct hmt_status hmt_stat;
 };
 
 enum SS_BRR_MODE {
@@ -1157,7 +1278,7 @@ struct vrr_bridge_rr_tbl {
 	bool sot_hs_base;
 
 	/* allowed brightness [candela]
-	 * ex) HAB: 
+	 * ex) HAB:
 	 * 48NM/96NM BRR: 11~420nit
 	 * 96HS/120HS BRR: 11~420nit
 	 * 60HS/120HS BRR: 98~420nit
@@ -1180,7 +1301,117 @@ enum VRR_BLACK_FRAME_MODE {
 	BLACK_FRAME_MAX,
 };
 
+enum VRR_LFD_FAC_MODE {
+	VRR_LFD_FAC_LFDON = 0,	/* dynamic 120hz <-> 10hz in HS mode, or 60hz <-> 30hz in NS mode */
+	VRR_LFD_FAC_HIGH = 1,	/* always 120hz in HS mode, or 60hz in NS mode */
+	VRR_LFD_FAC_LOW = 2,	/* set LFD min and max freq. to lowest value (HS: 10hz, NS: 30hz).
+				 * In image update case, freq. will reach to 120hz, but it will
+				 * ignore bridge step to enter LFD mode (ignore frame insertion setting)
+				 */
+	VRR_LFD_FAC_MAX,
+};
+
+enum VRR_LFD_AOD_MODE {
+	VRR_LFD_AOD_LFDON = 0,	/* image update case: 30hz, LFD case: 1hz */
+	VRR_LFD_AOD_LFDOFF = 1,	/* image update case: 30hz, LFD case: 30hz */
+	VRR_LFD_AOD_MAX,
+};
+
+enum VRR_LFD_TSPLPM_MODE {
+	VRR_LFD_TSPLPM_LFDON = 0,
+	VRR_LFD_TSPLPM_LFDOFF = 1,
+	VRR_LFD_TSPLPM_MAX,
+};
+
+enum VRR_LFD_INPUT_MODE {
+	VRR_LFD_INPUT_LFDON = 0,
+	VRR_LFD_INPUT_LFDOFF = 1,
+	VRR_LFD_INPUT_MAX,
+};
+
+enum VRR_LFD_DISP_MODE {
+	VRR_LFD_DISP_LFDON = 0,
+	VRR_LFD_DISP_LFDOFF = 1, /* low brightness case */
+	VRR_LFD_DISP_HBM_1HZ = 2,
+	VRR_LFD_DISP_MAX,
+};
+
+enum LFD_CLIENT_ID {
+	LFD_CLIENT_FAC = 0,
+	LFD_CLIENT_DISP,
+	LFD_CLIENT_INPUT,
+	LFD_CLIENT_AOD,
+	LFD_CLIENT_VID,
+	LFD_CLIENT_HMD,
+	LFD_CLIENT_MAX
+};
+
+enum LFD_SCOPE_ID {
+	LFD_SCOPE_NORMAL = 0,
+	LFD_SCOPE_LPM,
+	LFD_SCOPE_HMD,
+	LFD_SCOPE_MAX,
+};
+
+enum LFD_FUNC_FIX {
+	LFD_FUNC_FIX_OFF = 0,
+	LFD_FUNC_FIX_HIGH = 1,
+	LFD_FUNC_FIX_LOW = 2,
+	LFD_FUNC_FIX_MAX
+};
+
+enum LFD_FUNC_SCALABILITY {
+	LFD_FUNC_SCALABILITY0 = 0,	/* 40lux ~ 7400lux, defealt, div=11 */
+	LFD_FUNC_SCALABILITY1 = 1,	/* under 40lux, LFD off, div=1 */
+	LFD_FUNC_SCALABILITY2 = 2,	/* touch press/release, div=2 */
+	LFD_FUNC_SCALABILITY3 = 3,	/* TBD, div=4 */
+	LFD_FUNC_SCALABILITY4 = 4,	/* TBD, div=5 */
+	LFD_FUNC_SCALABILITY5 = 5,	/* 40lux ~ 7400lux, same set with LFD_FUNC_SCALABILITY0, div=11 */
+	LFD_FUNC_SCALABILITY6 = 6,	/* over 7400lux (HBM), div=120 */
+	LFD_FUNC_SCALABILITY_MAX
+};
+
+#define LFD_FUNC_MIN_CLEAR	0
+#define LFD_FUNC_MAX_CLEAR	0
+
+struct lfd_base_str {
+	u32 max_div_def;
+	u32 min_div_def;
+	u32 min_div_lowest;
+	int base_rr;
+};
+
+struct lfd_mngr {
+	enum LFD_FUNC_FIX fix[LFD_SCOPE_MAX];
+	enum LFD_FUNC_SCALABILITY scalability[LFD_SCOPE_MAX];
+	u32 min[LFD_SCOPE_MAX];
+	u32 max[LFD_SCOPE_MAX];
+};
+
+struct lfd_info {
+	struct lfd_mngr lfd_mngr[LFD_CLIENT_MAX];
+
+	struct notifier_block nb_lfd_touch;
+	struct workqueue_struct *lfd_touch_wq;
+	struct work_struct lfd_touch_work;
+
+	bool support_lfd; /* Low Frequency Driving mode for HOP display */
+
+	u32 min_div; /* max_div_def ~ min_div_def, or min_div_lowest */
+	u32 max_div; /* max_div_def ~ min_div_def */
+	u32 base_rr;
+};
+
+enum VRR_GM2_GAMMA {
+	VRR_GM2_GAMMA_NO_ACTION = 0,
+	VRR_GM2_GAMMA_COMPENSATE,
+	VRR_GM2_GAMMA_RESTORE_ORG,
+};
+
 struct vrr_info {
+	/* LFD information and mangager */
+	struct lfd_info lfd;
+
 	/* ss_panel_vrr_switch() is main VRR function.
 	 * It can be called in multiple threads, display thread
 	 * and kworker thread.
@@ -1193,21 +1424,33 @@ struct vrr_info {
 	 */
 	struct mutex brr_lock;
 
-	bool is_support_vrr;
+	/* - samsung,support_vrr_based_bl : Samsung concept.
+	 *   Change VRR mode in brightness update due to brithness compensation for VRR change.
+	 * - No samsung,support_vrr_based_bl : Qcomm original concept.
+	 *   Change VRR mode in dsi_panel_switch() by sending DSI_CMD_SET_TIMING_SWITCH command.
+	 */
+	bool support_vrr_based_bl;
+
 	bool is_support_brr;
 	bool is_support_black_frame;
 
-	/* case 04323399:
-	 * MDP set SDE_RSC_CMD_STATE for inter-frame power collapse, which
-	 * refer to TE. In case of Bridge RR, which causes higher TE period than MDP setting,
-	 * it lost wr_ptr irq, and causes delayed pp_done irq and frame drop.
+	/* MDP set SDE_RSC_CMD_STATE for inter-frame power collapse, which refer to TE.
+	 *
+	 * In case of SS VRR change (120HS -> 60HS), it changes VRR mode
+	 * in other work thread, not it commit thread.
+	 * In result, MDP works at 60hz, while panel is working at 120hz yet, for a while.
+	 * It causes higher TE period than MDP expected, so it lost wr_ptr irq,
+	 * and causes delayed pp_done irq and frame drop.
+	 *
 	 * To prevent this
-	 * During Bridge RR, set RSC state to SDE_RSC_CLK_STATE, 4-frames power collapse,
-	 * Then recover its state after Bridge RR is done.
+	 * During VRR change, set RSC fps to maximum 120hz, to wake up RSC most frequently,
+	 * not to lost wr_ptr irq.
+	 * After finish VRR change, recover original RSC fps, and rsc timeout value.
 	 */
-	bool force_rsc_clk_state;
-	bool running_vrr;
-	bool force_update_mdp_clk;
+	bool keep_max_rsc_fps;
+
+	bool running_vrr_mdp; /* MDP get VRR request ~ VRR work start */
+	bool running_vrr; /* VRR work start ~ end */
 
 	/* QCT use DMS instead of VRR feature for command mdoe panel.
 	 * is_vrr_changing flag shows it is VRR chaging mode while DMS flag is set,
@@ -1218,7 +1461,7 @@ struct vrr_info {
 
 	u32 cur_h_active;
 	u32 cur_v_active;
-	/* 
+	/*
 	 * - cur_refresh_rate should be set right before brightness setting (ss_brightness_dcs)
 	 * - cur_refresh_rate could not be changed during brightness setting (ss_brightness_dcs)
 	 *   Best way is that guarantees to keep cur_refresh_rate during brightness setting,
@@ -1230,14 +1473,23 @@ struct vrr_info {
 	int cur_refresh_rate;
 	bool cur_sot_hs_mode; /* Scan of Time HS mode for VRR */
 
-	u32 target_h_active;
-	u32 target_v_active;
-	int target_refresh_rate;
-	bool target_sot_hs_mode; /* Scan of Time HS mode for VRR */
+	/* Some displays, like hubble HAB and c2 HAC, cannot support 120hz in WQHD.
+	 * In this case, it should guarantee below sequence to prevent WQHD@120hz mode,
+	 * in case of WQHD@60hz -> FHD/HD@120hz.
+	 * 1) WQHD@60Hz -> FHD/HD@60hz by sending DMS command and  one image frame
+	 * 2) FHD/HD@60hz -> FHD/HD@120hz by sendng VRR commands
+	 */
+	int max_h_active_support_120hs;
+
+	u32 adjusted_h_active;
+	u32 adjusted_v_active;
+	int adjusted_refresh_rate;
+	bool adjusted_sot_hs_mode; /* Scan of Time HS mode for VRR */
 
 	/* bridge refresh rate */
 	enum SS_BRR_MODE brr_mode;
 	bool brr_rewind_on; /* rewind BRR in case of new VRR set back to BRR start FPS */
+	int brr_bl_level;	/* brightness level causing BRR stopa */
 
 	struct workqueue_struct *vrr_workqueue;
 	struct work_struct vrr_work;
@@ -1265,6 +1517,23 @@ struct vrr_info {
 	 */
 	bool skip_vrr_in_brightness;
 	bool param_update;
+
+	/* TE moudulation (reports vsync as 60hz even TE is 120hz, in 60HS mode)
+	 * Some HOP display, like C2 HAC UB, supports self scan function.
+	 * In this case, if it sets to 60HS mode, panel fetches pixel data from GRAM in 60hz,
+	 * but DDI generates TE as 120hz.
+	 * This architecture is for preventing brightness flicker in VRR change and keep fast touch responsness.
+	 *
+	 * In 60HS mode, TE period is 120hz, but display driver reports vsync to graphics HAL as 60hz.
+	 * So, do TE modulation in 60HS mode, reports vsync as 60hz.
+	 * In 30NS mode, TE is 60hz, but reports vsync as 30hz.
+	 */
+	bool support_te_mod;
+	int te_mod_on;
+	int te_mod_divider;
+	int te_mod_cnt;
+
+	enum VRR_GM2_GAMMA gm2_gamma;
 };
 
 struct panel_vreg {
@@ -1313,6 +1582,8 @@ struct samsung_display_driver_data {
 	bool finger_mask_updated;
 	int finger_mask;
 	int panel_hbm_entry_delay; //hbm entry delay/ unit = vsync
+	int panel_hbm_entry_after_te; /* delay after TE noticed */
+	int panel_hbm_exit_delay; /* hbm exit delay frame */
 	struct lcd_device *lcd_dev;
 
 	struct display_status display_status_dsi;
@@ -1344,7 +1615,7 @@ struct samsung_display_driver_data {
 	int manufacture_time_dsi;
 
 	int ddi_id_loaded_dsi;
-	int ddi_id_dsi[5];
+	int ddi_id_dsi[MAX_CHIP_ID];
 
 	int cell_id_loaded_dsi;		/* Panel Unique Cell ID */
 	int cell_id_dsi[MAX_CELL_ID];	/* white coordinate + manufacture date */
@@ -1367,9 +1638,13 @@ struct samsung_display_driver_data {
 	/* Sleep_out cmd time check */
 	s64 sleep_out_time_64;
 	ktime_t sleep_out_time;
+	ktime_t tx_set_on_time;
 
 	/* Support Global Para */
 	int gpara;
+
+	/* Num_of interface get from priv_info->topology.num_intf */
+	int num_of_intf;
 
 	/*
 	 *  panel pwr state
@@ -1402,6 +1677,9 @@ struct samsung_display_driver_data {
 	 *  ESD
 	 */
 	struct esd_recovery esd_recovery;
+
+	/* FG_ERR */
+	int fg_err_gpio;
 
 	/* Panel ESD Recovery Count */
 	int panel_recovery_cnt;
@@ -1488,18 +1766,16 @@ struct samsung_display_driver_data {
 	/*
 	 *  smmu debug(sde & rotator)
 	 */
-	struct ss_smmu_debug ss_debug_smmu[SMMU_MAX_DEBUG]; // TODO: use ss_debug_smmu for only primary vdd, not secondary vdd...
+	struct ss_smmu_debug ss_debug_smmu[SMMU_MAX_DEBUG];
 	struct kmem_cache *ss_debug_smmu_cache;
 
 	/*
 	 *  SELF DISPLAY
 	 */
 	struct self_display self_disp;
-	int self_display_loaded_dsi;
 
 	/* MAFPC */
 	struct MAFPC mafpc;
-	int mafpc_loaded;
 
 	/*
 	 * Samsung brightness information for smart dimming
@@ -1541,20 +1817,64 @@ struct samsung_display_driver_data {
 	struct device *motto_device;
 	struct motto_data motto_info;
 
-	/* panel notifier work */	
+	/* panel notifier work */
 	struct workqueue_struct *notify_wq;
 	struct work_struct bl_event_work;
 	struct work_struct vrr_event_work;
+	struct work_struct lfd_event_work;
 	struct work_struct panel_state_event_work;
 
 	enum panel_notifier_event_t ss_notify_event;
 	struct mutex notify_lock;
 	bool is_autorefresh_fail;
 
+	/* window color to make different br table */
+	char window_color[2];
+	bool support_window_color;
+
 	struct panel_regulators panel_regulator;
+
+	/* need additional mipi support */
+	bool mipi_header_modi;
+	bool need_brightness_lock;
+	bool no_qcom_pps;
+
+	/* Single TX  */
+	bool not_support_single_tx;
+
+	/*
+		AOT support : tddi video panel
+		To keep high status panel power & reset
+	*/
+	bool aot_enable;
+
+	int check_fw_id; 	/* save ddi_fw id (revision)*/
+	bool is_recovery_mode;
+
+	/* phy strength setting bit field */
+	DECLARE_BITMAP(ss_phy_ctrl_bit, SS_PHY_CMN_MAX);
+	uint32_t ss_phy_ctrl_data[SS_PHY_CMN_MAX];
+
+	/* sustain LP11 signal before LP00 on entering sleep status */
+	int lp11_sleep_ms_time;
+
+	/* Bloom5G need old style aor dimming : using both A-dimming & S-dimming */
+	bool old_aor_dimming;
+
+	/* BIT0: brightdot test, BIT1: brightdot test in LFD 0.5hz */
+	u32 brightdot_state;
+
+	/* Some panel has unstable TE period, and causes wr_ptr timeout panic
+	 * in inter-frame RSC idle policy.
+	 * W/A: select four frame RSC idle policy.
+	 */
+	bool rsc_4_frame_idle;
 };
 
 extern struct list_head vdds_list;
+
+extern char *lfd_client_name[LFD_CLIENT_MAX];
+extern char *lfd_scope_name[LFD_SCOPE_MAX];
 
 /* COMMON FUNCTION */
 void ss_panel_init(struct dsi_panel *panel);
@@ -1562,6 +1882,8 @@ void ss_panel_init(struct dsi_panel *panel);
 /* VRR */
 int ss_panel_dms_switch(struct samsung_display_driver_data *vdd);
 void ss_panel_vrr_switch_work(struct work_struct *work);
+int ss_get_lfd_div(struct samsung_display_driver_data *vdd, enum LFD_SCOPE_ID scope,
+			u32 *out_min_div, u32 *out_max_div);
 
 //void ss_dsi_panel_registered(struct dsi_panel *pdata);
 void ss_set_max_cpufreq(struct samsung_display_driver_data *vdd,
@@ -1634,6 +1956,7 @@ void ss_panel_lpm_ctrl(struct samsung_display_driver_data *vdd, int enable);
 int ss_panel_lpm_power_ctrl(struct samsung_display_driver_data *vdd, int enable);
 
 /* Dynamic MIPI Clock FUNCTION */
+int ss_find_dyn_mipi_clk_timing_idx(struct samsung_display_driver_data *vdd);
 int ss_change_dyn_mipi_clk_timing(struct samsung_display_driver_data *vdd);
 int ss_dyn_mipi_clk_tx_ffc(struct samsung_display_driver_data *vdd);
 
@@ -1656,7 +1979,7 @@ void ss_send_ub_uevent(struct samsung_display_driver_data *vdd);
 
 void ss_set_panel_state(struct samsung_display_driver_data *vdd, enum ss_panel_pwr_state panel_state);
 
-void ss_notify_queue_work(struct samsung_display_driver_data *vdd, 
+void ss_notify_queue_work(struct samsung_display_driver_data *vdd,
 	enum panel_notifier_event_t event);
 
 int ss_panel_power_ctrl(struct samsung_display_driver_data *vdd, bool enable);
@@ -1713,6 +2036,8 @@ void set_up_br_info(struct samsung_display_driver_data *vdd,
 
 void ss_set_vrr_switch(struct samsung_display_driver_data *vdd, bool param_update);
 bool ss_is_brr_on(enum SS_BRR_MODE brr_mode);
+bool ss_is_sot_hs_from_drm_mode(const struct drm_display_mode *drm_mode);
+int ub_con_det_status(int index);
 
 /***************************************************************************************************
 *		BRIGHTNESS RELATED END.
@@ -2007,18 +2332,7 @@ static inline u32 ss_get_yres(struct samsung_display_driver_data *vdd)
 /* check if it is dual dsi port */
 static inline bool ss_is_dual_dsi(struct samsung_display_driver_data *vdd)
 {
-	struct dsi_panel *panel = GET_DSI_PANEL(vdd);
-
-	/* FC2 change: set panle mode in SurfaceFlinger initialization, instead of kenrel booting... */
-	if (!panel->cur_mode) {
-		LCD_ERR("err: no panel mode yet...\n");
-		return false;
-	}
-
-	if (!panel->cur_mode->priv_info)
-		return false;
-
-	if (panel->cur_mode->priv_info->topology.num_intf == 2)
+	if (vdd->num_of_intf == 2)
 		return true;
 	else
 		return false;
@@ -2027,15 +2341,7 @@ static inline bool ss_is_dual_dsi(struct samsung_display_driver_data *vdd)
 /* check if it is dual dsi port */
 static inline bool ss_is_single_dsi(struct samsung_display_driver_data *vdd)
 {
-	struct dsi_panel *panel = GET_DSI_PANEL(vdd);
-
-	/* FC2 change: set panle mode in SurfaceFlinger initialization, instead of kenrel booting... */
-	if (!panel->cur_mode) {
-		LCD_ERR("err: no panel mode yet...\n");
-		return true;
-	}
-
-	if (panel->cur_mode->priv_info->topology.num_intf == 1)
+	if (vdd->num_of_intf == 1)
 		return true;
 	else
 		return false;
@@ -2280,6 +2586,12 @@ static inline struct brightness_table *ss_get_br_tbl(struct samsung_display_driv
 	struct brightness_table *br_tbl = NULL;
 	int count;
 
+	/* return default br_tbl (first br_tbl, maybe 60NM) in case VRR is not supported */
+	if (!vdd->vrr.support_vrr_based_bl) {
+		br_tbl = &vdd->br_info.br_tbl[0];
+		return br_tbl;
+	}
+
 	for (count = 0; count < vdd->br_info.br_tbl_count; count++) {
 		if (target_rr == vdd->br_info.br_tbl[count].refresh_rate &&
 			target_sot_hs == vdd->br_info.br_tbl[count].is_sot_hs_mode) {
@@ -2307,6 +2619,11 @@ static inline struct brightness_table *ss_get_cur_br_tbl(struct samsung_display_
 	int cur_rr = vdd->vrr.cur_refresh_rate;
 	bool cur_sot_hs = vdd->vrr.cur_sot_hs_mode;
 
+	if (!vdd->br_info.br_tbl_count) {
+		LCD_ERR("br_tbl_count is 0 \n");
+		return NULL;
+	}
+
 	/* Bridge Refresh Rate mode
 	 * 60hs/120: gamam interpolation, 61~120 hz use 120 bl tbl
 	 * 48/60 normal: AOR interpolation, 49~60 hz use 60 bl tbl
@@ -2325,6 +2642,22 @@ static inline struct brightness_table *ss_get_cur_br_tbl(struct samsung_display_
 	}
 
 	return ss_get_br_tbl(vdd, cur_rr, cur_sot_hs);
+}
+
+static inline u8 *ss_get_vbias_data(struct flash_gm2 *gm2_table, enum SS_VBIAS_MODE mode)
+{
+	int offset;
+	u8 *vbias;
+
+	if (!gm2_table->vbias_data) {
+		LCD_ERR("vbias_data is not allocated yet..\n");
+		return NULL;
+	}
+
+	offset = gm2_table->len_one_vbias_mode * mode;
+	vbias = (u8 *)(gm2_table->vbias_data + offset);
+
+	return vbias;
 }
 
 #endif /* SAMSUNG_DSI_PANEL_COMMON_H */

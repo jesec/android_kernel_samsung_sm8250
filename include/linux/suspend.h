@@ -469,6 +469,8 @@ static inline bool pm_wakeup_pending(void) { return false; }
 static inline void pm_system_wakeup(void) {}
 static inline void pm_wakeup_clear(bool reset) {}
 static inline void pm_system_irq_wakeup(unsigned int irq_number) {}
+static inline bool pm_get_wakeup_count(unsigned int *count, bool block) { return false; }
+static inline void pm_print_active_wakeup_sources(void) {}
 
 static inline void lock_system_sleep(void) {}
 static inline void unlock_system_sleep(void) {}

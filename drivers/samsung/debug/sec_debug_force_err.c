@@ -47,16 +47,21 @@ module_param_call(force_error, force_error, NULL, NULL, 0644);
 
 static void __simulate_apps_wdog_bark(void)
 {
+	unsigned long time_out_jiffies;
+
 	pr_emerg("Simulating apps watch dog bark\n");
-	preempt_disable();
-	mdelay(DELAY_TIME);
-	preempt_enable();
+	local_irq_disable();
+	time_out_jiffies = jiffies + msecs_to_jiffies(DELAY_TIME);
+	while (time_is_after_jiffies(time_out_jiffies))
+		udelay(1);
+	local_irq_enable();
 	/* if we reach here, simulation failed */
 	pr_emerg("Simulation of apps watch dog bark failed\n");
 }
 
 static void __simulate_apps_wdog_bite(void)
 {
+	unsigned long time_out_jiffies;
 #ifdef CONFIG_HOTPLUG_CPU
 	int cpu;
 
@@ -68,7 +73,9 @@ static void __simulate_apps_wdog_bite(void)
 #endif
 	pr_emerg("Simulating apps watch dog bite\n");
 	local_irq_disable();
-	mdelay(DELAY_TIME);
+	time_out_jiffies = jiffies + msecs_to_jiffies(DELAY_TIME);
+	while (time_is_after_jiffies(time_out_jiffies))
+		udelay(1);
 	local_irq_enable();
 	/* if we reach here, simulation had failed */
 	pr_emerg("Simualtion of apps watch dog bite failed\n");
@@ -172,6 +179,7 @@ static void simulate_bus_hang(void)
 	uint32_t address = HANG_ADDRESS;
 	void *hang_address;
 	struct regulator *r;
+	unsigned long time_out_jiffies;
 
 	/* simulate */
 	hang_address = ioremap(address, SZ_4K);
@@ -188,7 +196,9 @@ static void simulate_bus_hang(void)
 				ARRAY_SIZE(bus_timeout_camera_clocks_on));
 
 	dummy_value = readl_relaxed(hang_address);
-	mdelay(DELAY_TIME);
+	time_out_jiffies = jiffies + msecs_to_jiffies(DELAY_TIME);
+	while (time_is_after_jiffies(time_out_jiffies))
+		udelay(1);
 	/* if we hit here, test had failed */
 	pr_emerg("Bus timeout test failed...0x%x\n", dummy_value);
 	iounmap(hang_address);
@@ -278,7 +288,7 @@ static int force_error(const char *val, const struct kernel_param *kp)
 		const char *msg;
 		void (*func)(void);
 	} magic[] = {
-		{ "apppdogbark",
+		{ "appdogbark",
 			"Generating an apps wdog bark!",
 			&__simulate_apps_wdog_bark },
 		{ "appdogbite",

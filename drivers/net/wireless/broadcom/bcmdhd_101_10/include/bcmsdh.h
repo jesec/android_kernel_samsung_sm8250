@@ -3,7 +3,7 @@
  *     export functions to client drivers
  *     abstract OS and BUS specific details of SDIO
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -20,7 +20,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 /**
@@ -130,7 +130,7 @@ extern uint32 bcmsdh_reg_write(void *sdh, uintptr addr, uint size, uint32 data);
 extern int bcmsdhsdio_set_sbaddr_window(void *sdh, uint32 address, bool force_set);
 
 /* Indicate if last reg read/write failed */
-/* XXX Replace this with status pointers in reg_read/write */
+/* Replace this with status pointers in reg_read/write */
 extern bool bcmsdh_regfail(void *sdh);
 
 /* Buffer transfer to/from device (client) core via cmd53.
@@ -188,7 +188,7 @@ extern int bcmsdh_stop(void *sdh);
 /* Wait system lock free */
 extern int bcmsdh_waitlockfree(void *sdh);
 
-/* XXX Bogosity alert. This should only know about devids gleaned through
+/* Bogosity alert. This should only know about devids gleaned through
  * the standard CIS (versus some client dependent method), and we already
  * have an interface for the CIS.
  * Remove me.

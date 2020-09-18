@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018, 2019 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2018-2020 The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -23,6 +23,7 @@
 #include "osif_sync.h"
 #include "wlan_hdd_main.h"
 #include "wlan_blm_ucfg_api.h"
+#include "hdd_dp_cfg.h"
 
 void hdd_nud_set_gateway_addr(struct hdd_adapter *adapter,
 			      struct qdf_mac_addr gw_mac_addr)
@@ -63,8 +64,15 @@ void hdd_nud_flush_work(struct hdd_adapter *adapter)
 
 void hdd_nud_deinit_tracking(struct hdd_adapter *adapter)
 {
-	hdd_debug("DeInitialize the NUD tracking");
-	qdf_destroy_work(NULL, &adapter->nud_tracking.nud_event_work);
+	struct hdd_context *hdd_ctx;
+
+	hdd_ctx = WLAN_HDD_GET_CTX(adapter);
+
+	if (adapter->device_mode == QDF_STA_MODE &&
+	    hdd_ctx->config->enable_nud_tracking) {
+		hdd_debug("DeInitialize the NUD tracking");
+		qdf_destroy_work(NULL, &adapter->nud_tracking.nud_event_work);
+	}
 }
 
 void hdd_nud_ignore_tracking(struct hdd_adapter *adapter, bool ignoring)
@@ -269,13 +277,32 @@ hdd_handle_nud_fail_non_sta(struct hdd_adapter *adapter)
 	hdd_debug("Disconnecting vdev with vdev id: %d",
 		  adapter->vdev_id);
 	/* Issue Disconnect */
-	status = wlan_hdd_disconnect(adapter, eCSR_DISCONNECT_REASON_DEAUTH);
+	status = wlan_hdd_disconnect(adapter, eCSR_DISCONNECT_REASON_DEAUTH,
+				     eSIR_MAC_GATEWAY_REACHABILITY_FAILURE);
 	if (0 != status) {
 		hdd_err("wlan_hdd_disconnect failed, status: %d",
 			status);
 		hdd_set_disconnect_status(adapter, false);
 	}
 }
+
+#ifdef WLAN_NUD_TRACKING
+static bool
+hdd_is_roam_after_nud_enabled(struct hdd_config *config)
+{
+	if (config->enable_nud_tracking == ROAM_AFTER_NUD_FAIL ||
+	    config->enable_nud_tracking == DISCONNECT_AFTER_ROAM_FAIL)
+		return true;
+
+	return false;
+}
+#else
+static bool
+hdd_is_roam_after_nud_enabled(struct hdd_config *config)
+{
+	return false;
+}
+#endif
 
 /**
  * __hdd_nud_failure_work() - work for nud event
@@ -312,7 +339,8 @@ static void __hdd_nud_failure_work(struct hdd_adapter *adapter)
 		return;
 	}
 
-	if (adapter->device_mode == QDF_STA_MODE) {
+	if (adapter->device_mode == QDF_STA_MODE &&
+	    hdd_is_roam_after_nud_enabled(hdd_ctx->config)) {
 		hdd_handle_nud_fail_sta(hdd_ctx, adapter);
 		return;
 	}
@@ -383,7 +411,9 @@ static void hdd_nud_process_failure_event(struct hdd_adapter *adapter)
 			qdf_sched_work(0, &adapter
 					->nud_tracking.nud_event_work);
 		} else {
-			hdd_nud_set_tracking(adapter, NUD_NONE, false);
+			hdd_debug("NUD_START [0x%x]", NUD_INCOMPLETE);
+			hdd_nud_capture_stats(adapter, NUD_INCOMPLETE);
+			hdd_nud_set_tracking(adapter, NUD_INCOMPLETE, true);
 		}
 	} else {
 		hdd_debug("NUD FAILED -> Current State [0x%x]", curr_state);

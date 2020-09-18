@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2018-2019, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2018-2020, The Linux Foundation. All rights reserved.
  */
 
 #include <linux/module.h>
@@ -1580,20 +1580,20 @@ static int wcd937x_event_notify(struct notifier_block *block,
 					0x80, 0x00);
 		break;
 	case BOLERO_WCD_EVT_SSR_DOWN:
+		wcd937x->mbhc->wcd_mbhc.deinit_in_progress = true;
 		mbhc = &wcd937x->mbhc->wcd_mbhc;
 		wcd937x_mbhc_ssr_down(wcd937x->mbhc, component);
 		wcd937x_reset_low(wcd937x->dev);
 		break;
 	case BOLERO_WCD_EVT_SSR_UP:
 		wcd937x_reset(wcd937x->dev);
+		/* allow reset to take effect */
+		usleep_range(10000, 10010);
 		wcd937x_get_logical_addr(wcd937x->tx_swr_dev);
 		wcd937x_get_logical_addr(wcd937x->rx_swr_dev);
+		wcd937x_init_reg(component);
 		regcache_mark_dirty(wcd937x->regmap);
 		regcache_sync(wcd937x->regmap);
-		/* Enable surge protection */
-		snd_soc_component_update_bits(component,
-				WCD937X_HPH_SURGE_HPHLR_SURGE_EN,
-				0xFF, 0xD9);
 		/* Initialize MBHC module */
 		mbhc = &wcd937x->mbhc->wcd_mbhc;
 		ret = wcd937x_mbhc_post_ssr_init(wcd937x->mbhc, component);
@@ -1603,6 +1603,7 @@ static int wcd937x_event_notify(struct notifier_block *block,
 		} else {
 			wcd937x_mbhc_hs_detect(component, mbhc->mbhc_cfg);
 		}
+		wcd937x->mbhc->wcd_mbhc.deinit_in_progress = false;
 		break;
 	default:
 		dev_err(component->dev, "%s: invalid event %d\n", __func__,

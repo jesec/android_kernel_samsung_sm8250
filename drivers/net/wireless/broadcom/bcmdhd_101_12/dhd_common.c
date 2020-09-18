@@ -306,6 +306,7 @@ enum {
 #endif /* RTT_SUPPORT && WL_NAN */
 #endif /* RTT_GEOFENCE_CONT */
 	IOV_FW_VBS,
+	IOV_CHECK_TRAP_ROT,
 	IOV_LAST
 };
 
@@ -404,6 +405,7 @@ const bcm_iovar_t dhd_iovars[] = {
 #endif /* RTT_SUPPORT && WL_NAN */
 #endif /* RTT_GEOFENCE_CONT */
 	{"fw_verbose", IOV_FW_VBS, 0, 0, IOVT_UINT32, 0},
+	{"check_trap_rot", IOV_CHECK_TRAP_ROT, (0), 0, IOVT_BOOL, 0},
 	/* --- add new iovars *ABOVE* this line --- */
 	{NULL, 0, 0, 0, 0, 0 }
 };
@@ -924,6 +926,12 @@ void* dhd_get_fwdump_buf(dhd_pub_t *dhd_pub, uint32 length)
 			DHD_PREALLOC_MEMDUMP_RAM, length);
 #else
 		dhd_pub->soc_ram = (uint8*) MALLOC(dhd_pub->osh, length);
+
+		if ((dhd_pub->soc_ram == NULL) && CAN_SLEEP()) {
+			DHD_ERROR(("%s: Try to allocate virtual memory for fw crash snap shot.\n",
+				__FUNCTION__));
+			dhd_pub->soc_ram = (uint8*) VMALLOC(dhd_pub->osh, length);
+		}
 #endif /* CONFIG_DHD_USE_STATIC_BUF && DHD_USE_STATIC_MEMDUMP */
 	}
 
@@ -2458,6 +2466,15 @@ dhd_doiovar(dhd_pub_t *dhd_pub, const bcm_iovar_t *vi, uint32 actionid, const ch
 			int_val = 0;
 		}
 		dhd_dbg_set_fwverbose(dhd_pub, (uint32)int_val);
+		break;
+	}
+	case IOV_GVAL(IOV_CHECK_TRAP_ROT): {
+		int_val = dhd_pub->check_trap_rot? 1 : 0;
+		(void)memcpy_s(arg, val_size, &int_val, sizeof(int_val));
+		break;
+	}
+	case IOV_SVAL(IOV_CHECK_TRAP_ROT): {
+		dhd_pub->check_trap_rot = *(bool *)arg;
 		break;
 	}
 	default:
@@ -4360,7 +4377,10 @@ dhd_pktfilter_offload_set(dhd_pub_t * dhd, char *arg)
 			if (*argv[i] == '!') {
 				pf_el->match_flags =
 					htod16(WL_PKT_FILTER_MFLAG_NEG);
-				(argv[i])++;
+				if (++(argv[i]) == NULL) {
+					printf("Pattern not provided\n");
+					goto fail;
+				}
 			}
 			rc = wl_pattern_atoh(argv[i], (char*)&pf_el->mask_and_data[rc]);
 			if ((rc == -1) || (rc > MAX_PKTFLT_FIXED_PATTERN_SIZE)) {
@@ -8062,3 +8082,81 @@ done:
 	return ret;
 }
 #endif /* CONFIG_ROAM_RSSI_LIMIT */
+
+#ifdef CONFIG_ROAM_MIN_DELTA
+int
+dhd_roam_min_delta_get(dhd_pub_t *dhd, uint32 *dt2g, uint32 *dt5g)
+{
+	wlc_roam_min_delta_t *pmin_delta;
+	wlc_roam_min_delta_info_v1_t *pmin_delta_info;
+	int ret = BCME_OK;
+	int plen = sizeof(*pmin_delta_info) + ROAM_MIN_DELTA_HDRLEN;
+
+	pmin_delta = (wlc_roam_min_delta_t *)MALLOCZ(dhd->osh, plen);
+	if (!pmin_delta) {
+		DHD_ERROR(("%s Fail to malloc buffer\n", __FUNCTION__));
+		return BCME_NOMEM;
+	}
+
+	/* Get Minimum ROAM score delta */
+	ret = dhd_iovar(dhd, 0, "roam_min_delta", NULL, 0, (char *)pmin_delta, plen, FALSE);
+	if (ret < 0) {
+		DHD_ERROR(("%s Failed to Get roam_min_delta %d\n", __FUNCTION__, ret));
+		goto done;
+	}
+
+	if (pmin_delta->ver != WLC_ROAM_MIN_DELTA_VER_1) {
+		ret = BCME_VERSION;
+		goto done;
+	}
+
+	pmin_delta_info = (wlc_roam_min_delta_info_v1_t *)pmin_delta->data;
+	*dt2g = (uint32)pmin_delta_info->roam_min_delta_2g;
+	*dt5g = (uint32)pmin_delta_info->roam_min_delta_5g;
+
+done:
+	if (pmin_delta) {
+		MFREE(dhd->osh, pmin_delta, plen);
+	}
+	return ret;
+}
+
+int
+dhd_roam_min_delta_set(dhd_pub_t *dhd, uint32 dt2g, uint32 dt5g)
+{
+	wlc_roam_min_delta_t *pmin_delta;
+	wlc_roam_min_delta_info_v1_t *pmin_delta_info;
+	int ret = BCME_OK;
+	int plen = sizeof(*pmin_delta_info) + ROAM_MIN_DELTA_HDRLEN;
+
+	/* Sanity check Minimum ROAM score delta */
+	if ((dt2g > ROAM_MIN_DELTA_MAX) || (dt5g > ROAM_MIN_DELTA_MAX)) {
+		DHD_ERROR(("%s Not In Range Minimum ROAM score delta, 2G: %d, 5G: %d\n",
+			__FUNCTION__, dt2g, dt5g));
+		return BCME_RANGE;
+	}
+
+	pmin_delta = (wlc_roam_min_delta_t *)MALLOCZ(dhd->osh, plen);
+	if (!pmin_delta) {
+		DHD_ERROR(("%s Fail to malloc buffer\n", __FUNCTION__));
+		return BCME_NOMEM;
+	}
+	pmin_delta->ver = WLC_ROAM_MIN_DELTA_VER_1;
+	pmin_delta->len = sizeof(*pmin_delta_info);
+	pmin_delta_info = (wlc_roam_min_delta_info_v1_t *)pmin_delta->data;
+	pmin_delta_info->roam_min_delta_2g = (uint32)dt2g;
+	pmin_delta_info->roam_min_delta_5g = (uint32)dt5g;
+
+	/* Set Minimum ROAM score delta */
+	ret = dhd_iovar(dhd, 0, "roam_min_delta", (char *)pmin_delta, plen, NULL, 0, TRUE);
+	if (ret < 0) {
+		DHD_ERROR(("%s Failed to Set roam_min_delta %d\n", __FUNCTION__, ret));
+		goto done;
+	}
+done:
+	if (pmin_delta) {
+		MFREE(dhd->osh, pmin_delta, plen);
+	}
+	return ret;
+}
+#endif /* CONFIG_ROAM_MIN_DELTA */

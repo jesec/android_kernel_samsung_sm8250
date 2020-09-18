@@ -1,7 +1,7 @@
 /*
  * Indices for 802.11 a/b/g/n/ac 1-3 chain symmetric transmit rates
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,7 +18,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #ifndef _bcmwifi_rates_h_
@@ -1221,7 +1221,7 @@ typedef enum clm_ru_rates {
 #define OFDM_PHY2MAC_RATE(rlpt)         plcp_ofdm_rate_tbl[(rlpt) & 0x7]
 #define CCK_PHY2MAC_RATE(signal)	((signal)/5)
 
-/* xxx 'proprietary' string should not exist in open source(OEM_ANDROID) */
+/* 'proprietary' string should not exist in open source(OEM_ANDROID) */
 /* given a proprietary MCS, get number of spatial streams */
 #define GET_PROPRIETARY_11N_MCS_NSS(mcs) (1 + ((mcs) - 85) / 8)
 

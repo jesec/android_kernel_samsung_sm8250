@@ -1,7 +1,7 @@
 /*
  * Broadcom Dongle Host Driver (DHD), RTT
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,12 +18,13 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 #ifndef __DHD_RTT_H__
 #define __DHD_RTT_H__
 
-#include "dngl_stats.h"
+#include <dngl_stats.h>
+#include "wifi_stats.h"
 
 #define RTT_MAX_TARGET_CNT 50
 #define RTT_MAX_FRAME_CNT 25
@@ -169,31 +170,12 @@ typedef enum ranging_type {
 #define HAS_ONEWAY_CAP(cap) (cap & RTT_CAP_ONE_WAY)
 #define HAS_RTT_CAP(cap) (HAS_ONEWAY_CAP(cap) || HAS_11MC_CAP(cap))
 
-typedef struct wifi_channel_info {
-	wifi_channel_width_t width;
-	wifi_channel center_freq; /* primary 20 MHz channel */
-	wifi_channel center_freq0; /* center freq (MHz) first segment */
-	wifi_channel center_freq1; /* center freq (MHz) second segment valid for 80 + 80 */
-} wifi_channel_info_t;
-
-typedef struct wifi_rate {
-	uint32 preamble :3; /* 0: OFDM, 1: CCK, 2 : HT, 3: VHT, 4..7 reserved */
-	uint32 nss		:2; /* 1 : 1x1, 2: 2x2, 3: 3x3, 4: 4x4 */
-	uint32 bw		:3; /* 0: 20Mhz, 1: 40Mhz, 2: 80Mhz, 3: 160Mhz */
-	/* OFDM/CCK rate code would be as per IEEE std in the unit of 0.5 mb
-	* HT/VHT it would be mcs index
-	*/
-	uint32 rateMcsIdx :8;
-	uint32 reserved :16; /* reserved */
-	uint32 bitrate;	/* unit of 100 Kbps */
-} wifi_rate_t;
-
 typedef struct rtt_target_info {
 	struct ether_addr addr;
 	struct ether_addr local_addr;
 	rtt_type_t type; /* rtt_type */
 	rtt_peer_type_t peer; /* peer type */
-	wifi_channel_info_t channel; /* channel information */
+	wifi_channel_info channel; /* channel information */
 	chanspec_t chanspec; /* chanspec for channel */
 	bool	disable; /* disable for RTT measurement */
 	/*
@@ -347,12 +329,12 @@ typedef struct rtt_report {
 	* 1-sided RTT: TX rate of RTT frame.
 	* 2-sided RTT: TX rate of initiator's Ack in response to FTM frame.
 	*/
-	wifi_rate_t tx_rate;
+	wifi_rate_v1 tx_rate;
 	/*
 	* 1-sided RTT: TX rate of Ack from other side.
 	* 2-sided RTT: TX rate of FTM frame coming from responder.
 	*/
-	wifi_rate_t rx_rate;
+	wifi_rate_v1 rx_rate;
 	wifi_timespan rtt;	/*  round trip time in 0.1 nanoseconds */
 	wifi_timespan rtt_sd;	/* rtt standard deviation in 0.1 nanoseconds */
 	wifi_timespan rtt_spread; /* difference between max and min rtt times recorded */
@@ -406,39 +388,28 @@ typedef struct wifi_rtt_responder {
 
 typedef void (*dhd_rtt_compl_noti_fn)(void *ctx, void *rtt_data);
 /* Linux wrapper to call common dhd_rtt_set_cfg */
-int
-dhd_dev_rtt_set_cfg(struct net_device *dev, void *buf);
+int dhd_dev_rtt_set_cfg(struct net_device *dev, void *buf);
 
-int
-dhd_dev_rtt_cancel_cfg(struct net_device *dev, struct ether_addr *mac_list, int mac_cnt);
+int dhd_dev_rtt_cancel_cfg(struct net_device *dev, struct ether_addr *mac_list, int mac_cnt);
 
-int
-dhd_dev_rtt_register_noti_callback(struct net_device *dev, void *ctx,
+int dhd_dev_rtt_register_noti_callback(struct net_device *dev, void *ctx,
 	dhd_rtt_compl_noti_fn noti_fn);
 
-int
-dhd_dev_rtt_unregister_noti_callback(struct net_device *dev, dhd_rtt_compl_noti_fn noti_fn);
+int dhd_dev_rtt_unregister_noti_callback(struct net_device *dev, dhd_rtt_compl_noti_fn noti_fn);
 
-int
-dhd_dev_rtt_capability(struct net_device *dev, rtt_capabilities_t *capa);
+int dhd_dev_rtt_capability(struct net_device *dev, rtt_capabilities_t *capa);
 
-int
-dhd_dev_rtt_avail_channel(struct net_device *dev, wifi_channel_info *channel_info);
+int dhd_dev_rtt_avail_channel(struct net_device *dev, wifi_channel_info *channel_info);
 
-int
-dhd_dev_rtt_enable_responder(struct net_device *dev, wifi_channel_info *channel_info);
+int dhd_dev_rtt_enable_responder(struct net_device *dev, wifi_channel_info *channel_info);
 
-int
-dhd_dev_rtt_cancel_responder(struct net_device *dev);
+int dhd_dev_rtt_cancel_responder(struct net_device *dev);
 /* export to upper layer */
-chanspec_t
-dhd_rtt_convert_to_chspec(wifi_channel_info_t channel);
+chanspec_t dhd_rtt_convert_to_chspec(wifi_channel_info channel);
 
-int
-dhd_rtt_idx_to_burst_duration(uint idx);
+int dhd_rtt_idx_to_burst_duration(uint idx);
 
-int
-dhd_rtt_set_cfg(dhd_pub_t *dhd, rtt_config_params_t *params);
+int dhd_rtt_set_cfg(dhd_pub_t *dhd, rtt_config_params_t *params);
 
 #ifdef WL_NAN
 void dhd_rtt_initialize_geofence_cfg(dhd_pub_t *dhd);
@@ -462,58 +433,42 @@ void dhd_rtt_set_geofence_rtt_state(dhd_pub_t *dhd, bool state);
 
 bool dhd_rtt_get_geofence_rtt_state(dhd_pub_t *dhd);
 
-rtt_geofence_target_info_t*
-dhd_rtt_get_geofence_target_head(dhd_pub_t *dhd);
+rtt_geofence_target_info_t* dhd_rtt_get_geofence_target_head(dhd_pub_t *dhd);
 
-rtt_geofence_target_info_t*
-dhd_rtt_get_geofence_current_target(dhd_pub_t *dhd);
+rtt_geofence_target_info_t* dhd_rtt_get_geofence_current_target(dhd_pub_t *dhd);
 
 rtt_geofence_target_info_t*
 dhd_rtt_get_geofence_target(dhd_pub_t *dhd, struct ether_addr* peer_addr,
 	int8 *index);
 
-int
-dhd_rtt_add_geofence_target(dhd_pub_t *dhd, rtt_geofence_target_info_t  *target);
+int dhd_rtt_add_geofence_target(dhd_pub_t *dhd, rtt_geofence_target_info_t  *target);
 
-int
-dhd_rtt_remove_geofence_target(dhd_pub_t *dhd, struct ether_addr *peer_addr);
+int dhd_rtt_remove_geofence_target(dhd_pub_t *dhd, struct ether_addr *peer_addr);
 
-int
-dhd_rtt_delete_geofence_target_list(dhd_pub_t *dhd);
+int dhd_rtt_delete_geofence_target_list(dhd_pub_t *dhd);
 
-int
-dhd_rtt_delete_nan_session(dhd_pub_t *dhd);
+int dhd_rtt_delete_nan_session(dhd_pub_t *dhd);
 #endif /* WL_NAN */
 
-uint8
-dhd_rtt_invalid_states(struct net_device *ndev, struct ether_addr *peer_addr);
+uint8 dhd_rtt_invalid_states(struct net_device *ndev, struct ether_addr *peer_addr);
 
-void
-dhd_rtt_schedule_rtt_work_thread(dhd_pub_t *dhd, int sched_reason);
+void dhd_rtt_schedule_rtt_work_thread(dhd_pub_t *dhd, int sched_reason);
 
-int
-dhd_rtt_stop(dhd_pub_t *dhd, struct ether_addr *mac_list, int mac_cnt);
+int dhd_rtt_stop(dhd_pub_t *dhd, struct ether_addr *mac_list, int mac_cnt);
 
-int
-dhd_rtt_register_noti_callback(dhd_pub_t *dhd, void *ctx, dhd_rtt_compl_noti_fn noti_fn);
+int dhd_rtt_register_noti_callback(dhd_pub_t *dhd, void *ctx, dhd_rtt_compl_noti_fn noti_fn);
 
-int
-dhd_rtt_unregister_noti_callback(dhd_pub_t *dhd, dhd_rtt_compl_noti_fn noti_fn);
+int dhd_rtt_unregister_noti_callback(dhd_pub_t *dhd, dhd_rtt_compl_noti_fn noti_fn);
 
-int
-dhd_rtt_event_handler(dhd_pub_t *dhd, wl_event_msg_t *event, void *event_data);
+int dhd_rtt_event_handler(dhd_pub_t *dhd, wl_event_msg_t *event, void *event_data);
 
-int
-dhd_rtt_capability(dhd_pub_t *dhd, rtt_capabilities_t *capa);
+int dhd_rtt_capability(dhd_pub_t *dhd, rtt_capabilities_t *capa);
 
-int
-dhd_rtt_avail_channel(dhd_pub_t *dhd, wifi_channel_info *channel_info);
+int dhd_rtt_avail_channel(dhd_pub_t *dhd, wifi_channel_info *channel_info);
 
-int
-dhd_rtt_enable_responder(dhd_pub_t *dhd, wifi_channel_info *channel_info);
+int dhd_rtt_enable_responder(dhd_pub_t *dhd, wifi_channel_info *channel_info);
 
-int
-dhd_rtt_cancel_responder(dhd_pub_t *dhd);
+int dhd_rtt_cancel_responder(dhd_pub_t *dhd);
 
 int dhd_rtt_attach(dhd_pub_t *dhd);
 

@@ -375,9 +375,13 @@ static void self_move_set(struct samsung_display_driver_data *vdd, int ctrl)
 
 static void self_icon_img_write(struct samsung_display_driver_data *vdd)
 {
+	int wait_cnt = 1000; /* 1000 * 0.5ms = 500ms */
+
 	LCD_ERR("++\n");
 
 	vdd->exclusive_tx.enable = 1;
+	while (!list_empty(&vdd->cmd_lock.wait_list) && --wait_cnt)
+		usleep_range(500, 500);
 
 	ss_set_exclusive_tx_packet(vdd, TX_LEVEL1_KEY_ENABLE, 1);
 	ss_set_exclusive_tx_packet(vdd, TX_SELF_ICON_SET_PRE, 1);
@@ -557,12 +561,16 @@ static void self_aclock_on(struct samsung_display_driver_data *vdd, int enable)
 
 static void self_aclock_img_write(struct samsung_display_driver_data *vdd)
 {
+	int wait_cnt = 1000; /* 1000 * 0.5ms = 500ms */
+
 	LCD_ERR("++\n");
 
 	/* Memory BW Boost Enable to prevent DMA Timeout */
 	ss_set_max_mem_bw(vdd, true);
 
 	vdd->exclusive_tx.enable = 1;
+	while (!list_empty(&vdd->cmd_lock.wait_list) && --wait_cnt)
+		usleep_range(500, 500);
 
 	ss_set_exclusive_tx_packet(vdd, TX_LEVEL1_KEY_ENABLE, 1);
 	ss_set_exclusive_tx_packet(vdd, TX_SELF_ACLOCK_SET_PRE, 1);
@@ -732,12 +740,16 @@ static void self_dclock_on(struct samsung_display_driver_data *vdd, int enable)
 
 static void self_dclock_img_write(struct samsung_display_driver_data *vdd)
 {
+	int wait_cnt = 1000; /* 1000 * 0.5ms = 500ms */
+
 	LCD_ERR("++\n");
 
 	/* Memory BW Boost Enable to prevent DMA Timeout */
 	ss_set_max_mem_bw(vdd, true);
 
 	vdd->exclusive_tx.enable = 1;
+	while (!list_empty(&vdd->cmd_lock.wait_list) && --wait_cnt)
+		usleep_range(500, 500);
 
 	ss_set_exclusive_tx_packet(vdd, TX_LEVEL1_KEY_ENABLE, 1);
 	ss_set_exclusive_tx_packet(vdd, TX_SELF_DCLOCK_SET_PRE, 1);
@@ -911,6 +923,8 @@ static void self_blinking_on(struct samsung_display_driver_data *vdd, int enable
 
 static void self_mask_img_write(struct samsung_display_driver_data *vdd)
 {
+	int wait_cnt = 1000; /* 1000 * 0.5ms = 500ms */
+
 	if (!vdd->self_disp.is_support) {
 		LCD_ERR("self display is not supported..(%d) \n",
 						vdd->self_disp.is_support);
@@ -918,11 +932,33 @@ static void self_mask_img_write(struct samsung_display_driver_data *vdd)
 	}
 
 	LCD_ERR("++\n");
+
+	mutex_lock(&vdd->exclusive_tx.ex_tx_lock);
+	vdd->exclusive_tx.enable = 1;
+	while (!list_empty(&vdd->cmd_lock.wait_list) && --wait_cnt)
+		usleep_range(500, 500);
+
+	ss_set_exclusive_tx_packet(vdd, TX_LEVEL1_KEY_ENABLE, 1);
+	ss_set_exclusive_tx_packet(vdd, TX_SELF_MASK_SET_PRE, 1);
+	ss_set_exclusive_tx_packet(vdd, TX_SELF_MASK_IMAGE, 1);
+	ss_set_exclusive_tx_packet(vdd, TX_SELF_MASK_SET_POST, 1);
+	ss_set_exclusive_tx_packet(vdd, TX_LEVEL1_KEY_DISABLE, 1);
+
 	ss_send_cmd(vdd, TX_LEVEL1_KEY_ENABLE);
 	ss_send_cmd(vdd, TX_SELF_MASK_SET_PRE);
 	ss_send_cmd(vdd, TX_SELF_MASK_IMAGE);
 	ss_send_cmd(vdd, TX_SELF_MASK_SET_POST);
 	ss_send_cmd(vdd, TX_LEVEL1_KEY_DISABLE);
+
+	ss_set_exclusive_tx_packet(vdd, TX_LEVEL1_KEY_ENABLE, 0);
+	ss_set_exclusive_tx_packet(vdd, TX_SELF_MASK_SET_PRE, 0);
+	ss_set_exclusive_tx_packet(vdd, TX_SELF_MASK_IMAGE, 0);
+	ss_set_exclusive_tx_packet(vdd, TX_SELF_MASK_SET_POST, 0);
+	ss_set_exclusive_tx_packet(vdd, TX_LEVEL1_KEY_DISABLE, 0);
+	vdd->exclusive_tx.enable = 0;
+	wake_up_all(&vdd->exclusive_tx.ex_tx_waitq);
+	mutex_unlock(&vdd->exclusive_tx.ex_tx_lock);
+
 	LCD_ERR("--\n");
 }
 
@@ -961,6 +997,7 @@ static void self_mask_on(struct samsung_display_driver_data *vdd, int enable)
 static int self_mask_check(struct samsung_display_driver_data *vdd)
 {
 	int i, ret = 1;
+	int wait_cnt = 1000; /* 1000 * 0.5ms = 500ms */
 
 	if (IS_ERR_OR_NULL(vdd)) {
 		LCD_ERR("vdd is null or error\n");
@@ -995,6 +1032,9 @@ static int self_mask_check(struct samsung_display_driver_data *vdd)
 	/* Do not permit image update (2C, 3C) during sending self mask image (4C, 5C) */
 	mutex_lock(&vdd->exclusive_tx.ex_tx_lock);
 	vdd->exclusive_tx.enable = 1;
+	while (!list_empty(&vdd->cmd_lock.wait_list) && --wait_cnt)
+		usleep_range(500, 500);
+
 	ss_set_exclusive_tx_packet(vdd, TX_LEVEL1_KEY_ENABLE, 1);
 	ss_set_exclusive_tx_packet(vdd, TX_LEVEL1_KEY_DISABLE, 1);
 	ss_set_exclusive_tx_packet(vdd, TX_SELF_MASK_IMAGE_CRC, 1);
@@ -1227,7 +1267,10 @@ static int self_display_aod_exit(struct samsung_display_driver_data *vdd)
  */
 static long self_display_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
-	struct samsung_display_driver_data *vdd = file->private_data;
+	struct miscdevice *c = file->private_data;
+	struct dsi_display *display = dev_get_drvdata(c->parent);
+	struct dsi_panel *panel = display->panel;
+	struct samsung_display_driver_data *vdd = panel->panel_private;
 	void __user *argp = (void __user *)arg;
 	int ret = 0;
 
@@ -1350,7 +1393,10 @@ error:
 static ssize_t self_display_write(struct file *file, const char __user *buf,
 			 size_t count, loff_t *ppos)
 {
-	struct samsung_display_driver_data *vdd = file->private_data;
+	struct miscdevice *c = file->private_data;
+	struct dsi_display *display = dev_get_drvdata(c->parent);
+	struct dsi_panel *panel = display->panel;
+	struct samsung_display_driver_data *vdd = panel->panel_private;
 	char op_buf[IMAGE_HEADER_SIZE];
 	u32 op = 0;
 	int ret = 0;
@@ -1449,8 +1495,10 @@ static ssize_t self_display_write(struct file *file, const char __user *buf,
 
 static int self_display_open(struct inode *inode, struct file *file)
 {
-	/* TODO: get appropriate vdd..primary or secondary... */
-	struct samsung_display_driver_data *vdd = ss_get_vdd(PRIMARY_DISPLAY_NDX);
+	struct miscdevice *c = file->private_data;
+	struct dsi_display *display = dev_get_drvdata(c->parent);
+	struct dsi_panel *panel = display->panel;
+	struct samsung_display_driver_data *vdd = panel->panel_private;
 
 	if (IS_ERR_OR_NULL(vdd)) {
 		LCD_ERR("vdd is null or error\n");
@@ -1458,7 +1506,6 @@ static int self_display_open(struct inode *inode, struct file *file)
 	}
 
 	vdd->self_disp.file_open = 1;
-	file->private_data = vdd;
 
 	LCD_DEBUG("[open]\n");
 
@@ -1467,7 +1514,10 @@ static int self_display_open(struct inode *inode, struct file *file)
 
 static int self_display_release(struct inode *inode, struct file *file)
 {
-	struct samsung_display_driver_data *vdd = file->private_data;
+	struct miscdevice *c = file->private_data;
+	struct dsi_display *display = dev_get_drvdata(c->parent);
+	struct dsi_panel *panel = display->panel;
+	struct samsung_display_driver_data *vdd = panel->panel_private;
 
 	if (IS_ERR_OR_NULL(vdd)) {
 		LCD_ERR("vdd is null or error\n");
@@ -1495,6 +1545,10 @@ int self_display_init_HAB(struct samsung_display_driver_data *vdd)
 	int ret = 0;
 	static char devname[DEV_NAME_SIZE] = {'\0', };
 
+	struct dsi_panel *panel = NULL;
+	struct mipi_dsi_host *host = NULL;
+	struct dsi_display *display = NULL;
+
 	if (IS_ERR_OR_NULL(vdd)) {
 		LCD_ERR("vdd is null or error\n");
 		return -ENODEV;
@@ -1504,6 +1558,10 @@ int self_display_init_HAB(struct samsung_display_driver_data *vdd)
 		LCD_ERR("Self Display is not supported\n");
 		return -EINVAL;
 	}
+
+	panel = (struct dsi_panel *)vdd->msm_private;
+	host = panel->mipi_device.host;
+	display = container_of(host, struct dsi_display, host);
 
 	mutex_init(&vdd->self_disp.vdd_self_display_lock);
 	mutex_init(&vdd->self_disp.vdd_self_display_ioctl_lock);
@@ -1516,7 +1574,7 @@ int self_display_init_HAB(struct samsung_display_driver_data *vdd)
 	vdd->self_disp.dev.minor = MISC_DYNAMIC_MINOR;
 	vdd->self_disp.dev.name = devname;
 	vdd->self_disp.dev.fops = &self_display_fops;
-	vdd->self_disp.dev.parent = NULL;
+	vdd->self_disp.dev.parent = &display->pdev->dev;
 
 	vdd->self_disp.aod_enter = self_display_aod_enter;
 	vdd->self_disp.aod_exit = self_display_aod_exit;

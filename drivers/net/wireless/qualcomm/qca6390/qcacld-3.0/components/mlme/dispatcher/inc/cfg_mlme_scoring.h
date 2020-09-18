@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2019 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2020 The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -135,7 +135,7 @@
  * chan_width_weightage - Channel Width Weightage to calculate best candidate
  * @Min: 0
  * @Max: 100
- * @Default: 17
+ * @Default: 12
  *
  * This ini is used to increase/decrease Channel Width weightage in best
  * candidate selection. AP with Higher channel width will get higher weightage
@@ -152,7 +152,7 @@
 	"chan_width_weightage", \
 	0, \
 	100, \
-	17, \
+	12, \
 	CFG_VALUE_OR_DEFAULT, \
 	"Channel width weightage")
 
@@ -273,7 +273,7 @@
  * calculate best candidate
  * @Min: 0
  * @Max: 100
- * @Default: 5
+ * @Default: 25
  *
  * This ini is used to increase/decrease channel congestion weightage in
  * candidate selection. Congestion is measured with the help of ESP/QBSS load.
@@ -290,7 +290,7 @@
 	"channel_congestion_weightage", \
 	0, \
 	100, \
-	5, \
+	25, \
 	CFG_VALUE_OR_DEFAULT, \
 	"Channel Congestion Weightage")
 
@@ -999,7 +999,7 @@
  *
  * </ini>
  */
-#define CFG_ROAM_TRIGGER_BITMAP CFG_INI_UINT( \
+#define CFG_ROAM_SCORE_DELTA_TRIGGER_BITMAP CFG_INI_UINT( \
 			"roam_score_delta_bitmap", \
 			0, \
 			0xFFFFFFFF, \
@@ -1034,6 +1034,40 @@
 			0, \
 			CFG_VALUE_OR_DEFAULT, \
 			"candidate AP's percentage roam score delta")
+
+/*
+ * <ini>
+ * min_roam_score_delta - Difference of roam score values between connected
+ * AP and roam candidate AP.
+ * @Min: 0
+ * @Max: 10000
+ * @Default: 0
+ *
+ * This ini is used during CU and low rssi based roam triggers, consider
+ * AP as roam candidate only if its roam score is better than connected
+ * AP score by at least min_roam_score_delta.
+ * If user configured "roam_score_delta" and "min_roam_score_delta" both,
+ * then firmware selects roam candidate AP by considering values of both
+ * INIs.
+ * Example: If DUT is connected with AP1 and roam candidate AP2 has roam
+ * score greater than roam_score_delta and min_roam_score_delta then only
+ * firmware will trigger roaming to AP2.
+ *
+ * Related: roam_score_delta
+ *
+ * Supported Feature: Roaming
+ *
+ * Usage: Internal
+ *
+ * </ini>
+ */
+#define CFG_CAND_MIN_ROAM_SCORE_DELTA CFG_INI_UINT( \
+			"min_roam_score_delta", \
+			0, \
+			10000, \
+			0, \
+			CFG_VALUE_OR_DEFAULT, \
+			"Diff between connected AP's and candidate AP's roam score")
 
 /*
  * <ini>
@@ -1140,7 +1174,7 @@
  * idle_roam_score_delta - Roam score delta value in percentage for idle roam.
  * @Min: 0
  * @Max: 100
- * @Default: 10
+ * @Default: 0
  *
  * This ini is used to configure the minimum change in roam score
  * value of the AP to consider it as candidate for
@@ -1159,7 +1193,7 @@
 		"idle_roam_score_delta", \
 		0, \
 		100, \
-		10, \
+		0, \
 		CFG_VALUE_OR_DEFAULT, \
 		"Roam score delta for Idle roam trigger")
 
@@ -1169,7 +1203,7 @@
  * roaming.
  * @Min: 0
  * @Max: 100
- * @Default: 10
+ * @Default: 0
  *
  * This ini is used to configure the minimum change in roam score
  * value of the AP to consider it as candidate when the sta is disconnected
@@ -1189,9 +1223,37 @@
 	"btm_roam_score_delta", \
 	0, \
 	100, \
-	10, \
+	0, \
 	CFG_VALUE_OR_DEFAULT, \
 	"Roam score delta for BTM roam trigger")
+
+/*
+ * <ini>
+ * vendor_roam_score_algorithm - Algorithm to calculate AP score
+ * @Min: 0
+ * @Max: 1
+ * @Default: 0
+ *
+ * By default the value is 0 and default roam algorithm will be used.
+ * When the value is 1, the V2 roaming algorithm will be used:
+ * For this V2 algo, AP score calculation is based on below equation:
+ * AP Score = (RSSIfactor * rssiweight(0.65)) + (CUfactor *cuweight(0.35))
+ *
+ * Related: None
+ *
+ * Supported Feature: roam score algorithm
+ *
+ * Usage: External
+ *
+ * </ini>
+ */
+#define CFG_VENDOR_ROAM_SCORE_ALGORITHM CFG_INI_UINT( \
+	"vendor_roam_score_algorithm", \
+	0, \
+	1, \
+	0, \
+	CFG_VALUE_OR_DEFAULT, \
+	"Roam candidate selection score algorithm")
 
 #define CFG_SCORING_ALL \
 	CFG(CFG_SCORING_RSSI_WEIGHTAGE) \
@@ -1226,13 +1288,15 @@
 	CFG(CFG_SCORING_OCE_WAN_SCORE_IDX_7_TO_4) \
 	CFG(CFG_SCORING_OCE_WAN_SCORE_IDX_11_TO_8) \
 	CFG(CFG_SCORING_OCE_WAN_SCORE_IDX_15_TO_12) \
-	CFG(CFG_ROAM_TRIGGER_BITMAP) \
+	CFG(CFG_ROAM_SCORE_DELTA_TRIGGER_BITMAP) \
 	CFG(CFG_ROAM_SCORE_DELTA) \
+	CFG(CFG_CAND_MIN_ROAM_SCORE_DELTA) \
 	CFG(CFG_ENABLE_SCORING_FOR_ROAM) \
 	CFG(CFG_APSD_ENABLED) \
 	CFG(CFG_DISCONNECT_ROAM_TRIGGER_MIN_RSSI) \
 	CFG(CFG_BMISS_ROAM_MIN_RSSI) \
 	CFG(CFG_IDLE_ROAM_SCORE_DELTA) \
 	CFG(CFG_BTM_ROAM_SCORE_DELTA) \
+	CFG(CFG_VENDOR_ROAM_SCORE_ALGORITHM) \
 
 #endif /* __CFG_MLME_SCORING_H */

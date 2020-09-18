@@ -396,7 +396,7 @@ static int __cam_sbi_ctx_release_hw__in_top_state(
 	int rc = 0;
 	struct cam_sbi_dev_context * sbi_ctx =
 		(struct cam_sbi_dev_context *) ctx->ctx_priv;
-	struct cam_req_mgr_flush_request flush_req;
+	struct cam_req_mgr_flush_request flush_req = { 0, };
 	struct cam_hw_release_args rel_arg;
 
 	CAM_DBG(CAM_SBI, "enter..ctx_id %d", ctx->ctx_id);
@@ -442,7 +442,7 @@ static int __cam_sbi_ctx_release_dev_in_acquired_(
 	int rc = 0;
 	struct cam_sbi_dev_context * sbi_ctx =
 		(struct cam_sbi_dev_context *) ctx->ctx_priv;
-	struct cam_req_mgr_flush_request flush_req;
+	struct cam_req_mgr_flush_request flush_req = { 0, };
 
 	CAM_DBG(CAM_SBI, "enter..ctx_id %d", ctx->ctx_id);
 

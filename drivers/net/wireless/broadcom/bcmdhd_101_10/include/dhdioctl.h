@@ -5,7 +5,7 @@
  *
  * Definitions subject to change without notice.
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -22,7 +22,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #ifndef _dhdioctl_h_
@@ -82,6 +82,7 @@ typedef struct dmaxfer_info {
 #define DHD_DMAXFER_VERSION 0x1
 
 #define DHD_FILENAME_MAX 64
+#define DHD_PATHNAME_MAX 128
 
 typedef struct tput_test {
 	uint16 version;
@@ -294,6 +295,7 @@ typedef struct fw_download_info {
 	char    fw_signature_fname[DHD_FILENAME_MAX];
 	char    bootloader_fname[DHD_FILENAME_MAX];
 	uint32  bootloader_start_addr;
+	char    fw_path[DHD_PATHNAME_MAX];
 } fw_download_info_t;
 
 /* max dest supported */
@@ -313,4 +315,29 @@ typedef struct devreset_info {
 	uint16 mode;
 	int16 status;
 } devreset_info_t;
+
+#ifdef DHD_TX_PROFILE
+
+#define DHD_TX_PROFILE_VERSION	1
+
+/* tx_profile structure for tagging */
+typedef struct dhd_tx_profile_protocol {
+	uint16	version;
+	uint8	profile_index;
+	uint8	layer;
+	uint32	protocol_number;
+	uint16	src_port;
+	uint16	dest_port;
+} dhd_tx_profile_protocol_t;
+
+#define DHD_TX_PROFILE_DATA_LINK_LAYER	(2u)	/* data link layer protocols */
+#define DHD_TX_PROFILE_NETWORK_LAYER	(3u)	/* network layer protocols */
+
+#define DHD_MAX_PROFILE_INDEX	(7u)	/* three bits are available to encode
+					   the tx profile index in the rate
+					   field in host_txbuf_post_t
+					 */
+#define DHD_MAX_PROFILES	(1u)	/* ucode only supports 1 profile atm */
+
+#endif /* defined(DHD_TX_PROFILE) */
 #endif /* _dhdioctl_h_ */

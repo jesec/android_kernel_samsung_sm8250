@@ -1,7 +1,7 @@
 /*
  * Custom OID/ioctl related helper functions.
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,7 +18,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #ifndef _wlioctl_utils_h_
@@ -48,7 +48,7 @@ extern const char * wl_get_reinit_rc_name(int rc);
 		((const wl_cnt_info_t *)cntbuf)->datalen, WL_CNT_XTLV_WLC,		\
 		NULL, BCM_XTLV_OPTION_ALIGN32)
 
-/* XXX: We keep adding new counters, so give warning in case we exceed the ioctl buf len
+/* We keep adding new counters, so give warning in case we exceed the ioctl buf len
  * and need to move on to larger ioctl length in the future.
  */
 #define CHK_CNTBUF_DATALEN(cntbuf, ioctl_buflen) do {					\

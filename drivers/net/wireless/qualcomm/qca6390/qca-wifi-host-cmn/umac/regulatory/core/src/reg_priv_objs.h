@@ -29,6 +29,8 @@
 	QDF_TRACE_FATAL(QDF_MODULE_ID_REGULATORY, params)
 #define reg_err(params...) \
 	QDF_TRACE_ERROR(QDF_MODULE_ID_REGULATORY, params)
+#define reg_err_rl(params...) \
+	QDF_TRACE_ERROR_RL(QDF_MODULE_ID_REGULATORY, params)
 #define reg_warn(params...) \
 	QDF_TRACE_WARN(QDF_MODULE_ID_REGULATORY, params)
 #define reg_notice(params...) \
@@ -78,6 +80,7 @@ struct chan_change_cbk_entry {
 
 /**
  * struct wlan_regulatory_psoc_priv_obj - wlan regulatory psoc private object
+ * @chan_list_recvd: whether channel list has been received
  * @new_user_ctry_pending: In this array, element[phy_id] is true if any user
  *	country update is pending for pdev (phy_id), used in case of MCL.
  * @new_init_ctry_pending: In this array, element[phy_id] is true if any user
@@ -86,11 +89,14 @@ struct chan_change_cbk_entry {
  *	country update is pending for pdev (phy_id).
  * @world_country_pending: In this array, element[phy_id] is true if any world
  *	country update is pending for pdev (phy_id).
- * @def_pdev_id: Default pdev id, used in case of MCL
+ * @ignore_fw_reg_offload_ind: Ignore FW reg offload indication
+ * @six_ghz_supported: whether 6ghz is supported
  */
 struct wlan_regulatory_psoc_priv_obj {
 	struct mas_chan_params mas_chan_params[PSOC_MAX_PHY_REG_CAP];
+	bool chan_list_recvd[PSOC_MAX_PHY_REG_CAP];
 	bool offload_enabled;
+	bool six_ghz_supported;
 	uint8_t num_phy;
 	char cur_country[REG_ALPHA2_LEN + 1];
 	char def_country[REG_ALPHA2_LEN + 1];
@@ -105,6 +111,7 @@ struct wlan_regulatory_psoc_priv_obj {
 	bool dfs_enabled;
 	enum band_info band_capability;
 	bool indoor_chan_enabled;
+	bool ignore_fw_reg_offload_ind;
 	bool enable_11d_supp_original;
 	bool enable_11d_supp;
 	bool is_11d_offloaded;
@@ -132,7 +139,6 @@ struct wlan_regulatory_psoc_priv_obj {
 	bool force_ssc_disable_indoor_channel;
 	bool enable_srd_chan_in_master_mode;
 	bool enable_11d_in_world_mode;
-	int8_t def_pdev_id;
 	qdf_spinlock_t cbk_list_lock;
 };
 
@@ -150,13 +156,16 @@ struct wlan_regulatory_pdev_priv_obj {
 	char current_country[REG_ALPHA2_LEN + 1];
 	uint16_t reg_dmn_pair;
 	uint16_t ctry_code;
+#ifdef DISABLE_UNII_SHARED_BANDS
+	uint8_t unii_5g_bitmap;
+#endif
 	enum dfs_reg dfs_region;
 	uint32_t phybitmap;
 	struct wlan_objmgr_pdev *pdev_ptr;
-	uint32_t range_2g_low;
-	uint32_t range_2g_high;
-	uint32_t range_5g_low;
-	uint32_t range_5g_high;
+	qdf_freq_t range_2g_low;
+	qdf_freq_t range_2g_high;
+	qdf_freq_t range_5g_low;
+	qdf_freq_t range_5g_high;
 	bool dfs_enabled;
 	bool set_fcc_channel;
 	enum band_info band_capability;
@@ -168,6 +177,7 @@ struct wlan_regulatory_pdev_priv_obj {
 	bool sap_state;
 	struct reg_rule_info reg_rules;
 	qdf_spinlock_t reg_rules_lock;
+	bool chan_list_recvd;
 };
 
 /**

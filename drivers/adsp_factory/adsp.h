@@ -29,6 +29,7 @@
 #include <linux/adsp/adsp_ft_common.h>
 
 #define TIMEOUT_CNT 200
+#define TIMEOUT_DHR_CNT 50
 
 #define PATH_LEN                 50
 #define FILE_BUF_LEN             110
@@ -38,6 +39,14 @@
 #ifdef CONFIG_SUPPORT_AMS_LIGHT_CALIBRATION
 #define AMS_UB_CELL_ID_INFO_STRING_LENGTH 23
 #define UB_CELL_ID_PATH "/sys/class/lcd/panel/SVC_OCTA"
+#define SUB_UB_CELL_ID_PATH "/sys/class/lcd/panel/SVC_OCTA2"
+#endif
+#ifdef CONFIG_SUPPORT_AK0997X
+#define AUTO_CAL_DATA_NUM 19
+#define AUTO_CAL_FILE_BUF_LEN 140
+#define DIGITAL_HALL_AUTO_CAL_X_PATH "/efs/FactoryApp/digital_hall_auto_cal_x"
+#define DIGITAL_HALL_AUTO_CAL_Y_PATH "/efs/FactoryApp/digital_hall_auto_cal_y"
+#define DIGITAL_HALL_AUTO_CAL_Z_PATH "/efs/FactoryApp/digital_hall_auto_cal_z"
 #endif
 
 enum {
@@ -86,6 +95,9 @@ struct adsp_data {
 	struct mutex light_factory_mutex;
 	struct mutex accel_factory_mutex;
 	struct mutex remove_sysfs_mutex;
+#ifdef CONFIG_SUPPORT_AK0997X
+	struct mutex digital_hall_mutex;
+#endif
 	struct notifier_block adsp_nb;
 #ifdef CONFIG_VBUS_NOTIFIER
 	struct notifier_block vbus_nb;
@@ -100,9 +112,20 @@ struct adsp_data {
 	int32_t copr_w;
 	char light_ub_id[AMS_UB_CELL_ID_INFO_STRING_LENGTH];
 #endif
+#if defined(CONFIG_SUPPORT_DUAL_OPTIC) && defined (CONFIG_SUPPORT_LIGHT_MAIN2_SENSOR)
+	int32_t sub_light_cal_result;
+	int32_t sub_light_cal1;
+	int32_t sub_light_cal2;
+	int32_t sub_copr_w;
+	char sub_light_ub_id[AMS_UB_CELL_ID_INFO_STRING_LENGTH];
+	int32_t main2_light_cal_result;
+	int32_t main2_light_cal1;
+	int32_t main2_light_cal2;
+	int32_t main2_copr_w;
+#endif
 #ifdef CONFIG_SUPPORT_BRIGHTNESS_NOTIFY_FOR_LIGHT_SENSOR
 	struct work_struct light_br_work;
-	int32_t brightness_info[2];
+	int32_t brightness_info[3];
 #endif
 #ifdef CONFIG_SUPPORT_AMS_PROX_CALIBRATION
 	int32_t prox_cal;
@@ -158,14 +181,24 @@ void sub_accel_factory_init_work(void);
 #ifdef CONFIG_SUPPORT_DEVICE_MODE
 void sns_device_mode_init_work(void);
 #endif
+#ifdef CONFIG_SUPPORT_DUAL_OPTIC
+void sns_flip_init_work(void);
+#endif
 #ifdef CONFIG_VBUS_NOTIFIER
 void sns_vbus_init_work(void);
+#endif
+#ifdef CONFIG_SUPPORT_SSC_AOD_RECT
+void light_rect_init_work(void);
 #endif
 #ifdef CONFIG_SUPPORT_AMS_LIGHT_CALIBRATION
 void light_cal_init_work(struct adsp_data *data);
 void light_cal_read_work_func(struct work_struct *work);
 int ams_load_ub_cell_id_from_file(char *path, char *data_str);
+#if defined(CONFIG_SUPPORT_DUAL_OPTIC) && defined(CONFIG_SUPPORT_LIGHT_MAIN2_SENSOR)
+int ams_save_ub_cell_id_to_efs(char *path, char *data_str, bool first_booting);
+#else
 int ams_save_ub_cell_id_to_efs(char *data_str, bool first_booting);
+#endif
 #endif
 #ifdef CONFIG_SUPPORT_AMS_PROX_CALIBRATION
 void prox_cal_init_work(struct adsp_data *data);
@@ -173,6 +206,14 @@ void prox_send_cal_data(struct adsp_data *data, bool fac_cal);
 #endif
 #ifdef CONFIG_SUPPORT_PROX_POWER_ON_CAL
 void prox_factory_init_work(void);
+#endif
+#ifdef CONFIG_SUPPORT_AK0997X
+void digital_hall_factory_auto_cal_init_work(void);
+int get_hall_angle_data(int32_t *raw_data);
+#endif
+#if defined(CONFIG_SUPPORT_BHL_COMPENSATION_FOR_LIGHT_SENSOR) || \
+	defined(CONFIG_SUPPORT_BRIGHT_SYSFS_COMPENSATION_LUX)
+int get_light_sidx(struct adsp_data *data);
 #endif
 #ifdef CONFIG_SUPPORT_BRIGHTNESS_NOTIFY_FOR_LIGHT_SENSOR
 struct adsp_data* adsp_get_struct_data(void);

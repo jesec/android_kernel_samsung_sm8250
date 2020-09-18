@@ -98,8 +98,7 @@ static int sde_backlight_device_update_status(struct backlight_device *bd)
 	if (!bl_lvl && brightness)
 		bl_lvl = 1;
 
-	if (display->panel->bl_config.bl_update ==
-		BL_UPDATE_DELAY_UNTIL_FIRST_FRAME && !c_conn->allow_bl_update) {
+	if (!c_conn->allow_bl_update) {
 		c_conn->unset_bl_level = bl_lvl;
 		return 0;
 	}
@@ -598,9 +597,7 @@ static int _sde_connector_update_bl_scale(struct sde_connector *c_conn)
 
 	bl_config = &dsi_display->panel->bl_config;
 
-	if (dsi_display->panel->bl_config.bl_update ==
-			BL_UPDATE_DELAY_UNTIL_FIRST_FRAME &&
-			!c_conn->allow_bl_update) {
+	if (!c_conn->allow_bl_update) {
 		c_conn->unset_bl_level = bl_config->bl_level;
 		return 0;
 	}
@@ -885,21 +882,29 @@ void sde_connector_helper_bridge_disable(struct drm_connector *connector)
 {
 	int rc;
 	struct sde_connector *c_conn = NULL;
+	struct dsi_display *display;
+	bool poms_pending = false;
 
 	if (!connector)
 		return;
 
-	rc = _sde_connector_update_dirty_properties(connector);
-	if (rc) {
-		SDE_ERROR("conn %d final pre kickoff failed %d\n",
-				connector->base.id, rc);
-		SDE_EVT32(connector->base.id, SDE_EVTLOG_ERROR);
+	c_conn = to_sde_connector(connector);
+	if (c_conn->connector_type == DRM_MODE_CONNECTOR_DSI) {
+		display = (struct dsi_display *) c_conn->display;
+		poms_pending = display->poms_pending;
 	}
 
+	if (!poms_pending) {
+		rc = _sde_connector_update_dirty_properties(connector);
+		if (rc) {
+			SDE_ERROR("conn %d final pre kickoff failed %d\n",
+					connector->base.id, rc);
+			SDE_EVT32(connector->base.id, SDE_EVTLOG_ERROR);
+		}
+	}
 	/* Disable ESD thread */
 	sde_connector_schedule_status_work(connector, false);
 
-	c_conn = to_sde_connector(connector);
 	if (c_conn->bl_device) {
 		c_conn->bl_device->props.power = FB_BLANK_POWERDOWN;
 		c_conn->bl_device->props.state |= BL_CORE_FBBLANK;
@@ -913,6 +918,10 @@ void sde_connector_helper_bridge_enable(struct drm_connector *connector)
 {
 	struct sde_connector *c_conn = NULL;
 	struct dsi_display *display;
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+	struct samsung_display_driver_data *vdd;
+#endif
+
 
 	if (!connector)
 		return;
@@ -935,7 +944,18 @@ void sde_connector_helper_bridge_enable(struct drm_connector *connector)
 	if (c_conn->bl_device) {
 		c_conn->bl_device->props.power = FB_BLANK_UNBLANK;
 		c_conn->bl_device->props.state &= ~BL_CORE_FBBLANK;
+
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+		vdd = display->panel->panel_private;
+
+		if (vdd->vrr.support_vrr_based_bl &&
+				(vdd->vrr.running_vrr_mdp || vdd->vrr.running_vrr))
+			LCD_INFO("skip brightness update during VRR\n");
+		else
+			backlight_update_status(c_conn->bl_device);
+#else
 		backlight_update_status(c_conn->bl_device);
+#endif
 	}
 	c_conn->panel_dead = false;
 }
@@ -2138,6 +2158,8 @@ sde_connector_atomic_best_encoder(struct drm_connector *connector,
 	if (c_conn->ops.atomic_best_encoder)
 		encoder = c_conn->ops.atomic_best_encoder(connector,
 				c_conn->display, connector_state);
+
+	c_conn->encoder = encoder;
 
 	return encoder;
 }

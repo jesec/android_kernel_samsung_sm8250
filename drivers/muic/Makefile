@@ -2,6 +2,7 @@
 # Makefile for muic devices
 #
 
+subdir-ccflags-y := -Wformat
 obj-$(CONFIG_USE_MUIC)			+= muic-core.o
 obj-$(CONFIG_MUIC_NOTIFIER)		+= muic_notifier.o
 obj-$(CONFIG_MUIC_MAX77804)		+= max77804-muic.o

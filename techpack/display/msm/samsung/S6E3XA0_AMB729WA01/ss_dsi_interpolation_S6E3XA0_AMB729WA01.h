@@ -59,18 +59,24 @@ enum {
 	V255_SIGN_BIT_MAX,
 };
 
-int table_parsing_data_S6E3XA0_AMB729WA01(struct samsung_display_driver_data *vdd);
-int table_gamma_update_S6E3XA0_AMB729WA01(struct samsung_display_driver_data *vdd);
+int table_parsing_data_S6E3XA0_AMB729WA01(struct samsung_display_driver_data *vdd,
+		struct brightness_table *br_tbl);
+int table_gamma_update_S6E3XA0_AMB729WA01(struct samsung_display_driver_data *vdd,
+		struct brightness_table *br_tbl);
 
-int init_interpolation_S6E3XA0_AMB729WA01(struct samsung_display_driver_data *vdd, enum INTERPOLATION_MODE mode);
+int init_interpolation_S6E3XA0_AMB729WA01(struct samsung_display_driver_data *vdd,
+		struct brightness_table *br_tbl, enum INTERPOLATION_MODE mode);
 int flash_gamma_support_S6E3XA0_AMB729WA01(struct samsung_display_driver_data *vdd);
 
 /* Below formula could be changed for each panel */
 void gen_hbm_interpolation_gamma_S6E3XA0_AMB729WA01(struct samsung_display_driver_data *vdd,
+		struct brightness_table *br_tbl,
 		struct ss_interpolation_brightness_table *normal_table, int normal_table_size);
 void gen_hbm_interpolation_irc_S6E3XA0_AMB729WA01(struct samsung_display_driver_data *vdd,
-		struct ss_interpolation_brightness_table *hbml_table, int hbm_table_size);
+		struct brightness_table *br_tbl,
+		struct ss_interpolation_brightness_table *normal_table, int normal_table_size);
 void gen_normal_interpolation_irc_S6E3XA0_AMB729WA01(struct samsung_display_driver_data *vdd,
+		struct brightness_table *br_tbl,
 		struct ss_interpolation_brightness_table *normal_table, int normal_table_size);
 
 #endif

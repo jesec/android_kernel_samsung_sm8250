@@ -29,6 +29,7 @@
 #include <linux/platform_device.h>
 #include <linux/module.h>
 #include <linux/of.h>
+#include <linux/of_address.h>
 #include <linux/sched/clock.h>
 #include <linux/slab.h>
 #include <asm/unaligned.h>
@@ -809,19 +810,25 @@ struct ss_plog_platform_data {
 static int ss_plog_parse_dt(struct platform_device *pdev,
 		struct ss_plog_platform_data *pdata)
 {
-	struct resource *res;
+	struct device_node *mem_np;
+	struct resource res;
+	int err;
 
 	dev_dbg(&pdev->dev, "using Device Tree\n");
 
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	if (unlikely(!res)) {
+	mem_np = of_parse_phandle(pdev->dev.of_node, "memory-region", 0);
+	if (!mem_np) {
 		dev_err(&pdev->dev,
 			"failed to locate DT /reserved-memory resource\n");
 		return -EINVAL;
 	}
 
-	pdata->mem_size = (size_t)resource_size(res);
-	pdata->mem_address = (phys_addr_t)res->start;
+	err = of_address_to_resource(mem_np, 0, &res);
+	if (err)
+		return err;
+
+	pdata->mem_size = (size_t)resource_size(&res);
+	pdata->mem_address = (phys_addr_t)res.start;
 
 	return 0;
 }
@@ -905,7 +912,7 @@ fail_request_mem_region:
 }
 
 static const struct of_device_id dt_match[] = {
-	{ .compatible = "ss_plog" },
+	{ .compatible = "samsung,ss_plog" },
 	{}
 };
 

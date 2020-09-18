@@ -828,11 +828,11 @@ static int dhdpcie_set_suspend_resume(dhd_bus_t *bus, bool state)
 	ASSERT(bus && !bus->dhd->dongle_reset);
 
 #ifdef DHD_PCIE_RUNTIMEPM
-		/* if wakelock is held during suspend, return failed */
-		if (state == TRUE && dhd_os_check_wakelock_all(bus->dhd)) {
-			return -EBUSY;
-		}
-		mutex_lock(&bus->pm_lock);
+	/* if wakelock is held during suspend, return failed */
+	if (state == TRUE && dhd_os_check_wakelock_all(bus->dhd)) {
+		return -EBUSY;
+	}
+	mutex_lock(&bus->pm_lock);
 #endif /* DHD_PCIE_RUNTIMEPM */
 
 	/* When firmware is not loaded do the PCI bus */
@@ -845,13 +845,27 @@ static int dhdpcie_set_suspend_resume(dhd_bus_t *bus, bool state)
 		return ret;
 	}
 #ifdef DHD_PCIE_NATIVE_RUNTIMEPM
-		ret = dhdpcie_bus_suspend(bus, state, byint);
+	ret = dhdpcie_bus_suspend(bus, state, byint);
 #else
-		ret = dhdpcie_bus_suspend(bus, state);
+	ret = dhdpcie_bus_suspend(bus, state);
 #endif /* DHD_PCIE_NATIVE_RUNTIMEPM */
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 19, 0) && defined(DHD_TCP_LIMIT_OUTPUT)
+	if (ret == BCME_OK) {
+		/*
+		 * net.ipv4.tcp_limit_output_bytes is used for all ipv4 sockets
+		 * so, returning back to original value when there is no traffic(suspend)
+		 */
+		if (state == TRUE) {
+			dhd_ctrl_tcp_limit_output_bytes(0);
+		} else {
+			dhd_ctrl_tcp_limit_output_bytes(1);
+		}
+	}
+#endif /* LINUX_VERSION_CODE > 4.19.0 && DHD_TCP_LIMIT_OUTPUT */
+
 #ifdef DHD_PCIE_RUNTIMEPM
-		mutex_unlock(&bus->pm_lock);
+	mutex_unlock(&bus->pm_lock);
 #endif /* DHD_PCIE_RUNTIMEPM */
 
 	return ret;
@@ -2001,7 +2015,9 @@ int dhdpcie_init(struct pci_dev *pdev)
 		}
 
 		dhdpcie_init_succeeded = TRUE;
-
+#ifdef CONFIG_ARCH_MSM
+		sec_pcie_set_use_ep_loaded(bus->rc_dev);
+#endif /* CONFIG_ARCH_MSM */
 #ifdef DHD_PCIE_NATIVE_RUNTIMEPM
 		pm_runtime_set_autosuspend_delay(&pdev->dev, AUTO_SUSPEND_TIMEOUT);
 		pm_runtime_use_autosuspend(&pdev->dev);
@@ -2954,6 +2970,15 @@ dhd_dongle_mem_dump(void)
 }
 EXPORT_SYMBOL(dhd_dongle_mem_dump);
 #endif /* DHD_FW_COREDUMP */
+
+#ifdef CONFIG_ARCH_MSM
+void
+dhd_bus_inform_ep_loaded_to_rc(dhd_pub_t *dhdp, bool up)
+{
+	dhd_bus_t *bus = dhdp->bus;
+	sec_pcie_set_ep_driver_loaded(bus->rc_dev, up);
+}
+#endif /* CONFIG_ARCH_MSM */
 
 bool
 dhd_bus_check_driver_up(void)

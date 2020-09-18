@@ -896,6 +896,9 @@ struct mfc_charger_data {
 	struct delayed_work wpc_vrect_check_work;
 	struct delayed_work wpc_rx_power_work;
 	struct delayed_work wpc_cs100_work;
+#if defined(CONFIG_SEC_FACTORY)
+	struct delayed_work evt2_err_detect_work;
+#endif
 
 	struct alarm phm_alarm;
 

@@ -3,7 +3,7 @@
  * Provides type definitions and function prototypes used to link the
  * DHD OS, bus, and protocol modules.
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -724,6 +724,11 @@ static void dhd_prot_detach_edl_rings(dhd_pub_t *dhd);
 #endif
 static void dhd_prot_process_d2h_host_ts_complete(dhd_pub_t *dhd, void* buf);
 static void dhd_prot_process_snapshot_complete(dhd_pub_t *dhd, void *buf);
+
+#ifdef DHD_TX_PROFILE
+extern bool dhd_protocol_matches_profile(uint8 *p, int plen, const
+		dhd_tx_profile_protocol_t *proto);
+#endif /* defined(DHD_TX_PROFILE) */
 
 typedef void (*dhd_msgbuf_func_t)(dhd_pub_t *dhd, void *msg);
 
@@ -2927,11 +2932,7 @@ dhd_prot_attach(dhd_pub_t *dhd)
 {
 	osl_t *osh = dhd->osh;
 	dhd_prot_t *prot;
-
-	/* FW going to DMA extended trap data,
-	 * allocate buffer for the maximum extended trap data.
-	 */
-	uint32 trap_buf_len = BCMPCIE_EXT_TRAP_DATA_MAXLEN;
+	uint32 trap_buf_len;
 
 	/* Allocate prot structure */
 	if (!(prot = (dhd_prot_t *)DHD_OS_PREALLOC(dhd, DHD_PREALLOC_PROT,
@@ -3029,6 +3030,11 @@ dhd_prot_attach(dhd_pub_t *dhd)
 			__FUNCTION__, buffer, DHD_LB_WORKQ_SZ));
 	   }
 #endif /* DHD_LB_RXC */
+
+	/* FW going to DMA extended trap data,
+	 * allocate buffer for the maximum extended trap data.
+	 */
+	trap_buf_len = BCMPCIE_EXT_TRAP_DATA_MAXLEN;
 
 	/* Initialize trap buffer */
 	if (dhd_dma_buf_alloc(dhd, &dhd->prot->fw_trap_buf, trap_buf_len)) {
@@ -3148,12 +3154,16 @@ dhd_set_host_cap(dhd_pub_t *dhd)
 			dhd->hwa_inited = TRUE;
 		} else {
 			DHD_ERROR(("HWA not enabled in FW !!\n"));
+			dhd->hwa_inited = FALSE;
 		}
 
 		if (dhdpcie_bus_get_pcie_idma_supported(dhd->bus)) {
 			DHD_ERROR(("IDMA inited\n"));
 			data |= HOSTCAP_H2D_IDMA;
 			dhd->idma_inited = TRUE;
+		} else {
+			DHD_ERROR(("IDMA not enabled in FW !!\n"));
+			dhd->idma_inited = FALSE;
 		}
 
 		if (dhdpcie_bus_get_pcie_ifrm_supported(dhd->bus)) {
@@ -3162,12 +3172,18 @@ dhd_set_host_cap(dhd_pub_t *dhd)
 			dhd->ifrm_inited = TRUE;
 			dhd->dma_h2d_ring_upd_support = FALSE;
 			dhd_prot_dma_indx_free(dhd);
+		} else {
+			DHD_ERROR(("IFRM not enabled in FW !!\n"));
+			dhd->ifrm_inited = FALSE;
 		}
 
 		if (dhdpcie_bus_get_pcie_dar_supported(dhd->bus)) {
 			DHD_ERROR(("DAR doorbell Use\n"));
 			data |= HOSTCAP_H2D_DAR;
 			dhd->dar_inited = TRUE;
+		} else {
+			DHD_ERROR(("DAR not enabled in FW !!\n"));
+			dhd->dar_inited = FALSE;
 		}
 
 		/* FW Checks for HOSTCAP_UR_FW_NO_TRAP and Does not TRAP if set
@@ -4070,11 +4086,10 @@ int dhd_sync_with_dongle(dhd_pub_t *dhd)
 	ret = dhd_wl_ioctl_cmd(dhd, WLC_GET_VAR, buf, sizeof(buf), FALSE, 0);
 	if (ret < 0) {
 		DHD_ERROR(("%s failed %d\n", __FUNCTION__, ret));
-		goto done;
+	} else {
+		dhd->wlc_ver_major = ((wl_wlc_version_t*)buf)->wlc_ver_major;
+		dhd->wlc_ver_minor = ((wl_wlc_version_t*)buf)->wlc_ver_minor;
 	}
-
-	dhd->wlc_ver_major = ((wl_wlc_version_t*)buf)->wlc_ver_major;
-	dhd->wlc_ver_minor = ((wl_wlc_version_t*)buf)->wlc_ver_minor;
 
 	DHD_ERROR(("\nwlc_ver_major %d, wlc_ver_minor %d", dhd->wlc_ver_major, dhd->wlc_ver_minor));
 
@@ -5472,6 +5487,15 @@ BCMFASTPATH(dhd_prot_process_msgbuf_rxcpl)(dhd_pub_t *dhd, uint bound, int ringt
 	int i;
 	uint8 sync;
 
+#ifdef DHD_PCIE_RUNTIMEPM
+	/* Set rx_pending_due_to_rpm if device is not in resume state */
+	if (dhdpcie_runtime_bus_wake(dhd, FALSE, dhd_prot_process_msgbuf_rxcpl)) {
+		dhd->rx_pending_due_to_rpm = TRUE;
+		return more;
+	}
+	dhd->rx_pending_due_to_rpm = FALSE;
+#endif /* DHD_PCIE_RUNTIMEPM */
+
 		ring = &prot->d2hring_rx_cpln;
 	item_len = ring->item_len;
 	while (1) {
@@ -6201,18 +6225,6 @@ dhd_prot_check_tx_resource(dhd_pub_t *dhd)
 	return dhd->prot->no_tx_resource;
 }
 
-void
-dhd_prot_update_pktid_txq_stop_cnt(dhd_pub_t *dhd)
-{
-	dhd->prot->pktid_txq_stop_cnt++;
-}
-
-void
-dhd_prot_update_pktid_txq_start_cnt(dhd_pub_t *dhd)
-{
-	dhd->prot->pktid_txq_start_cnt++;
-}
-
 /** called on MSG_TYPE_TX_STATUS message received from dongle */
 static void
 BCMFASTPATH(dhd_prot_txstatus_process)(dhd_pub_t *dhd, void *msg)
@@ -6296,6 +6308,9 @@ BCMFASTPATH(dhd_prot_txstatus_process)(dhd_pub_t *dhd, void *msg)
 	}
 
 	if (DHD_PKTID_AVAIL(dhd->prot->pktid_tx_map) == DHD_PKTID_MIN_AVAIL_COUNT) {
+		DHD_ERROR_RLMT(("%s: start tx queue as min pktids are available\n",
+			__FUNCTION__));
+		prot->pktid_txq_stop_cnt--;
 		dhd->prot->no_tx_resource = FALSE;
 		dhd_bus_start_queue(dhd->bus);
 	}
@@ -6575,11 +6590,14 @@ BCMFASTPATH(dhd_prot_txdata)(dhd_pub_t *dhd, void *PKTBUF, uint8 ifidx)
 #ifdef DHD_PCIE_PKTID
 		if (!DHD_PKTID_AVAIL(dhd->prot->pktid_tx_map)) {
 			if (dhd->prot->pktid_depleted_cnt == DHD_PKTID_DEPLETED_MAX_COUNT) {
+				DHD_ERROR(("%s: stop tx queue as pktid_depleted_cnt maxed\n",
+					__FUNCTION__));
+				prot->pktid_txq_stop_cnt++;
 				dhd_bus_stop_queue(dhd->bus);
 				dhd->prot->no_tx_resource = TRUE;
 			}
 			dhd->prot->pktid_depleted_cnt++;
-			goto err_no_res;
+			goto fail;
 		} else {
 			dhd->prot->pktid_depleted_cnt = 0;
 		}
@@ -6723,6 +6741,28 @@ BCMFASTPATH(dhd_prot_txdata)(dhd_pub_t *dhd, void *PKTBUF, uint8 ifidx)
 
 	DHD_SBN_SET_FLAGS_FRAME_UDR((dhd_pkttag_fr_t *)PKTTAG(PKTBUF), txdesc->ext_flags);
 
+#ifdef DHD_TX_PROFILE
+	if (dhd->tx_profile_enab && dhd->num_profiles > 0)
+	{
+		uint8 offset;
+
+		for (offset = 0; offset < dhd->num_profiles; offset++) {
+			if (dhd_protocol_matches_profile((uint8 *)PKTDATA(dhd->osh, PKTBUF),
+				PKTLEN(dhd->osh, PKTBUF), &(dhd->protocol_filters[offset]))) {
+				/* mask so other reserved bits are not modified. */
+				txdesc->rate |=
+					(((uint8)dhd->protocol_filters[offset].profile_index) &
+					BCMPCIE_TXPOST_RATE_PROFILE_IDX_MASK);
+
+				/* so we can use the rate field for our purposes */
+				txdesc->rate |= BCMPCIE_TXPOST_RATE_EXT_USAGE;
+
+				break;
+			}
+		}
+	}
+#endif /* defined(DHD_TX_PROFILE) */
+
 	/* Handle Tx metadata */
 	headroom = (uint16)PKTHEADROOM(dhd->osh, PKTBUF);
 	if (prot->tx_metadata_offset && (headroom < prot->tx_metadata_offset))
@@ -6849,7 +6889,6 @@ fail:
 #ifdef PCIE_INB_DW
 	dhd_prot_dec_hostactive_ack_pending_dsreq(dhd->bus);
 #endif
-err_no_res:
 	return BCME_NORESOURCE;
 } /* dhd_prot_txdata */
 
@@ -7025,6 +7064,16 @@ int dhd_prot_ioctl(dhd_pub_t *dhd, int ifidx, wl_ioctl_t * ioc, void * buf, int 
 			goto done;
 		}
 #endif /* DHD_PM_CONTROL_FROM_FILE */
+#ifdef DHD_PM_OVERRIDE
+		{
+			extern bool g_pm_override;
+			if (g_pm_override == TRUE) {
+				DHD_ERROR(("%s: PM override SET PM ignored!(Requested:%d)\n",
+					__FUNCTION__, buf ? *(char *)buf : 0));
+				goto done;
+			}
+		}
+#endif /* DHD_PM_OVERRIDE */
 		DHD_TRACE_HW4(("%s: SET PM to %d\n", __FUNCTION__, buf ? *(char *)buf : 0));
 	}
 
@@ -9565,7 +9614,7 @@ void dhd_prot_print_info(dhd_pub_t *dhd, struct bcmstrbuf *strbuf)
 	bcm_bprintf(strbuf, "Total RX bufs posted: %d, \t RX cpl got %d \n",
 		dhd->prot->tot_rxbufpost, dhd->prot->tot_rxcpl);
 
-	bcm_bprintf(strbuf, "Total TX packets: %d, \t TX cpl got %d \n",
+	bcm_bprintf(strbuf, "Total TX packets: %lu, \t TX cpl got %lu \n",
 		dhd->actual_tx_pkts, dhd->tot_txcpl);
 
 	bcm_bprintf(strbuf,

@@ -53,6 +53,12 @@ __mutex_init(struct mutex *lock, const char *name, struct lock_class_key *key)
 #endif
 
 	debug_mutex_init(lock, name, key);
+
+#ifdef CONFIG_KPERFMON
+	if (lock != 0) {
+		lock->time = 0;
+	}
+#endif
 }
 EXPORT_SYMBOL(__mutex_init);
 
@@ -724,10 +730,11 @@ static noinline void __sched __mutex_unlock_slowpath(struct mutex *lock, unsigne
  */
 void __sched mutex_unlock(struct mutex *lock)
 {
-/* Temporary blocked :: miscalculation for jiffies */
-#if 0 // def CONFIG_KPERFMON
-	if(lock != 0) {
-		perflog_evt(PERFLOG_UNKNOWN, jiffies - lock->time);
+#ifdef CONFIG_KPERFMON
+	unsigned long lock_jiffies = 0;
+
+	if (lock != 0) {
+		lock_jiffies = lock->time;
 	}
 #endif
 #ifndef CONFIG_DEBUG_LOCK_ALLOC
@@ -735,6 +742,15 @@ void __sched mutex_unlock(struct mutex *lock)
 		return;
 #endif
 	__mutex_unlock_slowpath(lock, _RET_IP_);
+#ifdef CONFIG_KPERFMON
+	if (lock != 0 && lock_jiffies > 0 && jiffies > lock_jiffies) {
+		unsigned long diff_jiffies = jiffies - lock_jiffies;
+
+		if (diff_jiffies > PERFLOG_MUTEX_THRESHOLD) {
+			perflog_evt(PERFLOG_UNKNOWN, diff_jiffies);
+		}
+	}
+#endif
 }
 EXPORT_SYMBOL(mutex_unlock);
 

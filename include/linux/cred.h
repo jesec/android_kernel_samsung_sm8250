@@ -20,7 +20,9 @@
 #include <linux/uidgid.h>
 #include <linux/sched.h>
 #include <linux/sched/user.h>
+#ifdef CONFIG_KDP_CRED
 #include <linux/kdp.h>
+#endif
 
 struct cred;
 struct inode;

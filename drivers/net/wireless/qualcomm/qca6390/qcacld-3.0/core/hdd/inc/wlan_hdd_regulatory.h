@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2018 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2016-2019 The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -31,6 +31,14 @@ struct hdd_context;
 #define IEEE80211_CHAN_PASSIVE_SCAN IEEE80211_CHAN_NO_IR
 #define IEEE80211_CHAN_NO_IBSS IEEE80211_CHAN_NO_IR
 #endif
+
+/**
+ * hdd_update_regulatory_config() - API to update regulatory config parameters
+ * @hdd_ctx: HDD context
+ *
+ * Return: 0 on success, err on failure
+ */
+int hdd_update_regulatory_config(struct hdd_context *hdd_ctx);
 
 int hdd_regulatory_init(struct hdd_context *hdd_ctx, struct wiphy *wiphy);
 void hdd_program_country_code(struct hdd_context *hdd_ctx);
@@ -90,5 +98,15 @@ void hdd_modify_indoor_channel_state_flags(
 	struct ieee80211_channel *wiphy_chan,
 	struct regulatory_channel *cds_chan,
 	enum channel_enum chan_enum, int chan_num, bool disable);
+
+/**
+ * hdd_update_regdb_offload_config() - Update regdb offload disable ini
+ * for regulatory component.
+ *
+ * @psoc: psoc ptr
+ *
+ * Return: None
+ */
+void hdd_update_regdb_offload_config(struct hdd_context *hdd_ctx);
 
 #endif

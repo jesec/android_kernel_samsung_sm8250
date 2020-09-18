@@ -4,7 +4,7 @@
  * Provides type definitions and function prototypes used to link the
  * DHD OS, bus, and protocol modules.
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -216,8 +216,8 @@ extern int dhd_bus_schedule_queue(struct dhd_bus *bus, uint16 flow_id, bool txs)
 extern void dhd_bus_flow_ring_resume_response(struct dhd_bus *bus, uint16 flowid, int32 status);
 #endif /* IDLE_TX_FLOW_MGMT */
 
-extern int dhdpcie_bus_clock_start(struct dhd_bus *bus);
-extern int dhdpcie_bus_clock_stop(struct dhd_bus *bus);
+extern int dhdpcie_bus_start_host_dev(struct dhd_bus *bus);
+extern int dhdpcie_bus_stop_host_dev(struct dhd_bus *bus);
 extern int dhdpcie_bus_enable_device(struct dhd_bus *bus);
 extern int dhdpcie_bus_disable_device(struct dhd_bus *bus);
 extern int dhdpcie_bus_alloc_resource(struct dhd_bus *bus);
@@ -270,7 +270,6 @@ extern void dhd_set_rpm_state(dhd_pub_t *dhd, bool state);
 #ifdef BCMPCIE
 extern void dhd_bus_dump_console_buffer(struct dhd_bus *bus);
 extern void dhd_bus_intr_count_dump(dhd_pub_t *dhdp);
-extern void dhd_bus_set_dpc_sched_time(dhd_pub_t *dhdp);
 extern bool dhd_bus_query_dpc_sched_errors(dhd_pub_t *dhdp);
 extern int dhd_bus_dmaxfer_lpbk(dhd_pub_t *dhdp, uint32 type);
 extern bool dhd_bus_check_driver_up(void);
@@ -280,7 +279,6 @@ extern int dhd_bus_get_linkdown(dhd_pub_t *dhdp);
 #else
 #define dhd_bus_dump_console_buffer(x)
 static INLINE void dhd_bus_intr_count_dump(dhd_pub_t *dhdp) { UNUSED_PARAMETER(dhdp); }
-static INLINE void dhd_bus_set_dpc_sched_time(dhd_pub_t *dhdp) { }
 static INLINE bool dhd_bus_query_dpc_sched_errors(dhd_pub_t *dhdp) { return 0; }
 static INLINE int dhd_bus_dmaxfer_lpbk(dhd_pub_t *dhdp, uint32 type) { return 0; }
 static INLINE bool dhd_bus_check_driver_up(void) { return FALSE; }
@@ -324,9 +322,6 @@ bool dhd_bus_is_multibp_capable(struct dhd_bus *bus);
 #ifdef BCMPCIE
 extern void dhdpcie_advertise_bus_cleanup(dhd_pub_t  *dhdp);
 extern void dhd_msgbuf_iovar_timeout_dump(dhd_pub_t *dhd);
-#ifdef DHD_USE_BP_RESET
-extern int dhd_bus_perform_bp_reset(struct dhd_bus *bus);
-#endif /* DHD_USE_BP_RESET */
 #endif /* BCMPCIE */
 
 extern bool dhd_bus_force_bt_quiesce_enabled(struct dhd_bus *bus);
@@ -349,7 +344,7 @@ extern void dhd_cfg80211_resume(dhd_pub_t *dhdp);
 
 #ifdef DHD_SDTC_ETB_DUMP
 extern int dhd_bus_get_etb_info(dhd_pub_t *dhd, uint32 etb_info_addr, etb_info_t *etb_info);
-extern void dhd_bus_get_sdtc_etb(dhd_pub_t *dhd, uint8 *sdtc_etb_mempool,
+extern int dhd_bus_get_sdtc_etb(dhd_pub_t *dhd, uint8 *sdtc_etb_mempool,
 	uint addr, uint read_bytes);
 #endif /* DHD_SDTC_ETB_DUMP */
 

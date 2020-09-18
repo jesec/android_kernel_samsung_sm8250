@@ -1,7 +1,7 @@
 /*
  * Common header file for all error codes.
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,7 +18,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
+ * <<Broadcom-WL-IPTag/Dual:>>
  *
  *
  *
@@ -134,8 +134,9 @@ typedef int bcmerror_t;
 #define BCME_NOCHAN			-70	/* Registration with 0 chans in list */
 #define BCME_PKTTOSS			-71	/* Pkt tossed */
 #define BCME_DNGL_DEVRESET		-72	/* dongle re-attach during DEVRESET */
+#define BCME_ROAM			-73	/* Roam related failures */
 
-#define BCME_LAST			BCME_DNGL_DEVRESET
+#define BCME_LAST			BCME_ROAM
 
 #define BCME_NOTENABLED BCME_DISABLED
 
@@ -224,6 +225,7 @@ typedef int bcmerror_t;
 	"Registration with zero channels", \
 	"pkt toss", \
 	"Dongle Devreset", \
+	"Roam specific errors", \
 }
 
 /** status - TBD BCME_ vs proxd status - range reserved for BCME_ */
@@ -361,7 +363,7 @@ enum {
 	WL_NAN_E_INVALID_MAC		= -2049,
 	WL_NAN_E_BAD_INSTANCE		= -2048,
 	/* NAN status code reserved from -2048 to -3071 */
-	/* XXX: Do NOT add new status below -2048 */
+	/* Do NOT add new status below -2048 */
 	WL_NAN_E_ERROR			= -1,
 	WL_NAN_E_OK			= 0
 };
@@ -408,7 +410,15 @@ enum {
 	/* Element K is at infinity no the curve */
 	WL_SAE_E_CRYPTO_KEY_AT_INFINITY		= -3090,
 	/* SAE Crypto private data magic number mismatch */
-	WL_SAE_E_CRYPTO_PRIV_MAGIC_MISMATCH	= -3091
+	WL_SAE_E_CRYPTO_PRIV_MAGIC_MISMATCH	= -3091,
+	/* Max retry exhausted */
+	WL_SAE_E_MAX_RETRY_LIMIT_REACHED	= -3092,
+	/* peer sent password ID mismatch to local */
+	WL_SAE_E_AUTH_PEER_PWDID_MISMATCH	= -3093,
+	/* user not configured password */
+	WL_SAE_E_AUTH_PASSWORD_NOT_CONFIGURED	= -3094,
+	/* user not configured password ID */
+	WL_SAE_E_AUTH_PWDID_NOT_CONFIGURED	= -3095
 };
 
 /*

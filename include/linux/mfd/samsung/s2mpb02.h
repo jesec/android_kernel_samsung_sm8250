@@ -39,6 +39,12 @@ enum s2mpb02_types {
 	TYPE_S2MPB02,
 };
 
+enum s2mpb02_reg_types {
+	TYPE_S2MPB02_REG_MAIN = 0,
+	TYPE_S2MPB02_REG_SUB,
+	TYPE_S2MPB02_REG_MAX
+};
+
 enum s2mpb02_irq_source {
 	LED_INT = 0,
 	S2MPB02_IRQ_GROUP_NR,
@@ -91,6 +97,9 @@ struct s2mpb02_platform_data {
 	/* led (flash/torch) data */
 	struct s2mpb02_led_platform_data *led_data;
 #endif
+
+	int devs_num;
+	struct mfd_cell *devs;
 };
 
 extern int s2mpb02_irq_init(struct s2mpb02_dev *s2mpb02);

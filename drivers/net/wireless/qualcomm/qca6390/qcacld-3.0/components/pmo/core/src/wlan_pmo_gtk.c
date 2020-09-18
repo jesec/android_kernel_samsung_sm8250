@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2019 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2017-2020 The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -72,6 +72,13 @@ static QDF_STATUS pmo_core_do_enable_gtk_offload(
 {
 	QDF_STATUS status = QDF_STATUS_SUCCESS;
 	uint8_t vdev_id;
+	enum QDF_OPMODE op_mode;
+
+	op_mode = pmo_get_vdev_opmode(vdev);
+	if (QDF_NDI_MODE == op_mode) {
+		pmo_debug("gtk offload is not supported in NaN mode");
+		return QDF_STATUS_E_INVAL;
+	}
 
 	if (!pmo_core_is_vdev_supports_offload(vdev)) {
 		pmo_debug("vdev in invalid opmode for gtk offload %d",
@@ -156,6 +163,13 @@ static QDF_STATUS pmo_core_do_disable_gtk_offload(
 			struct pmo_gtk_req *op_gtk_req)
 {
 	QDF_STATUS status = QDF_STATUS_SUCCESS;
+	enum QDF_OPMODE op_mode;
+
+	op_mode = pmo_get_vdev_opmode(vdev);
+	if (QDF_NDI_MODE == op_mode) {
+		pmo_debug("gtk offload is not supported in NaN mode");
+		return QDF_STATUS_E_INVAL;
+	}
 
 	status = pmo_core_is_gtk_enabled_in_fwr(vdev, vdev_ctx);
 	if (status != QDF_STATUS_SUCCESS)
@@ -174,7 +188,6 @@ QDF_STATUS pmo_core_cache_gtk_offload_req(struct wlan_objmgr_vdev *vdev,
 	enum QDF_OPMODE opmode;
 	uint8_t vdev_id;
 
-	pmo_enter();
 	if (!gtk_req) {
 		pmo_err("gtk_req is NULL");
 		status = QDF_STATUS_E_INVAL;
@@ -205,7 +218,6 @@ QDF_STATUS pmo_core_cache_gtk_offload_req(struct wlan_objmgr_vdev *vdev,
 dec_ref:
 	pmo_vdev_put_ref(vdev);
 out:
-	pmo_exit();
 
 	return status;
 }
@@ -216,7 +228,6 @@ QDF_STATUS pmo_core_flush_gtk_offload_req(struct wlan_objmgr_vdev *vdev)
 	uint8_t vdev_id;
 	QDF_STATUS status;
 
-	pmo_enter();
 	if (!vdev) {
 		pmo_err("psoc is NULL");
 		status = QDF_STATUS_E_INVAL;
@@ -241,7 +252,6 @@ QDF_STATUS pmo_core_flush_gtk_offload_req(struct wlan_objmgr_vdev *vdev)
 dec_ref:
 	pmo_vdev_put_ref(vdev);
 out:
-	pmo_exit();
 
 	return status;
 }

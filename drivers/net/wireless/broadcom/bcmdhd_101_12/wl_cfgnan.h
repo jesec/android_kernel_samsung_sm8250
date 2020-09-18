@@ -803,6 +803,7 @@ bool wl_cfgnan_ranging_allowed(struct bcm_cfg80211 *cfg);
 uint8 wl_cfgnan_cancel_rng_responders(struct net_device *ndev,
 	struct bcm_cfg80211 *cfg);
 extern int wl_cfgnan_get_status(struct net_device *ndev, wl_nan_conf_status_t *nan_status);
+extern int wl_cfgnan_get_stats(struct bcm_cfg80211 *cfg);
 int wl_cfgnan_set_enable_merge(struct net_device *ndev,
 	struct bcm_cfg80211 *cfg, uint8 enable, uint32 *status);
 int wl_cfgnan_attach(struct bcm_cfg80211 *cfg);

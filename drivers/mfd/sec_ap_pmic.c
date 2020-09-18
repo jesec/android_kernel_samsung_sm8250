@@ -32,7 +32,7 @@ static int pwrsrc_show(struct seq_file *m, void *v)
 	char buf[SZ_1K];
 
 	sec_get_pwrsrc(buf);
-	seq_printf(m, buf);
+	seq_printf(m, "%s", buf);
 
 	return 0;
 }

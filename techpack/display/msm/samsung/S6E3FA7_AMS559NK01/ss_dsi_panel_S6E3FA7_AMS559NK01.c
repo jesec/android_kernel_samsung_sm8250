@@ -1399,14 +1399,17 @@ static int __init samsung_panel_initialize(void)
 				strlen(panel_string)))
 		ndx = SECONDARY_DISPLAY_NDX;
 	else {
-		LCD_ERR("can not find panel_name (%s, %s)\n", panel_name, panel_secondary_name);
+		LCD_ERR("panel_string %s can not find panel_name (%s, %s)\n", panel_string, panel_name, panel_secondary_name);
 		return 0;
 	}
 
 	vdd = ss_get_vdd(ndx);
 	vdd->panel_func.samsung_panel_init = samsung_panel_init;
 
-	LCD_INFO("%s done.. \n", panel_string);
+	if (ndx == PRIMARY_DISPLAY_NDX)
+		LCD_INFO("%s done.. \n", panel_name);
+	else
+		LCD_INFO("%s done.. \n", panel_secondary_name);
 
 	return 0;
 }

@@ -33,6 +33,15 @@
 #include <bcmstdlib_s.h>
 #include <bcmutils.h>
 
+/* Don't use compiler builtins for stdlib APIs within the implementation of the stdlib itself. */
+#if defined(BCM_STDLIB_S_BUILTINS_TEST)
+	#undef memmove_s
+	#undef memcpy_s
+	#undef memset_s
+	#undef strlcpy
+	#undef strlcat_s
+#endif /* BCM_STDLIB_S_BUILTINS_TEST */
+
 /*
  * __SIZE_MAX__ value is depending on platform:
  * Firmware Dongle: RAMSIZE (Dongle Specific Limit).
@@ -102,7 +111,7 @@ exit:
  * than RSIZE_MAX, writes destsz zero bytes into the dest object.
  */
 int
-memcpy_s(void *dest, size_t destsz, const void *src, size_t n)
+BCMPOSTTRAPFN(memcpy_s)(void *dest, size_t destsz, const void *src, size_t n)
 {
 	int err = BCME_OK;
 	char *d = dest;
@@ -153,7 +162,7 @@ exit:
  * than RSIZE_MAX, writes destsz bytes with value c into the dest object.
  */
 int
-memset_s(void *dest, size_t destsz, int c, size_t n)
+BCMPOSTTRAPFN(memset_s)(void *dest, size_t destsz, int c, size_t n)
 {
 	int err = BCME_OK;
 	if ((!dest) || (((char *)dest + destsz) < (char *)dest)) {

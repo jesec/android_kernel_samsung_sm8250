@@ -62,16 +62,16 @@ static const int required_gpios[] = {
 };
 
 #ifdef CONFIG_DEV_RIL_BRIDGE
-static int esoc_dbg_notifier(struct notifier_block *nb, 
+static int esoc_dbg_notifier(struct notifier_block *nb,
 			unsigned long size, void *buf)
 {
 	struct dev_ril_bridge_msg *msg = (struct dev_ril_bridge_msg *)buf;
 
 	if (msg->dev_id == IPC_SYSTEM_CP_DBG_LEVEL_COMPLETED) {
 #ifdef CONFIG_SEC_DEBUG
-		if (sec_debug_level() == ANDROID_DEBUG_LEVEL_LOW) 
+		if (sec_debug_level() == ANDROID_DEBUG_LEVEL_LOW)
 			esoc_ramdump_disable = true;
-		pr_info("%s: dbg_level:%x, esoc_ramdump_disable: %d\n", 
+		pr_info("%s: dbg_level:%x, esoc_ramdump_disable: %d\n",
 			__func__, sec_debug_level(), esoc_ramdump_disable);
 #endif
 		return NOTIFY_OK;
@@ -86,6 +86,10 @@ static struct notifier_block esoc_dbg_notifier_block = {
 #endif /* CONFIG_DEV_RIL_BRIDGE */
 
 void *ipc_log;
+
+#ifdef CONFIG_SEC_PERIPHERAL_SECURE_CHK
+bool sec_check_first_boot_modem = true;
+#endif
 
 static void mdm_debug_gpio_show(struct mdm_ctrl *mdm)
 {
@@ -409,6 +413,10 @@ static void mdm_status_fn(struct work_struct *work)
 	dev_dbg(dev, "%s: status:%d\n", __func__, value);
 	/* Update gpio configuration to "running" config. */
 	mdm_update_gpio_configs(mdm, GPIO_UPDATE_RUNNING_CONFIG);
+
+#ifdef CONFIG_SEC_PERIPHERAL_SECURE_CHK
+	sec_check_first_boot_modem = false;
+#endif
 }
 
 static void mdm_get_restart_reason(struct work_struct *work)
@@ -535,23 +543,32 @@ static void mdm_notify(enum esoc_notify notify, struct esoc_clink *esoc)
 		mdm_power_down(mdm);
 		break;
 	case ESOC_FORCE_CRASH:
+	case ESOC_FORCE_CRASH_ID:
+	case ESOC_FORCE_CRASH_USR:
+	case ESOC_FORCE_CRASH_MNR:
+	case ESOC_FORCE_CRASH_QFULL:
+		if (notify > ESOC_FORCE_CRASH_ID) {
+			// id value starts from 1
+			subsys_set_modem_crash_id(notify - ESOC_FORCE_CRASH_ID);
+		}
+
 		if(gpio_is_valid(MDM_GPIO(mdm, AP2MDM_ERRFATAL2))) {
-			dev_err(dev, 
+			dev_err(dev,
 			"ESOC_FORCE_CRASH: setting AP2MDM_ERRFATAL2 = 1\n");
 			gpio_set_value(MDM_GPIO(mdm, AP2MDM_ERRFATAL2), 1);
 		} else {
-			dev_err(dev, 
+			dev_err(dev,
 			"ESOC_FORCE_CRASH: setting AP2MDM_ERRFATAL = 1\n");
 			gpio_set_value(MDM_GPIO(mdm, AP2MDM_ERRFATAL), 1);
 		}
 		break;
 	case ESOC_FORCE_SILENT_RESET:
 		subsys_set_modem_silent_ssr(true);
-		
+
 		if(gpio_is_valid(MDM_GPIO(mdm, AP2MDM_ERRFATAL2))) {
 			dev_err(dev,
 			"ESOC_FORCE_SILENT_RESET: setting AP2MDM_ERRFATAL2 = 1\n");
-			gpio_set_value(MDM_GPIO(mdm, AP2MDM_ERRFATAL2), 1);		
+			gpio_set_value(MDM_GPIO(mdm, AP2MDM_ERRFATAL2), 1);
 		}
 		dev_err(dev,
 			"ESOC_FORCE_SILENT_RESET: setting AP2MDM_ERRFATAL = 1\n");
@@ -1127,6 +1144,19 @@ err_destroy_wrkq:
 	return ret;
 }
 
+static int mdm_reboot_notifier(struct notifier_block *nb,
+				unsigned long action,
+				void *data)
+{
+	struct esoc_clink *esoc =
+		container_of(nb, struct esoc_clink, reboot_nb);
+
+	if (esoc->subsys_dev)
+		complete_shutdown_ack(esoc->subsys_dev);
+
+	return NOTIFY_DONE;
+}
+
 static int sdx55m_setup_hw(struct mdm_ctrl *mdm,
 					const struct mdm_ops *ops,
 					struct platform_device *pdev)
@@ -1216,6 +1246,11 @@ static int sdx55m_setup_hw(struct mdm_ctrl *mdm,
 
 	mdm_debug_gpio_ipc_log(mdm);
 
+	esoc->reboot_nb.notifier_call = mdm_reboot_notifier;
+	ret = register_reboot_notifier(&esoc->reboot_nb);
+	if (ret)
+		dev_err(mdm->dev, "Failed to register reboot notifier\n");
+
 	return 0;
 
 err_free_irq:
@@ -1286,7 +1321,7 @@ static int mdm_probe(struct platform_device *pdev)
 	ret = mdm_ops->config_hw(mdm, mdm_ops, pdev);
 	if (ret)
 		ipc_log_context_destroy(ipc_log);
-	
+
 #ifdef CONFIG_DEV_RIL_BRIDGE
 	ret = register_dev_ril_bridge_event_notifier(&esoc_dbg_notifier_block);
 	if (ret)

@@ -20,7 +20,7 @@ static inline bool __is_hpb_file(const char *name, struct inode *inode)
 {
 	bool ret = false;
 
-	if (inode && !S_ISREG(inode->i_mode))
+	if (unlikely(inode && (IS_ERR(inode) || !S_ISREG(inode->i_mode))))
 		return false;
 
 	if (name) 

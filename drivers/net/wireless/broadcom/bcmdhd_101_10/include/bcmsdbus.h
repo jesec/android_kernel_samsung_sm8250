@@ -2,7 +2,7 @@
  * Definitions for API from sdio common code (bcmsdh) to individual
  * host controller drivers.
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -19,7 +19,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #ifndef	_sdio_api_h_
@@ -30,9 +30,9 @@
 #endif /* defined (BT_OVER_SDIO) */
 
 /*
- * XXX The following were:
- * 	incorrectly in bcmsdio.h
- * 	incorrectly named using SDIOH which indicates BRCM SDIO FPGA host controller
+ * The following were:
+ *	incorrectly in bcmsdio.h
+ *	incorrectly named using SDIOH which indicates BRCM SDIO FPGA host controller
  */
 
 #define SDIOH_API_RC_SUCCESS                          (0x00)
@@ -148,8 +148,8 @@ extern void sdioh_dwordmode(sdioh_info_t *si, bool set);
 
 #if defined(BCMSDIOH_STD)
 	/*
-	 * XXX - Only STD host supports cmd14 sleep.
-	 * XXX - Using define instead of empty stubs for other hosts for now.
+	 * Only STD host supports cmd14 sleep.
+	 * Using define instead of empty stubs for other hosts for now.
 	 */
 	#define SDIOH_SLEEP_ENABLED
 #endif

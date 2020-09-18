@@ -2299,9 +2299,9 @@
 		samsung,elvss_size = <3>;
 		samsung,irc_size = <28>;
 
-		samsung,support_flash_gamma;
+		samsung,flash_gamma_type = "flash";
 
-		samsung,flash_gamma_tables {
+		samsung,br_tables {
 			vrr60@0 {
 				samsung,refresh_rate = <60>;
 
@@ -2493,7 +2493,7 @@
 				qcom,mdss-dsi-on-command-state = "dsi_lp_mode";
 				qcom,mdss-dsi-off-command=[
 					29 01 00 00 00 00 03 9F A5 A5		/* LV1 (9F) unlock */
-					05 01 00 00 00 00 01 28 
+					05 01 00 00 00 00 01 28
 					29 01 00 00 00 00 03 9F 5A 5A		/* LV1 (9F) lock */
 
 					29 00 00 00 00 00 03 F0 5A 5A	/* TEST KEY2 Enable*/
@@ -2660,7 +2660,7 @@
 				qcom,mdss-dsi-on-command-state = "dsi_lp_mode";
 				qcom,mdss-dsi-off-command=[
 					29 01 00 00 00 00 03 9F A5 A5		/* LV1 (9F) unlock */
-					05 01 00 00 00 00 01 28 
+					05 01 00 00 00 00 01 28
 					29 01 00 00 00 00 03 9F 5A 5A		/* LV1 (9F) lock */
 
 					29 00 00 00 00 00 03 F0 5A 5A	/* TEST KEY2 Enable*/
@@ -2830,7 +2830,7 @@
 				qcom,mdss-dsi-on-command-state = "dsi_lp_mode";
 				qcom,mdss-dsi-off-command=[
 					29 01 00 00 00 00 03 9F A5 A5		/* LV1 (9F) unlock */
-					05 01 00 00 00 00 01 28 
+					05 01 00 00 00 00 01 28
 					29 01 00 00 00 00 03 9F 5A 5A		/* LV1 (9F) lock */
 
 					29 00 00 00 00 00 03 F0 5A 5A	/* TEST KEY2 Enable*/

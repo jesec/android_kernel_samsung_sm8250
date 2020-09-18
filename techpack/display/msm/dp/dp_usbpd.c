@@ -462,17 +462,10 @@ static int dp_usbpd_simulate_connect(struct dp_hpd *dp_hpd, bool hpd)
 	DP_DEBUG("hpd_high=%d, forced_disconnect=%d, orientation=%d\n",
 			dp_usbpd->base.hpd_high, pd->forced_disconnect,
 			pd->dp_usbpd.base.orientation);
-#ifndef CONFIG_SEC_DISPLAYPORT
 	if (hpd)
 		pd->dp_cb->configure(pd->dev);
 	else
 		pd->dp_cb->disconnect(pd->dev);
-#else
-	if (hpd)
-		pd->dp_cb->configure();
-	else
-		pd->dp_cb->disconnect();
-#endif
 
 error:
 	return rc;
@@ -498,13 +491,10 @@ static int dp_usbpd_simulate_attention(struct dp_hpd *dp_hpd, int vdo)
 	pd->vdo = vdo;
 #ifndef CONFIG_SEC_DISPLAYPORT
 	dp_usbpd_get_status(pd);
+#endif
 
 	if (pd->dp_cb && pd->dp_cb->attention)
 		pd->dp_cb->attention(pd->dev);
-#else
-	if (pd->dp_cb && pd->dp_cb->attention)
-		pd->dp_cb->attention();
-#endif
 
 error:
 	return rc;

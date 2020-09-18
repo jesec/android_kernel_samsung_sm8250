@@ -29,7 +29,7 @@
 #define TIME_CLOCK_FREQ_HZ		19200000
 #define CNSS_RAMDUMP_MAGIC		0x574C414E
 #define CNSS_RAMDUMP_VERSION		0
-#define MAX_FIRMWARE_NAME_LEN		20
+#define MAX_FIRMWARE_NAME_LEN		30
 
 #define CNSS_EVENT_SYNC   BIT(0)
 #define CNSS_EVENT_UNINTERRUPTIBLE BIT(1)
@@ -237,6 +237,8 @@ enum cnss_driver_state {
 	CNSS_IMS_CONNECTED,
 	CNSS_IN_SUSPEND_RESUME,
 	CNSS_IN_REBOOT,
+	CNSS_COLD_BOOT_CAL_DONE,
+	CNSS_IN_PANIC,
 };
 
 struct cnss_recovery_data {
@@ -401,6 +403,8 @@ struct cnss_plat_data {
 	u8 set_wlaon_pwr_ctrl;
 	u8 fw_pcie_gen_switch;
 	u8 pcie_gen_speed;
+
+	struct kobject *wifi_kobj;
 };
 
 #ifdef CONFIG_ARCH_QCOM

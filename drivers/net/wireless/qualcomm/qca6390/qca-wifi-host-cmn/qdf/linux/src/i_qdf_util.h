@@ -205,7 +205,7 @@ static inline bool __qdf_is_macaddr_equal(struct qdf_mac_addr *mac_addr1,
 		qdf_err("Assertion failed! %s:%s %s:%d",   \
 		#expr, __FUNCTION__, __FILE__, __LINE__);      \
 		dump_stack();                                      \
-		panic("Take care of the TARGET ASSERT first\n");          \
+		QDF_DEBUG_PANIC("Take care of the TARGET ASSERT first\n");  \
 	}     \
 } while (0)
 
@@ -470,6 +470,19 @@ static inline
 int __qdf_hex_str_to_binary(u8 *dst, const char *src, size_t count)
 {
 	return hex2bin(dst, src, count);
+}
+
+/**
+ * __qdf_fls() - find last set bit in a given 32 bit input
+ * @x: 32 bit mask
+ *
+ * Return: zero if the input is zero, otherwise returns the bit
+ * position of the last set bit, where the LSB is 1 and MSB is 32.
+ */
+static inline
+int __qdf_fls(uint32_t x)
+{
+	return fls(x);
 }
 
 #endif /*_I_QDF_UTIL_H*/

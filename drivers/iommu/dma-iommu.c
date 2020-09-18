@@ -859,7 +859,7 @@ int iommu_dma_map_sg(struct device *dev, struct scatterlist *sg,
 
 	iova = iommu_dma_alloc_iova(domain, iova_len, dma_get_mask(dev), dev);
 	if (!iova) {
-		pr_err("DEBUG: Alloc iova failed for len 0x%llx\n");
+		pr_err("DEBUG: Alloc iova failed for len 0x%zx\n", iova_len);
 		msm_dma_debug_count_buffers(dev);
 		goto out_restore_sg;
 	}

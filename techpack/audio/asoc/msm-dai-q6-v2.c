@@ -1288,6 +1288,7 @@ static int msm_dai_q6_island_mode_put(struct snd_kcontrol *kcontrol,
 	u16 port_id = (u16)kcontrol->private_value;
 
 	pr_debug("%s: island mode = %d\n", __func__, value);
+	trace_printk("%s: island mode = %d\n", __func__, value);
 
 	afe_set_island_mode_cfg(port_id, value);
 	return 0;
@@ -4124,6 +4125,9 @@ static int msm_dai_q6_dai_probe(struct snd_soc_dai *dai)
 				 dai));
 		rc = snd_ctl_add(dai->component->card->snd_card,
 				 snd_ctl_new1(&afe_enc_config_controls[5],
+				 dai_data));
+		rc = snd_ctl_add(dai->component->card->snd_card,
+				 snd_ctl_new1(&afe_enc_config_controls[6],
 				 dai_data));
 		rc = snd_ctl_add(dai->component->card->snd_card,
 				snd_ctl_new1(&avd_drift_config_controls[2],

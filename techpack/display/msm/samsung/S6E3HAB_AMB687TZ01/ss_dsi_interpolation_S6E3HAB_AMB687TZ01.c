@@ -897,7 +897,7 @@ int init_interpolation_S6E3HAB_AMB687TZ01(struct samsung_display_driver_data *vd
 	 * ------------------------------------------------------------------------
 	 * gamma	CAh				B3h 6th
 	 * aor		B1h 1st				B1h 3th
-	 * vint		F4h 5th		F4h 29th	
+	 * vint		F4h 5th		F4h 29th
 	 * elvss	B5h 3rd
 	 * irc		92h 11th
 	 * ------------------------------------------------------------------------
@@ -1071,7 +1071,7 @@ void convert_GAMMA_to_V(unsigned char* src, unsigned int *dst)
 					dst[k] |= GET_BITS(src[1], 0, 7);
 				} else if (j == G) { /* k = 1 */
 					dst[k] |= GET_BITS(src[0], 2, 3) << 8;
-					dst[k] |= GET_BITS(src[2], 0, 7);	
+					dst[k] |= GET_BITS(src[2], 0, 7);
 				} else if (j == B) { /* k = 2 */
 					dst[k] |= GET_BITS(src[0], 0, 1) << 8;
 					dst[k] |= GET_BITS(src[3], 0, 7);
@@ -1123,7 +1123,7 @@ void convert_V_to_GAMMA(unsigned int *src, unsigned char* dst)
 			dst[i] |= GET_BITS(src[k], 8, 9) << 4;
 			dst[i] |= GET_BITS(src[k+1], 8, 9) << 2;
 			dst[i] |= GET_BITS(src[k+2], 8, 9);
-			
+
 		} else if (i >= 31) {
 			dst[i] |= GET_BITS(src[k++], 0, 4) << 4;
 			dst[i] |= GET_BITS(src[k++], 0, 4);
@@ -1152,7 +1152,7 @@ void gen_hbm_interpolation_gamma_S6E3HAB_AMB687TZ01(struct samsung_display_drive
 
 	int hbm_itp_step;
 	int hbm_max_cd;
-	int *hbm_itp_cd;	
+	int *hbm_itp_cd;
 
 	int gamma_size = vdd->br_info.gamma_size;
 	int gamma_V_size = get_gamma_V_size_S6E3HAB_AMB687TZ01();
@@ -1225,7 +1225,7 @@ void gen_hbm_interpolation_gamma_S6E3HAB_AMB687TZ01(struct samsung_display_drive
 	 */
 	for (i = 0 ; i < hbm_itp_step; i++) {
 		for (j = 0; j < gamma_V_size; j++) {
-			hbm_temp_gamma[i][j] = 
+			hbm_temp_gamma[i][j] =
 				gamma_interpolation(hbm_max_gammaV[j], normal_max_gammaV[j], hbm_max_cd, normal_max_cd, hbm_itp_cd[i]);
 		}
 	}

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014-2019, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2014-2020, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
  *
@@ -98,6 +98,8 @@ static const char * const iommu_ports[] = {
 #define SDE_KMS_MODESET_LOCK_TIMEOUT_US 500
 #define SDE_KMS_MODESET_LOCK_MAX_TRIALS 20
 
+#define SDE_KMS_PM_QOS_CPU_DMA_LATENCY 300
+
 /**
  * sdecustom - enable certain driver customizations for sde clients
  *	Enabling this modifies the standard DRM behavior slightly and assumes
@@ -117,7 +119,11 @@ MODULE_PARM_DESC(sdecustom, "Enable customizations for sde clients");
 		line_num, SDE_EVTLOG_ALWAYS, ##__VA_ARGS__, \
 		SDE_EVTLOG_DATA_LIMITER)
 
+#if defined(CONFIG_PANEL_NT36523_PPA957DB1_WQXGA)
+#define MAX_REG_COUNT 5
+#else
 #define MAX_REG_COUNT 1
+#endif
 
 struct reg_log_info {
 	u32 reg_off;
@@ -135,15 +141,34 @@ static bool g_cont_splash = true;
 
 static void _reg_log_init()
 {
+	int index = 0;
+
+#if defined(CONFIG_PANEL_NT36523_PPA957DB1_WQXGA)
+	int addr[MAX_REG_COUNT] = {
+		0xae94008, // DSI_STATUS
+		0xae9400c, // DSI_FIFO_STATUS
+		0xae94110, // DSI_INT_CTRL
+		0x0AF020CC,
+		0x0AF0209C,
+	};
+#else
+	int addr[MAX_REG_COUNT] = {
+		0xAE6BAB0, // INTF_LINE_COUNT
+	};
+#endif
+
 	sde_dbg_init(NULL);
-	reg_info[0].reg_off = 0xAE6BAB0; // INTF_LINE_COUNT
-	reg_info[0].reg_mem = ioremap(reg_info[0].reg_off, 4);
+
+	for (index = 0; index < MAX_REG_COUNT; index++) {
+		reg_info[index].reg_off = addr[index];
+		reg_info[index].reg_mem = ioremap(reg_info[index].reg_off, 4);
+	}
 }
 
 void reg_log_dump(const char *func_name, int line_num)
 {
 	struct reg_log_value value[5] = {{0}};
-	int i, j;
+	int i;
 
 	if (!g_cont_splash)
 		return;
@@ -153,20 +178,34 @@ void reg_log_dump(const char *func_name, int line_num)
 		g_init_done = true;
 	}
 
-	for (i = 0, j = 0; i < MAX_REG_COUNT; i++, j++) {
-		value[j].reg_off = reg_info[i].reg_off;
-		value[j].reg_val = readl_relaxed(reg_info[i].reg_mem);
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+	{
+		/* PBA booting skip */
+		extern int ss_panel_attached(int ndx);
 
-		if (((i != 0) && ((i % 5) == 0)) || (MAX_REG_COUNT < 5)) {
-			SDE_REG_EVT32(func_name, line_num, i, 0xdddd,
+		if (!(ss_panel_attached(0) || ss_panel_attached(1)))
+			return;
+	}
+#if defined(CONFIG_PANEL_S6TUUM1_AMSA24VU01_WQXGA)
+	/* for GTS7XL hwid 02 2800X1752 panel */
+	return;
+#endif
+#endif
+
+	for (i = 0 ; i < MAX_REG_COUNT; i++) {
+		if (reg_info[i].reg_off)
+			value[i].reg_off = reg_info[i].reg_off;
+
+		if (!IS_ERR_OR_NULL(reg_info[i].reg_mem))
+			value[i].reg_val = readl_relaxed(reg_info[i].reg_mem);
+	}
+
+	SDE_REG_EVT32(func_name, line_num, i, 0xdddd,
 				value[0].reg_off, value[0].reg_val,
 				value[1].reg_off, value[1].reg_val,
 				value[2].reg_off, value[2].reg_val,
 				value[3].reg_off, value[3].reg_val,
 				value[4].reg_off, value[4].reg_val);
-			j = 0;
-		}
-	}
 
 	pr_debug("auto-refresh: %s:%d, off:0x%x, val:0x%x\n", func_name, line_num,
 			value[0].reg_off, value[0].reg_val);
@@ -690,6 +729,7 @@ static int sde_kms_prepare_secure_transition(struct msm_kms *kms,
 {
 	struct drm_crtc *crtc;
 	struct drm_crtc_state *old_crtc_state;
+	struct drm_plane_state *old_plane_state, *new_plane_state;
 
 	struct drm_plane *plane;
 	struct drm_plane_state *plane_state;
@@ -751,6 +791,9 @@ static int sde_kms_prepare_secure_transition(struct msm_kms *kms,
 		if (ops & SDE_KMS_OPS_CLEANUP_PLANE_FB) {
 			SDE_DEBUG("cleanup planes\n");
 			drm_atomic_helper_cleanup_planes(dev, state);
+			for_each_oldnew_plane_in_state(state, plane,
+					old_plane_state, new_plane_state, i)
+				sde_plane_destroy_fb(old_plane_state);
 		}
 		if (ops & SDE_KMS_OPS_SECURE_STATE_CHANGE) {
 			SDE_DEBUG("secure ctrl\n");
@@ -829,7 +872,7 @@ static int _sde_kms_release_splash_buffer(unsigned int mem_addr,
 		free_reserved_page(pfn_to_page(pfn_idx));
 
 #if defined(CONFIG_DISPLAY_SAMSUNG)
-	SDE_INFO("release splash buffer: addr: %lx, size: %x, sec_debug: %d\n",
+	SDE_INFO("release splash buffer: addr: %x, size: %x, sec_debug: %d\n",
 			mem_addr, splash_buffer_size, sec_debug_is_enabled());
 #endif
 
@@ -982,16 +1025,18 @@ static void _sde_kms_drm_check_dpms(struct drm_atomic_state *old_state,
 	struct drm_connector *connector;
 	struct drm_connector_state *old_conn_state;
 	struct drm_crtc_state *old_crtc_state;
+	struct drm_crtc *crtc;
 	int i, old_mode, new_mode, old_fps, new_fps;
 
 	for_each_old_connector_in_state(old_state, connector,
 			old_conn_state, i) {
-		if (!connector->state->crtc)
+		crtc = connector->state->crtc ? connector->state->crtc :
+			old_conn_state->crtc;
+		if (!crtc)
 			continue;
 
-		new_fps = connector->state->crtc->state->mode.vrefresh;
-		new_mode = _sde_kms_get_blank(connector->state->crtc->state,
-						connector->state);
+		new_fps = crtc->state->mode.vrefresh;
+		new_mode = _sde_kms_get_blank(crtc->state, connector->state);
 		if (old_conn_state->crtc) {
 			old_crtc_state = drm_atomic_get_existing_crtc_state(
 					old_state, old_conn_state->crtc);
@@ -1423,9 +1468,15 @@ static void _sde_kms_release_displays(struct sde_kms *sde_kms)
 	sde_kms->wb_displays = NULL;
 	sde_kms->wb_display_count = 0;
 
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+	sde_kms->dsi_display_count = 0;
+	kfree(sde_kms->dsi_displays);
+	sde_kms->dsi_displays = NULL;
+#else
 	kfree(sde_kms->dsi_displays);
 	sde_kms->dsi_displays = NULL;
 	sde_kms->dsi_display_count = 0;
+#endif
 }
 
 /**
@@ -2276,6 +2327,9 @@ static int _sde_kms_helper_reset_custom_properties(struct sde_kms *sde_kms,
 	return ret;
 }
 
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+#include "./dsi/dsi_display.h"
+#endif
 static void sde_kms_lastclose(struct msm_kms *kms,
 		struct drm_modeset_acquire_ctx *ctx)
 {
@@ -2317,6 +2371,30 @@ static void sde_kms_lastclose(struct msm_kms *kms,
 		SDE_ERROR("failed to run last close: %d\n", ret);
 
 	drm_atomic_state_put(state);
+
+
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+	/*
+		There is reverse current on BLIC after panel power off.
+		This project use AOT mode(always on touch). So suspend status sustain panel power on.
+		So, only consider set power off & set restart case
+	*/
+	{
+		struct dsi_display *display;
+		int i;
+
+		for (i = 0; i < sde_kms->dsi_display_count; ++i) {
+			display = (struct dsi_display *)sde_kms->dsi_displays[i];
+			if (of_node_name_eq(display->panel_node, "ss_dsi_panel_NT36523_PPA957DB1_WQXGA")) {
+				SDE_ERROR("wait 3s start\n");
+				msleep(3000);
+				SDE_ERROR("wait 3s end\n");
+				break;
+			}
+		}
+
+	}
+#endif
 }
 
 static int sde_kms_check_secure_transition(struct msm_kms *kms,
@@ -2871,7 +2949,7 @@ end:
 static void _sde_kms_pm_suspend_idle_helper(struct sde_kms *sde_kms,
 	struct device *dev)
 {
-	int i, ret;
+	int i, ret, crtc_id = 0;
 	struct drm_device *ddev = dev_get_drvdata(dev);
 	struct drm_connector *conn;
 	struct drm_connector_list_iter conn_iter;
@@ -2885,14 +2963,22 @@ static void _sde_kms_pm_suspend_idle_helper(struct sde_kms *sde_kms,
 		if (lp != SDE_MODE_DPMS_LP2)
 			continue;
 
+		if (sde_encoder_in_clone_mode(conn->encoder))
+			continue;
+
 		ret = sde_encoder_wait_for_event(conn->encoder,
 						MSM_ENC_TX_COMPLETE);
-		if (ret && ret != -EWOULDBLOCK)
+		if (ret && ret != -EWOULDBLOCK) {
 			SDE_ERROR(
 				"[conn: %d] wait for commit done returned %d\n",
 				conn->base.id, ret);
-		else if (!ret)
+		} else if (!ret) {
+			crtc_id = drm_crtc_index(conn->state->crtc);
+			if (priv->event_thread[crtc_id].thread)
+				kthread_flush_worker(
+					&priv->event_thread[crtc_id].worker);
 			sde_encoder_idle_request(conn->encoder);
+		}
 	}
 	drm_connector_list_iter_end(&conn_iter);
 
@@ -2971,7 +3057,8 @@ retry:
 		uint64_t lp;
 
 		if (!conn->state || !conn->state->crtc ||
-				conn->dpms != DRM_MODE_DPMS_ON)
+			conn->dpms != DRM_MODE_DPMS_ON ||
+			sde_encoder_in_clone_mode(conn->encoder))
 			continue;
 
 		lp = sde_connector_get_lp(conn);
@@ -3267,6 +3354,59 @@ static void _sde_kms_set_lutdma_vbif_remap(struct sde_kms *sde_kms)
 	sde_vbif_set_qos_remap(sde_kms, &qos_params);
 }
 
+static void sde_kms_update_pm_qos_irq_request(struct sde_kms *sde_kms)
+{
+	struct pm_qos_request *req;
+
+	req = &sde_kms->pm_qos_irq_req;
+	req->type = PM_QOS_REQ_AFFINE_CORES;
+	req->cpus_affine = sde_kms->irq_cpu_mask;
+
+	if (pm_qos_request_active(req))
+		pm_qos_update_request(req, SDE_KMS_PM_QOS_CPU_DMA_LATENCY);
+	else if (!cpumask_empty(&req->cpus_affine)) {
+		/** If request is not active yet and mask is not empty
+		 *  then it needs to be added initially
+		 */
+		pm_qos_add_request(req, PM_QOS_CPU_DMA_LATENCY,
+					SDE_KMS_PM_QOS_CPU_DMA_LATENCY);
+	}
+}
+
+static void sde_kms_set_default_pm_qos_irq_request(struct sde_kms *sde_kms)
+{
+	if (pm_qos_request_active(&sde_kms->pm_qos_irq_req))
+		pm_qos_update_request(&sde_kms->pm_qos_irq_req,
+					PM_QOS_DEFAULT_VALUE);
+}
+
+static void sde_kms_irq_affinity_notify(
+		struct irq_affinity_notify *affinity_notify,
+		const cpumask_t *mask)
+{
+	struct msm_drm_private *priv;
+	struct sde_kms *sde_kms = container_of(affinity_notify,
+					struct sde_kms, affinity_notify);
+
+	if (!sde_kms || !sde_kms->dev || !sde_kms->dev->dev_private)
+		return;
+
+	priv = sde_kms->dev->dev_private;
+
+	mutex_lock(&priv->phandle.phandle_lock);
+
+	// save irq cpu mask
+	sde_kms->irq_cpu_mask = *mask;
+
+	// request vote with updated irq cpu mask
+	if (sde_kms->irq_enabled)
+		sde_kms_update_pm_qos_irq_request(sde_kms);
+
+	mutex_unlock(&priv->phandle.phandle_lock);
+}
+
+static void sde_kms_irq_affinity_release(struct kref *ref) {}
+
 static void sde_kms_handle_power_event(u32 event_type, void *usr)
 {
 	struct sde_kms *sde_kms = usr;
@@ -3285,7 +3425,9 @@ static void sde_kms_handle_power_event(u32 event_type, void *usr)
 		sde_kms_init_shared_hw(sde_kms);
 		_sde_kms_set_lutdma_vbif_remap(sde_kms);
 		sde_kms->first_kickoff = true;
+		sde_kms_update_pm_qos_irq_request(sde_kms);
 	} else if (event_type == SDE_POWER_EVENT_PRE_DISABLE) {
+		sde_kms_set_default_pm_qos_irq_request(sde_kms);
 		sde_irq_update(msm_kms, false);
 		sde_kms->first_kickoff = false;
 	}
@@ -3723,7 +3865,7 @@ static int sde_kms_hw_init(struct msm_kms *kms)
 	struct drm_device *dev;
 	struct msm_drm_private *priv;
 	struct platform_device *platformdev;
-	int i, rc = -EINVAL;
+	int i, irq_num, rc = -EINVAL;
 
 	if (!kms) {
 		SDE_ERROR("invalid kms\n");
@@ -3769,6 +3911,8 @@ static int sde_kms_hw_init(struct msm_kms *kms)
 	dev->mode_config.max_height = sde_kms->catalog->max_display_height;
 
 	mutex_init(&sde_kms->secure_transition_lock);
+	mutex_init(&sde_kms->vblank_ctl_global_lock);
+
 	atomic_set(&sde_kms->detach_sec_cb, 0);
 	atomic_set(&sde_kms->detach_all_cb, 0);
 
@@ -3796,7 +3940,16 @@ static int sde_kms_hw_init(struct msm_kms *kms)
 
 		pm_runtime_put_sync(sde_kms->dev->dev);
 	}
+
+	sde_kms->affinity_notify.notify = sde_kms_irq_affinity_notify;
+	sde_kms->affinity_notify.release = sde_kms_irq_affinity_release;
+
+	irq_num = platform_get_irq(to_platform_device(sde_kms->dev->dev), 0);
+	SDE_DEBUG("Registering for notification of irq_num: %d\n", irq_num);
+	irq_set_affinity_notifier(irq_num, &sde_kms->affinity_notify);
+
 	reg_log_dump(__func__, __LINE__);
+
 	return 0;
 
 hw_init_err:

@@ -146,6 +146,7 @@ enum ss_dimming_mode {
 	SS_FLASH_DIMMING_MODE,
 	SS_S_DIMMING_AOR_ITP_MODE,	/* S-dimming, fixed gamma, AOR interpolation */
 	SS_S_DIMMING_GAMMA_ITP_MODE,	/* S-dimming, fixed AOR, gamma interpolation */
+	SS_S_DIMMING_EXIT_MODE_1,
 	SS_A_DIMMING_MODE,
 	DIMMING_MODE_MAX,
 };

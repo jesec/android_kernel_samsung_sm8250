@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011-2012,2016-2019 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2011-2012,2016-2020 The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -194,8 +194,6 @@ extern const uint8_t hdd_qdisc_ac_to_tl_ac[];
 extern const uint8_t hdd_wmm_up_to_ac_map[];
 extern const uint8_t hdd_linux_up_to_ac_map[];
 
-#define WLAN_HDD_MAX_DSCP 0x3f
-
 /**
  * hdd_wmmps_helper() - Function to set uapsd psb dynamically
  *
@@ -205,6 +203,17 @@ extern const uint8_t hdd_linux_up_to_ac_map[];
  * Return: Zero on success, appropriate error on failure.
  */
 int hdd_wmmps_helper(struct hdd_adapter *adapter, uint8_t *ptr);
+
+/**
+ * hdd_send_dscp_up_map_to_fw() - send dscp to up map to FW
+ * @adapter : [in]  pointer to Adapter context
+ *
+ * This function will send the WMM DSCP configuration of an
+ * adapter to FW.
+ *
+ * Return: QDF_STATUS enumeration
+ */
+QDF_STATUS hdd_send_dscp_up_map_to_fw(struct hdd_adapter *adapter);
 
 /**
  * hdd_wmm_init() - initialize the WMM DSCP configuation
@@ -251,7 +260,10 @@ QDF_STATUS hdd_wmm_adapter_close(struct hdd_adapter *adapter);
  *
  * Return: Qdisc queue index.
  */
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 19, 0))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
+uint16_t hdd_select_queue(struct net_device *dev, struct sk_buff *skb,
+			  struct net_device *sb_dev);
+#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 19, 0))
 uint16_t hdd_select_queue(struct net_device *dev, struct sk_buff *skb,
 			  struct net_device *sb_dev,
 			  select_queue_fallback_t fallback);

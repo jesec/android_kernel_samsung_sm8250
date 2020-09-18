@@ -177,6 +177,10 @@ dhd_wlan_reset(int onoff)
 static int
 dhd_wlan_set_carddetect(int val)
 {
+#ifdef CONFIG_BCMDHD_PCIE
+	printk(KERN_INFO "%s: Call msm_pcie_enumerate\n", __FUNCTION__);
+	msm_pcie_enumerate(MSM_PCIE_CH_NUM);
+#endif /* CONFIG_BCMDHD_PCIE */
 	return 0;
 }
 

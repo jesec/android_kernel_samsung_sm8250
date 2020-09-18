@@ -28,6 +28,8 @@
 #define ACCEL_RAW_DATA_CNT 3
 #define MAX_ACCEL_1G 4096
 
+#define STM_LSM6DSO_INT_CHECK_RUNNING   4
+
 #define MAX_MOTOR_STOP_TIMEOUT (8 * NSEC_PER_SEC)
 /* Haptic Pattern A vibrate during 7ms.
  * touch, touchkey, operation feedback use this.
@@ -334,28 +336,71 @@ static ssize_t accel_reactive_show(struct device *dev,
 	struct device_attribute *attr, char *buf)
 {
 	struct adsp_data *data = dev_get_drvdata(dev);
+	uint8_t cnt = 0;
 	bool success = false;
-	int32_t raw_data[ACCEL_RAW_DATA_CNT] = {0, };
+	int32_t msg_buf = 0;
 
 	mutex_lock(&data->accel_factory_mutex);
-	get_accel_raw_data(raw_data);
+	adsp_unicast(&msg_buf, sizeof(int32_t), MSG_ACCEL,
+		0, MSG_TYPE_GET_REGISTER);
+
+	while (!(data->ready_flag[MSG_TYPE_GET_REGISTER] & 1 << MSG_ACCEL) &&
+		cnt++ < TIMEOUT_CNT)
+		usleep_range(500, 550);
+
+	data->ready_flag[MSG_TYPE_GET_REGISTER] &= ~(1 << MSG_ACCEL);
 	mutex_unlock(&data->accel_factory_mutex);
 
-	if (raw_data[0] != 0 || raw_data[1] != 0 || raw_data[2] != 0)
+	if (cnt >= TIMEOUT_CNT) {
+		pr_err("[FACTORY] %s: Timeout!!!\n", __func__);
+		return snprintf(buf, PAGE_SIZE, "%d\n", (int)success);
+	}
+
+	pr_info("[FACTORY]: %s - %d\n", __func__,
+		data->msg_buf[MSG_ACCEL][0]);
+
+	if (data->msg_buf[MSG_ACCEL][0] == 0)
 		success = true;
 
-	return snprintf(buf, PAGE_SIZE, "%d\n", success);
+	return snprintf(buf, PAGE_SIZE, "%d\n", (int)success);
 }
 
 static ssize_t accel_reactive_store(struct device *dev,
 	struct device_attribute *attr, const char *buf, size_t size)
 {
+	struct adsp_data *data = dev_get_drvdata(dev);
+	int32_t msg_buf;
+	uint8_t cnt = 0;
+
 	if (sysfs_streq(buf, "1"))
 		pr_info("[FACTORY]: %s - on\n", __func__);
 	else if (sysfs_streq(buf, "0"))
 		pr_info("[FACTORY]: %s - off\n", __func__);
-	else if (sysfs_streq(buf, "2"))
+	else if (sysfs_streq(buf, "2")) {
 		pr_info("[FACTORY]: %s - factory\n", __func__);
+		msg_buf = 1;
+
+		mutex_lock(&data->accel_factory_mutex);
+		adsp_unicast(&msg_buf, sizeof(int32_t), MSG_ACCEL,
+			0, MSG_TYPE_GET_REGISTER);
+
+		while (!(data->ready_flag[MSG_TYPE_GET_REGISTER] & 1 << MSG_ACCEL) &&
+			cnt++ < TIMEOUT_CNT)
+			usleep_range(500, 550);
+
+		data->ready_flag[MSG_TYPE_GET_REGISTER] &= ~(1 << MSG_ACCEL);
+		mutex_unlock(&data->accel_factory_mutex);
+
+		if (cnt >= TIMEOUT_CNT) {
+			pr_err("[FACTORY] %s: Timeout!!!\n", __func__);
+			return size;
+		}
+
+		if (data->msg_buf[MSG_ACCEL][0] == STM_LSM6DSO_INT_CHECK_RUNNING)
+			pr_info("[FACTORY]: %s - STM_LSM6DSO_INT_CHECK_RUNNING\n", __func__);
+		else
+			pr_info("[FACTORY]: %s - Something wrong\n", __func__);
+	}
 
 	return size;
 }
@@ -371,6 +416,11 @@ static ssize_t accel_lowpassfilter_store(struct device *dev,
 		msg_buf = 1;
 	} else if (sysfs_streq(buf, "0")) {
 		msg_buf = 0;
+#ifdef CONFIG_SEC_FACTORY
+	} else if (sysfs_streq(buf, "2")) {
+		msg_buf = 2;
+		pr_info("[FACTORY] %s: Pretest\n", __func__);
+#endif
 	} else {
 		pr_info("[FACTORY] %s: wrong value\n", __func__);
 		return size;

@@ -532,6 +532,8 @@ static int msm_watchdog_remove(struct platform_device *pdev)
 
 void msm_trigger_wdog_bite(void)
 {
+	size_t i;
+
 	if (!wdog_data)
 		return;
 	pr_info("Causing a watchdog bite!");
@@ -542,7 +544,8 @@ void msm_trigger_wdog_bite(void)
 	/* Make sure we wait only after reset */
 	mb();
 	/* Delay to make sure bite occurs */
-	mdelay(10000);
+	for (i = 0; i < 100; i++)
+		mdelay(100);
 	pr_err("Wdog - STS: 0x%x, CTL: 0x%x, BARK TIME: 0x%x, BITE TIME: 0x%x",
 		__raw_readl(wdog_data->base + WDT0_STS),
 		__raw_readl(wdog_data->base + WDT0_EN),
@@ -574,6 +577,9 @@ static irqreturn_t wdog_bark_handler(int irq, void *dev_id)
 	nanosec_rem = do_div(wdog_dd->last_pet, 1000000000);
 	dev_info(wdog_dd->dev, "Watchdog last pet at %lu.%06lu\n",
 			(unsigned long) wdog_dd->last_pet, nanosec_rem / 1000);
+	dev_info(wdog_dd->dev, "Watchdog pet_timer on cpu %d, expires = 0x%llx, jiffies = 0x%llx\n",
+			get_cpu_where_timer_on(&wdog_dd->pet_timer), wdog_dd->pet_timer.expires, jiffies);
+
 	if (wdog_dd->do_ipi_ping)
 		dump_cpu_alive_mask(wdog_dd);
 
@@ -582,9 +588,6 @@ static irqreturn_t wdog_bark_handler(int irq, void *dev_id)
 	sched_show_task(wdog_dd->watchdog_task);
 	/* send stop IPI to see what happens on other cores */
 	smp_send_stop();
-
-	dev_info(wdog_dd->dev, "Watchdog pet_timer on cpu %d, expires = 0x%llx, jiffies = 0x%llx\n",
-			get_cpu_where_timer_on(&wdog_dd->pet_timer), wdog_dd->pet_timer.expires, jiffies);
 
 	msm_trigger_wdog_bite();
 	return IRQ_HANDLED;

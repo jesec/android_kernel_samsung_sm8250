@@ -804,7 +804,7 @@ static ssize_t mtpg_write(struct file *fp, const char __user *buf,
 
 		if (dev->error) {
 			r = -EIO;
-			pr_info("[%s]%d count>0 dev->error so brk\n",
+			pr_info("[%s]%d dev->error so brk\n",
 							 __func__, __LINE__);
 			break;
 		}

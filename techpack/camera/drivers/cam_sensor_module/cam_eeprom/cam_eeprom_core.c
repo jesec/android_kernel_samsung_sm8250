@@ -33,7 +33,11 @@ char front2_cam_cal_check[SYSFS_FW_VER_SIZE] = "NULL";
 #endif
 
 #if defined(CONFIG_SAMSUNG_FRONT_TOP)
+#if defined(CONFIG_SAMSUNG_FRONT_DUAL)
 char front3_cam_cal_check[SYSFS_FW_VER_SIZE] = "NULL";
+#else
+char front2_cam_cal_check[SYSFS_FW_VER_SIZE] = "NULL";
+#endif
 #endif
 
 #if defined(CONFIG_SAMSUNG_REAR_DUAL) || defined(CONFIG_SAMSUNG_REAR_TRIPLE)
@@ -56,7 +60,7 @@ char front_tof_cam_cal_check[SYSFS_FW_VER_SIZE] = "NULL";
 char bokeh_module_fw_ver[FROM_MODULE_FW_INFO_SIZE+1];
 #endif
 
-#if defined(CONFIG_SEC_Z3Q_PROJECT)
+#if defined(CONFIG_SEC_Z3Q_PROJECT) || defined(CONFIG_SEC_C2Q_PROJECT) || defined(CONFIG_SEC_R8Q_PROJECT)
 char rear3_module_fw_ver[FROM_MODULE_FW_INFO_SIZE+1];
 #endif
 
@@ -98,6 +102,8 @@ extern uint8_t ois_tele_xygg[OIS_XYGG_SIZE];
 extern uint8_t ois_tele_center_shift[OIS_CENTER_SHIFT_SIZE];
 extern uint8_t ois_tele_cal_mark;
 uint8_t ois_tele_xysr[OIS_XYSR_SIZE] = { 0, };
+uint8_t ois_tele_cross_talk[OIS_CROSSTALK_SIZE] = { 0, };
+extern int ois_tele_cross_talk_result;
 extern int ois_gain_rear3_result;
 extern int ois_sr_rear3_result;
 #endif
@@ -340,7 +346,7 @@ static int cam_eeprom_module_info_set_load_version(int rev, uint32_t hasSubCalda
         sprintf(cam3_fw_full_ver, "%s %s %s\n", bokeh_module_fw_ver, bokeh_module_fw_ver,bokeh_module_fw_ver);
 #endif
 
-#if defined(CONFIG_SEC_Z3Q_PROJECT)
+#if defined(CONFIG_SEC_Z3Q_PROJECT) || defined(CONFIG_SEC_C2Q_PROJECT) || defined(CONFIG_SEC_R8Q_PROJECT)
         if(mInfo->type == CAM_EEPROM_IDX_BACK3) {
             ConfIdx = ADDR_M_FW_VER;
             memset(rear3_module_fw_ver, 0x00, sizeof(rear3_module_fw_ver));
@@ -491,7 +497,7 @@ static int cam_eeprom_module_info_set_load_version(int rev, uint32_t hasSubCalda
 #endif
 
 	/* update EEPROM fw version on sysfs */
-	if(mInfo->type != CAM_EEPROM_IDX_BACK)
+	// if(mInfo->type != CAM_EEPROM_IDX_BACK)
 	{
 		strncpy(load_fw_ver, module_fw_ver, FROM_MODULE_FW_INFO_SIZE);
 		load_fw_ver[FROM_MODULE_FW_INFO_SIZE] = '\0';
@@ -567,7 +573,8 @@ static int cam_eeprom_module_info_set_dual_tilt(eDualTiltMode tiltMode, uint32_t
 	{
 		switch (tiltMode)
 		{
-#if defined(CONFIG_SEC_X1Q_PROJECT) || defined(CONFIG_SEC_Y2Q_PROJECT)
+#if defined(CONFIG_SEC_X1Q_PROJECT) || defined(CONFIG_SEC_Y2Q_PROJECT) || defined(CONFIG_SEC_C1Q_PROJECT) || defined(CONFIG_SEC_F2Q_PROJECT)\
+	 || defined(CONFIG_SEC_R8Q_PROJECT)
 			case DUAL_TILT_REAR_TELE:
 				offset_dll_ver          = 0x02F4;
 				offset_x                = 0x00B8;
@@ -582,7 +589,7 @@ static int cam_eeprom_module_info_set_dual_tilt(eDualTiltMode tiltMode, uint32_t
 				break;
 #endif
 
-#if defined(CONFIG_SEC_Z3Q_PROJECT)
+#if defined(CONFIG_SEC_Z3Q_PROJECT) || defined(CONFIG_SEC_C2Q_PROJECT)
 			case DUAL_TILT_REAR_TELE:
 				offset_dll_ver          = 0x02F4;
 				offset_x                = 0x00B8;
@@ -608,6 +615,17 @@ static int cam_eeprom_module_info_set_dual_tilt(eDualTiltMode tiltMode, uint32_t
 				offset_range   = 0x07E0;
 				offset_max_err = 0x07E4;
 				offset_avg_err = 0x07E8;
+#if defined(CONFIG_SEC_BLOOMXQ_PROJECT)
+				offset_x       = 0x011C;
+				offset_y       = 0x0120;
+				offset_z       = 0x0124;
+				offset_sx      = 0x0128;
+				offset_sy      = 0x012C;
+				offset_range   = 0x07F0;
+				offset_max_err = 0x07F4;
+				offset_avg_err = 0x07F8;
+				offset_project_cal_type = 0x0108;
+#endif
 				break;
 
 			case DUAL_TILT_FRONT:
@@ -939,7 +957,7 @@ static int cam_eeprom_update_module_info(struct cam_eeprom_ctrl_t *e_ctrl)
 			mInfo.mVer.fw_factory_ver          = cam_fw_factory_ver;
 
 #if defined(CONFIG_SAMSUNG_REAR_TRIPLE)
-#if defined(CONFIG_SEC_Z3Q_PROJECT)
+#if defined(CONFIG_SEC_Z3Q_PROJECT) || defined(CONFIG_SEC_C2Q_PROJECT) || defined(CONFIG_SEC_R8Q_PROJECT)
 			// No Control
 #else
 			mInfo.mVer.sensor2_id              = rear3_sensor_id;
@@ -965,7 +983,7 @@ static int cam_eeprom_update_module_info(struct cam_eeprom_ctrl_t *e_ctrl)
 #endif
 			break;
 
-#if defined(CONFIG_SEC_Z3Q_PROJECT)
+#if defined(CONFIG_SEC_Z3Q_PROJECT) || defined(CONFIG_SEC_C2Q_PROJECT) || defined(CONFIG_SEC_R8Q_PROJECT)
 		case CAM_EEPROM_IDX_BACK3:
 			strlcpy(mInfo.typeStr, "Rear3", FROM_MODULE_FW_INFO_SIZE);
 			mInfo.typeStr[FROM_MODULE_FW_INFO_SIZE-1] = '\0';
@@ -1055,6 +1073,7 @@ static int cam_eeprom_update_module_info(struct cam_eeprom_ctrl_t *e_ctrl)
 			break;
 
 #if defined(CONFIG_SAMSUNG_FRONT_TOP)
+#if defined(CONFIG_SAMSUNG_FRONT_DUAL)
 		case CAM_EEPROM_IDX_FRONT2:
 			strlcpy(mInfo.typeStr, "Front3", FROM_MODULE_FW_INFO_SIZE);
 			mInfo.typeStr[FROM_MODULE_FW_INFO_SIZE-1] = '\0';
@@ -1075,6 +1094,28 @@ static int cam_eeprom_update_module_info(struct cam_eeprom_ctrl_t *e_ctrl)
 			mInfo.mVer.fw_user_ver             = front3_cam_fw_user_ver;
 			mInfo.mVer.fw_factory_ver          = front3_cam_fw_factory_ver;
 			break;
+#else
+		case CAM_EEPROM_IDX_FRONT2:
+			strlcpy(mInfo.typeStr, "Front2", FROM_MODULE_FW_INFO_SIZE);
+			mInfo.typeStr[FROM_MODULE_FW_INFO_SIZE-1] = '\0';
+
+			mInfo.type                         = e_ctrl->soc_info.index;
+			mInfo.M_or_S                       = MAIN_MODULE;
+
+			mInfo.mVer.sensor_id               = front2_sensor_id;
+			mInfo.mVer.sensor2_id              = front2_sensor_id;
+			mInfo.mVer.module_id               = front2_module_id;
+
+			mInfo.mVer.module_info             = front2_module_info;
+
+			mInfo.mVer.cam_cal_ack             = front_cam_cal_check;
+			mInfo.mVer.cam_fw_ver              = front2_cam_fw_ver;
+			mInfo.mVer.cam_fw_full_ver         = front2_cam_fw_full_ver;
+
+			mInfo.mVer.fw_user_ver             = front2_cam_fw_user_ver;
+			mInfo.mVer.fw_factory_ver          = front2_cam_fw_factory_ver;
+			break;
+#endif
 #endif
 
 #if defined(CONFIG_SAMSUNG_REAR_TOF)
@@ -1205,7 +1246,7 @@ static int cam_eeprom_update_module_info(struct cam_eeprom_ctrl_t *e_ctrl)
 #endif //!defined(CONFIG_SAMSUNG_FRONT_TOP_EEPROM)
 	}
 #endif //#if defined(CONFIG_SAMSUNG_FRONT_TOP)
-#if defined(CONFIG_SEC_Z3Q_PROJECT)
+#if defined(CONFIG_SEC_Z3Q_PROJECT) || defined(CONFIG_SEC_C2Q_PROJECT) || defined(CONFIG_SEC_R8Q_PROJECT)
 	else if (e_ctrl->soc_info.index == CAM_EEPROM_IDX_BACK || e_ctrl->soc_info.index == CAM_EEPROM_IDX_BACK3)
 #else
 	else if (e_ctrl->soc_info.index == CAM_EEPROM_IDX_BACK)
@@ -1221,7 +1262,7 @@ static int cam_eeprom_update_module_info(struct cam_eeprom_ctrl_t *e_ctrl)
 			cam_eeprom_module_info_set_rear_af(ADDR_M_AF, rear_idx_simple, sizeof(rear_idx_simple)/sizeof(rear_idx_simple[0]),
 				e_ctrl->cal_data.mapdata, rear_af_cal_str);
 		}
-#if defined(CONFIG_SEC_Z3Q_PROJECT)
+#if defined(CONFIG_SEC_Z3Q_PROJECT) || defined(CONFIG_SEC_C2Q_PROJECT) || defined(CONFIG_SEC_R8Q_PROJECT)
 		if (e_ctrl->soc_info.index == CAM_EEPROM_IDX_BACK3) {
 			AfIdx_t rear3_idx_simple[] = {
 				{AF_CAL_MACRO_IDX, AF_CAL_MACRO3_OFFSET_FROM_AF},
@@ -1250,7 +1291,7 @@ static int cam_eeprom_update_module_info(struct cam_eeprom_ctrl_t *e_ctrl)
 		}
 
 #if defined(CONFIG_SAMSUNG_REAR_TRIPLE)
-#if defined(CONFIG_SEC_Z3Q_PROJECT)
+#if defined(CONFIG_SEC_Z3Q_PROJECT) || defined(CONFIG_SEC_C2Q_PROJECT) || defined(CONFIG_SEC_R8Q_PROJECT)
 		/* rear3 mtf exif */
 		// No Control
 #else
@@ -1263,10 +1304,15 @@ static int cam_eeprom_update_module_info(struct cam_eeprom_ctrl_t *e_ctrl)
 		}
 #endif
 
-#if defined(CONFIG_SEC_X1Q_PROJECT) || defined(CONFIG_SEC_Y2Q_PROJECT)
+#if defined(CONFIG_SEC_X1Q_PROJECT) || defined(CONFIG_SEC_Y2Q_PROJECT)|| defined(CONFIG_SEC_C2Q_PROJECT)\
+	|| defined(CONFIG_SEC_C1Q_PROJECT)
 		if (e_ctrl->cal_data.num_data > 0x5C00)
+#elif defined(CONFIG_SEC_F2Q_PROJECT)
+		if (e_ctrl->cal_data.num_data > 0x5200)
 #elif defined(CONFIG_SEC_Z3Q_PROJECT)
 		if (e_ctrl->cal_data.num_data > 0x6700)
+#elif defined(CONFIG_SEC_R8Q_PROJECT)
+		if (e_ctrl->cal_data.num_data > 0x2A00)
 #else
 		if (e_ctrl->cal_data.num_data > 0xAF00)
 #endif
@@ -1284,7 +1330,7 @@ static int cam_eeprom_update_module_info(struct cam_eeprom_ctrl_t *e_ctrl)
 
 		CAM_DBG(CAM_EEPROM, "rear_af_cal == TEST ");
 		{
-#if defined(CONFIG_SEC_Z3Q_PROJECT)
+#if defined(CONFIG_SEC_Z3Q_PROJECT) || defined(CONFIG_SEC_C2Q_PROJECT) || defined(CONFIG_SEC_R8Q_PROJECT)
 			AfIdx_t rear_idx[] = {
 				{AF_CAL_D10_IDX, AF_CAL_D10_OFFSET_FROM_AF},
 				{AF_CAL_PAN_IDX, AF_CAL_PAN_OFFSET_FROM_AF}
@@ -1311,7 +1357,9 @@ static int cam_eeprom_update_module_info(struct cam_eeprom_ctrl_t *e_ctrl)
 			};
 
 			AfIdx_t rear3_idx[] = {
+#if !defined(CONFIG_SEC_F2Q_PROJECT)
 				{AF_CAL_D30_IDX, AF_CAL_D30_OFFSET_FROM_AF},
+#endif
 				{AF_CAL_D50_IDX, AF_CAL_D50_OFFSET_FROM_AF},
 				{AF_CAL_PAN_IDX, AF_CAL_PAN_OFFSET_FROM_AF}
 			};
@@ -1393,7 +1441,7 @@ static int cam_eeprom_update_module_info(struct cam_eeprom_ctrl_t *e_ctrl)
 
 #if defined(CONFIG_SAMSUNG_REAR_TRIPLE)
 		if(isValidIdx(ADDR_S_OIS, &ConfAddr) == 1) {
-
+			int isCal = 0, j = 0;
 			ConfAddr += OIS_CAL_MARK_START_OFFSET;
 			memcpy(&ois_tele_cal_mark, &e_ctrl->cal_data.mapdata[ConfAddr], 1);
 			ConfAddr -= OIS_CAL_MARK_START_OFFSET;
@@ -1413,6 +1461,17 @@ static int cam_eeprom_update_module_info(struct cam_eeprom_ctrl_t *e_ctrl)
 			memcpy(ois_tele_xysr, &e_ctrl->cal_data.mapdata[ConfAddr], OIS_XYSR_SIZE);
 			ConfAddr -= OIS_XYSR_START_OFFSET;
 
+			ConfAddr += TELE_OIS_CROSSTALK_START_OFFSET;
+			memcpy(ois_tele_cross_talk, &e_ctrl->cal_data.mapdata[ConfAddr], OIS_CROSSTALK_SIZE);
+			ConfAddr -= TELE_OIS_CROSSTALK_START_OFFSET;
+			ois_tele_cross_talk_result = 0;
+			for (j = 0; j < OIS_CROSSTALK_SIZE; j++) {
+				if (ois_tele_cross_talk[j] != 0xFF) {
+					isCal = 1;
+					break;
+				}
+			}
+			ois_tele_cross_talk_result = (isCal == 0) ?  1 : 0;
 		}
 
 		if (isValidIdx(ADDR_S_DUAL_CAL, &ConfAddr) == 1) {
@@ -1816,7 +1875,7 @@ static int cam_eeprom_verify_sum(const char *mem, uint32_t size, uint32_t sum, u
 		CAM_ERR(CAM_EEPROM, "endian %d, expect 0x%x, result 0x%x", rev_endian, sum, cmp_crc);
 		return -EINVAL;
 	} else {
-		CAM_ERR(CAM_EEPROM, "checksum pass 0x%x", sum);
+		CAM_INFO(CAM_EEPROM, "checksum pass 0x%x", sum);
 		return 0;
 	}
 }
@@ -3188,6 +3247,13 @@ static int32_t cam_eeprom_fill_configInfo(char *configString, uint32_t value, Co
 
 					memset(S_HW_INFO, 0x00, HW_INFO_MAX_SIZE);
 					S_HW_INFO[0] = (value) & 0xFF;
+
+					if((value>>16) & 0xFF)
+					{
+						S_HW_INFO[0] = (value>>16) & 0xFF;
+						CAM_DBG(CAM_EEPROM, "value: 0x%08X, S_HW_INFO[0]: 0x%02X", value, S_HW_INFO[0]);
+					}
+
 					break;
 
 				case DEF_M_VER_HW:
@@ -3277,7 +3343,7 @@ static int32_t cam_eeprom_get_customInfo(struct cam_eeprom_ctrl_t *e_ctrl,
 	uint32_t              i = 0;
 	int                   rc = 0;
 	uintptr_t             buf_addr;
-	size_t                buf_size;
+	size_t                buf_size = 0;
 	uint8_t               *read_buffer;
 
 	uint8_t               *pBuf = NULL;

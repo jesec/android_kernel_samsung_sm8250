@@ -887,6 +887,17 @@
 		KEEP(*(.security_initcall.init))			\
 		__security_initcall_end = .;
 
+#ifdef CONFIG_KUNIT
+/* Alignment must be consistent with (test_module *) in include/test/test.h */
+#define KUNIT_TEST_MODULES						\
+		. = ALIGN(8);						\
+		__test_modules_start = .;				\
+		KEEP(*(.test_modules))					\
+		__test_modules_end = .;
+#else
+#define KUNIT_TEST_MODULES
+#endif
+
 #ifdef CONFIG_BLK_DEV_INITRD
 #define INIT_RAM_FS							\
 	. = ALIGN(4);							\
@@ -1055,6 +1066,7 @@
 		CON_INITCALL						\
 		SECURITY_INITCALL					\
 		INIT_RAM_FS						\
+		KUNIT_TEST_MODULES					\
 	}
 
 #define BSS_SECTION(sbss_align, bss_align, stop_align)			\

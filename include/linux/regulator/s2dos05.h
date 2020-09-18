@@ -37,8 +37,8 @@ struct s2dos05_dev {
 	u8 rev_num; /* pmic Rev */
 	bool wakeup;
 	int dp_pmic_irq;
-	int		adc_mode;
-	int		adc_sync_mode;
+	int adc_mode;
+	int adc_sync_mode;
 	u8 adc_en_val;
 
 	struct s2dos05_platform_data *pdata;
@@ -61,8 +61,8 @@ struct s2dos05_regulator_data {
 struct s2dos05_platform_data {
 	bool wakeup;
 	int num_regulators;
-	struct	s2dos05_regulator_data *regulators;
-	int	device_type;
+	struct s2dos05_regulator_data *regulators;
+	int device_type;
 	int dp_pmic_irq;
 
 	/* adc_mode
@@ -70,9 +70,10 @@ struct s2dos05_platform_data {
 	 * 1 : current meter
 	 * 2 : power meter
 	*/
-	int		adc_mode;
+	int adc_mode;
 	/* 1 : sync mode, 2 : async mode  */
-	int		adc_sync_mode;
+	int adc_sync_mode;
+	bool ocl_max;
 #ifdef CONFIG_SEC_PM
 	const char *sec_disp_pmic_name;
 #endif /* CONFIG_SEC_PM */
@@ -83,7 +84,7 @@ struct s2dos05 {
 };
 
 /* S2DOS05 registers */
-/* Slave Addr : 0xC0 */
+/* Slave Addr : 0xC0(Low(AGND)), 0xC2(Hihg-Z), 0xC4(High(VBAT)) */
 enum S2DOS05_reg {
 	S2DOS05_REG_DEV_ID,
 	S2DOS05_REG_TOPSYS_STAT,

@@ -29,8 +29,11 @@
 #include <linux/usb/manager/usb_typec_manager_notifier.h>
 #endif
 #include "../../battery_v2/include/sec_charging_common.h"
-#if defined(CONFIG_COMBO_REDRIVER_PTN36502)
+#if defined(CONFIG_REDRIVER) && defined(CONFIG_COMBO_REDRIVER_PTN36502)
 #include <linux/combo_redriver/ptn36502.h>
+#endif
+#if defined(CONFIG_REDRIVER) && defined(CONFIG_COMBO_REDRIVER_PS5169)
+#include <linux/combo_redriver/ps5169.h>
 #endif
 
 extern int dwc_msm_vbus_event(bool enable);
@@ -118,8 +121,11 @@ static int ccic_usb_handle_notification(struct notifier_block *nb,
 		pr_info("%s: Turn On Host(DFP), max speed restrict = %d\n", __func__, usb_status.sub3);
 
 //UFP = 0, DFP = 1
-#if defined(CONFIG_COMBO_REDRIVER_PTN36502)
+#if defined(CONFIG_REDRIVER) && defined(CONFIG_COMBO_REDRIVER_PTN36502)
 		ptn36502_config(USB3_ONLY_MODE, 1);
+#endif
+#if defined(CONFIG_REDRIVER) && defined(CONFIG_COMBO_REDRIVER_PS5169)
+		ps5169_config(USB_ONLY_MODE, 1);
 #endif
 		dwc3_max_speed_setting(usb_status.sub3);
 		send_otg_notify(o_notify, NOTIFY_EVENT_HOST, 1);
@@ -127,8 +133,11 @@ static int ccic_usb_handle_notification(struct notifier_block *nb,
 		break;
 	case USB_STATUS_NOTIFY_ATTACH_UFP:
 		pr_info("%s: Turn On Device(UFP)\n", __func__);
-#if defined(CONFIG_COMBO_REDRIVER_PTN36502)
+#if defined(CONFIG_REDRIVER) && defined(CONFIG_COMBO_REDRIVER_PTN36502)
 		ptn36502_config(USB3_ONLY_MODE, 0);
+#endif
+#if defined(CONFIG_REDRIVER) && defined(CONFIG_COMBO_REDRIVER_PS5169)
+		ps5169_config(USB_ONLY_MODE, 0);
 #endif
 		dwc3_max_speed_setting(usb_status.sub3);
 		send_otg_notify(o_notify, NOTIFY_EVENT_VBUS, 1);
@@ -144,6 +153,9 @@ static int ccic_usb_handle_notification(struct notifier_block *nb,
 			pr_info("%s: Turn Off Device(UFP)\n", __func__);
 			send_otg_notify(o_notify, NOTIFY_EVENT_VBUS, 0);
 		}
+#if defined(CONFIG_REDRIVER) && defined(CONFIG_COMBO_REDRIVER_PS5169)
+		ps5169_config(CLEAR_STATE, 0);
+#endif
 		break;
 	default:
 		pr_info("%s: unsupported DRP type : %d.\n", __func__, usb_status.drp);
@@ -151,17 +163,16 @@ static int ccic_usb_handle_notification(struct notifier_block *nb,
 	}
 	return 0;
 }
-#elif defined(CONFIG_MUIC_NOTIFIER)
+#endif
+
+#if defined(CONFIG_MUIC_NOTIFIER)
 static int muic_usb_handle_notification(struct notifier_block *nb,
 		unsigned long action, void *data)
 {
+	struct otg_notify *o_notify = get_otg_notify();
 #ifdef CONFIG_CCIC_NOTIFIER
 	CC_NOTI_ATTACH_TYPEDEF *p_noti = (CC_NOTI_ATTACH_TYPEDEF *)data;
 	muic_attached_dev_t attached_dev = p_noti->cable_type;
-#else
-	muic_attached_dev_t attached_dev = *(muic_attached_dev_t *)data;
-#endif
-	struct otg_notify *o_notify = get_otg_notify();
 
 	pr_info("%s action=%lu, attached_dev=%d\n",
 		__func__, action, attached_dev);
@@ -171,6 +182,34 @@ static int muic_usb_handle_notification(struct notifier_block *nb,
 	case ATTACHED_DEV_CDP_MUIC:
 	case ATTACHED_DEV_UNOFFICIAL_ID_USB_MUIC:
 	case ATTACHED_DEV_UNOFFICIAL_ID_CDP_MUIC:
+		if (action == MUIC_NOTIFY_CMD_DETACH)
+			send_otg_notify(o_notify, NOTIFY_EVENT_USB_CABLE, 0);
+		else if (action == MUIC_NOTIFY_CMD_ATTACH)
+			send_otg_notify(o_notify, NOTIFY_EVENT_USB_CABLE, 1);
+		else
+			pr_err("%s - ACTION Error!\n", __func__);
+		break;
+	default:
+		send_otg_notify(o_notify, NOTIFY_EVENT_USB_CABLE, 0);
+		break;
+	}
+#else
+	muic_attached_dev_t attached_dev = *(muic_attached_dev_t *)data;
+
+	pr_info("%s action=%lu, attached_dev=%d\n",
+		__func__, action, attached_dev);
+
+	switch (attached_dev) {
+	case ATTACHED_DEV_USB_MUIC:
+	case ATTACHED_DEV_CDP_MUIC:
+	case ATTACHED_DEV_UNOFFICIAL_ID_USB_MUIC:
+	case ATTACHED_DEV_UNOFFICIAL_ID_CDP_MUIC:
+		if (action == MUIC_NOTIFY_CMD_DETACH)
+			send_otg_notify(o_notify, NOTIFY_EVENT_USB_CABLE, 0);
+		else if (action == MUIC_NOTIFY_CMD_ATTACH)
+			send_otg_notify(o_notify, NOTIFY_EVENT_USB_CABLE, 1);
+		else
+			;
 	case ATTACHED_DEV_JIG_USB_OFF_MUIC:
 	case ATTACHED_DEV_JIG_USB_ON_MUIC:
 		if (action == MUIC_NOTIFY_CMD_DETACH)
@@ -258,7 +297,7 @@ static int muic_usb_handle_notification(struct notifier_block *nb,
 	default:
 		break;
 	}
-
+#endif
 	return 0;
 }
 #endif
@@ -329,7 +368,7 @@ static int otg_accessory_power(bool enable)
 static int set_online(int event, int state)
 {
 	union power_supply_propval value;
-	struct power_supply *psy;
+	struct power_supply *psy, *psy_otg;
 
 	pr_info("set_online: %d, %d\n", event, state);
 
@@ -338,13 +377,24 @@ static int set_online(int event, int state)
 		pr_err("%s: fail to get battery power_supply\n", __func__);
 		return -1;
 	}
+	psy_otg = get_power_supply_by_name("otg");
+	if (!psy_otg) {
+		pr_err("%s: fail to get battery power_supply_otg\n", __func__);
+		return -1;
+	}
 
-	if (state)
-		value.intval = SEC_BATTERY_CABLE_SMART_OTG;
-	else
-		value.intval = SEC_BATTERY_CABLE_SMART_NOTG;
+	if (event == NOTIFY_EVENT_NREALAR_EXT_CURRENT) {
+		value.intval = state;
+		psy_otg->desc->set_property(psy_otg, POWER_SUPPLY_PROP_VOLTAGE_MAX, &value);
+	}
+	else {
+		if (state)
+			value.intval = SEC_BATTERY_CABLE_SMART_OTG;
+		else
+			value.intval = SEC_BATTERY_CABLE_SMART_NOTG;
 
-	psy->desc->set_property(psy, POWER_SUPPLY_PROP_ONLINE, &value);
+		psy->desc->set_property(psy, POWER_SUPPLY_PROP_ONLINE, &value);
+	}
 
 	return 0;
 }
@@ -369,7 +419,7 @@ static int qcom_get_gadget_speed(void)
 }
 
 #ifdef CONFIG_USB_CHARGING_EVENT
-static int usb_blocked_chg_control(int set)
+static int usb_set_chg_current(int state)
 {
 	union power_supply_propval val;
 	struct device_node *np_charger = NULL;
@@ -389,13 +439,23 @@ static int usb_blocked_chg_control(int set)
 			return 0;
 		}
 	}
-	//  current setting for upsm
-	pr_info("usb: is blocked. charing current set = %d\n", set);
+	/* current setting */
+	pr_info("usb : charing current set = %d\n", state);
 
-	if (set)
-		val.intval = USB_CURRENT_HIGH_SPEED;
-	else
+	switch (state) {
+	case NOTIFY_USB_SUSPENDED:
+		val.intval = USB_CURRENT_SUSPENDED;
+		break;
+	case NOTIFY_USB_UNCONFIGURED:
 		val.intval = USB_CURRENT_UNCONFIGURED;
+		break;
+	case NOTIFY_USB_CONFIGURED:
+		val.intval = USB_CURRENT_HIGH_SPEED;
+		break;
+	default:
+		val.intval = USB_CURRENT_HIGH_SPEED;
+		break;
+	}
 
 	psy_do_property("battery", set,
 		POWER_SUPPLY_EXT_PROP_USB_CONFIGURE, val);
@@ -422,12 +482,9 @@ static struct otg_notify sec_otg_notify = {
 	.device_check_sec = 3,
 	.set_battcall = set_online,
 #ifdef CONFIG_USB_CHARGING_EVENT
-	.set_chg_current = usb_blocked_chg_control,
+	.set_chg_current = usb_set_chg_current,
 #endif
 	.pre_peri_delay_us = 6,
-#if defined(CONFIG_USB_OTG_WHITELIST_FOR_MDM)
-	.sec_whitelist_enable = 0,
-#endif
 };
 
 static int usb_notifier_probe(struct platform_device *pdev)
@@ -471,7 +528,8 @@ static int usb_notifier_probe(struct platform_device *pdev)
 	ccic_notifier_register(&pdata->ccic_usb_nb, ccic_usb_handle_notification,
 				   CCIC_NOTIFY_DEV_USB);
 #endif
-#elif defined(CONFIG_MUIC_NOTIFIER)
+#endif
+#if defined(CONFIG_MUIC_NOTIFIER)
 	muic_notifier_register(&pdata->muic_usb_nb, muic_usb_handle_notification,
 			       MUIC_NOTIFY_DEV_USB);
 #endif

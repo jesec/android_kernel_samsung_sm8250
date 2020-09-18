@@ -11,13 +11,10 @@
  * General Public License for more details.
  */
 
-#define DEBUG
-#define pr_fmt(fmt) "%s: " fmt, __func__
-
-#include "qbt2000_common.h"
 #include "fingerprint.h"
+#include "qbt2000_common.h"
 
-static struct qbt2000_drvdata *g_data;
+static struct qbt2000_drvdata *g_data = NULL;
 
 /*
  * struct ipc_msg_type_to_fw_event -
@@ -37,25 +34,25 @@ struct ipc_msg_type_to_fw_event g_msg_to_event[] = {
 	{IPC_MSG_ID_FINGER_OFF_SENSOR, FW_EVENT_FINGER_UP},
 };
 
-static ssize_t fps_qbt2000_vendor_show(struct device *dev,
+static ssize_t qbt2000_vendor_show(struct device *dev,
 	struct device_attribute *attr, char *buf)
 {
 	return snprintf(buf, PAGE_SIZE, "%s\n", VENDOR);
 }
 
-static ssize_t fps_qbt2000_name_show(struct device *dev,
+static ssize_t qbt2000_name_show(struct device *dev,
 	struct device_attribute *attr, char *buf)
 {
 	return snprintf(buf, PAGE_SIZE, "%s\n", CHIP_ID);
 }
 
-static ssize_t fps_qbt2000_adm_show(struct device *dev,
+static ssize_t qbt2000_adm_show(struct device *dev,
 	struct device_attribute *attr, char *buf)
 {
 	return snprintf(buf, PAGE_SIZE, "%d\n", DETECT_ADM);
 }
 
-static ssize_t fps_qbt2000_bfs_values_show(struct device *dev,
+static ssize_t qbt2000_bfs_values_show(struct device *dev,
 	struct device_attribute *attr, char *buf)
 {
 	struct qbt2000_drvdata *drvdata = dev_get_drvdata(dev);
@@ -64,7 +61,7 @@ static ssize_t fps_qbt2000_bfs_values_show(struct device *dev,
 			drvdata->spi_speed);
 }
 
-static ssize_t fps_qbt2000_type_check_show(struct device *dev,
+static ssize_t qbt2000_type_check_show(struct device *dev,
 	struct device_attribute *attr, char *buf)
 {
 	struct qbt2000_drvdata *drvdata = dev_get_drvdata(dev);
@@ -73,21 +70,21 @@ static ssize_t fps_qbt2000_type_check_show(struct device *dev,
 	return snprintf(buf, PAGE_SIZE, "%d\n", drvdata->sensortype);
 }
 
-static ssize_t fps_qbt2000_position_show(struct device *dev,
+static ssize_t qbt2000_position_show(struct device *dev,
 			       struct device_attribute *attr, char *buf)
 {
 	struct qbt2000_drvdata *drvdata = dev_get_drvdata(dev);
 	return snprintf(buf, PAGE_SIZE, "%s\n", drvdata->sensor_position);
 }
 
-static ssize_t fps_qbt2000_cbgecnt_show(struct device *dev,
+static ssize_t qbt2000_cbgecnt_show(struct device *dev,
 			       struct device_attribute *attr, char *buf)
 {
 	struct qbt2000_drvdata *drvdata = dev_get_drvdata(dev);
 	return snprintf(buf, PAGE_SIZE, "%d\n", drvdata->cbge_count);
 }
 
-static ssize_t fps_qbt2000_cbgecnt_store(struct device *dev,
+static ssize_t qbt2000_cbgecnt_store(struct device *dev,
 				struct device_attribute *attr, const char *buf,
 				size_t size)
 {
@@ -95,6 +92,9 @@ static ssize_t fps_qbt2000_cbgecnt_store(struct device *dev,
 
 	if (sysfs_streq(buf, "c")) {
 		drvdata->cbge_count = 0;
+#ifdef QBT2000_AVOID_NOISE
+		drvdata->ignored_cbge_count = 0;
+#endif
 		pr_info("initialization is done\n");
 	} else if (sysfs_streq(buf, "wuhb")) {
 	/* For User HwModuleTest IntTest */
@@ -123,14 +123,14 @@ static ssize_t fps_qbt2000_cbgecnt_store(struct device *dev,
 	return size;
 }
 
-static ssize_t fps_qbt2000_intcnt_show(struct device *dev,
+static ssize_t qbt2000_intcnt_show(struct device *dev,
 			       struct device_attribute *attr, char *buf)
 {
 	struct qbt2000_drvdata *drvdata = dev_get_drvdata(dev);
 	return snprintf(buf, PAGE_SIZE, "%d\n", drvdata->wuhb_count);
 }
 
-static ssize_t fps_qbt2000_intcnt_store(struct device *dev,
+static ssize_t qbt2000_intcnt_store(struct device *dev,
 				struct device_attribute *attr, const char *buf,
 				size_t size)
 {
@@ -143,14 +143,14 @@ static ssize_t fps_qbt2000_intcnt_store(struct device *dev,
 	return size;
 }
 
-static ssize_t fps_qbt2000_resetcnt_show(struct device *dev,
+static ssize_t qbt2000_resetcnt_show(struct device *dev,
 			       struct device_attribute *attr, char *buf)
 {
 	struct qbt2000_drvdata *drvdata = dev_get_drvdata(dev);
 	return snprintf(buf, PAGE_SIZE, "%d\n", drvdata->reset_count);
 }
 
-static ssize_t fps_qbt2000_resetcnt_store(struct device *dev,
+static ssize_t qbt2000_resetcnt_store(struct device *dev,
 				struct device_attribute *attr, const char *buf,
 				size_t size)
 {
@@ -163,7 +163,7 @@ static ssize_t fps_qbt2000_resetcnt_store(struct device *dev,
 	return size;
 }
 
-static ssize_t fps_qbt2000_wuhbtest_show(struct device *dev,
+static ssize_t qbt2000_wuhbtest_show(struct device *dev,
 			       struct device_attribute *attr, char *buf)
 {
 	struct qbt2000_drvdata *drvdata = dev_get_drvdata(dev);
@@ -181,16 +181,16 @@ static ssize_t fps_qbt2000_wuhbtest_show(struct device *dev,
 	return snprintf(buf, PAGE_SIZE, "%d\n", rc);
 }
 
-static DEVICE_ATTR(bfs_values, 0444, fps_qbt2000_bfs_values_show, NULL);
-static DEVICE_ATTR(type_check, 0444, fps_qbt2000_type_check_show, NULL);
-static DEVICE_ATTR(vendor, 0444, fps_qbt2000_vendor_show, NULL);
-static DEVICE_ATTR(name, 0444, fps_qbt2000_name_show, NULL);
-static DEVICE_ATTR(adm, 0444, fps_qbt2000_adm_show, NULL);
-static DEVICE_ATTR(position, 0444, fps_qbt2000_position_show, NULL);
-static DEVICE_ATTR(cbgecnt, 0664, fps_qbt2000_cbgecnt_show, fps_qbt2000_cbgecnt_store);
-static DEVICE_ATTR(intcnt, 0664, fps_qbt2000_intcnt_show, fps_qbt2000_intcnt_store);
-static DEVICE_ATTR(resetcnt, 0664, fps_qbt2000_resetcnt_show, fps_qbt2000_resetcnt_store);
-static DEVICE_ATTR(wuhbtest, 0444, fps_qbt2000_wuhbtest_show, NULL);
+static DEVICE_ATTR(bfs_values, 0444, qbt2000_bfs_values_show, NULL);
+static DEVICE_ATTR(type_check, 0444, qbt2000_type_check_show, NULL);
+static DEVICE_ATTR(vendor, 0444, qbt2000_vendor_show, NULL);
+static DEVICE_ATTR(name, 0444, qbt2000_name_show, NULL);
+static DEVICE_ATTR(adm, 0444, qbt2000_adm_show, NULL);
+static DEVICE_ATTR(position, 0444, qbt2000_position_show, NULL);
+static DEVICE_ATTR(cbgecnt, 0664, qbt2000_cbgecnt_show, qbt2000_cbgecnt_store);
+static DEVICE_ATTR(intcnt, 0664, qbt2000_intcnt_show, qbt2000_intcnt_store);
+static DEVICE_ATTR(resetcnt, 0664, qbt2000_resetcnt_show, qbt2000_resetcnt_store);
+static DEVICE_ATTR(wuhbtest, 0444, qbt2000_wuhbtest_show, NULL);
 
 static struct device_attribute *fp_attrs[] = {
 	&dev_attr_bfs_values,
@@ -206,7 +206,39 @@ static struct device_attribute *fp_attrs[] = {
 	NULL,
 };
 
-static int fps_qbt2000_power_control(struct qbt2000_drvdata *drvdata, int onoff)
+#ifdef QBT2000_AVOID_NOISE
+static int qbt2000_noise_control(struct qbt2000_drvdata *drvdata, int control)
+{
+	int retry = 3;
+	int rc = 0;
+
+	if (control == QBT2000_NOISE_UNBLOCK) {
+		drvdata->noise_onoff_flag = QBT2000_NOISE_UNBLOCK;
+		rc = set_wacom_ble_charge_mode(true);
+		pr_info("%d, rc:%d\n", control, rc);
+	} else if ((control == QBT2000_NOISE_BLOCK) && (drvdata->noise_onoff_flag == QBT2000_NOISE_UNBLOCK)) {
+		drvdata->noise_onoff_flag = QBT2000_NOISE_BLOCK;
+		while (retry--) {
+			rc = set_wacom_ble_charge_mode(false);
+			pr_info("%d, retry:%d, rc:%d\n", control, retry, rc);
+			if (rc == 0)
+				break;
+			usleep_range(4950, 5000);
+		}
+	} else {
+		pr_err("invalid value %d,%d\n", control, drvdata->noise_onoff_flag);
+	}
+
+	if (rc < 0) {
+		drvdata->noise_onoff_flag = control ? QBT2000_NOISE_BLOCK : QBT2000_NOISE_UNBLOCK;
+		drvdata->i2c_error_set++;
+	}
+
+	return rc;
+}
+#endif
+
+static int qbt2000_power_control(struct qbt2000_drvdata *drvdata, int onoff)
 {
 	int rc = 0;
 	if (drvdata->ldogpio >= 0) {
@@ -231,23 +263,23 @@ static int fps_qbt2000_power_control(struct qbt2000_drvdata *drvdata, int onoff)
 	return rc;
 }
 
-static int fps_qbt2000_enable_spi_clock(struct qbt2000_drvdata *drvdata)
+static int qbt2000_enable_spi_clock(struct qbt2000_drvdata *drvdata)
 {
 	int rc = 0;
 
-	rc = fps_qbt2000_set_clk(drvdata, 1);
+	rc = qbt2000_set_clk(drvdata, 1);
 	return rc;
 }
 
-static int fps_qbt2000_disable_spi_clock(struct qbt2000_drvdata *drvdata)
+static int qbt2000_disable_spi_clock(struct qbt2000_drvdata *drvdata)
 {
 	int rc = 0;
 
-	rc = fps_qbt2000_set_clk(drvdata, 0);
+	rc = qbt2000_set_clk(drvdata, 0);
 	return rc;
 }
 
-static int fps_qbt2000_enable_ipc(struct qbt2000_drvdata *drvdata)
+static int qbt2000_enable_ipc(struct qbt2000_drvdata *drvdata)
 {
 	int rc = 0;
 
@@ -266,7 +298,7 @@ static int fps_qbt2000_enable_ipc(struct qbt2000_drvdata *drvdata)
 	return rc;
 }
 
-static int fps_qbt2000_disable_ipc(struct qbt2000_drvdata *drvdata)
+static int qbt2000_disable_ipc(struct qbt2000_drvdata *drvdata)
 {
 	int rc = 0;
 
@@ -285,7 +317,7 @@ static int fps_qbt2000_disable_ipc(struct qbt2000_drvdata *drvdata)
 	return rc;
 }
 
-static int fps_qbt2000_enable_wuhb(struct qbt2000_drvdata *drvdata)
+static int qbt2000_enable_wuhb(struct qbt2000_drvdata *drvdata)
 {
 	int rc = 0;
 	int gpio = 0;
@@ -305,8 +337,8 @@ static int fps_qbt2000_enable_wuhb(struct qbt2000_drvdata *drvdata)
 				pr_info("Finger leave event already occured. %d, %d\n",
 					drvdata->fd_gpio.last_gpio_state, gpio);
 
-				pm_stay_awake(drvdata->dev);
-				drvdata->pm_lock++;
+				wake_lock_timeout(&drvdata->fp_signal_lock,
+						msecs_to_jiffies(QBT2000_WAKELOCK_HOLD_TIME));
 				schedule_work(&drvdata->fd_gpio.work);
 			}
 		}
@@ -314,7 +346,7 @@ static int fps_qbt2000_enable_wuhb(struct qbt2000_drvdata *drvdata)
 	return rc;
 }
 
-static int fps_qbt2000_disable_wuhb(struct qbt2000_drvdata *drvdata)
+static int qbt2000_disable_wuhb(struct qbt2000_drvdata *drvdata)
 {
 	int rc = 0;
 
@@ -339,7 +371,7 @@ static int fps_qbt2000_disable_wuhb(struct qbt2000_drvdata *drvdata)
  *
  * Return: 0 on success. Error code on failure.
  */
-static int fps_qbt2000_open(struct inode *inode, struct file *file)
+static int qbt2000_open(struct inode *inode, struct file *file)
 {
 	struct qbt2000_drvdata *drvdata = NULL;
 	int rc = 0;
@@ -380,7 +412,7 @@ static int fps_qbt2000_open(struct inode *inode, struct file *file)
  *
  * Return: 0 on success. Error code on failure.
  */
-static int fps_qbt2000_release(struct inode *inode, struct file *file)
+static int qbt2000_release(struct inode *inode, struct file *file)
 {
 	struct qbt2000_drvdata *drvdata;
 	int minor_no;
@@ -416,7 +448,7 @@ static int fps_qbt2000_release(struct inode *inode, struct file *file)
  *
  * Return: 0 on success. Error code on failure.
  */
-static long fps_qbt2000_ioctl(
+static long qbt2000_ioctl(
 		struct file *file, unsigned int cmd, unsigned long arg)
 {
 	int rc = 0;
@@ -440,72 +472,58 @@ static long fps_qbt2000_ioctl(
 
 	switch (cmd) {
 	case QBT2000_IS_WHUB_CONNECTED:
-	{
-		struct qbt2000_wuhb_connected_status wuhb_connected_status;
-
-		wuhb_connected_status.is_wuhb_connected = drvdata->is_wuhb_connected;
-		rc = copy_to_user((void __user *)priv_arg,
-				&wuhb_connected_status, sizeof(wuhb_connected_status));
-
-		if (rc != 0) {
-			pr_err("Failed to copy wuhb connected status: %d\n", rc);
-			rc = -EFAULT;
-			goto end;
-		}
-
 		break;
-	}
 	case QBT2000_POWER_CONTROL:
 		if (copy_from_user(&data, (void *)arg, sizeof(int)) != 0) {
 			pr_err("Failed copy from user.(POWER_CONTROL)\n");
 			rc = -EFAULT;
-			goto end;
+			goto ioctl_failed;
 		}
 		if (drvdata->enabled_ldo != data) {
 			pr_debug("POWER_CONTROL\n");
-			fps_qbt2000_power_control(drvdata, data);
+			qbt2000_power_control(drvdata, data);
 		}
 		break;
 	case QBT2000_ENABLE_SPI_CLOCK:
 		pr_info("ENABLE_SPI_CLOCK\n");
-		rc = fps_qbt2000_enable_spi_clock(drvdata);
+		rc = qbt2000_enable_spi_clock(drvdata);
 		break;
 	case QBT2000_DISABLE_SPI_CLOCK:
 		pr_info("DISABLE_SPI_CLOCK\n");
-		rc = fps_qbt2000_disable_spi_clock(drvdata);
+		rc = qbt2000_disable_spi_clock(drvdata);
 		break;
 	case QBT2000_ENABLE_IPC:
 		pr_info("ENABLE_IPC\n");
-		rc = fps_qbt2000_enable_ipc(drvdata);
+		rc = qbt2000_enable_ipc(drvdata);
 		break;
 	case QBT2000_DISABLE_IPC:
 		pr_info("DISABLE_IPC\n");
-		rc = fps_qbt2000_disable_ipc(drvdata);
+		rc = qbt2000_disable_ipc(drvdata);
 		break;
 	case QBT2000_ENABLE_WUHB:
 		pr_info("ENABLE_WUHB\n");
 		drvdata->wuhb_test_flag = 0;
-		rc = fps_qbt2000_enable_wuhb(drvdata);
+		rc = qbt2000_enable_wuhb(drvdata);
 		break;
 	case QBT2000_DISABLE_WUHB:
 		pr_info("DISABLE_WUHB\n");
 		/* initialize IntTest flag */
 		drvdata->wuhb_test_flag = 0;
-		rc = fps_qbt2000_disable_wuhb(drvdata);
+		rc = qbt2000_disable_wuhb(drvdata);
 		break;
 	case QBT2000_CPU_SPEEDUP:
 		if (copy_from_user(&data, (void *)arg, sizeof(int)) != 0) {
 			pr_err("Failed copy from user.(SPEEDUP)\n");
 			rc = -EFAULT;
-			goto end;
+			goto ioctl_failed;
 		}
-		rc = fps_qbt2000_set_cpu_speedup(drvdata, data);
+		rc = qbt2000_set_cpu_speedup(drvdata, data);
 		break;
 	case QBT2000_SET_SENSOR_TYPE:
 		if (copy_from_user(&data, (void *)arg, sizeof(int)) != 0) {
 			pr_err("Failed to copy sensor type from user to kernel\n");
 			rc = -EFAULT;
-			goto end;
+			goto ioctl_failed;
 		}
 		if (data >= SENSOR_OOO && data < SENSOR_MAXIMUM) {
 			if (data == SENSOR_OOO && drvdata->sensortype == SENSOR_FAILED) {
@@ -531,7 +549,7 @@ static long fps_qbt2000_ioctl(
 		if (copy_from_user(&data, (void *)arg, sizeof(int)) != 0) {
 			pr_err("Failed to copy BGECAL from user to kernel\n");
 			rc = -EFAULT;
-			goto end;
+			goto ioctl_failed;
 		}
 #ifndef ENABLE_SENSORS_FPRINT_SECURE  //only for factory
 		if (data == QBT2000_SENSORTEST_DONE) {
@@ -542,20 +560,66 @@ static long fps_qbt2000_ioctl(
 #endif
 		break;
 	case QBT2000_NOISE_REQUEST_STOP:
+#ifdef QBT2000_AVOID_NOISE
+		pr_info("QBT2000_NOISE_REQUEST_STOP. entry\n");
+		drvdata->noise_i2c_result = 1;
+		schedule_work(&drvdata->work_noise_control);
+#endif
 		break;
 	case QBT2000_NOISE_I2C_RESULT_GET:
+#ifdef QBT2000_AVOID_NOISE
+		pr_info("QBT2000_NOISE_I2C_RESULT_GET : %d\n", drvdata->noise_i2c_result);
+		if (copy_to_user((void __user *)priv_arg, &drvdata->noise_i2c_result, sizeof(drvdata->noise_status)) != 0) {
+			pr_err("Failed to copy I2C_RESULT to user\n");
+			rc = -EFAULT;
+		}
+#endif
 		break;
 	case QBT2000_NOISE_STATUS_GET:
+#ifdef QBT2000_AVOID_NOISE
+		drvdata->noise_status = get_wacom_scan_info(false);
+		if (drvdata->noise_status == QBT2000_NOISE_MODE_CHANGED) {
+			drvdata->ignored_cbge_count++;
+		} else if (drvdata->noise_status == QBT2000_NOISE_CHARGING) {
+			drvdata->i2c_charging++;
+		} else if (drvdata->noise_status < 0) {
+			drvdata->i2c_error_get++;
+		}
+		pr_info("QBT2000_NOISE_STATUS_GET : %d\n", drvdata->noise_status);
+		if (copy_to_user((void __user *)priv_arg, &drvdata->noise_status, sizeof(drvdata->noise_status)) != 0) {
+			pr_err("Failed to copy NOISE_STATUS to user\n");
+			rc = -EFAULT;
+		}
+#endif
 		break;
 	case QBT2000_NOISE_REQUEST_START:
+#ifdef QBT2000_AVOID_NOISE
+		pr_info("QBT2000_NOISE_REQUEST_START\n");
+		qbt2000_noise_control(drvdata, QBT2000_NOISE_UNBLOCK);
+#endif
+		break;
+	case QBT2000_NOISE_REQUEST_STATUS:
+#ifdef QBT2000_AVOID_NOISE
+		pr_info("QBT2000_NOISE_REQUEST_STATUS : %d\n", drvdata->noise_onoff_flag);
+		if (copy_to_user((void __user *)priv_arg, &drvdata->noise_onoff_flag, sizeof(drvdata->noise_onoff_flag)) != 0) {
+			pr_err("Failed to copy REQUEST_STATUS to user\n");
+			rc = -EFAULT;
+		}
+#endif
+		break;
+	case QBT2000_GET_MODELINFO:
+		pr_info("QBT2000_GET_MODELINFO : %s\n", drvdata->model_info);
+		if (copy_to_user((void __user *)priv_arg, drvdata->model_info, 10)) {
+			pr_err("Failed to copy GET_MODELINFO to user\n");
+			rc = -EFAULT;
+		}
 		break;
 	default:
 		pr_err("invalid cmd %d\n", cmd);
 		rc = -ENOIOCTLCMD;
-		goto end;
 	}
 
-end:
+ioctl_failed:
 	mutex_unlock(&drvdata->ioctl_mutex);
 	return rc;
 }
@@ -578,7 +642,7 @@ static int get_events_fifo_len_locked(struct qbt2000_drvdata *drvdata, int minor
 	return len;
 }
 
-static ssize_t fps_qbt2000_read(struct file *filp, char __user *ubuf,
+static ssize_t qbt2000_read(struct file *filp, char __user *ubuf,
 		size_t cnt, loff_t *ppos)
 {
 	struct fw_event_desc fw_event;
@@ -637,14 +701,25 @@ static ssize_t fps_qbt2000_read(struct file *filp, char __user *ubuf,
 		pr_err("Failed to copy_to_user:%d - event:%d, minor:%d\n",
 			rc, (int)fw_event.ev, minor_no);
 	} else {
-		pr_info("Firmware event %d at minor no %d read at time %lu uS\n",
-			(int)fw_event.ev, minor_no,
-			(unsigned long)ktime_to_us(ktime_get()));
+		if (minor_no == MINOR_NUM_FD) {
+#ifdef QBT2000_AVOID_NOISE
+#ifdef ENABLE_SENSORS_FPRINT_SECURE
+			mutex_unlock(&drvdata->fod_event_mutex);
+#endif
+#endif
+			pr_info("Firmware event %d at minor no %d read at time %lu uS, mutex_unlock\n",
+				(int)fw_event.ev, minor_no,
+				(unsigned long)ktime_to_us(ktime_get()));
+		} else {
+			pr_info("Firmware event %d at minor no %d read at time %lu uS\n",
+				(int)fw_event.ev, minor_no,
+				(unsigned long)ktime_to_us(ktime_get()));
+		}
 	}
 	return rc;
 }
 
-static unsigned int fps_qbt2000_poll(struct file *filp,
+static unsigned int qbt2000_poll(struct file *filp,
 	struct poll_table_struct *wait)
 {
 	struct qbt2000_drvdata *drvdata = filp->private_data;
@@ -669,16 +744,16 @@ static unsigned int fps_qbt2000_poll(struct file *filp,
 	return mask;
 }
 
-static const struct file_operations fps_qbt2000_fops = {
+static const struct file_operations qbt2000_fops = {
 	.owner = THIS_MODULE,
-	.unlocked_ioctl = fps_qbt2000_ioctl,
-	.open = fps_qbt2000_open,
-	.release = fps_qbt2000_release,
-	.read = fps_qbt2000_read,
-	.poll = fps_qbt2000_poll
+	.unlocked_ioctl = qbt2000_ioctl,
+	.open = qbt2000_open,
+	.release = qbt2000_release,
+	.read = qbt2000_read,
+	.poll = qbt2000_poll
 };
 
-static int fps_qbt2000_dev_register(struct qbt2000_drvdata *drvdata)
+static int qbt2000_dev_register(struct qbt2000_drvdata *drvdata)
 {
 	dev_t dev_no, major_no;
 	int rc = 0;
@@ -691,7 +766,7 @@ static int fps_qbt2000_dev_register(struct qbt2000_drvdata *drvdata)
 	}
 	major_no = MAJOR(dev_no);
 
-	cdev_init(&drvdata->qbt2000_fd_cdev, &fps_qbt2000_fops);
+	cdev_init(&drvdata->qbt2000_fd_cdev, &qbt2000_fops);
 	drvdata->qbt2000_fd_cdev.owner = THIS_MODULE;
 	rc = cdev_add(&drvdata->qbt2000_fd_cdev, MKDEV(major_no, MINOR_NUM_FD), 1);
 	if (rc) {
@@ -699,7 +774,7 @@ static int fps_qbt2000_dev_register(struct qbt2000_drvdata *drvdata)
 		goto err_cdev_add;
 	}
 
-	cdev_init(&drvdata->qbt2000_ipc_cdev, &fps_qbt2000_fops);
+	cdev_init(&drvdata->qbt2000_ipc_cdev, &qbt2000_fops);
 	drvdata->qbt2000_ipc_cdev.owner = THIS_MODULE;
 	rc = cdev_add(&drvdata->qbt2000_ipc_cdev, MKDEV(major_no, MINOR_NUM_IPC), 1);
 	if (rc) {
@@ -745,26 +820,24 @@ err_alloc:
 	return rc;
 }
 
-
-static void fps_qbt2000_gpio_report_event(struct qbt2000_drvdata *drvdata)
+static void qbt2000_gpio_report_event(struct qbt2000_drvdata *drvdata)
 {
 	int state;
 	struct fw_event_desc fw_event;
 
-	if (!drvdata->is_wuhb_connected) {
-		pr_debug("Skipping as WUHB_INT is disconnected\n");
-		return;
-	}
-
 	state = (__gpio_get_value(drvdata->fd_gpio.gpio) ? FINGER_DOWN_GPIO_STATE : FINGER_LEAVE_GPIO_STATE)
 		^ drvdata->fd_gpio.active_low;
 
-	if (drvdata->fd_gpio.event_reported && state == drvdata->fd_gpio.last_gpio_state) {
+	if (state == drvdata->fd_gpio.last_gpio_state) {
+#ifdef QBT2000_AVOID_NOISE
+#ifdef ENABLE_SENSORS_FPRINT_SECURE
 		pr_debug("skip the report_event. this event already reported, last_gpio:%d\n", state);
+		mutex_unlock(&drvdata->fod_event_mutex);
+#endif
+#endif
 		return;
 	}
 
-	drvdata->fd_gpio.event_reported = 1;
 	drvdata->fd_gpio.last_gpio_state = state;
 
 	fw_event.ev = (state ? FW_EVENT_FINGER_DOWN : FW_EVENT_FINGER_UP);
@@ -781,18 +854,98 @@ static void fps_qbt2000_gpio_report_event(struct qbt2000_drvdata *drvdata)
 	pr_info("state: %s\n", state ? "Finger Down" : "Finger Leave");
 }
 
-static void fps_qbt2000_wuhb_work_func(struct work_struct *work)
+static void qbt2000_wuhb_work_func(struct work_struct *work)
 {
 	struct qbt2000_drvdata *drvdata =
 		container_of(work, struct qbt2000_drvdata, fd_gpio.work);
-
-	fps_qbt2000_gpio_report_event(drvdata);
-
-	pm_relax(drvdata->dev);
-	drvdata->pm_lock--;
+#ifdef QBT2000_AVOID_NOISE
+#ifdef ENABLE_SENSORS_FPRINT_SECURE
+	mutex_lock(&drvdata->fod_event_mutex);
+	pr_debug("mutex_lock\n");
+#endif
+#endif
+	qbt2000_gpio_report_event(drvdata);
 }
 
-static irqreturn_t fps_qbt2000_wuhb_irq_handler(int irq, void *dev_id)
+#ifdef QBT2000_AVOID_NOISE
+static void qbt2000_wuhb_work_noise_down_func(struct work_struct *work)
+{
+	struct qbt2000_drvdata *drvdata =
+		container_of(work, struct qbt2000_drvdata, fd_gpio.work_noise_down);
+	int delay_time = QBT2000_NOISE_BLOCK_DELAY;
+
+#ifdef ENABLE_SENSORS_FPRINT_SECURE
+	mutex_lock(&drvdata->fod_event_mutex);
+	pr_debug("mutex_lock\n");
+#endif
+
+	schedule_delayed_work(&drvdata->fd_gpio.delayed_noise_down_work, msecs_to_jiffies(delay_time));
+	qbt2000_noise_control(drvdata, QBT2000_NOISE_BLOCK);
+}
+static void qbt2000_ipc_handler_noise_status(struct work_struct *work)
+{
+	struct qbt2000_drvdata *drvdata =
+			container_of(work, struct qbt2000_drvdata, work_ipc_noise_status);
+
+	drvdata->noise_status = get_wacom_scan_info(true);
+	pr_info("entry : %d\n", drvdata->noise_status);
+	if (drvdata->noise_status < 0)
+		drvdata->i2c_error_get++;
+	else if (drvdata->noise_status == QBT2000_NOISE_CHARGING)
+		drvdata->i2c_charging++;
+
+}
+
+static void qbt2000_work_noise_control(struct work_struct *work)
+{
+	struct qbt2000_drvdata *drvdata =
+		container_of(work, struct qbt2000_drvdata, work_noise_control);
+	int rc = 0;
+
+	pr_info("entry\n");
+	rc = qbt2000_noise_control(drvdata, QBT2000_NOISE_BLOCK);
+	drvdata->noise_i2c_result = rc;
+	pr_info("done : %d\n", drvdata->noise_i2c_result);
+}
+
+static void qbt2000_gpio_report_event_delayed(struct qbt2000_drvdata *drvdata, int state)
+{
+	struct fw_event_desc fw_event;
+	int rc = 0;
+
+	if (state == drvdata->fd_gpio.last_gpio_state) {
+		pr_info("already done %d %d, rc = %d\n", state, drvdata->fd_gpio.last_gpio_state, rc);
+#ifdef ENABLE_SENSORS_FPRINT_SECURE
+		mutex_unlock(&drvdata->fod_event_mutex);
+#endif
+		return;
+	}
+	drvdata->fd_gpio.last_gpio_state = state;
+
+	fw_event.ev = (state ? FW_EVENT_FINGER_DOWN : FW_EVENT_FINGER_UP);
+
+	mutex_lock(&drvdata->fd_events_mutex);
+
+	kfifo_reset(&drvdata->fd_events);
+
+	if (!kfifo_put(&drvdata->fd_events, fw_event))
+		pr_err("fw events fifo: error adding item\n");
+
+	mutex_unlock(&drvdata->fd_events_mutex);
+	wake_up_interruptible(&drvdata->read_wait_queue_fd);
+	pr_info("state: %s\n", state ? "Finger Down" : "Finger Leave");
+}
+
+static void qbt2000_wuhb_delayed_work_func(struct work_struct *work)
+{
+	struct qbt2000_drvdata *drvdata =
+		container_of(work, struct qbt2000_drvdata, fd_gpio.delayed_noise_down_work.work);
+
+	qbt2000_gpio_report_event_delayed(drvdata, drvdata->now_state);
+}
+#endif
+
+static irqreturn_t qbt2000_wuhb_irq_handler(int irq, void *dev_id)
 {
 	struct qbt2000_drvdata *drvdata = dev_id;
 
@@ -811,9 +964,23 @@ static irqreturn_t fps_qbt2000_wuhb_irq_handler(int irq, void *dev_id)
 	}
 
 	drvdata->wuhb_count++;
-	pm_stay_awake(drvdata->dev);
-	drvdata->pm_lock++;
+	wake_lock_timeout(&drvdata->fp_signal_lock,
+			msecs_to_jiffies(QBT2000_WAKELOCK_HOLD_TIME));
+#ifndef QBT2000_AVOID_NOISE // not use digitizer
 	schedule_work(&drvdata->fd_gpio.work);
+#else
+#ifndef ENABLE_SENSORS_FPRINT_SECURE // use digitizer but nontz
+	schedule_work(&drvdata->fd_gpio.work);
+#else // use digitizer and tz
+	drvdata->now_state = (__gpio_get_value(drvdata->fd_gpio.gpio) ? FINGER_DOWN_GPIO_STATE : FINGER_LEAVE_GPIO_STATE) ^ drvdata->fd_gpio.active_low;
+	pr_info("gpio state : %d\n", drvdata->now_state);
+	if (drvdata->now_state == FINGER_DOWN_GPIO_STATE) {  // in case of finger down
+		schedule_work(&drvdata->fd_gpio.work_noise_down);
+	} else {
+		schedule_work(&drvdata->fd_gpio.work);
+	}
+#endif //ENABLE_SENSORS_FPRINT_SECURE
+#endif //QBT2000_AVOID_NOISE
 
 	return IRQ_HANDLED;
 }
@@ -826,20 +993,25 @@ static irqreturn_t fps_qbt2000_wuhb_irq_handler(int irq, void *dev_id)
  *
  * Return: IRQ_HANDLED when complete
  */
-static irqreturn_t fps_qbt2000_ipc_irq_handler(int irq, void *dev_id)
+static irqreturn_t qbt2000_ipc_irq_handler(int irq, void *dev_id)
 {
 	struct qbt2000_drvdata *drvdata = (struct qbt2000_drvdata *)dev_id;
 	enum qbt2000_fw_event ev = FW_EVENT_CBGE_REQUIRED;
 	struct fw_event_desc fw_ev_des;
 
-	pm_stay_awake(drvdata->dev);
-	drvdata->pm_lock++;
+	wake_lock_timeout(&drvdata->fp_signal_lock,
+			msecs_to_jiffies(QBT2000_WAKELOCK_HOLD_TIME));
 	mutex_lock(&drvdata->mutex);
 
 	if (irq != drvdata->fw_ipc.irq) {
 		pr_warn("invalid irq %d (expected %d)\n", irq, drvdata->fw_ipc.irq);
-		goto end;
+		goto ipc_irq_failed;
 	}
+#ifdef ENABLE_SENSORS_FPRINT_SECURE
+#ifdef QBT2000_AVOID_NOISE
+	schedule_work(&drvdata->work_ipc_noise_status);
+#endif
+#endif
 
 	mutex_lock(&drvdata->ipc_events_mutex);
 	fw_ev_des.ev = ev;
@@ -851,24 +1023,17 @@ static irqreturn_t fps_qbt2000_ipc_irq_handler(int irq, void *dev_id)
 
 	wake_up_interruptible(&drvdata->read_wait_queue_ipc);
 	pr_debug("ipc interrupt received, irq=%d, event=%d\n", irq, (int)ev);
-end:
+ipc_irq_failed:
 	mutex_unlock(&drvdata->mutex);
-	pm_relax(drvdata->dev);
-	drvdata->pm_lock--;
 	return IRQ_HANDLED;
 }
 
-static int fps_qbt2000_setup_fd_gpio_irq(struct platform_device *pdev,
+static int qbt2000_setup_fd_gpio_irq(struct platform_device *pdev,
 		struct qbt2000_drvdata *drvdata)
 {
 	int rc = 0;
 	int irq;
 	const char *desc = "qbt_finger_detect";
-
-	if (!drvdata->is_wuhb_connected) {
-		pr_debug("Skipping as WUHB_INT is disconnected\n");
-		goto fd_gpio_failed;
-	}
 
 	rc = devm_gpio_request_one(&pdev->dev, drvdata->fd_gpio.gpio,
 		GPIOF_IN, desc);
@@ -887,9 +1052,15 @@ static int fps_qbt2000_setup_fd_gpio_irq(struct platform_device *pdev,
 	}
 
 	drvdata->fd_gpio.irq = irq;
-	INIT_WORK(&drvdata->fd_gpio.work, fps_qbt2000_wuhb_work_func);
+	INIT_WORK(&drvdata->fd_gpio.work, qbt2000_wuhb_work_func);
+#ifdef QBT2000_AVOID_NOISE
+	INIT_WORK(&drvdata->fd_gpio.work_noise_down, qbt2000_wuhb_work_noise_down_func);
+	INIT_DELAYED_WORK(&drvdata->fd_gpio.delayed_noise_down_work, qbt2000_wuhb_delayed_work_func);
+	INIT_WORK(&drvdata->work_ipc_noise_status, qbt2000_ipc_handler_noise_status);
+	INIT_WORK(&drvdata->work_noise_control, qbt2000_work_noise_control);
+#endif
 	rc = devm_request_any_context_irq(&pdev->dev, drvdata->fd_gpio.irq,
-		fps_qbt2000_wuhb_irq_handler, IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING,
+		qbt2000_wuhb_irq_handler, IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING,
 		desc, drvdata);
 	if (rc < 0) {
 		pr_err("unable to claim irq %d; error %d\n",
@@ -898,7 +1069,7 @@ static int fps_qbt2000_setup_fd_gpio_irq(struct platform_device *pdev,
 	}
 	enable_irq_wake(drvdata->fd_gpio.irq);
 	drvdata->enabled_wuhb = true;
-	fps_qbt2000_disable_wuhb(drvdata);
+	qbt2000_disable_wuhb(drvdata);
 	pr_debug("irq=%d,gpio=%d,rc=%d\n", drvdata->fd_gpio.irq, drvdata->fd_gpio.gpio, rc);
 fd_gpio_failed_request:
 	gpio_free(drvdata->fd_gpio.gpio);
@@ -906,7 +1077,7 @@ fd_gpio_failed:
 	return rc;
 }
 
-static int fps_qbt2000_setup_ipc_irq(struct platform_device *pdev,
+static int qbt2000_setup_ipc_irq(struct platform_device *pdev,
 	struct qbt2000_drvdata *drvdata)
 {
 	int rc = 0;
@@ -932,7 +1103,7 @@ static int fps_qbt2000_setup_ipc_irq(struct platform_device *pdev,
 	rc = devm_request_threaded_irq(&pdev->dev,
 		drvdata->fw_ipc.irq,
 		NULL,
-		fps_qbt2000_ipc_irq_handler,
+		qbt2000_ipc_irq_handler,
 		IRQF_ONESHOT | IRQF_TRIGGER_FALLING,
 		desc,
 		drvdata);
@@ -947,7 +1118,7 @@ static int fps_qbt2000_setup_ipc_irq(struct platform_device *pdev,
 	enable_irq_wake(drvdata->fw_ipc.irq);
 #endif
 	drvdata->enabled_ipc = true;
-	fps_qbt2000_disable_ipc(drvdata);
+	qbt2000_disable_ipc(drvdata);
 	pr_debug("irq=%d,gpio=%d,rc=%d\n", drvdata->fw_ipc.irq, drvdata->fw_ipc.gpio, rc);
 ipc_gpio_failed_request:
 	gpio_free(drvdata->fw_ipc.gpio);
@@ -963,7 +1134,7 @@ ipc_gpio_failed:
  *
  * Return: 0 on success. Error code on failure.
  */
-static int fps_qbt2000_read_device_tree(struct platform_device *pdev,
+static int qbt2000_read_device_tree(struct platform_device *pdev,
 	struct qbt2000_drvdata *drvdata)
 {
 	int rc = 0;
@@ -984,10 +1155,8 @@ static int fps_qbt2000_read_device_tree(struct platform_device *pdev,
 	if (drvdata->fd_gpio.gpio < 0) {
 		rc = drvdata->fd_gpio.gpio;
 		pr_err("wuhb gpio not found, error=%d\n", rc);
-		drvdata->is_wuhb_connected = 0;
 		goto dt_failed;
 	} else {
-		drvdata->is_wuhb_connected = 1;
 		drvdata->fd_gpio.active_low = flags & OF_GPIO_ACTIVE_LOW;
 	}
 
@@ -1022,6 +1191,12 @@ static int fps_qbt2000_read_device_tree(struct platform_device *pdev,
 			(const char **)&drvdata->sensor_position))
 		drvdata->sensor_position = "13.77,0.00,9.00,4.00,14.80,14.80,11.00,11.00,5.00";
 	pr_info("Sensor Position: %s\n", drvdata->sensor_position);
+	
+	if (of_property_read_string_index(pdev->dev.of_node, "qcom,modelinfo", 0,
+			(const char **)&drvdata->model_info)) {
+		drvdata->model_info = "NONE";
+	}
+	pr_info("modelinfo: %s\n", drvdata->model_info);
 
 	pr_info("finished\n");
 	return rc;
@@ -1030,29 +1205,39 @@ dt_failed:
 	return rc;
 }
 
-static void fps_qbt2000_work_func_debug(struct work_struct *work)
+static void qbt2000_work_func_debug(struct work_struct *work)
 {
-	pr_info("ldo:%d,ipc:%d,wuhb:%d,tz:%d,type:%s,int:%d,%d,lock:%d\n",
+#ifndef QBT2000_AVOID_NOISE
+	pr_info("ldo:%d,ipc:%d,wuhb:%d,tz:%d,type:%s,int:%d,%d\n",
 		g_data->enabled_ldo, g_data->enabled_ipc,
 		g_data->enabled_wuhb, g_data->tz_mode,
 		sensor_status[g_data->sensortype + 2],
-		g_data->cbge_count, g_data->wuhb_count,
-		g_data->pm_lock);
+		g_data->cbge_count, g_data->wuhb_count);
+#else
+	pr_info("ldo:%d,ipc:%d,wuhb:%d,tz:%d,type:%s,int:%d,%d,%d,%d,%d,%d,%d\n",
+		g_data->enabled_ldo, g_data->enabled_ipc,
+		g_data->enabled_wuhb, g_data->tz_mode,
+		sensor_status[g_data->sensortype + 2],
+		g_data->cbge_count, g_data->ignored_cbge_count,
+		g_data->wuhb_count, g_data->i2c_error_set,
+		g_data->i2c_error_get, g_data->i2c_charging,
+		g_data->noise_onoff_flag);
+#endif
 }
 
-static void fps_qbt2000_enable_debug_timer(void)
+static void qbt2000_enable_debug_timer(void)
 {
 	mod_timer(&g_data->dbg_timer,
 		round_jiffies_up(jiffies + FPSENSOR_DEBUG_TIMER_SEC));
 }
 
-static void fps_qbt2000_disable_debug_timer(void)
+static void qbt2000_disable_debug_timer(void)
 {
 	del_timer_sync(&g_data->dbg_timer);
 	cancel_work_sync(&g_data->work_debug);
 }
 
-static void fps_qbt2000_timer_func(struct timer_list *t)
+static void qbt2000_timer_func(struct timer_list *t)
 {
 	struct qbt2000_drvdata *drvdata = from_timer(drvdata, t, dbg_timer);
 
@@ -1061,18 +1246,18 @@ static void fps_qbt2000_timer_func(struct timer_list *t)
 		round_jiffies_up(jiffies + FPSENSOR_DEBUG_TIMER_SEC));
 }
 
-static int fps_qbt2000_set_timer(struct qbt2000_drvdata *drvdata)
+static int qbt2000_set_timer(struct qbt2000_drvdata *drvdata)
 {
 	int rc = 0;
 
-	timer_setup(&drvdata->dbg_timer, fps_qbt2000_timer_func, 0);
+	timer_setup(&drvdata->dbg_timer, qbt2000_timer_func, 0);
 	drvdata->wq_dbg = create_singlethread_workqueue("qbt2000_debug_wq");
 	if (!drvdata->wq_dbg) {
 		rc = -ENOMEM;
 		pr_err("could not create workqueue\n");
 		return rc;
 	}
-	INIT_WORK(&drvdata->work_debug, fps_qbt2000_work_func_debug);
+	INIT_WORK(&drvdata->work_debug, qbt2000_work_func_debug);
 
 	return rc;
 }
@@ -1083,7 +1268,7 @@ static int fps_qbt2000_set_timer(struct qbt2000_drvdata *drvdata)
  *
  * Return: 0 on success. Error code on failure.
  */
-static int fps_qbt2000_probe(struct platform_device *pdev)
+static int qbt2000_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 	struct qbt2000_drvdata *drvdata;
@@ -1103,7 +1288,7 @@ static int fps_qbt2000_probe(struct platform_device *pdev)
 	drvdata->dev = &pdev->dev;
 	platform_set_drvdata(pdev, drvdata);
 
-	rc = fps_qbt2000_read_device_tree(pdev, drvdata);
+	rc = qbt2000_read_device_tree(pdev, drvdata);
 	if (rc < 0)
 		goto probe_failed_dt;
 
@@ -1114,8 +1299,11 @@ static int fps_qbt2000_probe(struct platform_device *pdev)
 	mutex_init(&drvdata->ioctl_mutex);
 	mutex_init(&drvdata->fd_events_mutex);
 	mutex_init(&drvdata->ipc_events_mutex);
+#ifdef QBT2000_AVOID_NOISE
+	mutex_init(&drvdata->fod_event_mutex);
+#endif
 
-	rc = fps_qbt2000_dev_register(drvdata);
+	rc = qbt2000_dev_register(drvdata);
 	if (rc < 0)
 		goto probe_failed_dev_register;
 
@@ -1124,11 +1312,16 @@ static int fps_qbt2000_probe(struct platform_device *pdev)
 	init_waitqueue_head(&drvdata->read_wait_queue_fd);
 	init_waitqueue_head(&drvdata->read_wait_queue_ipc);
 
-	rc = fps_qbt2000_setup_fd_gpio_irq(pdev, drvdata);
+	wake_lock_init(&drvdata->fp_spi_lock,
+			WAKE_LOCK_SUSPEND, "qbt2000_spi_lock");
+	wake_lock_init(&drvdata->fp_signal_lock,
+			WAKE_LOCK_SUSPEND, "qbt2000_signal_lock");
+
+	rc = qbt2000_setup_fd_gpio_irq(pdev, drvdata);
 	if (rc < 0)
 		goto probe_failed_fd_gpio;
 
-	rc = fps_qbt2000_setup_ipc_irq(pdev, drvdata);
+	rc = qbt2000_setup_ipc_irq(pdev, drvdata);
 	if (rc < 0)
 		goto probe_failed_ipc_gpio;
 
@@ -1136,14 +1329,9 @@ static int fps_qbt2000_probe(struct platform_device *pdev)
 	if (rc < 0)
 		goto probe_failed_device_init_wakeup;
 
-	rc = fps_qbt2000_register_platform_variable(drvdata);
+	rc = qbt2000_register_platform_variable(drvdata);
 	if (rc < 0)
 		goto probe_failed_platform_variable;
-
-	wake_lock_init(&drvdata->fp_spi_lock,
-			WAKE_LOCK_SUSPEND, "qbt2000_spi_lock");
-	wake_lock_init(&drvdata->fp_signal_lock,
-			WAKE_LOCK_SUSPEND, "qbt2000_signal_lock");
 
 	rc = fingerprint_register(drvdata->fp_device,
 		drvdata, fp_attrs, "fingerprint");
@@ -1153,7 +1341,7 @@ static int fps_qbt2000_probe(struct platform_device *pdev)
 	}
 
 #ifndef ENABLE_SENSORS_FPRINT_SECURE
-	fps_qbt2000_power_control(drvdata, 1);
+	qbt2000_power_control(drvdata, 1);
 #endif
 
 	g_data = drvdata;
@@ -1167,14 +1355,21 @@ static int fps_qbt2000_probe(struct platform_device *pdev)
 #endif
 	drvdata->sensortype = SENSOR_QBT2000;
 	drvdata->cbge_count = 0;
+#ifdef QBT2000_AVOID_NOISE
+	drvdata->ignored_cbge_count = 0;
+	drvdata->i2c_error_set = 0;
+	drvdata->i2c_error_get = 0;
+	drvdata->i2c_charging = 0;
+	drvdata->noise_status = QBT2000_NOISE_NO_CHARGING;
+	drvdata->noise_onoff_flag = QBT2000_NOISE_UNBLOCK;
+#endif
 	drvdata->wuhb_count = 0;
 	drvdata->reset_count = 0;
 	drvdata->wuhb_test_flag = 0;
 	drvdata->wuhb_test_result = 0;
-	drvdata->pm_lock = 0;
 
-	fps_qbt2000_set_timer(drvdata);
-	fps_qbt2000_enable_debug_timer();
+	qbt2000_set_timer(drvdata);
+	qbt2000_enable_debug_timer();
 
 	pr_info("finished\n");
 	return 0;
@@ -1186,6 +1381,8 @@ probe_failed_device_init_wakeup:
 probe_failed_ipc_gpio:
 	gpio_free(drvdata->fd_gpio.gpio);
 probe_failed_fd_gpio:
+	wake_lock_destroy(&drvdata->fp_spi_lock);
+	wake_lock_destroy(&drvdata->fp_signal_lock);
 	device_destroy(drvdata->qbt2000_class, drvdata->qbt2000_ipc_cdev.dev);
 	device_destroy(drvdata->qbt2000_class, drvdata->qbt2000_fd_cdev.dev);
 	class_destroy(drvdata->qbt2000_class);
@@ -1202,7 +1399,7 @@ probe_failed_dt:
 	return rc;
 }
 
-static int fps_qbt2000_remove(struct platform_device *pdev)
+static int qbt2000_remove(struct platform_device *pdev)
 {
 	struct qbt2000_drvdata *drvdata = platform_get_drvdata(pdev);
 
@@ -1212,11 +1409,14 @@ static int fps_qbt2000_remove(struct platform_device *pdev)
 	mutex_destroy(&drvdata->ioctl_mutex);
 	mutex_destroy(&drvdata->fd_events_mutex);
 	mutex_destroy(&drvdata->ipc_events_mutex);
+#ifdef QBT2000_AVOID_NOISE
+	mutex_destroy(&drvdata->fod_event_mutex);
+#endif
 
 	device_destroy(drvdata->qbt2000_class, drvdata->qbt2000_fd_cdev.dev);
 	device_destroy(drvdata->qbt2000_class, drvdata->qbt2000_ipc_cdev.dev);
 
-	fps_qbt2000_disable_debug_timer();
+	qbt2000_disable_debug_timer();
 	if (drvdata->regulator_1p8)
 		regulator_put(drvdata->regulator_1p8);
 	wake_lock_destroy(&drvdata->fp_spi_lock);
@@ -1228,13 +1428,13 @@ static int fps_qbt2000_remove(struct platform_device *pdev)
 	unregister_chrdev_region(drvdata->qbt2000_ipc_cdev.dev, 1);
 	fingerprint_unregister(drvdata->fp_device, fp_attrs);
 	device_init_wakeup(&pdev->dev, 0);
-	fps_qbt2000_unregister_platform_variable(drvdata);
+	qbt2000_unregister_platform_variable(drvdata);
 	kfree(drvdata);
 
 	return 0;
 }
 
-static int fps_qbt2000_suspend(struct platform_device *pdev, pm_message_t state)
+static int qbt2000_suspend(struct platform_device *pdev, pm_message_t state)
 {
 	int rc = 0;
 	struct qbt2000_drvdata *drvdata = platform_get_drvdata(pdev);
@@ -1253,7 +1453,7 @@ static int fps_qbt2000_suspend(struct platform_device *pdev, pm_message_t state)
 	if (!mutex_trylock(&drvdata->mutex))
 		return -EBUSY;
 	else {
-		fps_qbt2000_disable_debug_timer();
+		qbt2000_disable_debug_timer();
 		pr_info("ret = %d\n", rc);
 	}
 	mutex_unlock(&drvdata->mutex);
@@ -1261,7 +1461,7 @@ static int fps_qbt2000_suspend(struct platform_device *pdev, pm_message_t state)
 	return 0;
 }
 
-static int fps_qbt2000_resume(struct platform_device *pdev)
+static int qbt2000_resume(struct platform_device *pdev)
 {
 	int rc = 0;
 
@@ -1269,30 +1469,30 @@ static int fps_qbt2000_resume(struct platform_device *pdev)
 	if (lpcharge)
 		return rc;
 #endif
-	fps_qbt2000_enable_debug_timer();
+	qbt2000_enable_debug_timer();
 	pr_info("ret = %d\n", rc);
 
 	return 0;
 }
 
-static const struct of_device_id fps_qbt2000_match[] = {
+static const struct of_device_id qbt2000_match[] = {
 	{ .compatible = "qcom,qbt2000" },
 	{}
 };
 
-static struct platform_driver fps_qbt2000_plat_driver = {
-	.probe = fps_qbt2000_probe,
-	.remove = fps_qbt2000_remove,
-	.suspend = fps_qbt2000_suspend,
-	.resume = fps_qbt2000_resume,
+static struct platform_driver qbt2000_plat_driver = {
+	.probe = qbt2000_probe,
+	.remove = qbt2000_remove,
+	.suspend = qbt2000_suspend,
+	.resume = qbt2000_resume,
 	.driver = {
 		.name = QBT2000_DEV,
 		.owner = THIS_MODULE,
-		.of_match_table = fps_qbt2000_match,
+		.of_match_table = qbt2000_match,
 	},
 };
 
-module_platform_driver(fps_qbt2000_plat_driver);
+module_platform_driver(qbt2000_plat_driver);
 
 MODULE_LICENSE("GPL v2");
 MODULE_AUTHOR("Kangwook.Her");

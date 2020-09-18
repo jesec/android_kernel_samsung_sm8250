@@ -24,6 +24,15 @@
 
 static unsigned long fsync_time_cnt[4];
 
+static inline int sec_sys_sync(void) {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 19, 0)
+	ksys_sync();
+	return 0;
+#else
+	return sys_sync();
+#endif
+}
+
 /* Interruptible sync for Samsung Mobile Device */
 #ifdef CONFIG_INTERRUPTIBLE_SYNC
 
@@ -73,15 +82,6 @@ static DEFINE_MUTEX(intr_sync_wq_lock);
 static inline struct interruptible_sync_work *INTR_SYNC_WORK(struct work_struct *work)
 {
 	return container_of(work, struct interruptible_sync_work, work);
-}
-
-static inline int sec_sys_sync() {
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 19, 0)
-	ksys_sync();
-	return 0;
-#else
-	return sys_sync();
-#endif
 }
 
 static void do_intr_sync(struct work_struct *work)
@@ -140,7 +140,7 @@ static inline int __prepare_wakeup_event(struct intr_wakeup_data *wd)
 
 static inline  int __check_wakeup_event(struct intr_wakeup_data *wd)
 {
-	unsigned int cnt, no_inpr;
+	unsigned int cnt = 0, no_inpr;
 
 	no_inpr = pm_get_wakeup_count(&cnt, false);
 	if (no_inpr && (cnt == wd->cnt))

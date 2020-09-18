@@ -263,9 +263,9 @@ extern bool bcm_postattach_part_reclaimed;
  * and examines the data pointed to must not be declared as BCMCONSTFN.
  */
 #ifdef __GNUC__
-#define BCMCONSTFN(_fn)	__attribute__ ((const)) _fn
+#define BCMCONSTFN	__attribute__ ((const))
 #else
-#define BCMCONSTFN(_fn)	_fn
+#define BCMCONSTFN
 #endif /* __GNUC__ */
 
 /* Bus types */
@@ -656,7 +656,20 @@ extern uint32 gFWID;
 /* For ROM builds, keep it in const section so that it gets ROMmed. If abandoned, move it to
  * RO section but before ro region start so that FATAL log buf doesn't use this.
  */
-	#define BCMRODATA_ONTRAP(_data)	_data
+// Temporary - leave old definition in place until all references are removed elsewhere
+#define BCMRODATA_ONTRAP(_data)	_data
+// Renamed for consistency with post trap function definition
+#define BCMPOST_TRAP_RODATA(_data)	_data
+
+/* Similar to RO data on trap, we want code that's used after a trap to be placed in a special area
+ * as this means we can use all of the rest of the .text for post trap dumps. Functions with
+ * the BCMPOSTTRAPFN macro applied will either be in ROM or this protected area.
+ * For RAMFNs, the ROM build only needs to nkow that they won't be in ROM, but the -roml
+ * builds need to know to protect them.
+ */
+#define BCMPOSTTRAPFN(_fn)		_fn
+#define BCMPOSTTRAPRAMFN(fn)	BCMPOSTTRAPFN(fn)
+#define BCMPOSTTRAPFASTPATH(fn)	BCMPOSTTRAPFN(fn)
 
 typedef struct bcm_rng * bcm_rng_handle_t;
 

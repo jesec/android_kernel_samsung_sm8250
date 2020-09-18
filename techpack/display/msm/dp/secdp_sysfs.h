@@ -17,10 +17,10 @@
 #include "secdp.h"
 
 struct secdp_sysfs {
-	struct class *		dp_class;
+	struct class	*dp_class;
 };
 
-struct secdp_sysfs* secdp_sysfs_init(void);
+struct secdp_sysfs *secdp_sysfs_init(void);
 void secdp_sysfs_deinit(struct secdp_sysfs *sysfs);
 
 /**

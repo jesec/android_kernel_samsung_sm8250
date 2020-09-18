@@ -686,6 +686,19 @@ bool msm_gpio_is_valid(int gpionum)
 #ifdef CONFIG_DEBUG_FS
 #include <linux/seq_file.h>
 
+static void inline __msm_gpio_dbg_show_one_wakeup(struct seq_file *s,
+		unsigned offset)
+{
+	enum msm_gpio_wake type = msm_gpio_mpm_wake_get(offset);
+	const char *wakeup[] = {
+		[MSM_GPIO_WAKE_NONE] = "none",
+		[MSM_GPIO_WAKE_DISABLED] = "disabled",
+		[MSM_GPIO_WAKE_ENABLED] = "enabled",
+	};
+
+	seq_printf(s, " wakeup-%s", wakeup[type]);
+}
+
 static void msm_gpio_dbg_show_one(struct seq_file *s,
 				  struct pinctrl_dev *pctldev,
 				  struct gpio_chip *chip,
@@ -738,6 +751,7 @@ static void msm_gpio_dbg_show_one(struct seq_file *s,
 		seq_printf(s, " %s", pulls_no_keeper[pull]);
 	else
 		seq_printf(s, " %s", pulls_keeper[pull]);
+	__msm_gpio_dbg_show_one_wakeup(s, offset);
 	seq_puts(s, "\n");
 }
 
@@ -1737,6 +1751,51 @@ int msm_gpio_mpm_wake_set(unsigned int gpio, bool enable)
 }
 EXPORT_SYMBOL(msm_gpio_mpm_wake_set);
 
+/*
+ * msm_gpio_mpm_wake_get - API to get interrupt wakeup capable
+ * @gpio:       Gpio number to get interrupt wakeup capable
+ */
+enum msm_gpio_wake msm_gpio_mpm_wake_get(unsigned int gpio)
+{
+	const struct msm_pingroup *g;
+	unsigned long flags;
+	unsigned long val;
+
+	g = &msm_pinctrl_data->soc->groups[gpio];
+	if (g->wake_bit == -1)
+		return MSM_GPIO_WAKE_NONE;
+
+	raw_spin_lock_irqsave(&msm_pinctrl_data->lock, flags);
+	val = readl_relaxed(msm_pinctrl_data->regs + g->wake_reg);
+	val &= BIT(g->wake_bit);
+	raw_spin_unlock_irqrestore(&msm_pinctrl_data->lock, flags);
+
+	return val ? MSM_GPIO_WAKE_ENABLED : MSM_GPIO_WAKE_DISABLED;
+}
+EXPORT_SYMBOL(msm_gpio_mpm_wake_get);
+
+static void __msm_gpio_parse_dt_disable_wakeup(struct msm_pinctrl *pctrl)
+{
+	const struct device_node *np = pctrl->dev->of_node;
+	int nr_gpios;
+	unsigned int gpio;
+	int i;
+	int err;
+
+	nr_gpios = of_property_count_u32_elems(np, "wakeup-disabled-gpios");
+	if (nr_gpios <= 0)
+		return;
+
+	for (i = 0; i < nr_gpios; i++) {
+		of_property_read_u32_index(np, "wakeup-disabled-gpios",
+				i, &gpio);
+		err = msm_gpio_mpm_wake_set(gpio, false);
+		if (err)
+			pr_warn("can't disable 'wakeup' for gpio-%d (%d)\n",
+					gpio, err);
+	}
+}
+
 int msm_pinctrl_probe(struct platform_device *pdev,
 		      const struct msm_pinctrl_soc_data *soc_data)
 {
@@ -1806,6 +1865,8 @@ int msm_pinctrl_probe(struct platform_device *pdev,
 
 	register_syscore_ops(&msm_pinctrl_pm_ops);
 	dev_dbg(&pdev->dev, "Probed Qualcomm pinctrl driver\n");
+
+	__msm_gpio_parse_dt_disable_wakeup(pctrl);
 
 	return 0;
 }

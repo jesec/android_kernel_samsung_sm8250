@@ -658,6 +658,7 @@
  */
 #define KEY_DATA			0x277
 
+#define KEY_DEX_ON			0x2bd
 #define KEY_WINK			0x2bf	/* Intelligence Key */
 
 #define KEY_ONSCREEN_KEYBOARD		0x278

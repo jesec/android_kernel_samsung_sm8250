@@ -2,7 +2,7 @@
  * Broadcom Dongle Host Driver (DHD), Generic work queue framework
  * Generic interface to handle dhd deferred work events
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -98,6 +98,7 @@ static inline void
 dhd_kfifo_free(struct kfifo *fifo)
 {
 	kfifo_free(fifo);
+	kfree(fifo);
 }
 
 /* deferred work functions */

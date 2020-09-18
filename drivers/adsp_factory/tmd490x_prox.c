@@ -63,6 +63,9 @@ enum {
 enum {
 	PROX_CMD_TYPE_GET_TRIM_CHECK,
 	PROX_CMD_TYPE_GET_CAL_DATA,
+#ifdef CONFIG_SUPPORT_PROX_INIT_CAL
+	PROX_CMD_TYPE_INIT_CAL_DATA,
+#endif
 	PROX_CMD_TYPE_MAX
 };
 
@@ -377,8 +380,8 @@ void set_prox_threshold(struct adsp_data *data, int type, int val)
 static ssize_t prox_cal_show(struct device *dev,
 	struct device_attribute *attr, char *buf)
 {
-	struct adsp_data *data = dev_get_drvdata(dev);
 #ifdef CONFIG_SUPPORT_AMS_PROX_CALIBRATION
+	struct adsp_data *data = dev_get_drvdata(dev);
 	return snprintf(buf, PAGE_SIZE, "%d,0,0\n", data->prox_cal);
 #else
 	return snprintf(buf, PAGE_SIZE, "0,0,0\n");
@@ -390,18 +393,23 @@ static ssize_t prox_cal_store(struct device *dev,
 {
 #ifdef CONFIG_SUPPORT_AMS_PROX_CALIBRATION
 	struct adsp_data *data = dev_get_drvdata(dev);
-	int cal_data, msg = PROX_CMD_TYPE_GET_CAL_DATA;
+	int cal_data, msg;
 	uint16_t prox_idx = get_prox_sidx(data);
 	uint8_t cnt = 0;
 	char *cur_id_str;
 
-	if (sysfs_streq(buf, "0")) {
-		pr_info("[FACTORY] %s: no operation\n", __func__);
-		return size;
-	} else if (!sysfs_streq(buf, "1")) {
+	if (sysfs_streq(buf, "1")) {
+		msg = PROX_CMD_TYPE_GET_CAL_DATA;
+#ifdef CONFIG_SUPPORT_PROX_INIT_CAL
+	} else if (sysfs_streq(buf, "0")) {
+		msg = PROX_CMD_TYPE_INIT_CAL_DATA;
+#endif
+	} else {
 		pr_err("[FACTORY] %s: wrong value\n", __func__);
 		return size;
 	}
+
+	pr_info("[FACTORY] %s: msg %d\n", __func__, msg);
 
 	mutex_lock(&data->prox_factory_mutex);
 	adsp_unicast(&msg, sizeof(int32_t), prox_idx, 0, MSG_TYPE_GET_CAL_DATA);
@@ -430,6 +438,12 @@ static ssize_t prox_cal_store(struct device *dev,
 			ams_save_ub_cell_id_to_efs(cur_id_str, false);
 #endif
 			kfree(cur_id_str);
+#ifdef CONFIG_SUPPORT_PROX_INIT_CAL
+		} else if (msg == PROX_CMD_TYPE_INIT_CAL_DATA) {
+			pr_info("[FACTORY] %s: init cal %d\n", __func__, cal_data);
+			prox_save_cal_data_to_efs(cal_data, false);
+			data->prox_cal = cal_data;
+#endif
 		} else {
 			pr_info("[FACTORY] %s: fail! %d\n", __func__, cal_data);
 		}		

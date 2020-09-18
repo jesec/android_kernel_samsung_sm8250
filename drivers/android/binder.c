@@ -6103,13 +6103,12 @@ static void print_binder_proc(struct seq_file *m,
 }
 
 #ifdef CONFIG_SAMSUNG_FREECESS
-static void binder_in_transaction(struct binder_proc *proc)
+static void binder_in_transaction(struct binder_proc *proc, int uid)
 {
 	struct rb_node *n = NULL;
 	struct binder_thread *thread = NULL;
-	int uid = -1;
-	struct task_struct *tsk = NULL;
 	struct binder_transaction *t = NULL;
+	struct binder_work *w = NULL;
 	bool empty = true;
 	bool found = false;
 
@@ -6118,34 +6117,35 @@ static void binder_in_transaction(struct binder_proc *proc)
 	for (n = rb_first(&proc->threads); n != NULL; n = rb_next(n)) {
 		thread = rb_entry(n, struct binder_thread, rb_node);
 		empty = binder_worklist_empty_ilocked(&thread->todo);
-		tsk = thread->task;
+		if (!empty) {
+			list_for_each_entry(w, &thread->todo, entry) {
+				if (w->type == BINDER_WORK_TRANSACTION) {
+					t = container_of(w, struct binder_transaction, work);
+					if (!(t->flags & TF_ONE_WAY)) {
+						found = true;
+						break;
+					}
+				}
+				else if (w->type != BINDER_WORK_TRANSACTION_COMPLETE && w->type != BINDER_WORK_NODE) {
+					found = true;
+					break;
+				}
+			}
 
-		if (tsk != NULL) {
-			//have some binders to do
-			if (!empty) {
-				//report uid to FW, only report one time
-				uid = tsk->cred->euid.val;
+			if (found == true) {
 				binder_inner_proc_unlock(proc);
 				cfb_report(uid, "thread");
 				return;
 			}
+		}
 
-			//processing one binder call
-			t = thread->transaction_stack;
-			if (t) {
-				spin_lock(&t->lock);
-				if (t->to_thread == thread) {
-					//check incoming, it has one
-					found = true;
-					uid = tsk->cred->euid.val;
-				}
-				spin_unlock(&t->lock);
-				if (found == true){
-					//report uid to FW, only report one time
-					binder_inner_proc_unlock(proc);
-					cfb_report(uid, "transaction_stack");
-					return;
-				}
+		//processing one binder call
+		t = thread->transaction_stack;
+		if (t) {
+			if (t->to_thread == thread) {
+				binder_inner_proc_unlock(proc);
+				cfb_report(uid, "transaction_stack");
+				return;
 			}
 		}
 	}
@@ -6153,18 +6153,64 @@ static void binder_in_transaction(struct binder_proc *proc)
 	//check binder proc todo list
 #ifdef CONFIG_FAST_TRACK
         empty = binder_proc_worklist_empty_ilocked(proc);
+	if (!empty) {
+		list_for_each_entry(w, &proc->todo, entry) {
+			if (w->type == BINDER_WORK_TRANSACTION) {
+				t = container_of(w, struct binder_transaction, work);
+				if (!(t->flags & TF_ONE_WAY)) {
+					found = true;
+					break;
+				}
+			}
+			else if (w->type != BINDER_WORK_TRANSACTION_COMPLETE && w->type != BINDER_WORK_NODE) {
+				found = true;
+				break;
+			}
+		}
+		list_for_each_entry(w, &proc->fg_todo, entry) {
+			if (w->type == BINDER_WORK_TRANSACTION) {
+				t = container_of(w, struct binder_transaction, work);
+				if (!(t->flags & TF_ONE_WAY)) {
+					found = true;
+					break;
+				}
+			}
+			else if (w->type != BINDER_WORK_TRANSACTION_COMPLETE && w->type != BINDER_WORK_NODE) {
+				found = true;
+				break;
+			}
+		}
+		if (found == true) {
+			binder_inner_proc_unlock(proc);
+			cfb_report(uid, "proc");
+			return;
+		}
+	}
 #else
 	empty = binder_worklist_empty_ilocked(&proc->todo);
-#endif
-	tsk = proc->tsk;
-	if (tsk != NULL && !empty) {
-		//report uid to FW
-		uid = tsk->cred->euid.val;
-		binder_inner_proc_unlock(proc);
-		cfb_report(uid, "proc");
+	if (!empty) {
+		list_for_each_entry(w, &proc->todo, entry) {
+			if (w->type == BINDER_WORK_TRANSACTION) {
+				t = container_of(w, struct binder_transaction, work);
+				if (!(t->flags & TF_ONE_WAY)) {
+					found = true;
+					break;
+				}
+			}
+			else if (w->type != BINDER_WORK_TRANSACTION_COMPLETE && w->type != BINDER_WORK_NODE) {
+				found = true;
+				break;
+			}
+		}
+
+		if (found == true) {
+			binder_inner_proc_unlock(proc);
+			cfb_report(uid, "proc");
+			return;
+		}
 	}
-	else
-		binder_inner_proc_unlock(proc);
+#endif
+	binder_inner_proc_unlock(proc);
 }
 
 void binders_in_transcation(int uid)
@@ -6174,7 +6220,7 @@ void binders_in_transcation(int uid)
 	mutex_lock(&binder_procs_lock);
 	hlist_for_each_entry(itr, &binder_procs, proc_node) {
 		if (itr != NULL && (itr->tsk->cred->euid.val == uid)) {
-			binder_in_transaction(itr);
+			binder_in_transaction(itr, uid);
 		}
 	}
 	mutex_unlock(&binder_procs_lock);

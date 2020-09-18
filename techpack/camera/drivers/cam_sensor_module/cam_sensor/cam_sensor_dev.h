@@ -117,6 +117,10 @@ struct cam_sensor_ctrl_t {
 	const struct cam_mipi_sensor_mode *mipi_info;
 	uint8_t sensor_mode;
 #endif
+#if defined(CONFIG_CAMERA_FRAME_CNT_DBG)
+	struct task_struct *sensor_thread;
+	bool is_thread_started;
+#endif
 };
 
 #endif /* _CAM_SENSOR_DEV_H_ */

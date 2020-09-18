@@ -1,7 +1,7 @@
 /*
  * Broadcom HND chip & on-chip-interconnect-related definitions.
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,7 +18,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #ifndef	_HNDSOC_H
@@ -46,6 +46,9 @@
 #ifndef SI_WRAP_BASE_DEFAULT
 #define SI_WRAP_BASE_DEFAULT		0x18100000	/* Wrapper space base */
 #endif
+
+#define WL_BRIDGE1_S	(0x18132000)
+#define WL_BRIDGE2_S	(0x18133000)
 
 /** new(er) chips started locating their chipc core at a different BP address than 0x1800_0000 */
 // NIC and DHD driver binaries should support both old(er) and new(er) chips at the same time

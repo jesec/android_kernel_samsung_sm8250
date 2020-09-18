@@ -120,12 +120,13 @@ int hdd_hif_open(struct device *dev, void *bdev, const struct hif_bus_id *bid,
 
 /**
  * hdd_soc_idle_restart_lock() - Takes wakelock for idle restart
+ * @dev: wlan device structure
  *
  * This function takes wakelock to prevent suspend during idle restart
  *
- * Return: none
+ * Return: 0 for success and non zero for error
  */
-void hdd_soc_idle_restart_lock(void);
+int hdd_soc_idle_restart_lock(struct device *dev);
 
 /**
  * hdd_soc_idle_restart_unlock() - Releases wakelock for idle restart
@@ -136,4 +137,22 @@ void hdd_soc_idle_restart_lock(void);
  */
 void hdd_soc_idle_restart_unlock(void);
 
+#ifdef FORCE_WAKE
+/**
+ * hdd_set_hif_init_phase() - Enable/disable the
+ * init_phase flag
+ * @hif_ctx: hif opaque handle
+ * @hal_init_phase: init phase flag
+ *
+ * Return: None
+ */
+void hdd_set_hif_init_phase(struct hif_opaque_softc *hif_ctx,
+			    bool init_phase);
+#else
+static inline
+void hdd_set_hif_init_phase(struct hif_opaque_softc *hif_ctx,
+			    bool init_phase)
+{
+}
+#endif /* FORCE_WAKE */
 #endif /* __WLAN_HDD_DRIVER_OPS_H__ */

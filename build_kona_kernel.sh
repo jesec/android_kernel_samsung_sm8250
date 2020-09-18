@@ -90,6 +90,7 @@ FUNC_BUILD_KERNEL()
 
     chmod u+w $PRODUCT_OUT/mkbootimg_ver_args.txt
     echo $MKBOOTIMG_AFLAG  >  $PRODUCT_OUT/mkbootimg_ver_args.txt
+    touch $PRODUCT_OUT/vbmeta.img
 
     echo ----------------------------------------------
     echo info $PRODUCT_OUT/mkbootimg_ver_args.txt

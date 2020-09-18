@@ -11,6 +11,10 @@
 #include "dsi_display.h"
 #include "sde_trace.h"
 
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+#include "ss_dsi_panel_common.h"
+#endif
+
 #define SDE_DEBUG_VIDENC(e, fmt, ...) SDE_DEBUG("enc%d intf%d " fmt, \
 		(e) && (e)->base.parent ? \
 		(e)->base.parent->base.id : -1, \
@@ -270,9 +274,9 @@ static void programmable_fetch_config(struct sde_encoder_phys *phys_enc,
 	m = phys_enc->sde_kms->catalog;
 
 	vfp_fetch_lines = programmable_fetch_get_num_lines(vid_enc,
-							   timing, true);
+							   timing, false);
 	if (vfp_fetch_lines) {
-		vert_total = get_vertical_total(timing, true);
+		vert_total = get_vertical_total(timing, false);
 		horiz_total = get_horizontal_total(timing);
 		vfp_fetch_start_vsync_counter =
 			(vert_total - vfp_fetch_lines) * horiz_total + 1;
@@ -489,6 +493,10 @@ static void sde_encoder_phys_vid_vblank_irq(void *arg, int irq_idx)
 	if (!hw_ctl)
 		return;
 
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+	SDE_DEBUG_VIDENC(to_sde_encoder_phys_vid(phys_enc), "\n");
+#endif
+
 	SDE_ATRACE_BEGIN("vblank_irq");
 
 	/*
@@ -568,6 +576,19 @@ static void sde_encoder_phys_vid_underrun_irq(void *arg, int irq_idx)
 	if (phys_enc->parent_ops.handle_underrun_virt)
 		phys_enc->parent_ops.handle_underrun_virt(phys_enc->parent,
 			phys_enc);
+
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+	if (phys_enc->parent->encoder_type == DRM_MODE_ENCODER_DSI) {
+		SDE_DEBUG_VIDENC(to_sde_encoder_phys_vid(phys_enc), "underrun\n");
+#if defined(CONFIG_SEC_DEBUG)
+		if (sec_debug_is_enabled()) {
+			SDE_EVT32(DRMID(phys_enc->parent), SDE_EVTLOG_FATAL);
+			SDE_DBG_DUMP_WQ("all", "dbg_bus", "vbif_dbg_bus");
+		}
+#endif
+	}
+#endif
+
 }
 
 static void _sde_encoder_phys_vid_setup_irq_hw_idx(
@@ -1085,6 +1106,14 @@ static void sde_encoder_phys_vid_disable(struct sde_encoder_phys *phys_enc)
 
 	sde_encoder_helper_phys_disable(phys_enc, NULL);
 exit:
+
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+	if (!sde_encoder_phys_vid_is_master(phys_enc)) {
+		phys_enc->hw_intf->ops.enable_timing(phys_enc->hw_intf, 0);
+		SDE_DEBUG_VIDENC(vid_enc, "disable timing gen\n");
+	}
+#endif
+
 	SDE_EVT32(DRMID(phys_enc->parent),
 		atomic_read(&phys_enc->pending_retire_fence_cnt));
 	phys_enc->vfp_cached = 0;

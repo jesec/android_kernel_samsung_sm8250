@@ -1098,7 +1098,7 @@ struct ufs_hba {
 	struct workqueue_struct *recovery_wq;
 	struct work_struct eh_work;
 	struct work_struct eeh_work;
-	struct delayed_work rls_work;
+	struct work_struct rls_work;
 
 	/* HBA Errors */
 	u32 errors;
@@ -1542,6 +1542,8 @@ void ufshcd_hold_all(struct ufs_hba *hba);
 void ufshcd_release_all(struct ufs_hba *hba);
 int ufshcd_comp_scsi_upiu(struct ufs_hba *hba, struct ufshcd_lrb *lrbp);
 int ufshcd_map_sg(struct ufs_hba *hba, struct ufshcd_lrb *lrbp);
+int ufshcd_query_flag_retry(struct ufs_hba *hba, enum query_opcode opcode,
+                            enum flag_idn idn, bool *flag_res);
 #endif
 #if defined(CONFIG_UFSFEATURE) && defined(CONFIG_UFSHPB) && defined(SEC_UFS_ERROR_COUNT)
 void SEC_ufs_hpb_rb_count(struct ufs_hba *hba, struct ufshpb_region *rgn);

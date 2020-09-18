@@ -241,6 +241,9 @@ int max77705_process_check_accessory(void *data)
 				acc_type = CCIC_DOCK_NEW;
 				break;
 			}
+		} else {
+			msg_maxim("unknown device connected.");
+			acc_type = CCIC_DOCK_NEW;
 		}
 		usbpd_data->acc_type = acc_type;
 	} else
@@ -1147,7 +1150,7 @@ void max77705_set_enable_alternate_mode(int mode)
 
 	msg_maxim("is_first_booting  : %x mode %x",
 			usbpd_data->is_first_booting, mode);
-#if 0
+#ifdef CONFIG_USB_NOTIFY_PROC_LOG
 	store_usblog_notify(NOTIFY_ALTERNATEMODE, (void *)&mode, NULL);
 #endif
 	usbpd_data->set_altmode = mode;

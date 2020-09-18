@@ -2971,8 +2971,11 @@ static void sdhci_card_event(struct mmc_host *mmc)
 
 		sdhci_error_out_mrqs(host, -ENOMEDIUM);
 	}
+
+	spin_unlock_irqrestore(&host->lock, flags);
+
 #if defined(CONFIG_HDM)
-	else if (present) {
+	if (present) {
 		sdhci_writel(host, 0, SDHCI_SIGNAL_ENABLE);
 		sdhci_reinit(host);
 		sdhci_set_power(host, mmc->ios.power_mode, mmc->ios.vdd);
@@ -2984,8 +2987,6 @@ static void sdhci_card_event(struct mmc_host *mmc)
 			host->ops->card_event(host);
 	}
 #endif
-
-	spin_unlock_irqrestore(&host->lock, flags);
 }
 
 static int sdhci_late_init(struct mmc_host *mmc)

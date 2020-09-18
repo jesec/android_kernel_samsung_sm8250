@@ -1554,7 +1554,7 @@ dhd_pktid_logging_init(dhd_pub_t *dhd, uint32 num_items)
 	dhd_pktid_log_t *log;
 	uint32 log_size;
 
-	log_size = DHD_PKTID_LOG_SZ(num_items);
+	log_size = (uint32)DHD_PKTID_LOG_SZ(num_items);
 	log = (dhd_pktid_log_t *)MALLOCZ(dhd->osh, log_size);
 	if (log == NULL) {
 		DHD_ERROR(("%s: MALLOC failed for size %d\n",
@@ -1580,7 +1580,7 @@ dhd_pktid_logging_fini(dhd_pub_t *dhd, dhd_pktid_log_handle_t *handle)
 	}
 
 	log = (dhd_pktid_log_t *)handle;
-	log_size = DHD_PKTID_LOG_SZ(log->items);
+	log_size = (uint32)DHD_PKTID_LOG_SZ(log->items);
 	MFREE(dhd->osh, handle, log_size);
 }
 
@@ -7024,6 +7024,16 @@ int dhd_prot_ioctl(dhd_pub_t *dhd, int ifidx, wl_ioctl_t * ioc, void * buf, int 
 			goto done;
 		}
 #endif /* DHD_PM_CONTROL_FROM_FILE */
+#ifdef DHD_PM_OVERRIDE
+		{
+			extern bool g_pm_override;
+			if (g_pm_override == TRUE) {
+				DHD_ERROR(("%s: PM override SET PM ignored!(Requested:%d)\n",
+					__FUNCTION__, buf ? *(char *)buf : 0));
+				goto done;
+			}
+		}
+#endif /* DHD_PM_OVERRIDE */
 		DHD_TRACE_HW4(("%s: SET PM to %d\n", __FUNCTION__, buf ? *(char *)buf : 0));
 	}
 
@@ -7613,11 +7623,23 @@ dhd_msgbuf_wait_ioctl_cmplt(dhd_pub_t *dhd, uint32 len, void *buf)
 #endif /* DHD_RECOVER_TIMEOUT */
 
 	if (timeleft == 0 && (!dhd_query_bus_erros(dhd))) {
-		/* check if resumed on time out related to scheduling issue */
-		dhd->is_sched_error = FALSE;
-		if (dhd->bus->isr_entry_time > prot->ioctl_fillup_time) {
-			dhd->is_sched_error = dhd_bus_query_dpc_sched_errors(dhd);
+		if (dhd->check_trap_rot) {
+			/* check dongle trap first */
+			DHD_ERROR(("Check dongle trap in the case of iovar timeout\n"));
+			dhd_bus_checkdied(dhd->bus, NULL, 0);
+
+			if (dhd->dongle_trap_occured) {
+#ifdef SUPPORT_LINKDOWN_RECOVERY
+#ifdef CONFIG_ARCH_MSM
+				dhd->bus->no_cfg_restore = 1;
+#endif /* CONFIG_ARCH_MSM */
+#endif /* SUPPORT_LINKDOWN_RECOVERY */
+				ret = -EREMOTEIO;
+				goto out;
+			}
 		}
+		/* check if resumed on time out related to scheduling issue */
+		dhd->is_sched_error = dhd_bus_query_dpc_sched_errors(dhd);
 
 		dhd_msgbuf_iovar_timeout_dump(dhd);
 
@@ -10348,7 +10370,7 @@ copy_hang_info_trap(dhd_pub_t *dhd)
 	copy_hang_info_head(dhd->hang_info, &tr, VENDOR_SEND_HANG_EXT_INFO_LEN, FALSE,
 			&bytes_written, &dhd->hang_info_cnt, dhd->debug_dump_time_hang_str);
 
-	DHD_INFO(("hang info haed cnt: %d len: %d data: %s\n",
+	DHD_INFO(("hang info head cnt: %d len: %d data: %s\n",
 		dhd->hang_info_cnt, (int)strlen(dhd->hang_info), dhd->hang_info));
 
 	clear_debug_dump_time(dhd->debug_dump_time_hang_str);

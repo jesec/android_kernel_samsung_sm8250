@@ -562,9 +562,15 @@ osl_pktalloced(osl_t *osh)
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 6, 0) && defined(TSQ_MULTIPLIER)
 #include <linux/kallsyms.h>
 #include <net/sock.h>
+#define DHD_TCP_LIMIT_OUTPUT_BYTES (16 * 1024 * 1024)
 void
 osl_pkt_orphan_partial(struct sk_buff *skb)
 {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 19, 0) && defined(DHD_TCP_LIMIT_OUTPUT)
+	if (skb->sk) {
+		sock_net(skb->sk)->ipv4.sysctl_tcp_limit_output_bytes = DHD_TCP_LIMIT_OUTPUT_BYTES;
+	}
+#else
 	uint32 fraction;
 	static void *p_tcp_wfree = NULL;
 
@@ -597,5 +603,6 @@ osl_pkt_orphan_partial(struct sk_buff *skb)
 	fraction = skb->truesize * (TSQ_MULTIPLIER - 1) / TSQ_MULTIPLIER;
 	skb->truesize -= fraction;
 	atomic_sub(fraction, (atomic_t *)&skb->sk->sk_wmem_alloc);
+#endif /* LINUX_VERSION >= 4.19.0 && DHD_TCP_LIMIT_OUTPUT */
 }
 #endif /* LINUX_VERSION >= 3.6.0 && TSQ_MULTIPLIER */

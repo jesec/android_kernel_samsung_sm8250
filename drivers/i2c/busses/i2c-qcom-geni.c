@@ -515,6 +515,8 @@ static int geni_i2c_gsi_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[],
 		struct device *tx_dev = gi2c->wrapper_dev;
 		reinit_completion(&gi2c->xfer);
 
+		reinit_completion(&gi2c->xfer);
+
 		gi2c->cur = &msgs[i];
 
 		dma_buf = i2c_get_dma_safe_msg_buf(&msgs[i], 1);

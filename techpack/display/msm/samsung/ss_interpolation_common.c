@@ -260,7 +260,6 @@ static void update_hbm_candela_map_table(struct samsung_display_driver_data *vdd
 	table->max_lv = table->end[table->tab_size-1];
 }
 
-
 static void update_hbm_interpolation(struct samsung_display_driver_data *vdd,
 		struct brightness_table *br_tbl,
 		struct ss_interpolation_brightness_table *hbm_table, int hbm_table_size)
@@ -502,6 +501,8 @@ static void gen_normal_interpolation_br(struct samsung_display_driver_data *vdd,
 	}
 }
 
+/* Do not use for another model in 8250. */
+/* Modified only for Bloom5G model using both 2 dimming mode(A,S), just like SM8150 */
 int gen_normal_interpolation_aor_gamma_legacy(struct samsung_display_driver_data *vdd,
 		struct brightness_table *br_tbl,
 		struct ss_interpolation_brightness_table *normal_table, int normal_table_size)
@@ -514,17 +515,11 @@ int gen_normal_interpolation_aor_gamma_legacy(struct samsung_display_driver_data
 	long long aor_dec_up_x10000, aor_dec_down_x10000, aor_dec_curr_x10000;
 	enum ss_dimming_mode dimming_mode_curr = DIMMING_MODE_MAX;
 	enum ss_dimming_mode dimming_mode_prev = DIMMING_MODE_MAX;
+	enum ss_dimming_mode s_dimming_step = DIMMING_MODE_MAX;
+
 	unsigned int s_dimming_aor_hex = 0;
 	unsigned int aor_size = vdd->br_info.aor_size;
 	struct dimming_tbl *normal_tbl = &br_tbl->normal_tbl;
-
-	unsigned char *max_gamma;
-	unsigned char *min_gamma;
-	int *max_gammaV;
-	int *min_gammaV;
-	int *itp_gammaV;
-	int max_cd, min_cd;
-	int gamma_loop;
 	int gamma_V_size;
 	int gamma_size;
 
@@ -538,10 +533,10 @@ int gen_normal_interpolation_aor_gamma_legacy(struct samsung_display_driver_data
 	int ddi_tot_v = br_tbl->ddi_vfp + br_tbl->ddi_vactive + br_tbl->ddi_vbp;
 	int ddi_tot_v_base = br_tbl->ddi_vfp_base + br_tbl->ddi_vactive_base + br_tbl->ddi_vbp_base;
 
-	LCD_INFO("RR: %3d %s: ddi_tot_v: %4d, ddi_tot_v_base: %d\n",
+	LCD_INFO("RR: %3d %s: ddi_tot_v: %4d, ddi_tot_v_base: %d, aor_size:%d\n",
 			br_tbl->refresh_rate,
 			br_tbl->is_sot_hs_mode ? "HS" : "NM",
-			ddi_tot_v, ddi_tot_v_base);
+			ddi_tot_v, ddi_tot_v_base, aor_size);
 
 	if (vdd->br_info.panel_br_info.itp_mode == FLASH_INTERPOLATION)
 		normal_itp = &br_tbl->flash_itp.normal;
@@ -554,18 +549,6 @@ int gen_normal_interpolation_aor_gamma_legacy(struct samsung_display_driver_data
 	}
 	gamma_V_size = vdd->panel_func.get_gamma_V_size();
 	gamma_size = vdd->br_info.gamma_size;
-
-	max_gammaV = kzalloc(gamma_V_size * sizeof(int), GFP_KERNEL);
-	min_gammaV = kzalloc(gamma_V_size * sizeof(int), GFP_KERNEL);
-	itp_gammaV = kzalloc(gamma_V_size * sizeof(int), GFP_KERNEL);
-
-	if (!max_gammaV || !min_gammaV || !itp_gammaV) {
-		LCD_ERR("fail to alloc gammaV memory\n");
-		kfree(max_gammaV);
-		kfree(min_gammaV);
-		kfree(itp_gammaV);
-		return -ENOMEM;
-	}
 
 	/* AOR */
 	for (index = 0, loop = 0, reverse_loop = normal_table_size - 1;
@@ -630,41 +613,29 @@ int gen_normal_interpolation_aor_gamma_legacy(struct samsung_display_driver_data
 			dimming mode check 2 is for flash nand real data.
 		*/
 
-		/* dimming mode check 1
-		 * AOR dimming format for gamma mode-1.
-		 *  Low candela: A-dimming.
-		 *  One candela step: S-dimming (fixed gamma and AOR interpolation)
-		 *  High candela: S-dimming (fixed AOR and gamma interpolation).
-		 */
-		if (aor_hex_up == aor_hex_next_up && dimming_mode_prev == SS_A_DIMMING_MODE) {
-			/* S-dimming, fixed gamma, AOR interpolation for one candela step */
+		/* dimming mode check 1 */
+		if (aor_hex_up == aor_hex_next_up)	{
 			dimming_mode_curr = SS_S_DIMMING_AOR_ITP_MODE;
+			s_dimming_step = SS_S_DIMMING_AOR_ITP_MODE;
 			s_dimming_aor_hex = aor_hex_up;
-		} else if (aor_hex_up == aor_hex_next_up) {
-			/* S-dimming, fixed AOR, gamma interpolation */
-			dimming_mode_curr = SS_S_DIMMING_GAMMA_ITP_MODE;
-			s_dimming_aor_hex = aor_hex_up;
+		} else if ((s_dimming_step == SS_S_DIMMING_AOR_ITP_MODE) && \
+				((aor_hex_up == s_dimming_aor_hex) && (aor_hex_next_up != s_dimming_aor_hex))) {
+			dimming_mode_curr = SS_S_DIMMING_AOR_ITP_MODE;
+			s_dimming_step = SS_S_DIMMING_EXIT_MODE_1;
+		} else if ((s_dimming_step == SS_S_DIMMING_EXIT_MODE_1) && \
+				((aor_hex_up != s_dimming_aor_hex) && (aor_hex_next_up != s_dimming_aor_hex))) {
+			/* SS_S_DIMMING_EXIT_MODE_2 is real exit for S_DIMMING */
+			dimming_mode_curr = SS_S_DIMMING_AOR_ITP_MODE;
 
-			max_gamma = normal_tbl->gamma[reverse_loop];
-			if (reverse_loop == normal_table_size - 1)
-				min_gamma = max_gamma;
-			else
-				min_gamma = normal_tbl->gamma[reverse_loop + 1];
-
-			vdd->panel_func.convert_GAMMA_to_V(max_gamma, max_gammaV);
-			vdd->panel_func.convert_GAMMA_to_V(min_gamma, min_gammaV);
-
-			max_cd = normal_tbl->candela_table[reverse_loop];
-			min_cd = normal_tbl->candela_table[reverse_loop + 1];
+			/* reset flags after SS_S_DIMMING_EXIT_MODE_2 */
+			s_dimming_aor_hex = 0;
+			s_dimming_step = DIMMING_MODE_MAX;
 		} else {
 			dimming_mode_curr = SS_A_DIMMING_MODE;
 		}
+
 		dimming_mode_prev = dimming_mode_curr;
 
-		/* AOR/GAMMA interpolation steps 
-		 * Do interpoation for all aor/gamma of step.
-		 */
-		
 		for (step = 0; step < normal_table[loop].steps; step++) {
 			platform_curr = normal_itp->br_aor_table[index].platform_level_x10000;
 
@@ -672,40 +643,27 @@ int gen_normal_interpolation_aor_gamma_legacy(struct samsung_display_driver_data
 			if (step == normal_table[loop].steps - 1)
 				dimming_mode_curr = SS_FLASH_DIMMING_MODE;
 
+
 			normal_itp->br_aor_table[index].dimming_mode = dimming_mode_curr;
 
 			if (dimming_mode_curr == SS_FLASH_DIMMING_MODE) {
+				/* FLASH_DIMMING */
 				aor_dec_curr_x10000 = aor_dec_up_x10000;
-				memcpy(normal_itp->gamma[index], normal_tbl->gamma[reverse_loop], gamma_size);
-			} else if (dimming_mode_curr == SS_S_DIMMING_GAMMA_ITP_MODE) {
-				/* fixed AOR */
-				aor_dec_curr_x10000 = aor_dec_up_x10000;
-
-				/* gamma interpolation */
-				for (gamma_loop = 0; gamma_loop < gamma_V_size; gamma_loop++)
-					itp_gammaV[gamma_loop] = gamma_interpolation(
-									max_gammaV[gamma_loop], min_gammaV[gamma_loop],
-									max_cd, min_cd,
-									normal_itp->br_aor_table[index].interpolation_br_x10000);
-
-				/* Make GAMMA reg packet format from V format */
-				vdd->panel_func.convert_V_to_GAMMA(itp_gammaV, normal_itp->gamma[index]);
 			} else if (dimming_mode_curr == SS_S_DIMMING_AOR_ITP_MODE) {
+				/* S_DIMMING */
 				aor_dec_curr_x10000 = S_DIMMING_AOR_CAL (
 						aor_dec_up_x10000,
 						(long long)(normal_itp->br_aor_table[index].lux_mode * MULTIPLY_x10000),
 						(long long)(normal_itp->br_aor_table[index].interpolation_br_x10000));
-				memcpy(normal_itp->gamma[index], normal_tbl->gamma[reverse_loop], gamma_size);
 			} else {
 				/* A_DIMMING */
 				aor_dec_curr_x10000 = A_DIMMING_AOR_CAL (
 						aor_dec_up_x10000, aor_dec_down_x10000,
 						platform_up, platform_down, platform_curr);
-				memcpy(normal_itp->gamma[index], normal_tbl->gamma[reverse_loop], gamma_size);
 			}
 
 			normal_itp->br_aor_table[index].aor_percent_x10000 = aor_dec_curr_x10000;
-			normal_itp->br_aor_table[index].aor_hex = AOR_PERCENT_X1000_TO_HEX(ddi_tot_v, aor_dec_curr_x10000);
+			normal_itp->br_aor_table[index].aor_hex = AOR_PERCENT_X1000_TO_HEX(ddi_tot_v,aor_dec_curr_x10000);//X V
 
 			/* To convert dec to hex string format */
 			convert_dec_to_hex_str(
@@ -720,11 +678,8 @@ int gen_normal_interpolation_aor_gamma_legacy(struct samsung_display_driver_data
 
 			index++;
 		}
-	}
 
-	kfree(max_gammaV);
-	kfree(min_gammaV);
-	kfree(itp_gammaV);
+	}
 
 	return 0;
 }
@@ -738,7 +693,7 @@ static int gen_normal_interpolation_aor_gamma(struct samsung_display_driver_data
 	long long platform_up, platform_down, platform_curr;
 	long long aor_hex_up, aor_hex_down, aor_hex_next_up, aor_hex_cnt;
 	long long aor_dec_up_x10000, aor_dec_down_x10000, aor_dec_curr_x10000;
-	enum ss_dimming_mode dimming_mode_curr = DIMMING_MODE_MAX;		
+	enum ss_dimming_mode dimming_mode_curr = DIMMING_MODE_MAX;
 	unsigned int aor_size = vdd->br_info.aor_size;
 	struct dimming_tbl *normal_tbl = &br_tbl->normal_tbl;
 
@@ -866,7 +821,7 @@ static int gen_normal_interpolation_aor_gamma(struct samsung_display_driver_data
 
 		dimming_mode_curr = DIMMING_MODE_MAX;
 
-		/* AOR/GAMMA interpolation steps 
+		/* AOR/GAMMA interpolation steps
 		 * Do interpoation for all aor/gamma of step.
 		 */
 		for (step = 0; step < normal_table[loop].steps; step++) {
@@ -886,12 +841,12 @@ static int gen_normal_interpolation_aor_gamma(struct samsung_display_driver_data
 					itp_gammaV[gamma_loop] = gamma_interpolation(
 									max_gammaV[gamma_loop], min_gammaV[gamma_loop],
 									max_cd, min_cd,
-									normal_itp->br_aor_table[index].interpolation_br_x10000);						
+									normal_itp->br_aor_table[index].interpolation_br_x10000);
 				}
 
 				/* Make GAMMA reg packet format from V format */
 				vdd->panel_func.convert_V_to_GAMMA(itp_gammaV, normal_itp->gamma[index]);
-			
+
 				/* A_DIMMING */
 				aor_dec_curr_x10000 = A_DIMMING_AOR_CAL (
 						aor_dec_up_x10000, aor_dec_down_x10000,
@@ -919,7 +874,7 @@ static int gen_normal_interpolation_aor_gamma(struct samsung_display_driver_data
 			memset(pBuffer, 0x00, 256);
 
 			index++;
-		}		
+		}
 	}
 
 	kfree(max_gammaV);
@@ -1038,8 +993,10 @@ static void update_normal_interpolation(struct samsung_display_driver_data *vdd,
 	gen_normal_interpolation_br(vdd, br_tbl, normal_table, normal_table_size);
 
 	/* 3st */
-	gen_normal_interpolation_aor_gamma(vdd, br_tbl, normal_table, normal_table_size);
-//	gen_normal_interpolation_aor_gamma_legacy(vdd, br_tbl, normal_table, normal_table_size);
+	if (vdd->old_aor_dimming) /* Bloom5G needs old style s-dimming and a-dimming */
+		gen_normal_interpolation_aor_gamma_legacy(vdd, br_tbl, normal_table, normal_table_size);
+	else
+		gen_normal_interpolation_aor_gamma(vdd, br_tbl, normal_table, normal_table_size);
 
 	/* 4st */
 	if (vdd->panel_func.gen_normal_interpolation_irc)
@@ -1282,6 +1239,10 @@ int br_interpolation_generate_event(struct samsung_display_driver_data *vdd,
 
 	/* select brightness table for current refresh rate mode */
 	br_tbl = ss_get_cur_br_tbl(vdd);
+	if (!br_tbl) {
+		LCD_ERR("br tble is null!\n");
+		return -ENODEV;
+	}
 
 	hbm_tbl = &br_tbl->hbm_tbl;
 	normal_tbl = &br_tbl->normal_tbl;
@@ -1677,7 +1638,7 @@ static void debug_normal_interpolation(struct samsung_display_driver_data *vdd,
 		if (!IS_ERR_OR_NULL(normal_itp->br_aor_table)) {
 			for (data_cnt = 0; data_cnt < aor_size; data_cnt++)
 				snprintf(buf + strlen(buf), FLASH_GAMMA_DBG_BUF_SIZE - strlen(buf), "%02x ", normal_itp->br_aor_table[column].aor_hex_string[data_cnt]);
-		} else 
+		} else
 			LCD_ERR("aor_table is null.. %d", column);
 
 		snprintf(buf + strlen(buf), FLASH_GAMMA_DBG_BUF_SIZE - strlen(buf), "| ");
@@ -1760,7 +1721,7 @@ static void debug_hbm_interpolation(struct samsung_display_driver_data *vdd,
 		}
 
 		snprintf(buf + strlen(buf), FLASH_GAMMA_DBG_BUF_SIZE - strlen(buf), "| ");
- 
+
 		/* IRC */
 		if (!IS_ERR_OR_NULL(irc)) {
 			for (data_cnt = 0; data_cnt < irc_size; data_cnt++)
@@ -1805,7 +1766,7 @@ uint gamma_interpolation(int upper_g, int lower_g, int upper_cd, int lower_cd, i
 {
 	uint ret = 0;
 
-	ret = (upper_g * MULTIPLY_x10000) - 
+	ret = (upper_g * MULTIPLY_x10000) -
 		((upper_cd * MULTIPLY_x10000 - target_cd) * (upper_g - lower_g)) /
 		(upper_cd - lower_cd);
 	ret = ROUNDING(ret, MULTIPLY_x10000);
@@ -1818,7 +1779,7 @@ int ss_common_interpolation(s64 y2, s64 y1, s64 x2, s64 x1, s64 target_x)
 {
 	s64 itp_v;
 
-	itp_v = (y2 * MULTIPLY_x10000) - 
+	itp_v = (y2 * MULTIPLY_x10000) -
 		((x2 - target_x) * (y2 - y1) * MULTIPLY_x10000) /
 		(x2 - x1);
 	itp_v = ROUNDING(itp_v, MULTIPLY_x10000);

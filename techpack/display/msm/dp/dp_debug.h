@@ -14,18 +14,38 @@
 #include "dp_display.h"
 
 #ifndef CONFIG_SEC_DISPLAYPORT
-#define DP_WARN(fmt, ...)	DRM_WARN("[msm-dp-warn] "fmt, ##__VA_ARGS__)
-#define DP_ERR(fmt, ...)	DRM_DEV_ERROR(NULL, "[msm-dp-error]" fmt, \
-								##__VA_ARGS__)
-#define DP_INFO(fmt, ...)	DRM_DEV_INFO(NULL, "[msm-dp-info] "fmt, \
-								##__VA_ARGS__)
-#define DP_DEBUG(fmt, ...)	DRM_DEV_DEBUG_DP(NULL, "[msm-dp-debug] "fmt, \
-								##__VA_ARGS__)
+#define DP_DEBUG(fmt, ...)                                                   \
+	do {                                                                 \
+		if (unlikely(drm_debug & DRM_UT_KMS))                        \
+			DRM_DEBUG("[msm-dp-debug][%-4d]"fmt, current->pid,   \
+					##__VA_ARGS__);                      \
+		else                                                         \
+			pr_debug("[drm:%s][msm-dp-debug][%-4d]"fmt, __func__,\
+				       current->pid, ##__VA_ARGS__);         \
+	} while (0)
+
+#define DP_INFO(fmt, ...)                                                    \
+	do {                                                                 \
+		if (unlikely(drm_debug & DRM_UT_KMS))                        \
+			DRM_INFO("[msm-dp-info][%-4d]"fmt, current->pid,    \
+					##__VA_ARGS__);                      \
+		else                                                         \
+			pr_info("[drm:%s][msm-dp-info][%-4d]"fmt, __func__, \
+				       current->pid, ##__VA_ARGS__);         \
+	} while (0)
+
+#define DP_WARN(fmt, ...)                                    \
+	pr_warn("[drm:%s][msm-dp-warn][%-4d]"fmt, __func__,  \
+			current->pid, ##__VA_ARGS__)
+
+#define DP_ERR(fmt, ...)                                    \
+	pr_err("[drm:%s][msm-dp-err][%-4d]"fmt, __func__,   \
+		       current->pid, ##__VA_ARGS__)
 #else
-#define DP_WARN(fmt, ...)	pr_warn("[msm-dp] %s: "fmt, __func__, ##__VA_ARGS__)
-#define DP_ERR(fmt, ...)	pr_err("[msm-dp] %s: "fmt, __func__, ##__VA_ARGS__)
-#define DP_INFO(fmt, ...)	pr_info("[msm-dp] %s: "fmt, __func__, ##__VA_ARGS__)
-#define DP_DEBUG(fmt, ...)	pr_debug("[msm-dp] %s: "fmt, __func__, ##__VA_ARGS__)
+#define DP_WARN(fmt, ...)  pr_warn("%s: "fmt, __func__, ##__VA_ARGS__)
+#define DP_ERR(fmt, ...)   pr_err("%s: "fmt, __func__, ##__VA_ARGS__)
+#define DP_INFO(fmt, ...)  pr_info("%s: "fmt, __func__, ##__VA_ARGS__)
+#define DP_DEBUG(fmt, ...) pr_debug("%s: "fmt, __func__, ##__VA_ARGS__)
 #endif
 
 /**

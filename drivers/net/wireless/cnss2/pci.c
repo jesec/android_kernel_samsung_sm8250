@@ -407,6 +407,7 @@ static int cnss_pci_reg_read(struct cnss_pci_data *pci_priv,
 			     u32 offset, u32 *val)
 {
 	int ret;
+	struct cnss_plat_data *plat_priv = pci_priv->plat_priv;
 
 	if (!in_interrupt() && !irqs_disabled()) {
 		ret = cnss_pci_check_link_status(pci_priv);
@@ -420,12 +421,21 @@ static int cnss_pci_reg_read(struct cnss_pci_data *pci_priv,
 		return 0;
 	}
 
-	spin_lock_bh(&pci_reg_window_lock);
-	cnss_pci_select_window(pci_priv, offset);
-
-	*val = readl_relaxed(pci_priv->bar + WINDOW_START +
-			     (offset & WINDOW_RANGE_MASK));
-	spin_unlock_bh(&pci_reg_window_lock);
+	/* If in panic, assumption is kernel panic handler will hold all threads
+	 * and interrupts. Further pci_reg_window_lock could be held before
+	 * panic. So only lock during normal operation.
+	 */
+	if (test_bit(CNSS_IN_PANIC, &plat_priv->driver_state)) {
+		cnss_pci_select_window(pci_priv, offset);
+		*val = readl_relaxed(pci_priv->bar + WINDOW_START +
+					 (offset & WINDOW_RANGE_MASK));
+	} else {
+		spin_lock_bh(&pci_reg_window_lock);
+		cnss_pci_select_window(pci_priv, offset);
+		*val = readl_relaxed(pci_priv->bar + WINDOW_START +
+					 (offset & WINDOW_RANGE_MASK));
+		spin_unlock_bh(&pci_reg_window_lock);
+	}
 
 	return 0;
 }
@@ -434,6 +444,7 @@ static int cnss_pci_reg_write(struct cnss_pci_data *pci_priv, u32 offset,
 			      u32 val)
 {
 	int ret;
+	struct cnss_plat_data *plat_priv = pci_priv->plat_priv;
 
 	if (!in_interrupt() && !irqs_disabled()) {
 		ret = cnss_pci_check_link_status(pci_priv);
@@ -447,12 +458,18 @@ static int cnss_pci_reg_write(struct cnss_pci_data *pci_priv, u32 offset,
 		return 0;
 	}
 
-	spin_lock_bh(&pci_reg_window_lock);
-	cnss_pci_select_window(pci_priv, offset);
-
-	writel_relaxed(val, pci_priv->bar + WINDOW_START +
-		       (offset & WINDOW_RANGE_MASK));
-	spin_unlock_bh(&pci_reg_window_lock);
+	/* Same constraint as PCI register read in panic */
+	if (test_bit(CNSS_IN_PANIC, &plat_priv->driver_state)) {
+		cnss_pci_select_window(pci_priv, offset);
+		writel_relaxed(val, pci_priv->bar + WINDOW_START +
+				   (offset & WINDOW_RANGE_MASK));
+	} else {
+		spin_lock_bh(&pci_reg_window_lock);
+		cnss_pci_select_window(pci_priv, offset);
+		writel_relaxed(val, pci_priv->bar + WINDOW_START +
+				   (offset & WINDOW_RANGE_MASK));
+		spin_unlock_bh(&pci_reg_window_lock);
+	}
 
 	return 0;
 }
@@ -1642,6 +1659,70 @@ static void cnss_pci_collect_dump(struct cnss_pci_data *pci_priv)
 }
 #endif
 
+/**
+ * cnss_pci_dump_bl_sram_mem - Dump WLAN FW bootloader debug log
+ * @pci_priv: PCI device private data structure of cnss platform driver
+ *
+ * Dump Primary and secondary bootloader debug log data. For SBL check the
+ * log struct address and size for validity.
+ *
+ * Supported only on QCA6490
+ *
+ * Return: None
+ */
+static void cnss_pci_dump_bl_sram_mem(struct cnss_pci_data *pci_priv)
+{
+	int i;
+	u32 mem_addr, val, pbl_stage, sbl_log_start, sbl_log_size;
+	struct cnss_plat_data *plat_priv = pci_priv->plat_priv;
+
+	if (plat_priv->device_id != QCA6490_DEVICE_ID)
+		return;
+
+	if (cnss_pci_check_link_status(pci_priv))
+		return;
+
+	cnss_pci_reg_read(pci_priv, QCA6490_TCSR_PBL_LOGGING_REG, &pbl_stage);
+	cnss_pci_reg_read(pci_priv, QCA6490_PCIE_BHI_ERRDBG2_REG,
+			  &sbl_log_start);
+	cnss_pci_reg_read(pci_priv, QCA6490_PCIE_BHI_ERRDBG3_REG,
+			  &sbl_log_size);
+	cnss_pr_dbg("TCSR_PBL_LOGGING: 0x%08x PCIE_BHI_ERRDBG: 0x%08x 0x%08x",
+		    pbl_stage, sbl_log_start, sbl_log_size);
+
+	cnss_pr_dbg("Dumping PBL log data");
+	/* cnss_pci_reg_read provides 32bit register values */
+	for (i = 0; i < QCA6490_DEBUG_PBL_LOG_SRAM_MAX_SIZE; i += sizeof(val)) {
+		mem_addr = QCA6490_DEBUG_PBL_LOG_SRAM_START + i;
+		if (cnss_pci_reg_read(pci_priv, mem_addr, &val))
+			break;
+		cnss_pr_dbg("SRAM[0x%x] = 0x%x\n", mem_addr, val);
+	}
+
+	if (plat_priv->device_version.major_version == FW_V2_NUMBER) {
+		if (sbl_log_start > QCA6490_V2_SBL_DATA_START &&
+		    (sbl_log_start + sbl_log_size) < QCA6490_V2_SBL_DATA_END)
+			goto dump_sbl_log;
+	} else {
+		if (sbl_log_start > QCA6490_V1_SBL_DATA_START &&
+		    (sbl_log_start + sbl_log_size) < QCA6490_V1_SBL_DATA_END)
+			goto dump_sbl_log;
+	}
+	cnss_pr_err("Invalid SBL log data");
+	return;
+
+dump_sbl_log:
+	cnss_pr_dbg("Dumping SBL log data");
+	sbl_log_size = (sbl_log_size > QCA6490_DEBUG_SBL_LOG_SRAM_MAX_SIZE ?
+			QCA6490_DEBUG_SBL_LOG_SRAM_MAX_SIZE : sbl_log_size);
+	for (i = 0; i < sbl_log_size; i += sizeof(val)) {
+		mem_addr = sbl_log_start + i;
+		if (cnss_pci_reg_read(pci_priv, mem_addr, &val))
+			break;
+		cnss_pr_dbg("SRAM[0x%x] = 0x%x\n", mem_addr, val);
+	}
+}
+
 static int cnss_qca6174_powerup(struct cnss_pci_data *pci_priv)
 {
 	int ret = 0;
@@ -1760,6 +1841,9 @@ retry:
 			msleep(POWER_ON_RETRY_DELAY_MS * retry);
 			goto retry;
 		}
+#ifdef CONFIG_SEC_FACTORY
+		CNSS_ASSERT(0);
+#endif
 		goto power_off;
 	}
 
@@ -1871,10 +1955,12 @@ static void cnss_qca6290_crash_shutdown(struct cnss_pci_data *pci_priv)
 {
 	struct cnss_plat_data *plat_priv = pci_priv->plat_priv;
 
+	set_bit(CNSS_IN_PANIC, &plat_priv->driver_state);
 	cnss_pr_dbg("Crash shutdown with driver_state 0x%lx\n",
 		    plat_priv->driver_state);
 
 	cnss_pci_collect_dump_info(pci_priv, true);
+	clear_bit(CNSS_IN_PANIC, &plat_priv->driver_state);
 }
 
 static int cnss_qca6290_ramdump(struct cnss_pci_data *pci_priv)
@@ -2095,8 +2181,10 @@ int cnss_wlan_register_driver(struct cnss_wlan_driver *driver_ops)
 					  msecs_to_jiffies(timeout) << 2);
 	if (!ret) {
 		cnss_pr_err("Timeout waiting for calibration to complete\n");
-		if (!test_bit(CNSS_IN_REBOOT, &plat_priv->driver_state))
+		if (!test_bit(CNSS_IN_REBOOT, &plat_priv->driver_state)) {
+			cnss_pci_dump_bl_sram_mem(pci_priv);
 			CNSS_ASSERT(0);
+		}
 
 		cal_info = kzalloc(sizeof(*cal_info), GFP_KERNEL);
 		if (!cal_info)
@@ -2118,6 +2206,11 @@ register_driver:
 				     CNSS_DRIVER_EVENT_REGISTER_DRIVER,
 				     CNSS_EVENT_SYNC_UNKILLABLE,
 				     driver_ops);
+	if (ret == -EINTR) {
+		cnss_pr_dbg("Register driver work is killed\n");
+		del_timer(&plat_priv->fw_boot_timer);
+		pci_priv->driver_ops = NULL;
+	}
 
 	return ret;
 }
@@ -2701,6 +2794,9 @@ int cnss_pci_pm_request_resume(struct cnss_pci_data *pci_priv)
 
 	dev = &pci_priv->pci_dev->dev;
 
+	if (!pm_runtime_enabled(dev))
+		return 0;
+
 	status = dev->power.runtime_status;
 	if (status == RPM_SUSPENDING || status == RPM_SUSPENDED)
 		cnss_pr_vdbg("Runtime PM resume is requested by %ps\n",
@@ -2718,6 +2814,9 @@ int cnss_pci_pm_runtime_resume(struct cnss_pci_data *pci_priv)
 		return -ENODEV;
 
 	dev = &pci_priv->pci_dev->dev;
+
+	if (!pm_runtime_enabled(dev))
+		return 0;
 
 	status = dev->power.runtime_status;
 	if (status == RPM_SUSPENDING || status == RPM_SUSPENDED)
@@ -2737,6 +2836,9 @@ int cnss_pci_pm_runtime_get(struct cnss_pci_data *pci_priv)
 
 	dev = &pci_priv->pci_dev->dev;
 
+	if (!pm_runtime_enabled(dev))
+		return 0;
+
 	status = dev->power.runtime_status;
 	if (status == RPM_SUSPENDING || status == RPM_SUSPENDED)
 		cnss_pr_vdbg("Runtime PM resume is requested by %ps\n",
@@ -2755,6 +2857,9 @@ int cnss_pci_pm_runtime_get_sync(struct cnss_pci_data *pci_priv)
 
 	dev = &pci_priv->pci_dev->dev;
 
+	if (!pm_runtime_enabled(dev))
+		return 0;
+
 	status = dev->power.runtime_status;
 	if (status == RPM_SUSPENDING || status == RPM_SUSPENDED)
 		cnss_pr_vdbg("Runtime PM resume is requested by %ps\n",
@@ -2768,6 +2873,9 @@ void cnss_pci_pm_runtime_get_noresume(struct cnss_pci_data *pci_priv)
 	if (!pci_priv)
 		return;
 
+	if (!pm_runtime_enabled(&pci_priv->pci_dev->dev))
+		return;
+
 	pm_runtime_get_noresume(&pci_priv->pci_dev->dev);
 }
 
@@ -2779,6 +2887,9 @@ int cnss_pci_pm_runtime_put_autosuspend(struct cnss_pci_data *pci_priv)
 		return -ENODEV;
 
 	dev = &pci_priv->pci_dev->dev;
+
+	if (!pm_runtime_enabled(dev))
+		return 0;
 
 	if (atomic_read(&dev->power.usage_count) == 0) {
 		cnss_pr_dbg("Ignore excessive runtime PM put operation\n");
@@ -2796,6 +2907,9 @@ void cnss_pci_pm_runtime_put_noidle(struct cnss_pci_data *pci_priv)
 		return;
 
 	dev = &pci_priv->pci_dev->dev;
+
+	if (!pm_runtime_enabled(dev))
+		return;
 
 	if (atomic_read(&dev->power.usage_count) == 0) {
 		cnss_pr_dbg("Ignore excessive runtime PM put operation\n");
@@ -3193,38 +3307,6 @@ static void cnss_pci_free_m3_mem(struct cnss_pci_data *pci_priv)
 	m3_mem->va = NULL;
 	m3_mem->pa = 0;
 	m3_mem->size = 0;
-}
-
-int cnss_pci_force_fw_assert_hdlr(struct cnss_pci_data *pci_priv)
-{
-	int ret;
-	struct cnss_plat_data *plat_priv;
-
-	if (!pci_priv)
-		return -ENODEV;
-
-	plat_priv = pci_priv->plat_priv;
-	if (!plat_priv)
-		return -ENODEV;
-
-	cnss_auto_resume(&pci_priv->pci_dev->dev);
-	cnss_pci_dump_misc_reg(pci_priv);
-	cnss_pci_dump_shadow_reg(pci_priv);
-
-	ret = cnss_pci_set_mhi_state(pci_priv, CNSS_MHI_TRIGGER_RDDM);
-	if (ret) {
-		cnss_fatal_err("Failed to trigger RDDM, err = %d\n", ret);
-		cnss_schedule_recovery(&pci_priv->pci_dev->dev,
-				       CNSS_REASON_DEFAULT);
-		return ret;
-	}
-
-	if (!test_bit(CNSS_DEV_ERR_NOTIFY, &plat_priv->driver_state)) {
-		mod_timer(&plat_priv->fw_boot_timer,
-			  jiffies + msecs_to_jiffies(FW_ASSERT_TIMEOUT));
-	}
-
-	return 0;
 }
 
 void cnss_pci_fw_boot_timeout_hdlr(struct cnss_pci_data *pci_priv)
@@ -3832,6 +3914,7 @@ int cnss_pci_force_fw_assert_hdlr(struct cnss_pci_data *pci_priv)
 	cnss_pci_dump_misc_reg(pci_priv);
 	cnss_pci_dump_shadow_reg(pci_priv);
 	cnss_pci_dump_sram_mem(pci_priv);
+	cnss_pci_dump_bl_sram_mem(pci_priv);
 
 	ret = cnss_pci_set_mhi_state(pci_priv, CNSS_MHI_TRIGGER_RDDM);
 	if (ret) {
@@ -3983,6 +4066,7 @@ void cnss_pci_collect_dump_info(struct cnss_pci_data *pci_priv, bool in_panic)
 	cnss_pci_dump_misc_reg(pci_priv);
 	cnss_pci_dump_qdss_reg(pci_priv);
 	cnss_pci_dump_sram_mem(pci_priv);
+	cnss_pci_dump_bl_sram_mem(pci_priv);
 
 	ret = mhi_download_rddm_img(pci_priv->mhi_ctrl, in_panic);
 	if (ret) {

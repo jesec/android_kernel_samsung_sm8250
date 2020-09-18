@@ -1,7 +1,7 @@
 /*
  * BCM43XX PCIE core hardware definitions.
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,7 +18,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 #ifndef	_PCIE_CORE_H
 #define	_PCIE_CORE_H
@@ -75,6 +75,26 @@
 
 #define PCIEDEV_TR3_WINDOW_START 0x0E000000
 #define PCIEDEV_TR3_WINDOW_END   0x0FFFFFFF
+
+#define PCIEDEV_TRANS_WIN_LEN	0x2000000
+#define PCIEDEV_ARM_ADDR_SPACE 0x0FFFFFFF
+
+/* PCIe translation windoes */
+#define PCIEDEV_TRANS_WIN_0 0
+#define PCIEDEV_TRANS_WIN_1 1
+#define PCIEDEV_TRANS_WIN_2 2
+#define PCIEDEV_TRANS_WIN_3 3
+
+#define PCIEDEV_ARM_ADDR(host_addr, win) \
+	(((host_addr) & 0x1FFFFFF) | ((win) << 25) | PCIEDEV_HOSTADDR_MAP_BASE)
+
+/* Current mapping of PCIe translation windows to SW features */
+
+#define PCIEDEV_TRANS_WIN_TRAP_HANDLER	PCIEDEV_TRANS_WIN_0
+#define PCIEDEV_TRANS_WIN_HOSTMEM	PCIEDEV_TRANS_WIN_1
+#define PCIEDEV_TRANS_WIN_SWPAGING	PCIEDEV_TRANS_WIN_1
+#define PCIEDEV_TRANS_WIN_BT		PCIEDEV_TRANS_WIN_2
+#define PCIEDEV_TRANS_WIN_UNUSED	PCIEDEV_TRANS_WIN_3
 
 /* dma regs to control the flow between host2dev and dev2host  */
 typedef volatile struct pcie_devdmaregs {
@@ -235,7 +255,7 @@ typedef volatile struct sbpcieregs {
 			uint32 pcieindaddr; /* indirect access to the internal register: 0x130 */
 			uint32 pcieinddata;	/* Data to/from the internal regsiter: 0x134 */
 			uint32 clkreqenctrl;	/* >= rev 6, Clkreq rdma control : 0x138 */
-			uint32 PAD[177]; /* XXX: last 0x3FC */
+			uint32 PAD[177]; /* last 0x3FC */
 			/* 0x400 - 0x7FF, PCIE Cfg Space, note: not used anymore in PcieGen2 */
 			uint32 pciecfg[4][64];
 		} pcie1;
@@ -929,8 +949,8 @@ typedef volatile struct sbpcieregs {
 #define PCIE2R0_BRCMCAP_BPDATA_OFFSET		52
 #define PCIE2R0_BRCMCAP_CLKCTLSTS_OFFSET	56
 
-/* definition of configuration space registers of PCIe gen2
- * http://hwnbu-twiki.sj.broadcom.com/twiki/pub/Mwgroup/CurrentPcieGen2ProgramGuide/pcie_ep.htm
+/*
+ * definition of configuration space registers of PCIe gen2
  */
 #define PCIECFGREG_STATUS_CMD		0x4
 #define PCIECFGREG_PM_CSR		0x4C

@@ -1,17 +1,19 @@
 /*
- * Copyright (C) 2012-2014 NXP Semiconductors
+ * Copyright (C) 2012-2020 NXP Semiconductors
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
  *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * General Public License for more details.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
 #include <linux/kernel.h>
@@ -44,12 +46,12 @@
 #include <linux/pm_wakeup.h>
 #include "p61.h"
 #include "pn547.h"
+#include "cold_reset.h"
 #include "./nfc_logger/nfc_logger.h"
 
 extern long  pn547_dev_ioctl(struct file *filp, unsigned int cmd,
 	unsigned long arg);
 #ifdef CONFIG_NFC_FEATURE_SN100U
-extern long p61_cold_reset(void);
 #define P61_SPI_CLOCK     12000000L
 #else
 #define P61_SPI_CLOCK     8000000L
@@ -491,8 +493,16 @@ static long p61_dev_ioctl(struct file *filp, unsigned int cmd,
 
 #ifdef CONFIG_NFC_FEATURE_SN100U
 	case ESE_PERFORM_COLD_RESET:
-		ret = p61_cold_reset();
+		P61_DBG_MSG(KERN_ALERT " ESE_PERFORM_COLD_RESET: enter");
+		ret = ese_cold_reset(ESE_COLD_RESET_SOURCE_SPI);
+		P61_DBG_MSG(KERN_ALERT " P61_INHIBIT_PWR_CNTRL ret: %d exit", ret);
 		break;
+
+	case PERFORM_RESET_PROTECTION:
+		P61_DBG_MSG(KERN_ALERT " PERFORM_RESET_PROTECTION: enter");
+		ret = do_reset_protection((arg == 1 ? true : false));
+		P61_DBG_MSG(KERN_ALERT " PERFORM_RESET_PROTECTION ret: %d exit", ret);
+	break;
 #endif
 
 	default:
@@ -502,6 +512,20 @@ static long p61_dev_ioctl(struct file *filp, unsigned int cmd,
 
 	return ret;
 }
+
+#ifdef CONFIG_NFC_FEATURE_SN100U
+/* this function is defined temporarily to fix build error. this function is used by uwb */
+long p61_cold_reset(void)
+{
+	int ret;
+
+	NFC_LOG_INFO("UWB ESE_COLD_RESET: enter");
+	ret = ese_cold_reset(ESE_COLD_RESET_SOURCE_UWB);
+	NFC_LOG_INFO("ret: %d exit", ret);
+
+	return ret;
+}
+#endif
 
 /*
  * Called when a process closes the device file.
@@ -515,6 +539,10 @@ static int p61_dev_release(struct inode *inode, struct file *file)
 #endif
 
 	NFC_LOG_INFO("%s: ++\n", __func__);
+
+#ifdef CONFIG_NFC_FEATURE_SN100U
+	do_reset_protection(false);
+#endif
 
 #ifdef CONFIG_ESE_SECURE
 	p61_clk_control(p61_dev, false);
@@ -688,7 +716,6 @@ static ssize_t p61_dev_read(struct file *filp, char *buf, size_t count,
 	return ret;
 
 fail:
-	P61_ERR_MSG("Error p61_dev_read ret %d, Exit\n", ret);
 	NFC_LOG_INFO("%s: count %zu  %d- Exit\n", __func__, count, ret);
 
 	mutex_unlock(&p61_dev->read_mutex);
@@ -727,43 +754,6 @@ static const struct file_operations p61_dev_fops = {
 	.release = p61_dev_release,
 };
 
-#if 0
-static ssize_t p61_test_show(struct device *dev,
-		struct device_attribute *attr, char *buf)
-{
-	unsigned char data;
-	int ret = 0;
-
-	//struct spi_device *spi = to_spi_device(dev);
-	//ret = spi_read(p61_dev->spi, (void *)&sof, 1);
-
-	NFC_LOG_INFO("%s\n", __func__);
-	data = 'a';
-	snprintf(buf, 4, "%d\n", data);
-
-	return ret;
-}
-
-static ssize_t p61_test_store(struct device *dev,
-		struct device_attribute *attr,
-		const char *buf, size_t count)
-{
-	unsigned long data;
-	int error;
-	//struct spi_device *spi = to_spi_device(dev);
-
-	error = kstrtoul(buf, 10, &data);
-	if (error)
-		return error;
-
-	NFC_LOG_INFO("%s [%lu]\n", __func__, data);
-
-	return count;
-}
-
-static DEVICE_ATTR(test, 0644, p61_test_show, p61_test_store);
-#endif
-
 static int p61_parse_dt(struct device *dev,
 	struct p61_device *p61_dev)
 {
@@ -775,7 +765,6 @@ static int p61_parse_dt(struct device *dev,
 	int i;
 #endif
 	int ese_det_gpio;
-	
 
 	if (!of_property_read_string(np, "p61-ap_vendor",
 		&p61_dev->ap_vendor)) {
@@ -823,8 +812,8 @@ static int p61_parse_dt(struct device *dev,
 			if (IS_ERR(p61_dev->pinctrl_state[i])) {
 				NFC_LOG_INFO("%s: pinctrl_lookup_state[%s] failed\n", __func__, pin_status[i]);
 				p61_dev->pinctrl_state[i] = NULL;
-			}	
-		} 
+			}
+		}
 	} else {
 		NFC_LOG_INFO("%s: of_parse_phandle failed\n", __func__);
 	}
@@ -902,7 +891,7 @@ static int p61_probe(struct spi_device *spi)
 
 	dev_set_drvdata(&spi->dev, p61_dev);
 #ifdef ESE_PINCTRL
-	if (lpcharge) 
+	if (lpcharge)
 		ese_set_spi_configuration(ESE_SPI_LPM);
 	else
 		ese_set_spi_configuration(ESE_SPI_SLEEP);
@@ -917,7 +906,7 @@ static int p61_probe(struct spi_device *spi)
 	wakeup_source_init(&p61_dev->ws, "ese_ws");
 	p61_dev->device_opened = false;
 
-	if (!lpcharge) { 
+	if (!lpcharge) {
 		ret = misc_register(&p61_dev->miscdev);
 		if (ret < 0) {
 			P61_ERR_MSG("misc_register failed! %d\n", ret);

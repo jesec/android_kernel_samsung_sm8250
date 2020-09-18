@@ -35,6 +35,7 @@
 #include <linux/types.h>
 #include <linux/uaccess.h>
 #include <soc/qcom/subsystem_notif.h>
+#include <soc/qcom/subsystem_restart.h>
 
 #include "../pci.h"
 
@@ -799,12 +800,17 @@ struct msm_pcie_dev_t {
 	u32 l1ss_disable_flag;
 	bool pending_l1ss_ctrl;
 	bool ep_config_accessible;
+	bool use_ep_loaded;
+	bool ep_loaded;
 #endif
 #ifdef CONFIG_SEC_PCIE
 	struct workqueue_struct	*linkdown_wq;
 	struct delayed_work	linkdown_dwork;
 	u32 linkdown_defer_ms;
 	bool ignore_pcie_error;
+	bool oops_after_ready;
+	const char *esoc_name;
+	int subpcb_ep_gpio;
 #endif
 };
 
@@ -1134,7 +1140,7 @@ static u32 pcie_get_cur_link_bw(u32 rc_idx, u32 *speed, u32 *width)
 	u32 shift = offset % 4;
 
 	if (shift) {
-		offset = (offset >> 2) << 2;  
+		offset = (offset >> 2) << 2;
 	}
 	val = readl_relaxed(dev->dm_core + offset);
 
@@ -1187,27 +1193,44 @@ static u32 pcie_get_max_linkspeed(u32 rc_idx, u32 bus)
 #endif
 
 #ifdef CONFIG_SEC_PCIE
-extern bool is_subsystem_crash(const char *name);
-extern int is_subsystem_online(const char *name);
 
-static bool is_esoc0_crash(struct msm_pcie_dev_t *dev)
+static bool is_esoc_alive(struct msm_pcie_dev_t *dev)
 {
-	if (dev->rc_idx == MODEM_RC) {
-		if (is_subsystem_crash("esoc0")) {
-			return true;
-		}
-	}
-	return false;
+
+	if (!dev->esoc_name)
+		return true;
+
+	if (is_subsystem_crash(dev->esoc_name))
+		return false;
+
+	if (is_subsystem_online(dev->esoc_name) == 0)
+		return false;
+
+	return true;
 }
 
-static bool is_esoc0_online(struct msm_pcie_dev_t *dev)
+static bool is_need_pcie_error_oops(struct pci_dev *dev, struct msm_pcie_dev_t *msm_dev)
 {
-	if (dev->rc_idx == MODEM_RC) {
-		if (is_subsystem_online("esoc0") == 0) {
+
+#if defined(CONFIG_CNSS_QCA6390) || defined(CONFIG_CNSS_QCA6490)
+	if (msm_dev->rc_idx == 0)
+		return false;
+#endif
+
+	if (msm_dev->ignore_pcie_error)
+		return false;
+
+	if (msm_dev->subpcb_ep_gpio >=0) {
+		int gpio_level = gpio_get_value(msm_dev->subpcb_ep_gpio);
+		PCIE_ERR(msm_dev, "subpcb gpio is %s\n", gpio_level? "High":"Low");
+		if (gpio_level)
 			return false;
-		}
 	}
-	return true;
+
+	if (msm_dev->oops_after_ready && dev && !dev->drv_probe_ready)
+		return false;
+
+	return is_esoc_alive(msm_dev);
 }
 #endif
 
@@ -2581,7 +2604,7 @@ static ssize_t pcie_sec_phy_write(struct file *file,
 		ret = sscanf(pos, " %u", &sec_phy_cur_erase_idx);
 		if (ret != 1)
 			return -EINVAL;
-		
+
 		if (sec_phy_cur_erase_idx < 0 ||
 			sec_phy_cur_erase_idx >= MAX_SEC_PHY_TEST_NUM) {
 			pr_err("PCIE SEC: erase idx is wrong.\n");
@@ -3915,7 +3938,7 @@ static int pcie_phy_init(struct msm_pcie_dev_t *dev)
 			phy_seq++;
 		}
 	}
-	
+
 #ifdef CONFIG_SEC_PCIE_DEV
 	pcie_sec_phy_init(dev);
 #endif
@@ -3936,7 +3959,7 @@ static int pcie_phy_init(struct msm_pcie_dev_t *dev)
 		retries++;
 		usleep_range(REFCLK_STABILIZATION_DELAY_US_MIN,
 					 REFCLK_STABILIZATION_DELAY_US_MAX);
-		
+
 #if !defined(CONFIG_SEC_FACTORY)
 		/* reset PHY on every 10th attempt for PCIe0 */
 		if(!dev->rc_idx && !(retries % 10)) {
@@ -3946,7 +3969,7 @@ static int pcie_phy_init(struct msm_pcie_dev_t *dev)
 			usleep_range(1000, 1005);
 		}
 	} while (retries < PHY_READY_TIMEOUT_COUNT * 10);
-#else		
+#else
 	} while (retries < PHY_READY_TIMEOUT_COUNT);
 #endif
 
@@ -3954,7 +3977,7 @@ static int pcie_phy_init(struct msm_pcie_dev_t *dev)
 	if (max_retries < retries)
 		max_retries = retries;
 	total_enable_cnt++;
-	
+
 	PCIE_ERR(dev, "RC%d: number of PHY retries:%ld(Max:%d, Total:%ld).\n",
 		dev->rc_idx, retries, max_retries, total_enable_cnt);
 #else
@@ -3968,7 +3991,7 @@ static int pcie_phy_init(struct msm_pcie_dev_t *dev)
 			dev->rc_idx);
 #ifdef CONFIG_SEC_PCIE
 		update_phyinit_fail_count(dev->rc_idx);
-#endif		
+#endif
 		pcie_phy_dump(dev);
 		return -ENODEV;
 	}
@@ -4273,6 +4296,56 @@ static int msm_pcie_get_bw_scale(struct msm_pcie_dev_t *pcie_dev)
 	return 0;
 }
 
+#ifdef CONFIG_SEC_PCIE
+static int msm_pcie_get_phy_override(struct msm_pcie_dev_t *pcie_dev, int size) {
+
+	int ret, size_ovr;
+	struct platform_device *pdev = pcie_dev->pdev;
+	struct msm_pcie_phy_info_t *old_sequence;
+	const __be32 *prop;
+
+	prop = of_get_property(pdev->dev.of_node, "qcom,phy-sequence-override", &size_ovr);
+	if (!prop || !size_ovr) {
+		PCIE_DBG(pcie_dev,
+			"PCIe: RC%d: phy sequence override is not present in DT\n",
+			pcie_dev->rc_idx);
+		return 0;
+	}
+
+	old_sequence = pcie_dev->phy_sequence;
+	pcie_dev->phy_sequence = devm_kzalloc(&pdev->dev, size + size_ovr, GFP_KERNEL);
+	if (!pcie_dev->phy_sequence) {
+		pcie_dev->phy_sequence = old_sequence;
+
+		PCIE_DBG(pcie_dev,
+			"PCIe: RC%d: phy sequence override devm_kzalloc fail\n",
+			pcie_dev->rc_idx);
+		return 0;
+	}
+
+	memcpy(pcie_dev->phy_sequence, old_sequence, size);
+	pcie_dev->phy_len += size_ovr / sizeof(*pcie_dev->phy_sequence);
+	ret = of_property_read_u32_array(pdev->dev.of_node,
+				"qcom,phy-sequence-override",
+				(unsigned int *)(pcie_dev->phy_sequence
+				+ (size / sizeof(*pcie_dev->phy_sequence))),
+				size_ovr / sizeof(pcie_dev->phy_sequence->offset));
+	if (ret) {
+		devm_kfree(&pdev->dev, pcie_dev->phy_sequence);
+		pcie_dev->phy_sequence = old_sequence;
+		pcie_dev->phy_len -= size_ovr / sizeof(*pcie_dev->phy_sequence);
+
+		PCIE_DBG(pcie_dev,
+			"PCIe: RC%d: phy sequence override is not loaded\n",
+			pcie_dev->rc_idx);
+		return 0;
+	}
+
+	devm_kfree(&pdev->dev, old_sequence);
+	return 0;
+}
+#endif
+
 static int msm_pcie_get_phy(struct msm_pcie_dev_t *pcie_dev)
 {
 	int ret, size = 0;
@@ -4300,7 +4373,9 @@ static int msm_pcie_get_phy(struct msm_pcie_dev_t *pcie_dev)
 		devm_kfree(&pdev->dev, pcie_dev->phy_sequence);
 		return -EINVAL;
 	}
-
+#ifdef CONFIG_SEC_PCIE
+	msm_pcie_get_phy_override(pcie_dev, size);
+#endif
 	return 0;
 }
 
@@ -4854,7 +4929,7 @@ static int msm_pcie_enable(struct msm_pcie_dev_t *dev)
 
 link_fail:
 #ifdef CONFIG_SEC_PANIC_PCIE_ERR
-	if (!dev->ignore_pcie_error && !is_esoc0_crash(dev) && is_esoc0_online(dev))
+	if (is_need_pcie_error_oops(NULL, dev))
 		panic("PCIe RC%d link fail!\n", dev->rc_idx);
 #endif
 	if (msm_pcie_keep_resources_on & BIT(dev->rc_idx))
@@ -4871,7 +4946,7 @@ link_fail:
 	msm_pcie_clk_deinit(dev);
 clk_fail:
 #ifdef CONFIG_SEC_PANIC_PCIE_ERR
-	if (!dev->ignore_pcie_error && !is_esoc0_crash(dev) && is_esoc0_online(dev))
+	if (is_need_pcie_error_oops(NULL, dev))
 		panic("PCIe RC%d clk fail!\n", dev->rc_idx);
 #endif
 	msm_pcie_vreg_deinit(dev);
@@ -5780,13 +5855,13 @@ static void sec_pcie_linkdown_worker(struct work_struct *work)
 	struct msm_pcie_dev_t *dev
 		= container_of(dwork, struct msm_pcie_dev_t, linkdown_dwork);
 
-	if (!is_esoc0_crash(dev) && is_esoc0_online(dev)) {
+	if (is_esoc_alive(dev)) {
 		update_linkdown_count(dev->rc_idx);
 		if (!dev->ignore_pcie_error && dev->linkdown_panic)
 			panic("PCIe RC%d : User has chosen to deferred panic on linkdown\n",
 				dev->rc_idx);
 	} else {
-		PCIE_ERR(dev, "PCIe RC%d linkdown caused by esoc0 crash.\n", dev->rc_idx);
+		PCIE_ERR(dev, "PCIe RC%d linkdown caused by esoc crash.\n", dev->rc_idx);
 	}
 }
 #endif
@@ -5816,27 +5891,21 @@ static irqreturn_t handle_linkdown_irq(int irq, void *data)
 			PCIE_ERR(dev, "PCIe RC%d linkdown call delayed work.\n", dev->rc_idx);
 			queue_delayed_work(dev->linkdown_wq,
 				&dev->linkdown_dwork, msecs_to_jiffies(dev->linkdown_defer_ms));
-		} else if (!is_esoc0_crash(dev) && is_esoc0_online(dev)) {
+		} else if (is_esoc_alive(dev)) {
 			update_linkdown_count(dev->rc_idx);
 		}
 #endif
 		dev->link_status = MSM_PCIE_LINK_DOWN;
 		dev->shadow_en = false;
 
-#ifdef CONFIG_SEC_DEBUG
-		if (sec_debug_is_enabled()) {
-			pcie_phy_dump(dev);
-			pcie_parf_dump(dev);
-		}
-#endif
-
+		pcie_parf_dump(dev);
 		if (dev->linkdown_panic) {
 #ifdef CONFIG_SEC_PCIE
 			if (!dev->linkdown_wq) {
-				if (!dev->ignore_pcie_error && !is_esoc0_crash(dev) && is_esoc0_online(dev)) {
+				if (is_need_pcie_error_oops(NULL, dev)) {
 					panic("PCIe RC%d : User has chosen to panic on linkdown\n", dev->rc_idx);
 				} else {
-					PCIE_ERR(dev, "PCIe RC%d linkdown caused by esoc0 crash.\n", dev->rc_idx);
+					PCIE_ERR(dev, "PCIe RC%d linkdown caused by esoc crash.\n", dev->rc_idx);
 				}
 			}
 #else
@@ -6690,14 +6759,44 @@ static int msm_pcie_probe(struct platform_device *pdev)
 			"RC%d: l1ss-ltr-l1p2-threshold = 0x%x\n", rc_idx,
 			msm_pcie_dev[rc_idx].l1ss_ltr_l1p2_threshold);
 	}
+
+	pcie_dev->use_ep_loaded = false;
+	pcie_dev->ep_loaded = false;
 #endif
 
-#ifdef CONFIG_SEC_PCIE	
+#ifdef CONFIG_SEC_PCIE
 	msm_pcie_dev[rc_idx].ignore_pcie_error =
 		of_property_read_bool((&pdev->dev)->of_node,
 				"ignore-pcie-error");
 	PCIE_DBG(&msm_pcie_dev[rc_idx], "ignore-pcie-error is %s set.\n",
 		msm_pcie_dev[rc_idx].ignore_pcie_error ? "" : "not");
+
+	msm_pcie_dev[rc_idx].oops_after_ready =
+		of_property_read_bool((&pdev->dev)->of_node,
+				"oops-after-ready");
+
+	PCIE_DBG(&msm_pcie_dev[rc_idx], "oops-after-ready is %s set.\n",
+		msm_pcie_dev[rc_idx].oops_after_ready ? "" : "not");
+
+	ret = of_property_read_string(of_node, "esoc-name",
+				 &msm_pcie_dev[rc_idx].esoc_name);
+	if (ret)
+		msm_pcie_dev[rc_idx].esoc_name = NULL;
+
+	PCIE_DBG(&msm_pcie_dev[rc_idx], "esoc-name is %s\n",
+		msm_pcie_dev[rc_idx].esoc_name ?  msm_pcie_dev[rc_idx].esoc_name: "NULL");
+
+	ret = of_get_named_gpio(of_node, "subpcb-ep-gpio", 0);
+	if (ret >= 0) {
+		int gpio_level;
+		msm_pcie_dev[rc_idx].subpcb_ep_gpio = ret;
+		PCIE_ERR(pcie_dev, "SUBPCB gpio for ep attach:%d\n",
+							msm_pcie_dev[rc_idx].subpcb_ep_gpio);
+		gpio_level = gpio_get_value(msm_pcie_dev[rc_idx].subpcb_ep_gpio);
+		PCIE_ERR(pcie_dev, "SUBPCB gpio is %s\n", gpio_level? "High":"Low");
+	} else {
+		msm_pcie_dev[rc_idx].subpcb_ep_gpio = -1;
+	}
 #endif
 
 	pcie_dev->common_clk_en = of_property_read_bool(of_node,
@@ -7367,21 +7466,23 @@ static struct platform_driver msm_pcie_driver = {
 
 #ifdef CONFIG_SEC_PCIE_L1SS
 static struct device *sec_pcie_dev;
-#ifdef CONFIG_BCMDHD_PCIE
-extern bool dhd_bus_check_driver_up(void);
-#else
-static bool dhd_bus_check_driver_up(void)
+void sec_pcie_set_use_ep_loaded(struct pci_dev *dev)
 {
-	return true;
+	struct msm_pcie_dev_t *pcie_dev = PCIE_BUS_PRIV_DATA(dev->bus);
+	pcie_dev->use_ep_loaded = true;
 }
-#endif /* CONFIG_BCMDHD_PCIE */
+EXPORT_SYMBOL(sec_pcie_set_use_ep_loaded);
+
+void sec_pcie_set_ep_driver_loaded(struct pci_dev *dev, bool is_loaded)
+{
+	struct msm_pcie_dev_t *pcie_dev = PCIE_BUS_PRIV_DATA(dev->bus);
+	pcie_dev->ep_loaded = is_loaded;
+}
+EXPORT_SYMBOL(sec_pcie_set_ep_driver_loaded);
 
 static bool sec_pcie_check_ep_driver_up(struct msm_pcie_dev_t *dev)
 {
-	if (dev->rc_idx == 0)
-		return dhd_bus_check_driver_up();
-	else
-		return true;
+	return dev->use_ep_loaded ? dev->ep_loaded : true;
 }
 
 static ssize_t sec_show_l1ss_stat(struct device *in_dev,
@@ -7427,7 +7528,7 @@ static ssize_t sec_show_l1ss_stat(struct device *in_dev,
 					"\tnot support L1\n");
 			goto out;
 		}
-		
+
 		pci_read_config_dword(pdev, pdev->pcie_cap + PCI_EXP_LNKCTL, &val);
 		count += scnprintf(buf + count, PAGE_SIZE,
 				"\tL1 %s\n",val & PCI_EXP_LNKCTL_ASPM_L1 ? "E" : "D");
@@ -7859,7 +7960,6 @@ static int __init pcie_init(void)
 		mutex_init(&msm_pcie_dev[i].aspm_lock);
 		spin_lock_init(&msm_pcie_dev[i].wakeup_lock);
 		spin_lock_init(&msm_pcie_dev[i].irq_lock);
-		mutex_init(&msm_pcie_dev[i].aspm_lock);
 		msm_pcie_dev[i].drv_ready = false;
 #ifdef CONFIG_SEC_PCIE_L1SS
 		mutex_init(&msm_pcie_dev[i].l1ss_ctrl_lock);
@@ -8106,7 +8206,7 @@ static int msm_pcie_pm_suspend(struct pci_dev *dev,
 #ifdef CONFIG_SEC_PANIC_PCIE_ERR
 		PCIE_ERR(pcie_dev, "RC%d: PM_Enter_L23 is NOT received. RC(%s) EP(0x%08x) LTSSM(0x%x, 0x%x)\n",
 			pcie_dev->rc_idx, rc_linkup ? "OK" : "NG", ep_linkup, ltssm_pre & 0x3f, ltssm_post & 0x3f);
-		if (!pcie_dev->ignore_pcie_error && !is_esoc0_crash(pcie_dev) && is_esoc0_online(pcie_dev))
+		if (is_need_pcie_error_oops((struct pci_dev *)user, pcie_dev))
 			panic("PCIe RC%d Fail(L23). RC(%s) EP(0x%08x) LTSSM(0x%x, 0x%x)\n",
 				pcie_dev->rc_idx, rc_linkup ? "OK" : "NG", ep_linkup, ltssm_pre & 0x3f, ltssm_post & 0x3f);
 #elif defined(CONFIG_SEC_PCIE)
@@ -8461,6 +8561,11 @@ static int msm_pcie_drv_suspend(struct msm_pcie_dev_t *pcie_dev,
 	spin_unlock_irq(&pcie_dev->cfg_lock);
 	mutex_lock(&pcie_dev->setup_lock);
 	pcie_dev->link_status = MSM_PCIE_LINK_DRV;
+
+	PCIE_ERR(pcie_dev, "PCIe: RC%d: prevnet_l1=%d LTSSM_STATE=:%s\n",
+			pcie_dev->rc_idx,
+			pcie_dev->prevent_l1,
+			TO_LTSSM_STR(readl_relaxed(pcie_dev->parf + PCIE20_PARF_LTSSM) & 0x3f));
 
 	/* turn off all unsuppressible clocks */
 	clk_info = pcie_dev->pipeclk;

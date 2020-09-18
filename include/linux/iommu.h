@@ -77,6 +77,17 @@ struct iommu_domain_geometry {
 	bool force_aperture;       /* DMA only allowed in mappable range? */
 };
 
+/* iommu transaction flags */
+#define IOMMU_TRANS_DEFAULT             (0U)
+#define IOMMU_TRANS_READ                (1U << 0)
+#define IOMMU_TRANS_WRITE               (1U << 1)
+#define IOMMU_TRANS_PRIV                (1U << 2)
+#define IOMMU_TRANS_UNPRIV              (1U << 3)
+#define IOMMU_TRANS_SEC                 (1U << 4)
+#define IOMMU_TRANS_NONSEC              (1U << 5)
+#define IOMMU_TRANS_DATA                (1U << 6)
+#define IOMMU_TRANS_INST                (1U << 7)
+
 struct iommu_pgtbl_info {
 	void *ops;
 };
@@ -265,7 +276,7 @@ struct iommu_ops {
 	void (*iotlb_sync)(struct iommu_domain *domain);
 	phys_addr_t (*iova_to_phys)(struct iommu_domain *domain, dma_addr_t iova);
 	phys_addr_t (*iova_to_phys_hard)(struct iommu_domain *domain,
-					 dma_addr_t iova);
+				 dma_addr_t iova, unsigned long trans_flags);
 	int (*add_device)(struct device *dev);
 	void (*remove_device)(struct device *dev);
 	struct iommu_group *(*device_group)(struct device *dev);
@@ -377,7 +388,7 @@ extern size_t default_iommu_map_sg(struct iommu_domain *domain, unsigned long io
 			   struct scatterlist *sg,unsigned int nents, int prot);
 extern phys_addr_t iommu_iova_to_phys(struct iommu_domain *domain, dma_addr_t iova);
 extern phys_addr_t iommu_iova_to_phys_hard(struct iommu_domain *domain,
-					   dma_addr_t iova);
+				   dma_addr_t iova, unsigned long trans_flags);
 extern bool iommu_is_iova_coherent(struct iommu_domain *domain,
 				dma_addr_t iova);
 extern void iommu_set_fault_handler(struct iommu_domain *domain,
@@ -614,7 +625,7 @@ static inline phys_addr_t iommu_iova_to_phys(struct iommu_domain *domain, dma_ad
 }
 
 static inline phys_addr_t iommu_iova_to_phys_hard(struct iommu_domain *domain,
-						  dma_addr_t iova)
+				dma_addr_t iova, unsigned long trans_flags)
 {
 	return 0;
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011-2019 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2011-2020 The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -37,6 +37,7 @@
 #include "csr_link_list.h"
 #include "sme_power_save.h"
 #include "wmi_unified.h"
+#include "wmi_unified_param.h"
 
 struct wmi_twt_enable_complete_event_param;
 /*--------------------------------------------------------------------------
@@ -50,7 +51,7 @@ typedef enum eSmeCommandType {
 	eSmeCsrCommandMask = 0x10000,
 	eSmeCommandRoam,
 	eSmeCommandWmStatusChange,
-	e_sme_command_del_sta_session,
+	eSmeCommandGetdisconnectStats,
 	/* QOS */
 	eSmeQosCommandMask = 0x40000,   /* To identify Qos commands */
 	eSmeCommandAddTs,
@@ -226,15 +227,6 @@ typedef void (*bt_activity_info_cb)(hdd_handle_t hdd_handle,
 				    uint32_t bt_activity);
 
 /**
- * typedef congestion_cb - congestion callback function
- * @hdd_handle: HDD handle registered with SME
- * @congestion: Current congestion value
- * @vdev_id: ID of the vdev for which congestion is being reported
- */
-typedef void (*congestion_cb)(hdd_handle_t hdd_handle, uint32_t congestion,
-			      uint32_t vdev_id);
-
-/**
  * typedef rso_cmd_status_cb - RSO command status  callback function
  * @hdd_handle: HDD handle registered with SME
  * @rso_status: Status of the operation
@@ -262,8 +254,8 @@ typedef void (*hidden_ssid_cb)(hdd_handle_t hdd_handle,
  * @hdd_handle: HDD handle registered with SME
  * @beacon_report: Beacon report structure
  */
-typedef void (*beacon_report_cb)(hdd_handle_t hdd_handle,
-				 struct wlan_beacon_report *beacon_report);
+typedef QDF_STATUS (*beacon_report_cb)
+	(hdd_handle_t hdd_handle, struct wlan_beacon_report *beacon_report);
 
 /**
  * beacon_pause_cb : scan start callback fun
@@ -288,6 +280,7 @@ typedef void (*sme_get_isolation_cb)(struct sir_isolation_resp *param,
 
 #ifdef WLAN_FEATURE_MOTION_DETECTION
 typedef QDF_STATUS (*md_host_evt_cb)(void *hdd_ctx, struct sir_md_evt *event);
+typedef QDF_STATUS (*md_bl_evt_cb)(void *hdd_ctx, struct sir_md_bl_evt *event);
 #endif /* WLAN_FEATURE_MOTION_DETECTION */
 
 struct sme_context {
@@ -306,7 +299,7 @@ struct sme_context {
 	link_layer_stats_cb link_layer_stats_cb;
 	void (*link_layer_stats_ext_cb)(hdd_handle_t callback_ctx,
 					tSirLLStatsResults *rsp);
-#ifdef WLAN_POWER_DEBUGFS
+#ifdef WLAN_POWER_DEBUG
 	void *power_debug_stats_context;
 	void (*power_stats_resp_callback)(struct power_stats_response *rsp,
 						void *callback_context);
@@ -326,10 +319,7 @@ struct sme_context {
 	/* linkspeed callback */
 	sme_link_speed_cb link_speed_cb;
 	void *link_speed_context;
-	/* get peer info callback */
-	void (*pget_peer_info_ind_cb)(struct sir_peer_info_resp *param,
-		void *pcontext);
-	void *pget_peer_info_cb_context;
+
 	/* get extended peer info callback */
 	void (*pget_peer_info_ext_ind_cb)(struct sir_peer_info_ext_resp *param,
 		void *pcontext);
@@ -364,7 +354,6 @@ struct sme_context {
 	bool (*get_connection_info_cb)(uint8_t *session_id,
 			enum scan_reject_states *reason);
 	rso_cmd_status_cb rso_cmd_status_cb;
-	congestion_cb congestion_cb;
 	pwr_save_fail_cb chip_power_save_fail_cb;
 	bt_activity_info_cb bt_activity_info_cb;
 	void *get_arp_stats_context;
@@ -384,6 +373,7 @@ struct sme_context {
 #endif
 #ifdef WLAN_FEATURE_MOTION_DETECTION
 	md_host_evt_cb md_host_evt_cb;
+	md_bl_evt_cb md_bl_evt_cb;
 	void *md_ctx;
 #endif /* WLAN_FEATURE_MOTION_DETECTION */
 	/* hidden ssid rsp callback */
@@ -398,6 +388,17 @@ struct sme_context {
 #ifdef WLAN_BCN_RECV_FEATURE
 	beacon_report_cb beacon_report_cb;
 	beacon_pause_cb beacon_pause_cb;
+#endif
+#ifdef FEATURE_OEM_DATA
+	void (*oem_data_event_handler_cb)
+			(const struct oem_data *oem_event_data,
+			 uint8_t vdev_id);
+	uint8_t oem_data_vdev_id;
+#endif
+	sme_get_raom_scan_ch_callback roam_scan_ch_callback;
+	void *roam_scan_ch_get_context;
+#ifdef FEATURE_MONITOR_MODE_SUPPORT
+	void (*monitor_mode_cb)(uint8_t vdev_id);
 #endif
 };
 

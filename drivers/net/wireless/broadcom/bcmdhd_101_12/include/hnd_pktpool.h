@@ -70,7 +70,8 @@ typedef struct {
 } pktpool_cbinfo_t;
 
 /** PCIe SPLITRX related: call back fn extension to populate host address in pool pkt */
-typedef int (*pktpool_cb_extn_t)(struct pktpool *pool, void *arg1, void* pkt, int arg2);
+typedef int (*pktpool_cb_extn_t)(struct pktpool *pool, void *arg1, void* pkt, int arg2,
+	uint *pktcnt);
 typedef struct {
 	pktpool_cb_extn_t cb;
 	void *arg;
@@ -144,7 +145,7 @@ typedef struct pktpool {
 } pktpool_t;
 
 pktpool_t *get_pktpools_registry(int id);
-#define pktpool_get(pktp)	(pktpool_get_ext((pktp), (pktp)->type))
+#define pktpool_get(pktp)	(pktpool_get_ext((pktp), (pktp)->type, NULL))
 
 /* Incarnate a pktpool registry. On success returns total_pools. */
 extern int pktpool_attach(osl_t *osh, uint32 total_pools);
@@ -156,7 +157,7 @@ extern int pktpool_deinit(osl_t *osh, pktpool_t *pktp);
 extern int pktpool_fill(osl_t *osh, pktpool_t *pktp, bool minimal);
 extern int pktpool_empty(osl_t *osh, pktpool_t *pktp);
 extern uint16 pktpool_reclaim(osl_t *osh, pktpool_t *pktp, uint16 free_cnt, uint8 action);
-extern void* pktpool_get_ext(pktpool_t *pktp, uint8 type);
+extern void* pktpool_get_ext(pktpool_t *pktp, uint8 type, uint *pktcnt);
 extern void pktpool_free(pktpool_t *pktp, void *p);
 extern int pktpool_add(pktpool_t *pktp, void *p);
 extern int pktpool_avail_notify_normal(osl_t *osh, pktpool_t *pktp);
@@ -218,6 +219,12 @@ extern void *d11hdr_pool_deq(pktpool_t *pktp);
 #define PKTPOOL_ID2PTR(id)          (get_pktpools_registry(id))
 #define PKTPOOL_PTR2ID(pp)          (POOLID(pp))
 
+#ifndef PKTID_POOL
+/* max pktids reserved for pktpool is updated properly in Makeconf */
+#define PKTID_POOL		    (PKT_MAXIMUM_ID - 32u)
+#endif /* PKTID_POOL */
+extern uint32 total_pool_pktid_count;
+
 #ifdef BCMDBG_POOL
 extern int pktpool_dbg_register(pktpool_t *pktp, pktpool_cb_t cb, void *arg);
 extern int pktpool_start_trigger(pktpool_t *pktp, void *p);
@@ -232,6 +239,11 @@ extern pktpool_t *pktpool_shared;
 #ifdef BCMFRAGPOOL
 #define SHARED_FRAG_POOL	(pktpool_shared_lfrag)
 extern pktpool_t *pktpool_shared_lfrag;
+#endif
+
+#ifdef BCMALFRAGPOOL
+#define SHARED_ALFRAG_POOL	(pktpool_shared_alfrag)
+extern pktpool_t *pktpool_shared_alfrag;
 #endif
 
 #ifdef BCMRESVFRAGPOOL
@@ -252,6 +264,7 @@ extern pktpool_t *pktpool_d11hdr;
 extern pktpool_t *pktpool_shared_rxlfrag;
 
 int hnd_pktpool_init(osl_t *osh);
+void hnd_pktpool_deinit(osl_t *osh);
 int hnd_pktpool_fill(pktpool_t *pktpool, bool minimal);
 void hnd_pktpool_refill(bool minimal);
 
@@ -273,6 +286,7 @@ extern int hnd_pktpool_heap_deregister_cb(pktpool_heap_cb_t fn);
 extern void *hnd_pktpool_freelist_alloc(uint size, uint alignbits, uint32 flag);
 extern uint16 hnd_pktpool_get_min_bkup_buf(pktpool_t *pktp);
 #endif /* POOL_HEAP_RECONFIG */
+extern uint32 hnd_pktpool_get_total_poolheap_count(void);
 
 #else /* BCMPKTPOOL */
 #define SHARED_POOL		((struct pktpool *)NULL)

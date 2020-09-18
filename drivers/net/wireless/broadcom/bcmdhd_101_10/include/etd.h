@@ -1,7 +1,7 @@
 /*
  * Extended Trap data component interface file.
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,7 +18,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #ifndef _ETD_H_
@@ -242,7 +242,7 @@ typedef struct hnd_ext_trap_heap_err {
 #define MEM_TRAP_NUM_WLC_TX_QUEUES		6
 #define HND_EXT_TRAP_WLC_MEM_ERR_VER_V2		2
 
-/* XXX: already there are quite a few chips which are ROM'ed wth this structure
+/* already there are quite a few chips which are ROM'ed wth this structure
  * Will not be adding version. This will be the V1 structure.
  */
 typedef struct hnd_ext_trap_wlc_mem_err {

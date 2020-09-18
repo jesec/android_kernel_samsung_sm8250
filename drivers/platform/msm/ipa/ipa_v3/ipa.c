@@ -127,7 +127,8 @@ static DECLARE_WORK(ipa3_fw_loading_work, ipa3_load_ipa_fw);
 static void ipa_dec_clients_disable_clks_on_wq(struct work_struct *work);
 static DECLARE_DELAYED_WORK(ipa_dec_clients_disable_clks_on_wq_work,
 	ipa_dec_clients_disable_clks_on_wq);
-	
+
+
 static void ipa_inc_clients_enable_clks_on_wq(struct work_struct *work);
 static DECLARE_WORK(ipa_inc_clients_enable_clks_on_wq_work,
 	ipa_inc_clients_enable_clks_on_wq);
@@ -4843,22 +4844,6 @@ void ipa3_disable_clks(void)
 	}
 
 	IPADBG("disabling IPA clocks and bus voting\n");
-	/*
-	 * We see a NoC error on GSI on this flag sequence.
-	 * Need to set this flag first before clock off.
-	 */
-	atomic_set(&ipa3_ctx->ipa_clk_vote, 0);
-
-	/*
-	 * If there is still pending gsi irq, this indicate
-	 * issue on GSI FW side. We need to capture before
-	 * turn off the ipa clock.
-	 */
-	type = gsi_pending_irq_type();
-	if (type) {
-		IPAERR("unexpected gsi irq type: %d\n", type);
-		ipa_assert();
-	}
 
 	/*
 	 * We see a NoC error on GSI on this flag sequence.

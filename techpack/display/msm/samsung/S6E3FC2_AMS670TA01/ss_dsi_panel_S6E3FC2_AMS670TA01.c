@@ -91,7 +91,7 @@ static char ss_panel_revision(struct samsung_display_driver_data *vdd)
 
 
 #define get_bit(value, shift, width)	((value >> shift) & (GENMASK(width - 1, 0)))
-static struct dsi_panel_cmd_set * mdss_brightness_gamma_mode2(struct samsung_display_driver_data *vdd, int *level_key)
+static struct dsi_panel_cmd_set * ss_brightness_gamma_mode2_normal(struct samsung_display_driver_data *vdd, int *level_key)
 {
 	//struct samsung_display_driver_data *vdd = check_valid_ctrl(ctrl);
 	struct dsi_panel_cmd_set *pcmds;
@@ -101,16 +101,10 @@ static struct dsi_panel_cmd_set * mdss_brightness_gamma_mode2(struct samsung_dis
 		return NULL;
 	}
 
-	pcmds = ss_get_cmds(vdd, TX_GAMMA_MODE2);
+	pcmds = ss_get_cmds(vdd, TX_GAMMA_MODE2_NORMAL);
 
-	if(vdd->br.cd_idx <= MAX_BL_PF_LEVEL){
-		pcmds->cmds[0].msg.tx_buf[1] = vdd->finger_mask_updated? 0x20 : 0x28;  /* Normal Smooth transition : 0x28 */
-		pcmds->cmds[1].msg.tx_buf[7] = 0x90;  /* ELVSS Value for normal brgihtness */
-	}
-	else{
-		pcmds->cmds[0].msg.tx_buf[1] = vdd->finger_mask_updated? 0xE0 : 0xE8;	/* HBM Smooth transition : 0xE8 */
-		pcmds->cmds[1].msg.tx_buf[7] = elvss_table[vdd->br.cd_level]; /* ELVSS Value for HBM brgihtness */
-	}
+	pcmds->cmds[0].msg.tx_buf[1] = vdd->finger_mask_updated? 0xE0 : 0xE8;	/* HBM Smooth transition : 0xE8 */
+	pcmds->cmds[1].msg.tx_buf[7] = elvss_table[vdd->br.gm2_wrdisbv]; /* ELVSS Value for HBM brgihtness */
 
 	/* B7 9th para:(Normal Elvss Offset),10th para:(HBM Elvss Offset) OTP, 47th para:TSET */
 	pcmds->cmds[1].msg.tx_buf[9] = vdd->br.elvss_value1;
@@ -118,8 +112,37 @@ static struct dsi_panel_cmd_set * mdss_brightness_gamma_mode2(struct samsung_dis
 	pcmds->cmds[1].msg.tx_buf[47] = vdd->temperature > 0 ?
 			vdd->temperature : (char)(BIT(7) | (-1*vdd->temperature));
 
-	pcmds->cmds[2].msg.tx_buf[1] = get_bit(vdd->br.cd_level, 8, 2);
-	pcmds->cmds[2].msg.tx_buf[2] = get_bit(vdd->br.cd_level, 0, 8);
+	pcmds->cmds[2].msg.tx_buf[1] = get_bit(vdd->br.gm2_wrdisbv, 8, 2);
+	pcmds->cmds[2].msg.tx_buf[2] = get_bit(vdd->br.gm2_wrdisbv, 0, 8);
+
+	*level_key = LEVEL1_KEY;
+
+	return pcmds;
+}
+
+static struct dsi_panel_cmd_set * mdss_brightness_gamma_mode2_hbm(struct samsung_display_driver_data *vdd, int *level_key)
+{
+	//struct samsung_display_driver_data *vdd = check_valid_ctrl(ctrl);
+	struct dsi_panel_cmd_set *pcmds;
+
+	if (IS_ERR_OR_NULL(vdd)) {
+		pr_err("%s: Invalid data vdd : 0x%zx", __func__,  (size_t)vdd);
+		return NULL;
+	}
+
+	pcmds = ss_get_cmds(vdd, TX_GAMMA_MODE2_NORMAL);
+
+	pcmds->cmds[0].msg.tx_buf[1] = vdd->finger_mask_updated? 0xE0 : 0xE8;	/* HBM Smooth transition : 0xE8 */
+	pcmds->cmds[1].msg.tx_buf[7] = elvss_table[vdd->br.gm2_wrdisbv]; /* ELVSS Value for HBM brgihtness */
+
+	/* B7 9th para:(Normal Elvss Offset),10th para:(HBM Elvss Offset) OTP, 47th para:TSET */
+	pcmds->cmds[1].msg.tx_buf[9] = vdd->br.elvss_value1;
+	pcmds->cmds[1].msg.tx_buf[10] = vdd->br.elvss_value2;
+	pcmds->cmds[1].msg.tx_buf[47] = vdd->temperature > 0 ?
+			vdd->temperature : (char)(BIT(7) | (-1*vdd->temperature));
+
+	pcmds->cmds[2].msg.tx_buf[1] = get_bit(vdd->br.gm2_wrdisbv, 8, 2);
+	pcmds->cmds[2].msg.tx_buf[2] = get_bit(vdd->br.gm2_wrdisbv, 0, 8);
 
 	*level_key = LEVEL1_KEY;
 
@@ -492,6 +515,32 @@ static int ss_octa_id_read(struct samsung_display_driver_data *vdd)
 	return true;
 }
 
+static struct dsi_panel_cmd_set *ss_acl_on_hbm(struct samsung_display_driver_data *vdd, int *level_key)
+{
+	struct dsi_panel_cmd_set *pcmds;
+
+	if (IS_ERR_OR_NULL(vdd)) {
+		LCD_ERR("Invalid data vdd : 0x%zx", (size_t)vdd);
+		return NULL;
+	}
+
+	*level_key = LEVEL1_KEY;
+
+	pcmds = ss_get_cmds(vdd, TX_ACL_ON);
+	if (SS_IS_CMDS_NULL(pcmds)) {
+		LCD_ERR("No cmds for TX_ACL_ON..\n");
+		return NULL;
+	}
+
+	pcmds->cmds[0].msg.tx_buf[1] = 0X01;	/* ACL 8% */
+
+	LCD_INFO("HBM: gradual_acl: %d, acl per: 0x%x",
+			vdd->gradual_acl_val, pcmds->cmds[0].msg.tx_buf[1]);
+
+	return pcmds;
+}
+
+
 static struct dsi_panel_cmd_set *ss_acl_on(struct samsung_display_driver_data *vdd, int *level_key)
 {
 	struct dsi_panel_cmd_set *pcmds;
@@ -509,10 +558,7 @@ static struct dsi_panel_cmd_set *ss_acl_on(struct samsung_display_driver_data *v
 		return NULL;
 	}
 
-	if(vdd->br.cd_idx <= MAX_BL_PF_LEVEL)
-		pcmds->cmds[0].msg.tx_buf[1] = 0X03;	/* ACL 15% */
-	else
-		pcmds->cmds[0].msg.tx_buf[1] = 0X01;	/* ACL 8% */
+	pcmds->cmds[0].msg.tx_buf[1] = 0X03;	/* ACL 15% */
 
 	LCD_INFO("gradual_acl: %d, acl per: 0x%x",
 			vdd->gradual_acl_val, pcmds->cmds[0].msg.tx_buf[1]);
@@ -832,7 +878,7 @@ static void samsung_panel_init(struct samsung_display_driver_data *vdd)
 	vdd->panel_func.samsung_mdnie_read = ss_mdnie_read;
 
 	/* Brightness */
-	vdd->panel_func.samsung_brightness_gamma_mode2 = mdss_brightness_gamma_mode2;
+	vdd->panel_func.samsung_brightness_gamma = ss_brightness_gamma_mode2_normal;
 	vdd->panel_func.samsung_brightness_acl_on = ss_acl_on;
 	vdd->panel_func.samsung_brightness_acl_off = ss_acl_off;
 	vdd->panel_func.samsung_brightness_hbm_off = NULL;
@@ -844,6 +890,11 @@ static void samsung_panel_init(struct samsung_display_driver_data *vdd)
 	vdd->panel_func.samsung_brightness_gamma = NULL;
 
 	vdd->smart_dimming_loaded_dsi = false;
+
+	/* HBM */
+	vdd->panel_func.samsung_hbm_gamma = ss_brightness_gamma_mode2_hbm;
+	vdd->panel_func.samsung_hbm_acl_on = ss_acl_on_hbm;
+	vdd->panel_func.samsung_hbm_acl_off = ss_acl_off;
 
 	/* Event */
 	vdd->panel_func.samsung_change_ldi_fps = NULL;
@@ -914,6 +965,8 @@ static void samsung_panel_init(struct samsung_display_driver_data *vdd)
 
 	/* SAMSUNG_FINGERPRINT */
 	vdd->panel_hbm_entry_delay = 2;
+	vdd->panel_hbm_entry_after_te = 2000;
+	vdd->panel_hbm_exit_delay = 0;
 }
 
 static int __init samsung_panel_initialize(void)
@@ -936,14 +989,17 @@ static int __init samsung_panel_initialize(void)
 				strlen(panel_string)))
 		ndx = SECONDARY_DISPLAY_NDX;
 	else {
-		LCD_ERR("can not find panel_name (%s) / (%s)\n", panel_string, panel_name);
+		LCD_ERR("panel_string %s can not find panel_name (%s, %s)\n", panel_string, panel_name, panel_secondary_name);
 		return 0;
 	}
 
 	vdd = ss_get_vdd(ndx);
 	vdd->panel_func.samsung_panel_init = samsung_panel_init;
 
-	LCD_INFO("%s done.. \n", panel_name);
+	if (ndx == PRIMARY_DISPLAY_NDX)
+		LCD_INFO("%s done.. \n", panel_name);
+	else
+		LCD_INFO("%s done.. \n", panel_secondary_name);
 
 	return 0;
 }

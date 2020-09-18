@@ -199,8 +199,8 @@ static struct dsi_panel_cmd_set *ss_hbm_etc(struct samsung_display_driver_data *
 		BIT(7) is signed bit.
 		BIT(6) ~ BIT(0) is real temperature.
 	*/
-	hbm_etc_cmds->cmds[1].msg.tx_buf[1] = vdd->temperature > 0 ?
-			vdd->temperature : (char)(BIT(7) | (-1*vdd->temperature));
+	hbm_etc_cmds->cmds[1].msg.tx_buf[1] = vdd->br_info.temperature > 0 ?
+			vdd->br_info.temperature : (char)(BIT(7) | (-1*vdd->br_info.temperature));
 
 	/* 412cd ~ HBM is 0xDC */
 	hbm_etc_cmds->cmds[1].msg.tx_buf[2] = 0xDC;
@@ -208,12 +208,12 @@ static struct dsi_panel_cmd_set *ss_hbm_etc(struct samsung_display_driver_data *
 	br_interpolation_generate_event(vdd, GEN_HBM_INTERPOLATION_ELVSS, &hbm_etc_cmds->cmds[1].msg.tx_buf[3]);
 
 	/* read B5h 58th -> write B5h 57h */
-	hbm_etc_cmds->cmds[1].msg.tx_buf[57] = vdd->br.elvss_value2;
+	hbm_etc_cmds->cmds[1].msg.tx_buf[57] = vdd->br_info.common_br.elvss_value[1];
 
 	/* VINT */
 	br_interpolation_generate_event(vdd, GEN_HBM_INTERPOLATION_VINT, &hbm_etc_cmds->cmds[2].msg.tx_buf[3]);
 
-	if (vdd->gradual_acl_val) {
+	if (vdd->br_info.gradual_acl_val) {
 		hbm_etc_cmds->cmds[3].msg.tx_buf[2] = 0x55;
 		hbm_etc_cmds->cmds[4].msg.tx_buf[1] = 0x2;	/* ACL ON */
 	} else {
@@ -225,7 +225,7 @@ static struct dsi_panel_cmd_set *ss_hbm_etc(struct samsung_display_driver_data *
 
 	LCD_INFO("elvss 3th: 0x%x elvss_57th: 0x%x, vint: 0x%x, acl: 0x%x, per: 0x%x, frame avg: 0x%x)\n",
 			hbm_etc_cmds->cmds[1].msg.tx_buf[3],
-			vdd->br.elvss_value2,
+			vdd->br_info.common_br.elvss_value[1],
 			hbm_etc_cmds->cmds[2].msg.tx_buf[3],
 			hbm_etc_cmds->cmds[4].msg.tx_buf[1],
 			hbm_etc_cmds->cmds[3].msg.tx_buf[6],
@@ -236,7 +236,6 @@ static struct dsi_panel_cmd_set *ss_hbm_etc(struct samsung_display_driver_data *
 
 static int ss_elvss_read(struct samsung_display_driver_data *vdd)
 {
-	char elvss_b5[2];
 
 	if (IS_ERR_OR_NULL(vdd)) {
 		LCD_ERR("Invalid data vdd : 0x%zx", (size_t)vdd);
@@ -244,10 +243,8 @@ static int ss_elvss_read(struct samsung_display_driver_data *vdd)
 	}
 
 	/* Read mtp (B5h 57th 58th) for elvss*/
-	ss_panel_data_read(vdd, RX_ELVSS, elvss_b5, LEVEL1_KEY);
-
-	vdd->br.elvss_value1 = elvss_b5[0]; /*0xB5 57th OTP value*/
-	vdd->br.elvss_value2 = elvss_b5[1]; /*0xB5 58th OTP value*/
+//	ss_panel_data_read(vdd, RX_ELVSS, elvss_b5, LEVEL1_KEY);
+	ss_panel_data_read(vdd, RX_ELVSS, vdd->br_info.common_br.elvss_value, LEVEL1_KEY);
 
 	return true;
 }
@@ -424,31 +421,34 @@ static int ss_mdnie_read(struct samsung_display_driver_data *vdd)
 	return true;
 }
 
-static int ss_samart_dimming_init(struct samsung_display_driver_data *vdd)
+static int ss_smart_dimming_init(struct samsung_display_driver_data *vdd,
+		struct brightness_table *br_tbl)
 {
+	struct smartdim_conf *sconf;
 	struct dsi_panel_cmd_set *pcmds;
 
-	if (IS_ERR_OR_NULL(vdd)) {
-		LCD_ERR("Invalid data vdd : 0x%zx", (size_t)vdd);
+	sconf = vdd->panel_func.samsung_smart_get_conf();
+	if (IS_ERR_OR_NULL(sconf)) {
+		LCD_ERR("fail to get smartdim_conf (ndx: %d)\n", vdd->ndx);
 		return false;
 	}
 
-	vdd->smart_dimming_dsi = vdd->panel_func.samsung_smart_get_conf();
-	if (IS_ERR_OR_NULL(vdd->smart_dimming_dsi)) {
+	br_tbl->smart_dimming_dsi = sconf;
+
+	if (IS_ERR_OR_NULL(sconf)) {
 		LCD_ERR("DSI%d smart_dimming_dsi is null", vdd->ndx);
 		return false;
 	}
 
-	ss_panel_data_read(vdd, RX_SMART_DIM_MTP,
-			vdd->smart_dimming_dsi->mtp_buffer, LEVEL1_KEY);
+	ss_panel_data_read(vdd, RX_SMART_DIM_MTP, sconf->mtp_buffer, LEVEL1_KEY);
 
 	/* Initialize smart dimming related things here */
 	/* lux_tab setting for 420cd */
-	vdd->smart_dimming_dsi->lux_tab = vdd->dtsi_data.candela_map_table[NORMAL][vdd->panel_revision].cd;
-	vdd->smart_dimming_dsi->lux_tabsize = vdd->dtsi_data.candela_map_table[NORMAL][vdd->panel_revision].tab_size;
-	vdd->smart_dimming_dsi->man_id = vdd->manufacture_id_dsi;
+	sconf->lux_tab = vdd->br_info.candela_map_table[NORMAL][vdd->panel_revision].cd;
+	sconf->lux_tabsize = vdd->br_info.candela_map_table[NORMAL][vdd->panel_revision].tab_size;
+	sconf->man_id = vdd->manufacture_id_dsi;
 	if (vdd->panel_func.samsung_panel_revision)
-		vdd->smart_dimming_dsi->panel_revision = vdd->panel_func.samsung_panel_revision(vdd);
+		sconf->panel_revision = vdd->panel_func.samsung_panel_revision(vdd);
 
 	/* copy hbm gamma payload for hbm interpolation calc */
 	pcmds = ss_get_cmds(vdd, TX_HBM_GAMMA);
@@ -456,14 +456,14 @@ static int ss_samart_dimming_init(struct samsung_display_driver_data *vdd)
 		LCD_ERR("No cmds for TX_HBM_GAMMA.. \n");
 		return -EINVAL;
 	}
-	vdd->smart_dimming_dsi->hbm_payload = &pcmds->cmds->msg.tx_buf[1];
+	sconf->hbm_payload = &pcmds->cmds->msg.tx_buf[1];
 
 	/* Just a safety check to ensure smart dimming data is initialised well */
-	vdd->smart_dimming_dsi->init(vdd->smart_dimming_dsi);
+	sconf->init(sconf);
 
-	vdd->temperature = 20; // default temperature
+	vdd->br_info.temperature = 20; // default temperature
 
-	vdd->smart_dimming_loaded_dsi = true;
+	vdd->br_info.smart_dimming_loaded_dsi = true;
 
 	LCD_INFO("DSI%d : --\n", vdd->ndx);
 
@@ -496,7 +496,6 @@ static int ss_cell_id_read(struct samsung_display_driver_data *vdd)
 			vdd->cell_id_dsi[5],	vdd->cell_id_dsi[6],
 			vdd->cell_id_dsi[7],	vdd->cell_id_dsi[8],
 			vdd->cell_id_dsi[9],	vdd->cell_id_dsi[10]);
-
 	} else {
 		LCD_ERR("DSI%d no cell_id_rx_cmds cmd\n", vdd->ndx);
 		return false;
@@ -556,11 +555,11 @@ static struct dsi_panel_cmd_set *ss_aid(struct samsung_display_driver_data *vdd,
 
 	br_interpolation_generate_event(vdd, GEN_NORMAL_INTERPOLATION_AOR, &aid_cmds->cmds->msg.tx_buf[1]);
 
-	vdd->br.aor_data = (aid_cmds->cmds->msg.tx_buf[1] << 8)
+	vdd->br_info.common_br.aor_data = (aid_cmds->cmds->msg.tx_buf[1] << 8)
 						| aid_cmds->cmds->msg.tx_buf[2];
 
 	LCD_DEBUG("[%d] level(%d), aid(%x %x)\n",
-			cd_index, vdd->br.bl_level,
+			cd_index, vdd->br_info.common_br.bl_level,
 			aid_cmds->cmds->msg.tx_buf[1],
 			aid_cmds->cmds->msg.tx_buf[2]);
 
@@ -587,7 +586,7 @@ static struct dsi_panel_cmd_set *ss_acl_on(struct samsung_display_driver_data *v
 	}
 
 	LCD_INFO("gradual_acl: %d, acl per: 0x%x",
-			vdd->gradual_acl_val, pcmds->cmds[0].msg.tx_buf[6]);
+			vdd->br_info.gradual_acl_val, pcmds->cmds[0].msg.tx_buf[6]);
 
 	return pcmds;
 }
@@ -622,11 +621,11 @@ static struct dsi_panel_cmd_set *ss_elvss(struct samsung_display_driver_data *vd
 		BIT(7) is signed bit.
 		BIT(6) ~ BIT(0) is real temperature.
 	*/
-	elvss_cmds->cmds[0].msg.tx_buf[1] = vdd->temperature > 0 ?
-			vdd->temperature : (char)(BIT(7) | (-1*vdd->temperature));
+	elvss_cmds->cmds[0].msg.tx_buf[1] = vdd->br_info.temperature > 0 ?
+			vdd->br_info.temperature : (char)(BIT(7) | (-1*vdd->br_info.temperature));
 
 	/* 0xB5 2th MSP */
-	if (vdd->br.cd_level > 39)
+	if (vdd->br_info.common_br.cd_level > 39)
 		elvss_cmds->cmds[0].msg.tx_buf[2] = 0xDC;
 	else
 		elvss_cmds->cmds[0].msg.tx_buf[2] = 0xCC;
@@ -635,7 +634,7 @@ static struct dsi_panel_cmd_set *ss_elvss(struct samsung_display_driver_data *vd
 	br_interpolation_generate_event(vdd, GEN_NORMAL_INTERPOLATION_ELVSS, &elvss_cmds->cmds->msg.tx_buf[3]);
 
 	/* 0xB5 elvss_57th_val elvss_cal_offset */
-	elvss_cmds->cmds->msg.tx_buf[57] =  vdd->br.elvss_value1;;
+	elvss_cmds->cmds->msg.tx_buf[57] =  vdd->br_info.common_br.elvss_value[1];
 
 	*level_key = LEVEL1_KEY;
 
@@ -672,18 +671,18 @@ static struct dsi_panel_cmd_set *ss_irc(struct samsung_display_driver_data *vdd,
 		return NULL;
 	}
 
-	if (!vdd->br.support_irc)
+	if (!vdd->br_info.common_br.support_irc)
 		return NULL;
 
 	br_interpolation_generate_event(vdd, GEN_NORMAL_INTERPOLATION_IRC, &irc_cmds->cmds->msg.tx_buf[1]);
 
 	/* set irc mode to moderato or flat gamma */
-	if (vdd->br.irc_mode == IRC_MODERATO_MODE)
+	if (vdd->br_info.common_br.irc_mode == IRC_MODERATO_MODE)
 		irc_cmds->cmds->msg.tx_buf[2] = IRC_MODERATO_MODE_VAL;
-	else if (vdd->br.irc_mode == IRC_FLAT_GAMMA_MODE)
+	else if (vdd->br_info.common_br.irc_mode == IRC_FLAT_GAMMA_MODE)
 		irc_cmds->cmds->msg.tx_buf[2] = IRC_FLAT_GAMMA_MODE_VAL;
 	else
-		LCD_ERR("invalid irc mode(%d)\n", vdd->br.irc_mode);
+		LCD_ERR("invalid irc mode(%d)\n", vdd->br_info.common_br.irc_mode);
 
 	*level_key = LEVEL1_KEY;
 
@@ -704,18 +703,18 @@ static struct dsi_panel_cmd_set *ss_hbm_irc(struct samsung_display_driver_data *
 		return NULL;
 	}
 
-	if (!vdd->br.support_irc)
+	if (!vdd->br_info.common_br.support_irc)
 		return NULL;
 
 	br_interpolation_generate_event(vdd, GEN_HBM_INTERPOLATION_IRC, &hbm_irc_cmds->cmds->msg.tx_buf[1]);
 
 	/* set irc mode to moderato or flat gamma */
-	if (vdd->br.irc_mode == IRC_MODERATO_MODE)
+	if (vdd->br_info.common_br.irc_mode == IRC_MODERATO_MODE)
 		hbm_irc_cmds->cmds->msg.tx_buf[2] = IRC_MODERATO_MODE_VAL;
-	else if (vdd->br.irc_mode == IRC_FLAT_GAMMA_MODE)
+	else if (vdd->br_info.common_br.irc_mode == IRC_FLAT_GAMMA_MODE)
 		hbm_irc_cmds->cmds->msg.tx_buf[2] = IRC_FLAT_GAMMA_MODE_VAL;
 	else
-		LCD_ERR("invalid irc mode(%d)\n", vdd->br.irc_mode);
+		LCD_ERR("invalid irc mode(%d)\n", vdd->br_info.common_br.irc_mode);
 
 	*level_key = LEVEL1_KEY;
 
@@ -731,7 +730,7 @@ static struct dsi_panel_cmd_set *ss_gamma(struct samsung_display_driver_data *vd
 		return NULL;
 	}
 
-	LCD_DEBUG("bl_level : %d candela : %dCD\n", vdd->br.bl_level, vdd->br.cd_level);
+	LCD_DEBUG("bl_level : %d candela : %dCD\n", vdd->br_info.common_br.bl_level, vdd->br_info.common_br.cd_level);
 
 	*level_key = LEVEL1_KEY;
 
@@ -764,7 +763,7 @@ static struct dsi_panel_cmd_set *ss_gamma_hmt(struct samsung_display_driver_data
 		return NULL;
 	}
 
-	LCD_DEBUG("hmt_bl_level : %d candela : %dCD\n", vdd->hmt_stat.hmt_bl_level, vdd->hmt_stat.candela_level_hmt);
+	LCD_DEBUG("hmt_bl_level : %d candela : %dCD\n", vdd->br_info.hmt_stat.hmt_bl_level, vdd->br_info.hmt_stat.candela_level_hmt);
 
 	*level_key = LEVEL1_KEY;
 	br_interpolation_generate_event(vdd, GEN_HMD_GAMMA, &hmt_gamma_cmds->cmds[0].msg.tx_buf[1]);
@@ -783,7 +782,7 @@ static struct dsi_panel_cmd_set *ss_aid_hmt(
 
 	br_interpolation_generate_event(vdd, GEN_HMD_AOR, &hmt_aid_cmds->cmds->msg.tx_buf[1]);
 
-	vdd->br.aor_data = (hmt_aid_cmds->cmds->msg.tx_buf[1] << 8)
+	vdd->br_info.common_br.aor_data = (hmt_aid_cmds->cmds->msg.tx_buf[1] << 8)
 							| hmt_aid_cmds->cmds->msg.tx_buf[2];
 
 	*level_key = LEVEL1_KEY;
@@ -808,11 +807,11 @@ static struct dsi_panel_cmd_set *ss_elvss_hmt(struct samsung_display_driver_data
 	*level_key = LEVEL1_KEY;
 
 	/* 0xB5 1th TSET */
-	elvss_cmds->cmds->msg.tx_buf[1] = vdd->temperature > 0 ?
-			vdd->temperature : BIT(7) | (-1*vdd->temperature);
+	elvss_cmds->cmds->msg.tx_buf[1] = vdd->br_info.temperature > 0 ?
+			vdd->br_info.temperature : BIT(7) | (-1*vdd->br_info.temperature);
 
 	/* ELVSS(MPS_CON) setting condition is equal to normal birghtness */ // B5 2nd para : MPS_CON
-	if (vdd->hmt_stat.candela_level_hmt > 39)
+	if (vdd->br_info.hmt_stat.candela_level_hmt > 39)
 		elvss_cmds->cmds->msg.tx_buf[2] = 0xDC;
 	else
 		elvss_cmds->cmds->msg.tx_buf[2] = 0xCC;
@@ -823,28 +822,31 @@ static struct dsi_panel_cmd_set *ss_elvss_hmt(struct samsung_display_driver_data
 	return elvss_cmds;
 }
 
-static void ss_make_sdimconf_hmt(struct samsung_display_driver_data *vdd)
+static void ss_make_sdimconf_hmt(struct samsung_display_driver_data *vdd,
+		struct brightness_table *br_tbl)
 {
 	/* Set the mtp read buffer pointer and read the NVM value*/
 	ss_panel_data_read(vdd, RX_SMART_DIM_MTP,
-			vdd->smart_dimming_dsi_hmt->mtp_buffer, LEVEL1_KEY);
+			br_tbl->smart_dimming_dsi_hmt->mtp_buffer, LEVEL1_KEY);
 
 	/* Initialize smart dimming related things here */
 	/* lux_tab setting for 350cd */
-	vdd->smart_dimming_dsi_hmt->lux_tab = vdd->dtsi_data.candela_map_table[HMT][vdd->panel_revision].cd;
-	vdd->smart_dimming_dsi_hmt->lux_tabsize = vdd->dtsi_data.candela_map_table[HMT][vdd->panel_revision].tab_size;
-	vdd->smart_dimming_dsi_hmt->man_id = vdd->manufacture_id_dsi;
+	br_tbl->smart_dimming_dsi_hmt->lux_tab = vdd->br_info.candela_map_table[HMT][vdd->panel_revision].cd;
+	br_tbl->smart_dimming_dsi_hmt->lux_tabsize = vdd->br_info.candela_map_table[HMT][vdd->panel_revision].tab_size;
+	br_tbl->smart_dimming_dsi_hmt->man_id = vdd->manufacture_id_dsi;
 	if (vdd->panel_func.samsung_panel_revision)
-			vdd->smart_dimming_dsi_hmt->panel_revision = vdd->panel_func.samsung_panel_revision(vdd);
+			br_tbl->smart_dimming_dsi_hmt->panel_revision = vdd->panel_func.samsung_panel_revision(vdd);
 
 	/* Just a safety check to ensure smart dimming data is initialised well */
-	vdd->smart_dimming_dsi_hmt->init(vdd->smart_dimming_dsi_hmt);
+	br_tbl->smart_dimming_dsi_hmt->init(br_tbl->smart_dimming_dsi_hmt);
 
 	LCD_INFO("[HMT] smart dimming done!\n");
 }
 
-static int ss_samart_dimming_init_hmt(struct samsung_display_driver_data *vdd)
+static int ss_smart_dimming_init_hmt(struct samsung_display_driver_data *vdd)
 {
+	struct brightness_table *br_tbl = &vdd->br_info.br_tbl[0];
+
 	LCD_INFO("DSI%d : ++\n", vdd->ndx);
 
 	if (IS_ERR_OR_NULL(vdd)) {
@@ -852,20 +854,18 @@ static int ss_samart_dimming_init_hmt(struct samsung_display_driver_data *vdd)
 		return false;
 	}
 
-	vdd->smart_dimming_dsi_hmt = vdd->panel_func.samsung_smart_get_conf_hmt();
+	br_tbl->smart_dimming_dsi_hmt = vdd->panel_func.samsung_smart_get_conf_hmt();
 
-	if (IS_ERR_OR_NULL(vdd->smart_dimming_dsi_hmt)) {
+	if (IS_ERR_OR_NULL(br_tbl->smart_dimming_dsi_hmt)) {
 		LCD_ERR("DSI%d error", vdd->ndx);
 		return false;
 	} else {
-		vdd->hmt_stat.hmt_on = 0;
-		vdd->hmt_stat.hmt_bl_level = 0;
-		vdd->hmt_stat.hmt_reverse = 0;
-		vdd->hmt_stat.hmt_is_first = 1;
+		vdd->br_info.hmt_stat.hmt_on = 0;
+		vdd->br_info.hmt_stat.hmt_bl_level = 0;
 
-		ss_make_sdimconf_hmt(vdd);
+		ss_make_sdimconf_hmt(vdd, br_tbl);
 
-		vdd->smart_dimming_hmt_loaded_dsi = true;
+		vdd->br_info.smart_dimming_hmt_loaded_dsi = true;
 	}
 
 	LCD_INFO("DSI%d : --\n", vdd->ndx);
@@ -1410,6 +1410,7 @@ static int ss_gct_write(struct samsung_display_driver_data *vdd)
 	u8 vddm_set[MAX_VDDM] = {0x00, 0x0C, 0x2A};
 	int ret = 0;
 	struct dsi_panel *panel = GET_DSI_PANEL(vdd);
+	int wait_cnt = 1000; /* 1000 * 0.5ms = 500ms */
 
 	LCD_INFO("+\n");
 
@@ -1420,12 +1421,15 @@ static int ss_gct_write(struct samsung_display_driver_data *vdd)
 
 	mutex_lock(&vdd->exclusive_tx.ex_tx_lock);
 	vdd->exclusive_tx.enable = 1;
+	while (!list_empty(&vdd->cmd_lock.wait_list) && --wait_cnt)
+		usleep_range(500, 500);
+
 	for (i = TX_GCT_ENTER; i <= TX_GCT_EXIT; i++)
 		ss_set_exclusive_tx_packet(vdd, i, 1);
 	ss_set_exclusive_tx_packet(vdd, RX_GCT_CHECKSUM, 1);
 	ss_set_exclusive_tx_packet(vdd, TX_REG_READ_POS, 1);
 
-	mdelay(10);
+	usleep_range(10000, 11000);
 
 	checksum = vdd->gct.checksum;
 	for (i = VDDM_LV; i < MAX_VDDM; i++) {
@@ -1441,7 +1445,7 @@ static int ss_gct_write(struct samsung_display_driver_data *vdd)
 		set->cmds[10].msg.tx_buf[1] = vddm_set[i];
 		ss_send_cmd(vdd, TX_GCT_ENTER);
 
-		mdelay(150);
+		msleep(150);
 
 		ss_panel_data_read(vdd, RX_GCT_CHECKSUM, checksum++,
 				LEVEL_KEY_NONE);
@@ -1450,7 +1454,7 @@ static int ss_gct_write(struct samsung_display_driver_data *vdd)
 		LCD_INFO("(%d) TX_GCT_MID\n", i);
 		ss_send_cmd(vdd, TX_GCT_MID);
 
-		mdelay(150);
+		msleep(150);
 
 		ss_panel_data_read(vdd, RX_GCT_CHECKSUM, checksum++,
 				LEVEL_KEY_NONE);
@@ -1480,6 +1484,9 @@ static int ss_gct_write(struct samsung_display_driver_data *vdd)
 	 * So, on commands should be sent before wake up the waitq
 	 * and set exclusive_tx.enable to false.
 	 */
+	ss_set_exclusive_tx_packet(vdd, DSI_CMD_SET_OFF, 1);
+	ss_send_cmd(vdd, DSI_CMD_SET_OFF);
+
 	vdd->panel_state = PANEL_PWR_OFF;
 	dsi_panel_power_off(panel);
 	dsi_panel_power_on(panel);
@@ -1493,6 +1500,7 @@ static int ss_gct_write(struct samsung_display_driver_data *vdd)
 	ss_send_cmd(vdd, DSI_CMD_SET_ON);
 	dsi_panel_update_pps(panel);
 
+	ss_set_exclusive_tx_packet(vdd, DSI_CMD_SET_OFF, 0);
 	ss_set_exclusive_tx_packet(vdd, DSI_CMD_SET_ON, 0);
 	ss_set_exclusive_tx_packet(vdd, TX_LEVEL0_KEY_ENABLE, 0);
 	ss_set_exclusive_tx_packet(vdd, DSI_CMD_SET_PPS, 0);
@@ -1559,7 +1567,7 @@ static void ss_copr_panel_init(struct samsung_display_driver_data *vdd)
 	vdd->copr.rx_addr = 0x5A;
 	vdd->copr.rx_size = 41;
 	vdd->copr.ver = COPR_VER_3P0;
-	vdd->copr.display_read = 1;
+	vdd->copr.display_read = 0;
 
 	ss_copr_init(vdd);
 }
@@ -1586,7 +1594,7 @@ static void samsung_panel_init(struct samsung_display_driver_data *vdd)
 	vdd->panel_func.samsung_irc_read = NULL;
 	vdd->panel_func.samsung_hbm_read = ss_hbm_read;
 	vdd->panel_func.samsung_mdnie_read = ss_mdnie_read;
-	vdd->panel_func.samsung_smart_dimming_init = ss_samart_dimming_init;
+	vdd->panel_func.samsung_smart_dimming_init = ss_smart_dimming_init;
 	vdd->panel_func.samsung_smart_get_conf = smart_get_conf_S6E3XA0_AMB729WA01;
 
 	vdd->panel_func.gen_hbm_interpolation_gamma = gen_hbm_interpolation_gamma_S6E3XA0_AMB729WA01;
@@ -1625,7 +1633,7 @@ static void samsung_panel_init(struct samsung_display_driver_data *vdd)
 	vdd->panel_func.samsung_brightness_aid_hmt = ss_aid_hmt;
 	vdd->panel_func.samsung_brightness_elvss_hmt = ss_elvss_hmt;
 	vdd->panel_func.samsung_brightness_vint_hmt = NULL;
-	vdd->panel_func.samsung_smart_dimming_hmt_init = ss_samart_dimming_init_hmt;
+	vdd->panel_func.samsung_smart_dimming_hmt_init = ss_smart_dimming_init_hmt;
 	vdd->panel_func.samsung_smart_get_conf_hmt = smart_get_conf_S6E3XA0_AMB729WA01_hmt;
 
 	/* Panel LPM */
@@ -1633,7 +1641,7 @@ static void samsung_panel_init(struct samsung_display_driver_data *vdd)
 	vdd->panel_func.samsung_set_lpm_brightness = ss_set_panel_lpm_brightness;
 
 	/* default brightness */
-	vdd->br.bl_level = 25500;
+	vdd->br_info.common_br.bl_level = 25500;
 
 	/* mdnie */
 	vdd->mdnie.support_mdnie = true;
@@ -1657,7 +1665,7 @@ static void samsung_panel_init(struct samsung_display_driver_data *vdd)
 //	vdd->debug_data->panic_on_pptimeout = true;
 
 	/* Set IRC init value */
-	vdd->br.irc_mode = IRC_MODERATO_MODE;
+	vdd->br_info.common_br.irc_mode = IRC_MODERATO_MODE;
 
 	/* COLOR WEAKNESS */
 	vdd->panel_func.color_weakness_ccb_on_off =  NULL;
@@ -1672,10 +1680,10 @@ static void samsung_panel_init(struct samsung_display_driver_data *vdd)
 	vdd->copr.panel_init = ss_copr_panel_init;
 
 	/* ACL default ON */
-	vdd->acl_status = 1;
+	vdd->br_info.acl_status = 1;
 
 	/* ACL default status in acl on */
-	vdd->gradual_acl_val = 1;
+	vdd->br_info.gradual_acl_val = 1;
 
 	/* Gram Checksum Test */
 	vdd->panel_func.samsung_gct_write = ss_gct_write;
@@ -1708,7 +1716,7 @@ static int __init samsung_panel_initialize(void)
 				strlen(panel_string)))
 		ndx = SECONDARY_DISPLAY_NDX;
 	else {
-		LCD_ERR("can not find panel_name (%s) / (%s)\n", panel_string, panel_name);
+		LCD_ERR("panel_string %s can not find panel_name (%s, %s)\n", panel_string, panel_name, panel_secondary_name);
 		return 0;
 	}
 
@@ -1717,7 +1725,10 @@ static int __init samsung_panel_initialize(void)
 	vdd = ss_get_vdd(ndx);
 	vdd->panel_func.samsung_panel_init = samsung_panel_init;
 
-	LCD_INFO("%s done.. \n", panel_string);
+	if (ndx == PRIMARY_DISPLAY_NDX)
+		LCD_INFO("%s done.. \n", panel_name);
+	else
+		LCD_INFO("%s done.. \n", panel_secondary_name);
 
 	return 0;
 }

@@ -27,10 +27,10 @@ static int sec_class_match_device_by_name(struct device *dev, const void *data)
 {
 	const char *name = data;
 
-	return !strcmp(dev->kobj.name, name);
+	return sysfs_streq(name, dev_name(dev));
 }
 
-struct device *sec_dev_get_by_name(char *name)
+struct device *sec_dev_get_by_name(const char *name)
 {
 	return class_find_device(sec_class, NULL, name,
 			sec_class_match_device_by_name);
@@ -51,7 +51,7 @@ struct device *___sec_device_create(void *drvdata, const char *fmt)
 	}
 
 	dev = device_create(sec_class, NULL, atomic_inc_return(&sec_dev),
-			drvdata, fmt);
+			drvdata, "%s", fmt);
 	if (IS_ERR(dev))
 		pr_err("Failed to create device %s %ld\n", fmt, PTR_ERR(dev));
 	else
@@ -59,6 +59,7 @@ struct device *___sec_device_create(void *drvdata, const char *fmt)
 
 	return dev;
 }
+EXPORT_SYMBOL(___sec_device_create);
 
 void sec_device_destroy(dev_t devt)
 {

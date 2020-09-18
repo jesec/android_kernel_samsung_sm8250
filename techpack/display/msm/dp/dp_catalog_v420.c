@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2017-2019, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2017-2020, The Linux Foundation. All rights reserved.
  */
 
 #include "dp_catalog.h"
@@ -73,100 +73,9 @@ static u8 const dp_swing_hbr_rbr[MAX_VOLTAGE_LEVELS][MAX_PRE_EMP_LEVELS] = {
 };
 #else
 #ifdef SECDP_CALIBRATE_VXPX
-u8 vm_pre_emphasis[MAX_VOLTAGE_LEVELS][MAX_PRE_EMP_LEVELS] = {
-	{0x00, 0x0D, 0x15, 0xFF},       /* pe0, 0 db */
-	{0x00, 0x0D, 0x15, 0xFF},       /* pe1, 3.5 db */
-	{0x00, 0x0C, 0xFF, 0xFF},       /* pe2, 6.0 db */
-	{0xFF, 0xFF, 0xFF, 0xFF}        /* pe3, 9.5 db */
-};
-
-/* voltage swing, 0.2v and 1.0v are not support */
-u8 vm_voltage_swing[MAX_VOLTAGE_LEVELS][MAX_PRE_EMP_LEVELS] = {
-	{0x07, 0x0F, 0x14, 0xFF}, /* sw0, 0.4v  */
-	{0x11, 0x1D, 0x1F, 0xFF}, /* sw1, 0.6 v */
-	{0x18, 0x1F, 0xFF, 0xFF}, /* sw1, 0.8 v */
-	{0xFF, 0xFF, 0xFF, 0xFF}  /* sw1, 1.2 v, optional */
-};
-
-u8 dp_pre_emp_hbr2_hbr3[MAX_VOLTAGE_LEVELS][MAX_PRE_EMP_LEVELS] = {
-	{0x00, 0x0D, 0x15, 0x1B}, /* pe0, 0 db */
-	{0x00, 0x0E, 0x16, 0xFF}, /* pe1, 3.5 db */
-	{0x00, 0x0E, 0xFF, 0xFF}, /* pe2, 6.0 db */
-	{0x00, 0xFF, 0xFF, 0xFF}  /* pe3, 9.5 db */
-};
-
-u8 dp_swing_hbr2_hbr3[MAX_VOLTAGE_LEVELS][MAX_PRE_EMP_LEVELS] = {
-	{0x04, 0x10, 0x16, 0x1D}, /* sw0, 0.4v  */
-	{0x0C, 0x17, 0x1F, 0xFF}, /* sw1, 0.6v */
-	{0x14, 0x1F, 0xFF, 0xFF}, /* sw1, 0.8v */
-	{0x1F, 0xFF, 0xFF, 0xFF}  /* sw1, 1.2v */
-};
-
-u8 dp_pre_emp_hbr_rbr[MAX_VOLTAGE_LEVELS][MAX_PRE_EMP_LEVELS] = {
-	{0x00, 0x0D, 0x15, 0x1B}, /* pe0, 0 db */
-	{0x00, 0x0C, 0x15, 0xFF}, /* pe1, 3.5 db */
-	{0x00, 0x0C, 0xFF, 0xFF}, /* pe2, 6.0 db */
-	{0x00, 0xFF, 0xFF, 0xFF}  /* pe3, 9.5 db */
-};
-
-u8 dp_swing_hbr_rbr[MAX_VOLTAGE_LEVELS][MAX_PRE_EMP_LEVELS] = {
-	{0x07, 0x0E, 0x16, 0x1F}, /* sw0, 0.4v */
-	{0x10, 0x1A, 0x1F, 0xFF}, /* sw1, 0.6v */
-	{0x1A, 0x1F, 0xFF, 0xFF}, /* sw1, 0.8v */
-	{0x1F, 0xFF, 0xFF, 0xFF}  /* sw1, 1.2v */
-};
+#include "inc/secdp_params_test.h"	/* for DP param tuning */
 #else
-static u8 const vm_pre_emphasis[MAX_VOLTAGE_LEVELS][MAX_PRE_EMP_LEVELS] = {
-	{0x00, 0x0D, 0x15, 0xFF},       /* pe0, 0 db */
-	{0x00, 0x0D, 0x15, 0xFF},       /* pe1, 3.5 db */
-	{0x00, 0x0C, 0xFF, 0xFF},       /* pe2, 6.0 db */
-	{0xFF, 0xFF, 0xFF, 0xFF}        /* pe3, 9.5 db */
-};
-
-/* voltage swing, 0.2v and 1.0v are not support */
-static u8 const vm_voltage_swing[MAX_VOLTAGE_LEVELS][MAX_PRE_EMP_LEVELS] = {
-	{0x07, 0x0F, 0x14, 0xFF}, /* sw0, 0.4v  */
-	{0x11, 0x1D, 0x1F, 0xFF}, /* sw1, 0.6 v */
-	{0x18, 0x1F, 0xFF, 0xFF}, /* sw1, 0.8 v */
-	{0xFF, 0xFF, 0xFF, 0xFF}  /* sw1, 1.2 v, optional */
-};
-
-#ifdef CONFIG_SEC_Z3Q_PROJECT
-static u8 const dp_pre_emp_hbr2_hbr3[MAX_VOLTAGE_LEVELS][MAX_PRE_EMP_LEVELS] = {
-	{0x00, 0x0E, 0x15, 0x1B}, /* pe0, 0 db */
-	{0x00, 0x0E, 0x16, 0xFF}, /* pe1, 3.5 db */
-	{0x00, 0x0E, 0xFF, 0xFF}, /* pe2, 6.0 db */
-	{0x00, 0xFF, 0xFF, 0xFF}  /* pe3, 9.5 db */
-};
-#else
-static u8 const dp_pre_emp_hbr2_hbr3[MAX_VOLTAGE_LEVELS][MAX_PRE_EMP_LEVELS] = {
-	{0x00, 0x0D, 0x15, 0x1B}, /* pe0, 0 db */
-	{0x00, 0x0E, 0x16, 0xFF}, /* pe1, 3.5 db */
-	{0x00, 0x0E, 0xFF, 0xFF}, /* pe2, 6.0 db */
-	{0x00, 0xFF, 0xFF, 0xFF}  /* pe3, 9.5 db */
-};
-#endif
-
-static u8 const dp_swing_hbr2_hbr3[MAX_VOLTAGE_LEVELS][MAX_PRE_EMP_LEVELS] = {
-	{0x04, 0x10, 0x16, 0x1D}, /* sw0, 0.4v  */
-	{0x0C, 0x17, 0x1F, 0xFF}, /* sw1, 0.6v */
-	{0x14, 0x1F, 0xFF, 0xFF}, /* sw1, 0.8v */
-	{0x1F, 0xFF, 0xFF, 0xFF}  /* sw1, 1.2v */
-};
-
-static u8 const dp_pre_emp_hbr_rbr[MAX_VOLTAGE_LEVELS][MAX_PRE_EMP_LEVELS] = {
-	{0x00, 0x0D, 0x15, 0x1B}, /* pe0, 0 db */
-	{0x00, 0x0C, 0x15, 0xFF}, /* pe1, 3.5 db */
-	{0x00, 0x0C, 0xFF, 0xFF}, /* pe2, 6.0 db */
-	{0x00, 0xFF, 0xFF, 0xFF}  /* pe3, 9.5 db */
-};
-
-static u8 const dp_swing_hbr_rbr[MAX_VOLTAGE_LEVELS][MAX_PRE_EMP_LEVELS] = {
-	{0x07, 0x0E, 0x16, 0x1F}, /* sw0, 0.4v */
-	{0x10, 0x1A, 0x1F, 0xFF}, /* sw1, 0.6v */
-	{0x1A, 0x1F, 0xFF, 0xFF}, /* sw1, 0.8v */
-	{0x1F, 0xFF, 0xFF, 0xFF}  /* sw1, 1.2v */
-};
+#include "inc/secdp_params.h"		/* actual DP params as per project */
 #endif
 #endif
 
@@ -355,7 +264,10 @@ static void dp_catalog_ctrl_update_vx_px_v420(struct dp_catalog_ctrl *ctrl,
 	io_data = catalog->io->dp_ahb;
 	version = dp_read(DP_HW_VERSION);
 
-	if (version == 0x10020003) {
+	/*
+	 * For DP controller versions 1.2.3 and 1.2.4
+	 */
+	if ((version == 0x10020003) || (version == 0x10020004)) {
 		if (high) {
 			value0 = dp_swing_hbr2_hbr3[v_level][p_level];
 			value1 = dp_pre_emp_hbr2_hbr3[v_level][p_level];
@@ -372,14 +284,14 @@ static void dp_catalog_ctrl_update_vx_px_v420(struct dp_catalog_ctrl *ctrl,
 	if (secdp_self_test_status(ST_VOLTAGE_TUN) >= 0) {
 		u8 val = secdp_self_test_get_arg(ST_VOLTAGE_TUN)[v_level*4 + p_level];
 
-		DP_INFO("value0 : 0x%02d => 0x%02d\n", value0, val);
+		DP_INFO("value0 : 0x%02x => 0x%02x\n", value0, val);
 		value0 = val;
 	}
 
 	if (secdp_self_test_status(ST_PREEM_TUN) >= 0) {
 		u8 val = secdp_self_test_get_arg(ST_PREEM_TUN)[v_level*4 + p_level];
-		
-		DP_INFO("value0 : 0x%02d => 0x%02d\n", value1, val);
+
+		DP_INFO("value0 : 0x%02x => 0x%02x\n", value1, val);
 		value1 = val;
 	}
 #endif
@@ -419,7 +331,8 @@ static void dp_catalog_ctrl_update_vx_px_v420(struct dp_catalog_ctrl *ctrl,
 	if (g_prsht_val0 != 0xFF) {
 		io_data = catalog->io->dp_ln_tx0;
 		g_prsht_val0 |= BIT(5);
-		dp_write(0x108, g_prsht_val0);	/*USB3_DP_PHY_DP_QSERDES_TX0_PRE_EMPH*/
+		/*USB3_DP_PHY_DP_QSERDES_TX0_PRE_EMPH*/
+		dp_write(0x108, g_prsht_val0);
 		DP_INFO("[g_prsht_val0] 0x%02X write done!\n", g_prsht_val0);
 	}
 
@@ -427,7 +340,8 @@ static void dp_catalog_ctrl_update_vx_px_v420(struct dp_catalog_ctrl *ctrl,
 	if (g_prsht_val1 != 0xFF) {
 		io_data = catalog->io->dp_ln_tx1;
 		g_prsht_val1 |= BIT(5);
-		dp_write(0x108, g_prsht_val1);	/*USB3_DP_PHY_DP_QSERDES_TX1_PRE_EMPH*/
+		/*USB3_DP_PHY_DP_QSERDES_TX1_PRE_EMPH*/
+		dp_write(0x108, g_prsht_val1);
 		DP_INFO("[g_prsht_val1] 0x%02X write done!\n", g_prsht_val1);
 	}
 #endif
@@ -475,7 +389,7 @@ int secdp_catalog_prsht0_store(char val)
 
 	DP_DEBUG("g_prsht_val0: 0x%02x\n", g_prsht_val0);
 
-	return rc;	
+	return rc;
 }
 
 int secdp_catalog_prsht1_show(char *val)
@@ -495,10 +409,10 @@ int secdp_catalog_prsht1_store(char val)
 
 	DP_DEBUG("g_prsht_val1: 0x%02x\n", g_prsht_val1);
 
-	return rc;	
+	return rc;
 }
 
-int secdp_catalog_vx_show(char* buf, int len)
+int secdp_catalog_vx_show(char *buf, int len)
 {
 	u8 value0, value1, value2, value3;
 	int i;
@@ -527,7 +441,7 @@ int secdp_catalog_vx_store(int *val, int size)
 	vm_voltage_swing[0][1] = val[1];
 	vm_voltage_swing[0][2] = val[2];
 	vm_voltage_swing[0][3] = val[3];
-	
+
 	vm_voltage_swing[1][0] = val[4];
 	vm_voltage_swing[1][1] = val[5];
 	vm_voltage_swing[1][2] = val[6];
@@ -543,10 +457,10 @@ int secdp_catalog_vx_store(int *val, int size)
 	vm_voltage_swing[3][2] = val[14];
 	vm_voltage_swing[3][3] = val[15];
 
-	return rc;	
+	return rc;
 }
 
-int secdp_catalog_px_show(char* buf, int len)
+int secdp_catalog_px_show(char *buf, int len)
 {
 	u8 value0, value1, value2, value3;
 	int i;
@@ -575,7 +489,7 @@ int secdp_catalog_px_store(int *val, int size)
 	vm_pre_emphasis[0][1] = val[1];
 	vm_pre_emphasis[0][2] = val[2];
 	vm_pre_emphasis[0][3] = val[3];
-	
+
 	vm_pre_emphasis[1][0] = val[4];
 	vm_pre_emphasis[1][1] = val[5];
 	vm_pre_emphasis[1][2] = val[6];
@@ -591,10 +505,10 @@ int secdp_catalog_px_store(int *val, int size)
 	vm_pre_emphasis[3][2] = val[14];
 	vm_pre_emphasis[3][3] = val[15];
 
-	return rc;	
+	return rc;
 }
 
-int secdp_catalog_vx_hbr2_hbr3_show(char* buf, int len)
+int secdp_catalog_vx_hbr2_hbr3_show(char *buf, int len)
 {
 	u8 value0, value1, value2, value3;
 	int i;
@@ -623,7 +537,7 @@ int secdp_catalog_vx_hbr2_hbr3_store(int *val, int size)
 	dp_swing_hbr2_hbr3[0][1] = val[1];
 	dp_swing_hbr2_hbr3[0][2] = val[2];
 	dp_swing_hbr2_hbr3[0][3] = val[3];
-	
+
 	dp_swing_hbr2_hbr3[1][0] = val[4];
 	dp_swing_hbr2_hbr3[1][1] = val[5];
 	dp_swing_hbr2_hbr3[1][2] = val[6];
@@ -639,10 +553,10 @@ int secdp_catalog_vx_hbr2_hbr3_store(int *val, int size)
 	dp_swing_hbr2_hbr3[3][2] = val[14];
 	dp_swing_hbr2_hbr3[3][3] = val[15];
 
-	return rc;	
+	return rc;
 }
 
-int secdp_catalog_px_hbr2_hbr3_show(char* buf, int len)
+int secdp_catalog_px_hbr2_hbr3_show(char *buf, int len)
 {
 	u8 value0, value1, value2, value3;
 	int i;
@@ -671,7 +585,7 @@ int secdp_catalog_px_hbr2_hbr3_store(int *val, int size)
 	dp_pre_emp_hbr2_hbr3[0][1] = val[1];
 	dp_pre_emp_hbr2_hbr3[0][2] = val[2];
 	dp_pre_emp_hbr2_hbr3[0][3] = val[3];
-	
+
 	dp_pre_emp_hbr2_hbr3[1][0] = val[4];
 	dp_pre_emp_hbr2_hbr3[1][1] = val[5];
 	dp_pre_emp_hbr2_hbr3[1][2] = val[6];
@@ -687,10 +601,10 @@ int secdp_catalog_px_hbr2_hbr3_store(int *val, int size)
 	dp_pre_emp_hbr2_hbr3[3][2] = val[14];
 	dp_pre_emp_hbr2_hbr3[3][3] = val[15];
 
-	return rc;	
+	return rc;
 }
 
-int secdp_catalog_vx_hbr_rbr_show(char* buf, int len)
+int secdp_catalog_vx_hbr_rbr_show(char *buf, int len)
 {
 	u8 value0, value1, value2, value3;
 	int i;
@@ -719,7 +633,7 @@ int secdp_catalog_vx_hbr_rbr_store(int *val, int size)
 	dp_swing_hbr_rbr[0][1] = val[1];
 	dp_swing_hbr_rbr[0][2] = val[2];
 	dp_swing_hbr_rbr[0][3] = val[3];
-	
+
 	dp_swing_hbr_rbr[1][0] = val[4];
 	dp_swing_hbr_rbr[1][1] = val[5];
 	dp_swing_hbr_rbr[1][2] = val[6];
@@ -735,10 +649,10 @@ int secdp_catalog_vx_hbr_rbr_store(int *val, int size)
 	dp_swing_hbr_rbr[3][2] = val[14];
 	dp_swing_hbr_rbr[3][3] = val[15];
 
-	return rc;	
+	return rc;
 }
 
-int secdp_catalog_px_hbr_rbr_show(char* buf, int len)
+int secdp_catalog_px_hbr_rbr_show(char *buf, int len)
 {
 	u8 value0, value1, value2, value3;
 	int i;
@@ -767,7 +681,7 @@ int secdp_catalog_px_hbr_rbr_store(int *val, int size)
 	dp_pre_emp_hbr_rbr[0][1] = val[1];
 	dp_pre_emp_hbr_rbr[0][2] = val[2];
 	dp_pre_emp_hbr_rbr[0][3] = val[3];
-	
+
 	dp_pre_emp_hbr_rbr[1][0] = val[4];
 	dp_pre_emp_hbr_rbr[1][1] = val[5];
 	dp_pre_emp_hbr_rbr[1][2] = val[6];
@@ -783,7 +697,7 @@ int secdp_catalog_px_hbr_rbr_store(int *val, int size)
 	dp_pre_emp_hbr_rbr[3][2] = val[14];
 	dp_pre_emp_hbr_rbr[3][3] = val[15];
 
-	return rc;	
+	return rc;
 }
 #endif
 

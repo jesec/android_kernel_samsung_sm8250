@@ -2,7 +2,7 @@
  * Misc utility routines for accessing the SOC Interconnects
  * of Broadcom HNBU chips.
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -19,7 +19,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #ifndef	_siutils_h_
@@ -88,7 +88,7 @@ struct si_pub {
 	int16	socirev;		/**< SOC interconnect rev */
 
 	uint16	bustype;		/**< SI_BUS, PCI_BUS */
-	uint16	buscoretype;		/**< PCI_CORE_ID, PCIE_CORE_ID, PCMCIA_CORE_ID */
+	uint16	buscoretype;		/**< PCI_CORE_ID, PCIE_CORE_ID */
 	int16	buscorerev;		/**< buscore rev */
 	uint16	buscoreidx;		/**< buscore index */
 
@@ -839,7 +839,7 @@ bool si_srpwr_cap(si_t *sih);
 #define MULTIBP_CAP(sih)	(BCM4368_CHIP(sih->chip) || BCM4378_CHIP(sih->chip) || \
 				BCM4387_CHIP(sih->chip) || BCM4388_CHIP(sih->chip) || \
 				BCM4389_CHIP(sih->chip) || BCM4385_CHIP(sih->chip) || \
-				BCM4376_CHIP(sih->chip))
+				BCM4376_CHIP(sih->chip) || BCM4397_CHIP(sih->chip))
 #define MULTIBP_ENAB(sih)      ((sih) && (sih)->_multibp_enable)
 
 uint32 si_enum_base(uint devid);

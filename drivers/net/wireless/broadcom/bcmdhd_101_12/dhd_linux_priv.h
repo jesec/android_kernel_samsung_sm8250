@@ -368,6 +368,11 @@ typedef struct dhd_info {
 	/* indicates mem_dump was scheduled as work queue or called directly */
 	bool scheduled_memdump;
 	struct work_struct dhd_hang_process_work;
+#if !defined(PCIE_FULL_DONGLE) && defined(P2P_IF_STATE_EVENT_CTRL)
+	struct work_struct p2p_interface_event_ctrl_work;
+	bool p2p_if_event_close;
+	uint32 last_tx_time;
+#endif /* !PCIE_FULL_DONGLE & P2P_IF_STATE_EVENT_CTRL */
 } dhd_info_t;
 
 #ifdef WL_MONITOR

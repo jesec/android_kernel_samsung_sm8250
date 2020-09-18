@@ -116,6 +116,7 @@ static void send_dsi_tcon_mdnie_register(struct samsung_display_driver_data *vdd
 	pcmds = ss_get_cmds(vdd, TX_MDNIE_TUNE);
 	pcmds->cmds = tune_data_dsi;
 	pcmds->count = mdnie_data->dsi_bypass_mdnie_size;
+	pcmds->state = DSI_CMD_SET_STATE_HS;
 
 	/* temp to avoid tx fail with single TX enabled */
 	for (i = 0; i < pcmds->count; i++)
@@ -298,7 +299,7 @@ static ssize_t mode_store(struct device *dev,
 	struct mdnie_lite_tun_type *tune = NULL;
 
 	if (!vdd)
-		return 0;
+		return size;
 
 	vdd = ss_check_hall_ic_get_vdd(vdd);
 	tune = vdd->mdnie.mdnie_tune_state_dsi;
@@ -385,7 +386,7 @@ static ssize_t scenario_store(struct device *dev,
 	struct mdnie_lite_tun_type *tune = NULL;
 
 	if (!vdd)
-		return 0;
+		return size;
 
 	vdd = ss_check_hall_ic_get_vdd(vdd);
 	tune = vdd->mdnie.mdnie_tune_state_dsi;
@@ -443,7 +444,7 @@ static ssize_t outdoor_store(struct device *dev,
 	struct mdnie_lite_tun_type *tune = NULL;
 
 	if (!vdd)
-		return 0;
+		return size;
 
 	vdd = ss_check_hall_ic_get_vdd(vdd);
 	tune = vdd->mdnie.mdnie_tune_state_dsi;
@@ -498,7 +499,7 @@ static ssize_t bypass_store(struct device *dev,
 	int value = 0;
 
 	if (!vdd)
-		return 0;
+		return size;
 
 	vdd = ss_check_hall_ic_get_vdd(vdd);
 	tune = vdd->mdnie.mdnie_tune_state_dsi;
@@ -565,7 +566,7 @@ static ssize_t accessibility_store(struct device *dev,
 	char temp;
 
 	if (!vdd)
-		return 0;
+		return size;
 
 	mdnie_data = vdd->mdnie.mdnie_data;
 
@@ -665,7 +666,7 @@ static ssize_t sensorRGB_store(struct device *dev,
 	struct dsi_cmd_desc *tune_data_dsi = NULL;
 
 	if (!vdd)
-		return 0;
+		return size;
 
 	vdd = ss_check_hall_ic_get_vdd(vdd);
 	tune = vdd->mdnie.mdnie_tune_state_dsi;
@@ -750,8 +751,8 @@ static ssize_t whiteRGB_store(struct device *dev,
 	struct mdnie_lite_tun_type *tune = NULL;
 	struct dsi_cmd_desc *white_tunning_data = NULL;
 
-	if (!vdd)
-		return 0;
+	if (!vdd || !vdd->mdnie.support_mdnie)
+		return size;
 
 	vdd = ss_check_hall_ic_get_vdd(vdd);
 	tune = vdd->mdnie.mdnie_tune_state_dsi;
@@ -826,7 +827,7 @@ static ssize_t mdnie_ldu_store(struct device *dev,
 	struct dsi_cmd_desc *ldu_tunning_data = NULL;
 
 	if (!vdd)
-		return 0;
+		return size;
 
 	vdd = ss_check_hall_ic_get_vdd(vdd);
 	tune = vdd->mdnie.mdnie_tune_state_dsi;
@@ -904,7 +905,7 @@ static ssize_t night_mode_store(struct device *dev,
 	struct mdnie_lite_tun_type *tune = NULL;
 
 	if (!vdd)
-		return 0;
+		return size;
 
 	vdd = ss_check_hall_ic_get_vdd(vdd);
 	tune = vdd->mdnie.mdnie_tune_state_dsi;
@@ -970,7 +971,7 @@ static ssize_t color_lens_store(struct device *dev,
 	struct mdnie_lite_tun_type *tune = NULL;
 
 	if (!vdd)
-		return 0;
+		return size;
 
 	vdd = ss_check_hall_ic_get_vdd(vdd);
 	tune = vdd->mdnie.mdnie_tune_state_dsi;
@@ -1034,7 +1035,7 @@ static ssize_t hdr_store(struct device *dev,
 	struct mdnie_lite_tun_type *tune = NULL;
 
 	if (!vdd)
-		return 0;
+		return size;
 
 	vdd = ss_check_hall_ic_get_vdd(vdd);
 	tune = vdd->mdnie.mdnie_tune_state_dsi;
@@ -1090,7 +1091,7 @@ static ssize_t light_notification_store(struct device *dev,
 	struct mdnie_lite_tun_type *tune = NULL;
 
 	if (!vdd)
-		return 0;
+		return size;
 
 	vdd = ss_check_hall_ic_get_vdd(vdd);
 	tune = vdd->mdnie.mdnie_tune_state_dsi;
@@ -1147,7 +1148,7 @@ static ssize_t afc_store(struct device *dev,
 	int roi[12] = {0};
 
 	if (!vdd)
-		return 0;
+		return size;
 
 	vdd = ss_check_hall_ic_get_vdd(vdd);
 	tune = vdd->mdnie.mdnie_tune_state_dsi;
@@ -1224,7 +1225,7 @@ static ssize_t cabc_store(struct device *dev,
 	int value = 0;
 
 	if (!vdd)
-		return 0;
+		return size;
 
 	vdd = ss_check_hall_ic_get_vdd(vdd);
 	tune = vdd->mdnie.mdnie_tune_state_dsi;
@@ -1275,7 +1276,7 @@ static ssize_t hmt_color_temperature_store(struct device *dev,
 	struct mdnie_lite_tun_type *tune = NULL;
 
 	if (!vdd)
-		return 0;
+		return size;
 
 	vdd = ss_check_hall_ic_get_vdd(vdd);
 	tune = vdd->mdnie.mdnie_tune_state_dsi;
@@ -1453,7 +1454,7 @@ void create_tcon_mdnie_node(struct samsung_display_driver_data *vdd)
 	else
 		sprintf(dirname, "mdnie%d", vdd->ndx);
 
-	tune_mdnie_dev = device_create(mdnie_class, NULL, 0, vdd,  dirname);
+	tune_mdnie_dev = device_create(mdnie_class, NULL, 0, vdd,  "%s", dirname);
 
 	if (IS_ERR(tune_mdnie_dev))
 		DPRINT("Failed to create device(mdnie)!\n");
@@ -1533,6 +1534,11 @@ void create_tcon_mdnie_node(struct samsung_display_driver_data *vdd)
 struct mdnie_lite_tun_type *init_dsi_tcon_mdnie_class(struct samsung_display_driver_data *vdd)
 {
 	struct mdnie_lite_tun_type *tune;
+
+	if (!vdd->mdnie.support_mdnie) {
+		DPRINT("not support mdnie!\n");
+			return NULL;
+	}
 
 	if (!mdnie_class) {
 		mdnie_class = class_create(THIS_MODULE, "mdnie");

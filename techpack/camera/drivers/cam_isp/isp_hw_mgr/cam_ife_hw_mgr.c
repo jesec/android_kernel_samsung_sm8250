@@ -25,6 +25,7 @@
 #include "cam_common_util.h"
 
 #define CAM_IFE_HW_ENTRIES_MAX  20
+#define CAM_IFE_HW_CONFIG_WAIT_MAX_TRY  3
 
 #define TZ_SVC_SMMU_PROGRAM 0x15
 #define TZ_SAFE_SYSCALL_ID  0x3
@@ -3362,6 +3363,7 @@ static int cam_ife_mgr_config_hw(void *hw_mgr_priv,
 	struct cam_cdm_bl_request *cdm_cmd;
 	struct cam_ife_hw_mgr_ctx *ctx;
 	struct cam_isp_prepare_hw_update_data *hw_update_data;
+	unsigned long rem_jiffies = 0;
 
 	if (!hw_mgr_priv || !config_hw_args) {
 		CAM_ERR(CAM_ISP,
@@ -3473,26 +3475,45 @@ static int cam_ife_mgr_config_hw(void *hw_mgr_priv,
 			return rc;
 		}
 
-		if (cfg->init_packet) {
-			rc = wait_for_completion_timeout(
+		if (!cfg->init_packet)
+			goto end;
+
+		for (i = 0; i < CAM_IFE_HW_CONFIG_WAIT_MAX_TRY; i++) {
+			rem_jiffies = wait_for_completion_timeout(
 				&ctx->config_done_complete,
 				msecs_to_jiffies(30));
-			if (rc <= 0) {
+			if (rem_jiffies == 0) {
+				if (!cam_cdm_detect_hang_error(
+						ctx->cdm_handle)) {
+					CAM_INFO(CAM_ISP,
+						"CDM workqueue delay detected, wait for some more time req_id=%llu rc=%d ctx_index %d",
+						cfg->request_id, rc,
+						ctx->ctx_index);
+					continue;
+				}
 				CAM_ERR(CAM_ISP,
-					"config done completion timeout for req_id=%llu rc=%d ctx_index %d",
-					cfg->request_id, rc, ctx->ctx_index);
-				if (rc == 0)
-					rc = -ETIMEDOUT;
+					"config done completion timeout for req_id=%llu ctx_index %d",
+					cfg->request_id, ctx->ctx_index);
+				rc = -ETIMEDOUT;
+				goto end;
 			} else {
 				rc = 0;
 				CAM_DBG(CAM_ISP,
 					"config done Success for req_id=%llu ctx_index %d",
 					cfg->request_id, ctx->ctx_index);
+				break;
 			}
+		}
+		if ((i == CAM_IFE_HW_CONFIG_WAIT_MAX_TRY) && (rc == 0)) {
+			CAM_ERR(CAM_ISP,
+				"config done completion timeout for req_id=%llu ctx_index %d",
+				cfg->request_id, ctx->ctx_index);
+			rc = -ETIMEDOUT;
 		}
 	} else {
 		CAM_ERR(CAM_ISP, "No commands to config");
 	}
+end:
 	CAM_DBG(CAM_ISP, "Exit: Config Done: %llu",  cfg->request_id);
 
 	return rc;
@@ -3636,6 +3657,7 @@ static int cam_ife_mgr_stop_hw(void *hw_mgr_priv, void *stop_hw_args)
 	struct cam_ife_hw_mgr_ctx        *ctx;
 	enum cam_ife_csid_halt_cmd        csid_halt_type;
 	uint32_t                          i, master_base_idx = 0;
+	unsigned long                     rem_jiffies = 0;
 
 	if (!hw_mgr_priv || !stop_hw_args) {
 		CAM_ERR(CAM_ISP, "Invalid arguments");
@@ -3735,9 +3757,9 @@ static int cam_ife_mgr_stop_hw(void *hw_mgr_priv, void *stop_hw_args)
 
 	cam_ife_mgr_pause_hw(ctx);
 
-	rc = wait_for_completion_timeout(&ctx->config_done_complete,
+	rem_jiffies = wait_for_completion_timeout(&ctx->config_done_complete,
 		msecs_to_jiffies(10));
-	if (rc == 0) {
+	if (rem_jiffies == 0) {
 		CAM_WARN(CAM_ISP,
 			"config done completion timeout for last applied req_id=%llu rc=%d ctx_index %d",
 			ctx->applied_req_id, rc, ctx->ctx_index);
@@ -5863,6 +5885,7 @@ static int cam_ife_mgr_cmd(void *hw_mgr_priv, void *cmd_args)
 	struct cam_ife_hw_mgr_ctx *ctx = (struct cam_ife_hw_mgr_ctx *)
 		hw_cmd_args->ctxt_to_hw_map;
 	struct cam_isp_hw_cmd_args *isp_hw_cmd_args = NULL;
+	unsigned long rem_jiffies = 0;
 
 	if (!hw_mgr_priv || !cmd_args) {
 		CAM_ERR(CAM_ISP, "Invalid arguments");
@@ -5922,15 +5945,13 @@ static int cam_ife_mgr_cmd(void *hw_mgr_priv, void *cmd_args)
 		if (ctx->last_dump_flush_req_id == ctx->applied_req_id)
 			return 0;
 
-		rc = wait_for_completion_timeout(
+		rem_jiffies = wait_for_completion_timeout(
 			&ctx->config_done_complete,
 			msecs_to_jiffies(30));
-		if (rc <= 0) {
+		if (rem_jiffies == 0)
 			CAM_ERR(CAM_ISP,
-				"config done completion timeout, Reg dump will be unreliable rc=%d ctx_index %d",
-				rc, ctx->ctx_index);
-			rc = 0;
-		}
+				"config done completion timeout, Reg dump will be unreliable ctx_index %d",
+				ctx->ctx_index);
 
 		ctx->last_dump_flush_req_id = ctx->applied_req_id;
 		rc = cam_ife_mgr_handle_reg_dump(ctx, ctx->reg_dump_buf_desc,

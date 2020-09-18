@@ -755,7 +755,7 @@ static int dp_audio_on(struct dp_audio *dp_audio)
 		return -EINVAL;
 	}
 
-	DP_INFO("+++\n");
+	DP_DEBUG("+++\n");
 
 	dp_audio_register_ext_disp(audio);
 
@@ -771,7 +771,7 @@ static int dp_audio_on(struct dp_audio *dp_audio)
 	if (rc)
 		goto end;
 
-	DP_DEBUG("success\n");
+	DP_INFO("success\n");
 end:
 	return rc;
 }
@@ -788,9 +788,15 @@ static int dp_audio_off(struct dp_audio *dp_audio)
 		return -EINVAL;
 	}
 
-	DP_INFO("+++\n");
+	DP_DEBUG("+++\n");
 
 	audio = container_of(dp_audio, struct dp_audio_private, dp_audio);
+
+	if (!atomic_read(&audio->session_on)) {
+		DP_DEBUG("audio already off\n");
+		return rc;
+	}
+
 	ext = &audio->ext_audio_data;
 
 #ifdef CONFIG_SEC_DISPLAYPORT
@@ -808,7 +814,7 @@ static int dp_audio_off(struct dp_audio *dp_audio)
 	if (rc)
 		goto end;
 
-	DP_DEBUG("success\n");
+	DP_INFO("success\n");
 end:
 	dp_audio_config(audio, EXT_DISPLAY_CABLE_DISCONNECT);
 

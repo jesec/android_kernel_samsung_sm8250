@@ -40,13 +40,438 @@
 #include <linux/fs.h>
 #include <linux/list.h>
 #include <bcmiov.h>
+
+#ifdef DHD_USE_CISINFO_FROM_OTP
+#include <bcmdevs_legacy.h>    /* need to still support chips no longer in trunk firmware */
+#include <siutils.h>
+#include <pcie_core.h>
+#include <dhd_pcie.h>
+#endif /* DHD_USE_CISINFO_FROM_OTP */
+
+#ifdef DHD_USE_CISINFO_FROM_OTP
+#define CIS_TUPLE_HDR_LEN		2
+#if defined(BCM4375_CHIP)
+#define CIS_TUPLE_START_ADDRESS     0x18011120
+#define CIS_TUPLE_END_ADDRESS       0x18011177
+#elif defined(BCM4389_CHIP_DEF)
+/* 4389A0 CIS tuple start address is different with 4389B0
+ * due to OTP layout is changed from 4389B0
+ */
+#define CIS_TUPLE_START_ADDRESS     0x1801113C
+#define CIS_TUPLE_END_ADDRESS       0x18011193
+#define CIS_TUPLE_START_ADDRESS_89B0     0x18011058
+#define CIS_TUPLE_END_ADDRESS_89B0       0x180110AF
+#else
+#define CIS_TUPLE_START_ADDRESS     0x18011110
+#define CIS_TUPLE_END_ADDRESS       0x18011167
+#endif /* defined(BCM4375_CHIP) */
+#define CIS_TUPLE_MAX_COUNT            (uint32)((CIS_TUPLE_END_ADDRESS - CIS_TUPLE_START_ADDRESS\
+						+ 1) / sizeof(uint32))
+#define CIS_TUPLE_TAG_START			0x80
+#define CIS_TUPLE_TAG_VENDOR		0x81
+#define CIS_TUPLE_TAG_BOARDTYPE		0x1b
+#define CIS_TUPLE_TAG_LENGTH		1
+
+typedef struct cis_tuple_format {
+	uint8	id;
+	uint8	len;	/* total length of tag and data */
+	uint8	tag;
+	uint8	data[1];
+} cis_tuple_format_t;
+
+static int
+dhd_parse_board_information_bcm(dhd_bus_t *bus, int *boardtype,
+		unsigned char *vid, int *vid_length)
+{
+	int boardtype_backplane_addr[] = {
+		0x18010324, /* OTP Control 1 */
+		0x18012618, /* PMU min resource mask */
+	};
+	int boardtype_backplane_data[] = {
+		0x00fa0000,
+		0x0e4fffff /* Keep on ARMHTAVAIL */
+	};
+	int int_val = 0, i = 0;
+	cis_tuple_format_t *tuple;
+	int totlen, len;
+	uint32 raw_data[CIS_TUPLE_MAX_COUNT];
+	uint32 cis_start_addr = CIS_TUPLE_START_ADDRESS;
+#ifdef BCM4389_CHIP_DEF
+	uint chipid = dhd_bus_chip_id(bus->dhd);
+	uint revid = dhd_bus_chiprev_id(bus->dhd);
+
+	if ((BCM4389_CHIP_GRPID == chipid) && (revid == 1)) {
+		cis_start_addr = CIS_TUPLE_START_ADDRESS_89B0;
+	}
+	DHD_INFO(("%s : chipid :%u, revid %u\n", __FUNCTION__, chipid, revid));
+#endif /* BCM4389_CHIP_DEF */
+	for (i = 0; i < ARRAYSIZE(boardtype_backplane_addr); i++) {
+		/* Write new OTP and PMU configuration */
+		if (si_backplane_access(bus->sih, boardtype_backplane_addr[i], sizeof(int),
+				&boardtype_backplane_data[i], FALSE) != BCME_OK) {
+			DHD_ERROR(("invalid size/addr combination\n"));
+			return BCME_ERROR;
+		}
+
+		if (si_backplane_access(bus->sih, boardtype_backplane_addr[i], sizeof(int),
+				&int_val, TRUE) != BCME_OK) {
+			DHD_ERROR(("invalid size/addr combination\n"));
+			return BCME_ERROR;
+		}
+
+		DHD_INFO(("%s: boardtype_backplane_addr 0x%08x rdata 0x%04x\n",
+			__FUNCTION__, boardtype_backplane_addr[i], int_val));
+	}
+
+	/* read tuple raw data */
+	for (i = 0; i < CIS_TUPLE_MAX_COUNT; i++) {
+		if (si_backplane_access(bus->sih, cis_start_addr + i * sizeof(uint32),
+				sizeof(uint32),	&raw_data[i], TRUE) != BCME_OK) {
+			break;
+		}
+		DHD_INFO(("%s: tuple index %d, raw data 0x%08x\n", __FUNCTION__, i,  raw_data[i]));
+	}
+
+	totlen = i * sizeof(uint32);
+	tuple = (cis_tuple_format_t *)raw_data;
+
+	/* check the first tuple has tag 'start' */
+	if (tuple->id != CIS_TUPLE_TAG_START) {
+		DHD_ERROR(("%s: Can not find the TAG\n", __FUNCTION__));
+		return BCME_ERROR;
+	}
+
+	*vid_length = *boardtype = 0;
+
+	/* find tagged parameter */
+	while ((totlen >= (tuple->len + CIS_TUPLE_HDR_LEN)) &&
+			(*vid_length == 0 || *boardtype == 0)) {
+		len = tuple->len;
+
+		if ((tuple->tag == CIS_TUPLE_TAG_VENDOR) &&
+				(totlen >= (int)(len + CIS_TUPLE_HDR_LEN))) {
+			/* found VID */
+			memcpy(vid, tuple->data, tuple->len - CIS_TUPLE_TAG_LENGTH);
+			*vid_length = tuple->len - CIS_TUPLE_TAG_LENGTH;
+			prhex("OTP VID", tuple->data, tuple->len - CIS_TUPLE_TAG_LENGTH);
+		}
+		else if ((tuple->tag == CIS_TUPLE_TAG_BOARDTYPE) &&
+				(totlen >= (int)(len + CIS_TUPLE_HDR_LEN))) {
+			/* found boardtype */
+			*boardtype = (int)tuple->data[0];
+			prhex("OTP boardtype", tuple->data, tuple->len - CIS_TUPLE_TAG_LENGTH);
+		}
+
+		tuple = (cis_tuple_format_t*)((uint8*)tuple + (len + CIS_TUPLE_HDR_LEN));
+		totlen -= (len + CIS_TUPLE_HDR_LEN);
+	}
+
+	if (*vid_length <= 0 || *boardtype <= 0) {
+		DHD_ERROR(("failed to parse information (vid=%d, boardtype=%d)\n",
+			*vid_length, *boardtype));
+		return BCME_ERROR;
+	}
+
+	return BCME_OK;
+
+}
+
+#ifdef USE_CID_CHECK
+#define CHIP_REV_A0	1
+#define CHIP_REV_A1	2
+#define CHIP_REV_B0	3
+#define CHIP_REV_B1	4
+#define CHIP_REV_B2	5
+#define CHIP_REV_C0	6
+#define BOARD_TYPE_EPA				0x080f
+#define BOARD_TYPE_IPA				0x0827
+#define BOARD_TYPE_IPA_OLD			0x081a
+#define DEFAULT_CIDINFO_FOR_EPA		"r00a_e000_a0_ePA"
+#define DEFAULT_CIDINFO_FOR_IPA		"r00a_e000_a0_iPA"
+#define DEFAULT_CIDINFO_FOR_A1		"r01a_e30a_a1"
+#define DEFAULT_CIDINFO_FOR_B0		"r01i_e32_b0"
+
+naming_info_t bcm4361_naming_table[] = {
+	{ {""}, {""}, {""} },
+	{ {"r00a_e000_a0_ePA"}, {"_a0_ePA"}, {"_a0_ePA"} },
+	{ {"r00a_e000_a0_iPA"}, {"_a0"}, {"_a1"} },
+	{ {"r01a_e30a_a1"}, {"_r01a_a1"}, {"_a1"} },
+	{ {"r02a_e30a_a1"}, {"_r02a_a1"}, {"_a1"} },
+	{ {"r02c_e30a_a1"}, {"_r02c_a1"}, {"_a1"} },
+	{ {"r01d_e31_b0"}, {"_r01d_b0"}, {"_b0"} },
+	{ {"r01f_e31_b0"}, {"_r01f_b0"}, {"_b0"} },
+	{ {"r02g_e31_b0"}, {"_r02g_b0"}, {"_b0"} },
+	{ {"r01h_e32_b0"}, {"_r01h_b0"}, {"_b0"} },
+	{ {"r01i_e32_b0"}, {"_r01i_b0"}, {"_b0"} },
+	{ {"r02j_e32_b0"}, {"_r02j_b0"}, {"_b0"} },
+	{ {"r012_1kl_a1"}, {"_r012_a1"}, {"_a1"} },
+	{ {"r013_1kl_b0"}, {"_r013_b0"}, {"_b0"} },
+	{ {"r013_1kl_b0"}, {"_r013_b0"}, {"_b0"} },
+	{ {"r014_1kl_b0"}, {"_r014_b0"}, {"_b0"} },
+	{ {"r015_1kl_b0"}, {"_r015_b0"}, {"_b0"} },
+	{ {"r020_1kl_b0"}, {"_r020_b0"}, {"_b0"} },
+	{ {"r021_1kl_b0"}, {"_r021_b0"}, {"_b0"} },
+	{ {"r022_1kl_b0"}, {"_r022_b0"}, {"_b0"} },
+	{ {"r023_1kl_b0"}, {"_r023_b0"}, {"_b0"} },
+	{ {"r024_1kl_b0"}, {"_r024_b0"}, {"_b0"} },
+	{ {"r030_1kl_b0"}, {"_r030_b0"}, {"_b0"} },
+	{ {"r031_1kl_b0"}, {"_r030_b0"}, {"_b0"} },	/* exceptional case : r31 -> r30 */
+	{ {"r032_1kl_b0"}, {"_r032_b0"}, {"_b0"} },
+	{ {"r033_1kl_b0"}, {"_r033_b0"}, {"_b0"} },
+	{ {"r034_1kl_b0"}, {"_r034_b0"}, {"_b0"} },
+	{ {"r02a_e32a_b2"}, {"_r02a_b2"}, {"_b2"} },
+	{ {"r02b_e32a_b2"}, {"_r02b_b2"}, {"_b2"} },
+	{ {"r020_1qw_b2"}, {"_r020_b2"}, {"_b2"} },
+	{ {"r021_1qw_b2"}, {"_r021_b2"}, {"_b2"} },
+	{ {"r022_1qw_b2"}, {"_r022_b2"}, {"_b2"} },
+	{ {"r031_1qw_b2"}, {"_r031_b2"}, {"_b2"} }
+};
+
+naming_info_t bcm4375_naming_table[] = {
+	{ {""}, {""}, {""} },
+	{ {"e41_es11"}, {"_ES00_semco_b0"}, {"_b0"} },
+	{ {"e43_es33"}, {"_ES01_semco_b0"}, {"_b0"} },
+	{ {"e43_es34"}, {"_ES02_semco_b0"}, {"_b0"} },
+	{ {"e43_es35"}, {"_ES02_semco_b0"}, {"_b0"} },
+	{ {"e43_es36"}, {"_ES03_semco_b0"}, {"_b0"} },
+	{ {"e43_cs41"}, {"_CS00_semco_b1"}, {"_b1"} },
+	{ {"e43_cs51"}, {"_CS01_semco_b1"}, {"_b1"} },
+	{ {"e43_cs53"}, {"_CS01_semco_b1"}, {"_b1"} },
+	{ {"e43_cs61"}, {"_CS00_skyworks_b1"}, {"_b1"} },
+	{ {"1rh_es10"}, {"_1rh_es10_b0"}, {"_b0"} },
+	{ {"1rh_es11"}, {"_1rh_es11_b0"}, {"_b0"} },
+	{ {"1rh_es12"}, {"_1rh_es12_b0"}, {"_b0"} },
+	{ {"1rh_es13"}, {"_1rh_es13_b0"}, {"_b0"} },
+	{ {"1rh_es20"}, {"_1rh_es20_b0"}, {"_b0"} },
+	{ {"1rh_es32"}, {"_1rh_es32_b0"}, {"_b0"} },
+	{ {"1rh_es41"}, {"_1rh_es41_b1"}, {"_b1"} },
+	{ {"1rh_es42"}, {"_1rh_es42_b1"}, {"_b1"} },
+	{ {"1rh_es43"}, {"_1rh_es43_b1"}, {"_b1"} },
+	{ {"1rh_es44"}, {"_1rh_es44_b1"}, {"_b1"} }
+};
+
+naming_info_t bcm4389_naming_table[] = {
+	{ {""}, {""}, {""} },
+	{ {"e51_es11"}, {"_ES01_semco_a0"}, {"_a0"} },
+	{ {"e51_es12"}, {"_ES02_semco_a0"}, {"_a0"} },
+	{ {"e53_es23"}, {"_ES10_semco_b0"}, {"_b0"} },
+	{ {"e53_es24"}, {"_ES20_semco_b0"}, {"_b0"} },
+	{ {"e53_es25"}, {"_ES21_semco_b0"}, {"_b0"} },
+	{ {"1wk_es21"}, {"_1wk_es21_b0"}, {"_b0"} },
+	{ {"1wk_es30"}, {"_1wk_es30_b0"}, {"_b0"} },
+	{ {"1wk_es31"}, {"_1wk_es31_b0"}, {"_b0"} },
+	{ {"1wk_es32"}, {"_1wk_es32_b0"}, {"_b0"} }
+};
+
+/* select the NVRAM/FW tag naming table */
+naming_info_t *
+select_naming_table(dhd_pub_t *dhdp, int *table_size)
+{
+	naming_info_t * info = NULL;
+
+	if (!dhdp || !dhdp->bus || !dhdp->bus->sih)
+	{
+		DHD_ERROR(("%s : Invalid pointer \n", __FUNCTION__));
+		return info;
+	}
+
+	switch (si_chipid(dhdp->bus->sih)) {
+		case BCM4361_CHIP_ID:
+		case BCM4347_CHIP_ID:
+			info = &bcm4361_naming_table[0];
+			*table_size = ARRAYSIZE(bcm4361_naming_table);
+			DHD_INFO(("%s: info %p, ret %d\n", __FUNCTION__, info, *table_size));
+			break;
+		case BCM4375_CHIP_ID:
+			info = &bcm4375_naming_table[0];
+			*table_size = ARRAYSIZE(bcm4375_naming_table);
+			DHD_INFO(("%s: info %p, ret %d\n", __FUNCTION__, info, *table_size));
+			break;
+		case BCM4389_CHIP_ID:
+			info = &bcm4389_naming_table[0];
+			*table_size = ARRAYSIZE(bcm4389_naming_table);
+			DHD_INFO(("%s: info %p, ret %d\n", __FUNCTION__, info, *table_size));
+			break;
+		default:
+			DHD_ERROR(("%s: No MODULE NAMING TABLE found\n", __FUNCTION__));
+			break;
+	}
+
+	return info;
+}
+
+#define CID_FEM_MURATA				"_mur_"
+naming_info_t *
+dhd_find_naming_info(dhd_pub_t *dhdp, char *module_type)
+{
+	int i = 0;
+	naming_info_t *info = NULL;
+	int table_size = 0;
+
+	info = select_naming_table(dhdp, &table_size);
+	if (!info || !table_size) {
+		DHD_ERROR(("%s : Can't select the naming table\n", __FUNCTION__));
+		return NULL;
+	}
+
+	if (module_type && strlen(module_type) > 0) {
+		for (i = 1, info++; i < table_size; info++, i++) {
+			DHD_INFO(("%s : info %p, %d, info->cid_ext : %s\n",
+				__FUNCTION__, info, i, info->cid_ext));
+			if (!strncmp(info->cid_ext, module_type, strlen(info->cid_ext))) {
+				break;
+			}
+		}
+	}
+
+	return info;
+}
+
+static naming_info_t *
+dhd_find_naming_info_by_cid(dhd_pub_t *dhdp, char *cid_info)
+{
+	int i = 0;
+	char *ptr;
+	naming_info_t *info = NULL;
+	int table_size = 0;
+
+	info = select_naming_table(dhdp, &table_size);
+	if (!info || !table_size) {
+		DHD_ERROR(("%s : Can't select the naming table\n", __FUNCTION__));
+		return NULL;
+	}
+
+	/* truncate extension */
+	for (i = 1, ptr = cid_info; i < MODULE_NAME_INDEX_MAX && ptr; i++) {
+		ptr = bcmstrstr(ptr, "_");
+		if (ptr) {
+			ptr++;
+		}
+	}
+
+	for (i = 1, info++; i < table_size && ptr; info++, i++) {
+		DHD_INFO(("%s : info %p, %d, info->cid_ext : %s\n",
+				__FUNCTION__, info, i, info->cid_ext));
+		if (!strncmp(info->cid_ext, ptr, strlen(info->cid_ext))) {
+			break;
+		}
+	}
+
+	return info;
+}
+
+naming_info_t *
+dhd_find_naming_info_by_chip_rev(dhd_pub_t *dhdp, bool *is_murata_fem)
+{
+	int board_type = 0, chip_rev = 0, vid_length = 0;
+	unsigned char vid[MAX_VID_LEN];
+	naming_info_t *info = NULL;
+	char *cid_info = NULL;
+	dhd_bus_t *bus = NULL;
+
+	if (!dhdp) {
+		DHD_ERROR(("%s: dhdp is NULL \n", __FUNCTION__));
+		return NULL;
+	}
+
+	bus = dhdp->bus;
+
+	if (!bus || !bus->sih) {
+		DHD_ERROR(("%s:bus(%p) or bus->sih is NULL\n", __FUNCTION__, bus));
+		return NULL;
+	}
+
+	chip_rev = bus->sih->chiprev;
+
+	if (dhd_parse_board_information_bcm(bus, &board_type, vid, &vid_length)
+			!= BCME_OK) {
+		DHD_ERROR(("%s:failed to parse board information\n", __FUNCTION__));
+		return NULL;
+	}
+
+	DHD_INFO(("%s:chip version %d\n", __FUNCTION__, chip_rev));
+
+#ifdef BCM4361_CHIP
+	/* A0 chipset has exception only */
+	if (chip_rev == CHIP_REV_A0) {
+		if (board_type == BOARD_TYPE_EPA) {
+			info = dhd_find_naming_info(dhdp, DEFAULT_CIDINFO_FOR_EPA);
+		} else if ((board_type == BOARD_TYPE_IPA) ||
+				(board_type == BOARD_TYPE_IPA_OLD)) {
+			info = dhd_find_naming_info(dhdp, DEFAULT_CIDINFO_FOR_IPA);
+		}
+	} else
+#endif /* BCM4361_CHIP */
+	{
+		cid_info = dhd_get_cid_info(vid, vid_length);
+		if (cid_info) {
+			info = dhd_find_naming_info_by_cid(dhdp, cid_info);
+			if (strstr(cid_info, CID_FEM_MURATA)) {
+				*is_murata_fem = TRUE;
+			}
+		}
+	}
+
+	return info;
+}
+#endif /* USE_CID_CHECK */
+#ifdef USE_DIRECT_VID_TAG
+static int
+concate_nvram_by_vid(dhd_pub_t *dhdp, char *nv_path, char *chipstr)
+{
+	unsigned char vid[MAX_VID_LEN];
+	unsigned char vid2str[MAX_VID_LEN];
+
+	memset(vid, 0, sizeof(vid));
+	memset(vid2str, 0, sizeof(vid2str));
+
+	if (dhd_check_stored_module_info(vid) == BCME_OK) {
+		/* concate chip string tag */
+		strncat(nv_path, chipstr, strlen(nv_path));
+		/* concate nvram tag */
+		snprintf(vid2str, sizeof(vid2str), "_%x%x", vid[VENDOR_OFF], vid[MD_REV_OFF]);
+		strncat(nv_path, vid2str, strlen(nv_path));
+		DHD_ERROR(("%s: nvram_path : %s\n", __FUNCTION__, nv_path));
+	} else {
+		int board_type = 0, vid_length = 0;
+		dhd_bus_t *bus = NULL;
+		if (!dhdp) {
+
+			DHD_ERROR(("%s : dhdp is NULL \n", __FUNCTION__));
+			return BCME_ERROR;
+		}
+		bus = dhdp->bus;
+		if (dhd_parse_board_information_bcm(bus, &board_type, vid, &vid_length)
+				!= BCME_OK) {
+			DHD_ERROR(("%s:failed to parse board information\n", __FUNCTION__));
+			return BCME_ERROR;
+		} else {
+			/* concate chip string tag */
+			strncat(nv_path, chipstr, strlen(nv_path));
+			/* vid from CIS - vid[1] = vendor, vid[0] - module rev. */
+			snprintf(vid2str, sizeof(vid2str), "_%x%x",
+					vid[VENDOR_OFF], vid[MD_REV_OFF]);
+			/* concate nvram tag */
+			strncat(nv_path, vid2str, strlen(nv_path));
+			DHD_ERROR(("%s: nvram_path : %s\n", __FUNCTION__, nv_path));
+		}
+	}
+	return BCME_OK;
+}
+#endif /* USE_DIRECT_VID_TAG */
+#endif /* DHD_USE_CISINFO_FROM_OTP */
+
 #ifdef DHD_USE_CISINFO
 
 /* File Location to keep each information */
-#define MACINFO "/data/.mac.info"
-#define MACINFO_EFS "/efs/wifi/.mac.info"
+#define MACINFO PLATFORM_PATH".mac.info"
 #define CIDINFO PLATFORM_PATH".cid.info"
+#ifdef PLATFORM_SLP
+#define MACINFO_EFS "/csa/.mac.info"
+#else
+#define MACINFO_EFS "/efs/wifi/.mac.info"
 #define CIDINFO_DATA "/data/.cid.info"
+#endif /* PLATFORM_SLP */
 
 /* Definitions for MAC address */
 #define MAC_BUF_SIZE 20
@@ -96,6 +521,7 @@ static tuple_entry_t *dhd_alloc_tuple_entry(dhd_pub_t *dhdp, const int idx);
 static void dhd_free_tuple_entry(dhd_pub_t *dhdp, struct list_head *head);
 static int dhd_find_tuple_list_from_otp(dhd_pub_t *dhdp, int req_tup,
 	unsigned char* req_tup_len, struct list_head *head);
+#endif /* GET_MAC_FROM_OTP || USE_CID_CHECK */
 
 /* otp region read/write information */
 typedef struct otp_rgn_rw_info {
@@ -113,8 +539,6 @@ typedef struct otp_rgn_stat_info {
 	uint16 rgnstart;
 	uint16 rgnsize;
 } otp_rgn_stat_info_t;
-
-#endif /* GET_MAC_FROM_OTP || USE_CID_CHECK */
 
 typedef int (pack_handler_t)(void *ctx, uint8 *buf, uint16 *buflen);
 
@@ -589,11 +1013,13 @@ dhd_set_macaddr_from_file(dhd_pub_t *dhdp)
 #ifdef PLATFORM_SLP
 	/* Write random MAC address for framework */
 	if (dhd_write_file(filepath_mac, mac_buf, strlen(mac_buf)) < 0) {
-		DHD_ERROR(("%s: MAC address [%s] Failed to write into File:"
-			" %s\n", __FUNCTION__, mac_buf, filepath_mac));
+		DHD_ERROR(("%s: MAC address [%c%c:xx:xx:xx:x%c:%c%c] Failed to write into File:"
+			" %s\n", __FUNCTION__, mac_buf[0], mac_buf[1],
+			mac_buf[13], mac_buf[15], mac_buf[16], filepath_mac));
 	} else {
-		DHD_ERROR(("%s: MAC address [%s] written into File: %s\n",
-			__FUNCTION__, mac_buf, filepath_mac));
+		DHD_ERROR(("%s: MAC address [%c%c:xx:xx:xx:x%c:%c%c] written into File: %s\n",
+			__FUNCTION__, mac_buf[0], mac_buf[1], mac_buf[13],
+			mac_buf[15], mac_buf[16], filepath_mac));
 	}
 #endif /* PLATFORM_SLP */
 
@@ -1035,7 +1461,7 @@ vid_info_t vid_info[] = {
 };
 #elif defined(BCM4361_CHIP)
 vid_info_t vid_info[] = {
-#if defined(SUPPORT_BCM4361_MIXED_MODULES)
+#if defined(SUPPORT_MIXED_MODULES)
 	{ 3, { 0x66, 0x33, }, { "semco_sky_r00a_e000_a0" } },
 	{ 3, { 0x30, 0x33, }, { "semco_sky_r01a_e30a_a1" } },
 	{ 3, { 0x31, 0x33, }, { "semco_sky_r02a_e30a_a1" } },
@@ -1067,11 +1493,11 @@ vid_info_t vid_info[] = {
 	{ 3, { 0x52, 0x22, }, { "murata_mur_r022_1qw_b2" } },
 	{ 3, { 0x61, 0x22, }, { "murata_mur_r031_1qw_b2" } },
 	{ 0, { 0x00, }, { "samsung" } }           /* Default: Not specified yet */
-#endif /* SUPPORT_BCM4359_MIXED_MODULES */
+#endif /* SUPPORT_MIXED_MODULES */
 };
 #elif defined(BCM4375_CHIP)
 vid_info_t vid_info[] = {
-#if defined(SUPPORT_BCM4375_MIXED_MODULES)
+#if defined(SUPPORT_MIXED_MODULES)
 	{ 3, { 0x11, 0x33, }, { "semco_sky_e41_es11" } },
 	{ 3, { 0x33, 0x33, }, { "semco_sem_e43_es33" } },
 	{ 3, { 0x34, 0x33, }, { "semco_sem_e43_es34" } },
@@ -1091,7 +1517,7 @@ vid_info_t vid_info[] = {
 	{ 3, { 0x42, 0x22, }, { "murata_mur_1rh_es42" } },
 	{ 3, { 0x43, 0x22, }, { "murata_mur_1rh_es43" } },
 	{ 3, { 0x44, 0x22, }, { "murata_mur_1rh_es44" } }
-#endif /* SUPPORT_BCM4375_MIXED_MODULES */
+#endif /* SUPPORT_MIXED_MODULES */
 };
 #else
 vid_info_t vid_info[] = {
@@ -1140,6 +1566,7 @@ dhd_get_cid_info(unsigned char *vid, int vid_length)
 		}
 	}
 
+	DHD_ERROR(("%s : Can't find the cid info\n", __FUNCTION__));
 	return NULL;
 }
 

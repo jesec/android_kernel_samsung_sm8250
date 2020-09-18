@@ -117,6 +117,9 @@ void dsi_ctrl_hw_cmn_host_setup(struct dsi_ctrl_hw *ctrl,
 
 	DSI_W32(ctrl, DSI_CTRL, reg_value);
 
+	if (cfg->phy_type == DSI_PHY_TYPE_CPHY)
+		DSI_W32(ctrl, DSI_CPHY_MODE_CTRL, BIT(0));
+
 	if (ctrl->phy_isolation_enabled)
 		DSI_W32(ctrl, DSI_DEBUG_CTRL, BIT(28));
 	DSI_CTRL_HW_DBG(ctrl, "Host configuration complete\n");
@@ -178,6 +181,7 @@ void dsi_ctrl_hw_cmn_soft_reset(struct dsi_ctrl_hw *ctrl)
 	DSI_W32(ctrl, DSI_CTRL, reg_ctrl);
 	wmb(); /* make sure DSI controller is enabled again */
 	DSI_CTRL_HW_DBG(ctrl, "ctrl soft reset done\n");
+	SDE_EVT32(ctrl->index);
 }
 
 /**
@@ -767,7 +771,6 @@ void dsi_ctrl_hw_cmn_reset_cmd_fifo(struct dsi_ctrl_hw *ctrl)
 void dsi_ctrl_hw_cmn_trigger_command_dma(struct dsi_ctrl_hw *ctrl)
 {
 	DSI_W32(ctrl, DSI_CMD_MODE_DMA_SW_TRIGGER, 0x1);
-	DSI_CTRL_HW_DBG(ctrl, "CMD DMA triggered\n");
 }
 
 /**
@@ -986,6 +989,29 @@ void dsi_ctrl_hw_cmn_enable_status_interrupts(
 
 	DSI_CTRL_HW_DBG(ctrl, "Enable interrupts 0x%x, INT_CTRL=0x%x\n", ints,
 			reg);
+}
+
+void dsi_ctrl_hw_cmn_dma_read_before_trigger(struct dsi_ctrl_hw *ctrl)
+{
+	u32 fifo = 0, dma_ctrl, offset, length;
+
+	fifo = DSI_R32(ctrl, DSI_FIFO_STATUS);
+	SDE_EVT32(ctrl->index, 0xc, fifo);
+
+	dma_ctrl = DSI_R32(ctrl, DSI_COMMAND_MODE_DMA_CTRL);
+	SDE_EVT32(ctrl->index, 0x3c, dma_ctrl);
+
+	offset = DSI_R32(ctrl, DSI_DMA_CMD_OFFSET);
+	SDE_EVT32(ctrl->index, 0x48, offset);
+
+	length = DSI_R32(ctrl, DSI_DMA_CMD_LENGTH);
+	SDE_EVT32(ctrl->index, 0x4c, length);
+}
+
+u32 dsi_ctrl_hw_cmn_read_mdp_line_count(struct dsi_ctrl_hw *ctrl)
+{
+	u32 reg = DSI_MMSS_MISC_R32(ctrl, 0xb0);
+	return reg;
 }
 
 /**
@@ -1253,7 +1279,7 @@ void dsi_ctrl_hw_cmn_enable_error_interrupts(struct dsi_ctrl_hw *ctrl,
 	DSI_W32(ctrl, DSI_ERR_INT_MASK0, int_mask0);
 
 	DSI_CTRL_HW_DBG(ctrl, "[DSI_%d] enable errors = 0x%llx, int_mask0=0x%x\n",
-		 errors, int_mask0);
+		 ctrl->index, errors, int_mask0);
 }
 
 /**

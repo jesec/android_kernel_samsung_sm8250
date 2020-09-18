@@ -404,7 +404,7 @@ wl_cfgvendor_set_country(struct wiphy *wiphy,
 		}
 	}
 	/* country code is unique for dongle..hence using primary interface. */
-	err = wl_cfg80211_set_country_code(primary_ndev, country_code, true, true, -1);
+	err = wl_cfg80211_set_country_code(primary_ndev, country_code, true, true, 0);
 	if (err < 0) {
 		WL_ERR(("Set country failed ret:%d\n", err));
 	}
@@ -1513,8 +1513,39 @@ wl_cfgvendor_set_hal_started(struct wiphy *wiphy,
 #ifdef WL_STA_ASSOC_RAND
 	struct ether_addr primary_mac;
 	dhd_pub_t *dhd = (dhd_pub_t *)(cfg->pub);
-	int ret;
 #endif /* WL_STA_ASSOC_RAND */
+	int ret = BCME_OK;
+#if defined(WIFI_TURNON_USE_HALINIT)
+	struct net_device *ndev = wdev_to_wlc_ndev(wdev, cfg);
+	uint32 type;
+
+	if (!data) {
+		WL_DBG(("%s,data is not available\n", __FUNCTION__));
+	} else {
+		if (len > 0) {
+			type = nla_type(data);
+			WL_INFORM(("%s,type: %xh\n", __FUNCTION__, type));
+			if (type == SET_HAL_START_ATTRIBUTE_PRE_INIT) {
+				if (nla_len(data)) {
+					WL_INFORM(("%s, HAL version: %s\n", __FUNCTION__,
+							(char*)nla_data(data)));
+				}
+				WL_INFORM(("%s, dhd_open start\n", __FUNCTION__));
+				ret = dhd_open(ndev);
+				if (ret != BCME_OK) {
+					WL_INFORM(("%s, dhd_open failed\n", __FUNCTION__));
+					return ret;
+				} else {
+					WL_INFORM(("%s, dhd_open succeeded\n", __FUNCTION__));
+				}
+				return ret;
+			}
+		} else {
+			WL_ERR(("invalid len %d\n", len));
+		}
+	}
+#endif /* WIFI_TURNON_USE_HALINIT */
+	RETURN_EIO_IF_NOT_UP(cfg);
 	WL_INFORM(("%s,[DUMP] HAL STARTED\n", __FUNCTION__));
 
 	cfg->hal_started = true;
@@ -1533,7 +1564,7 @@ wl_cfgvendor_set_hal_started(struct wiphy *wiphy,
 		}
 	}
 #endif /* WL_STA_ASSOC_RAND */
-	return BCME_OK;
+	return ret;
 }
 
 static int
@@ -3980,6 +4011,13 @@ wl_cfgvendor_nan_parse_discover_args(struct wiphy *wiphy,
 				goto exit;
 			}
 			cmd_data->mac_list.num_mac_addr = nla_get_u16(iter);
+			if (cmd_data->mac_list.num_mac_addr >= NAN_SRF_MAX_MAC) {
+				WL_ERR(("trying to overflow num :%d\n",
+					cmd_data->mac_list.num_mac_addr));
+				cmd_data->mac_list.num_mac_addr = 0;
+				ret = -EINVAL;
+				goto exit;
+			}
 			break;
 		case NAN_ATTRIBUTE_MAC_ADDR_LIST:
 			if ((!cmd_data->mac_list.num_mac_addr) ||
@@ -7442,6 +7480,32 @@ exit:
 	return ret;
 }
 
+static int wl_cfgvendor_nla_put_dump_data(dhd_pub_t *dhd_pub, struct sk_buff *skb,
+		struct net_device *ndev, const uint32 fw_len)
+{
+	int ret = BCME_OK;
+
+#ifdef DNGL_AXI_ERROR_LOGGING
+	if (dhd_pub->smmu_fault_occurred) {
+		wl_cfgvendor_nla_put_axi_error_data(skb, ndev);
+	}
+#endif /* DNGL_AXI_ERROR_LOGGING */
+	if (dhd_pub->memdump_enabled || (dhd_pub->memdump_type == DUMP_TYPE_BY_SYSDUMP)) {
+		if (((ret = wl_cfgvendor_nla_put_debug_dump_data(skb, ndev)) < 0) ||
+			((ret = wl_cfgvendor_nla_put_memdump_data(skb, ndev, fw_len)) < 0) ||
+			((ret = wl_cfgvendor_nla_put_sssr_dump_data(skb, ndev)) < 0)) {
+			goto done;
+		}
+#ifdef DHD_PKT_LOGGING
+		if ((ret = wl_cfgvendor_nla_put_pktlogdump_data(skb, ndev, FALSE)) < 0) {
+			goto done;
+		}
+#endif /* DHD_PKT_LOGGING */
+	}
+done:
+	return ret;
+}
+
 static void wl_cfgvendor_dbg_send_file_dump_evt(void *ctx, const void *data,
 	const uint32 len, const uint32 fw_len)
 {
@@ -7488,25 +7552,9 @@ static void wl_cfgvendor_dbg_send_file_dump_evt(void *ctx, const void *data,
 	} else
 #endif /* DHD_PKT_LOGGING */
 	{
-#ifdef DNGL_AXI_ERROR_LOGGING
-		if (dhd_pub->smmu_fault_occurred) {
-			wl_cfgvendor_nla_put_axi_error_data(skb, ndev);
-		}
-#endif /* DNGL_AXI_ERROR_LOGGING */
-		if (dhd_pub->memdump_enabled || (dhd_pub->memdump_type == DUMP_TYPE_BY_SYSDUMP)) {
-			if (((ret = wl_cfgvendor_nla_put_memdump_data(skb, ndev, fw_len)) < 0) ||
-				((ret = wl_cfgvendor_nla_put_debug_dump_data(skb, ndev)) < 0) ||
-				((ret = wl_cfgvendor_nla_put_sssr_dump_data(skb, ndev)) < 0)) {
-				WL_ERR(("nla put failed\n"));
-				goto done;
-			}
-#ifdef DHD_PKT_LOGGING
-			if ((ret = wl_cfgvendor_nla_put_pktlogdump_data(skb, ndev, FALSE)) < 0) {
-				WL_ERR(("nla put failed\n"));
-				goto done;
-			}
-#endif /* DHD_PKT_LOGGING */
-
+		if ((ret = wl_cfgvendor_nla_put_dump_data(dhd_pub, skb, ndev, fw_len)) < 0) {
+			WL_ERR(("nla put failed\n"));
+			goto done;
 		}
 	}
 	/* TODO : Similar to above function add for debug_dump, sssr_dump, and pktlog also. */
@@ -7990,13 +8038,15 @@ static int wl_cfgvendor_set_pmk(struct wiphy *wiphy,
 		type = nla_type(iter);
 		switch (type) {
 			case BRCM_ATTR_DRIVER_KEY_PMK:
-				if (nla_len(iter) > sizeof(pmk.key)) {
+				pmk.flags = 0;
+				pmk.key_len = htod16(nla_len(iter));
+				ret = memcpy_s(pmk.key, sizeof(pmk.key),
+					(uint8 *)nla_data(iter), nla_len(iter));
+				if (ret) {
+					WL_ERR(("Failed to copy pmk: %d\n", ret));
 					ret = -EINVAL;
 					goto exit;
 				}
-				pmk.flags = 0;
-				pmk.key_len = htod16(nla_len(iter));
-				bcopy((uint8 *)nla_data(iter), pmk.key, len);
 				break;
 			default:
 				WL_ERR(("Unknown type: %d\n", type));

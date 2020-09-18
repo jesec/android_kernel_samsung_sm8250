@@ -58,3 +58,26 @@ unsigned long * __weak bitmap_zalloc(unsigned int nbits, gfp_t flags)
 	return bitmap_alloc(nbits, flags | __GFP_ZERO);
 }
 #endif /* KERNEL_VERSION(4,19,0) */
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5,4,0)
+
+#include <soc/qcom/scm.h>
+
+#define SCM_WDOG_DEBUG_BOOT_PART 0x9
+
+void __weak qcom_scm_disable_sdi(void)
+{
+	int ret;
+	struct scm_desc desc = {
+		.args[0] = 1,
+		.args[1] = 0,
+		.arginfo = SCM_ARGS(2),
+	};
+
+	/* Needed to bypass debug image on some chips */
+	ret = scm_call2_atomic(SCM_SIP_FNID(SCM_SVC_BOOT,
+			  SCM_WDOG_DEBUG_BOOT_PART), &desc);
+	if (ret)
+		pr_err("Failed to disable wdog debug: %d\n", ret);
+}
+#endif

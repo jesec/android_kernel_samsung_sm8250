@@ -162,6 +162,7 @@ struct cam_isp_context_state_monitor {
  * @substate_actiavted:        Current substate for the activated state.
  * @process_bubble:            Atomic variable to check if ctx is still
  *                             processing bubble.
+ * @bubble_frame_cnt:          Count number of frames since the req is in bubble
  * @substate_machine:          ISP substate machine for external interface
  * @substate_machine_irq:      ISP substate machine for irq handling
  * @req_base:                  Common request object storage
@@ -192,6 +193,7 @@ struct cam_isp_context {
 	uint32_t                              frame_id_meta;
 	enum cam_isp_ctx_activated_substate   substate_activated;
 	atomic_t                              process_bubble;
+	uint32_t                         bubble_frame_cnt;
 	struct cam_ctx_ops                   *substate_machine;
 	struct cam_isp_ctx_irq_ops           *substate_machine_irq;
 

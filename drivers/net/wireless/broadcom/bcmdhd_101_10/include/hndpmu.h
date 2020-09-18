@@ -1,7 +1,7 @@
 /*
  * HND SiliconBackplane PMU support.
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,7 +18,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #ifndef _hndpmu_h_
@@ -28,9 +28,9 @@
 #include <osl_decl.h>
 #include <siutils.h>
 #include <sbchipc.h>
-#ifdef BTOVERPCIE
+#if defined(BTOVERPCIE) || defined(BT_WLAN_REG_ON_WAR)
 #include <hnd_gcisem.h>
-#endif /* BTOVERPCIE */
+#endif /* BTOVERPCIE || BT_WLAN_REG_ON_WAR */
 
 #if defined(EDV)
 extern uint32 si_pmu_get_backplaneclkspeed(si_t *sih);
@@ -59,6 +59,7 @@ extern bool si_pmu_fast_lpo_enable_pmu(si_t *sih);
 extern uint32 si_cur_pmu_time(si_t *sih);
 extern bool si_pmu_cap_fast_lpo(si_t *sih);
 extern int si_pmu_fast_lpo_disable(si_t *sih);
+extern void si_pmu_dmn1_perst_wakeup(si_t *sih, bool set);
 #ifdef BCMPMU_STATS
 extern void si_pmustatstimer_init(si_t *sih);
 extern void si_pmustatstimer_dump(si_t *sih);
@@ -85,4 +86,11 @@ extern bool _bcm_pwr_opt_dis;
 
 extern int si_pmu_mem_pwr_off(si_t *sih, int core_idx);
 extern int si_pmu_mem_pwr_on(si_t *sih);
+
+#if defined(BT_WLAN_REG_ON_WAR)
+#define REG_ON_WAR_PMU_EXT_WAKE_REQ_MASK0_VAL 0x060000CDu
+
+extern void si_pmu_reg_on_war_ext_wake_perst_set(si_t *sih);
+extern void si_pmu_reg_on_war_ext_wake_perst_clear(si_t *sih);
+#endif /* BT_WLAN_REG_ON_WAR */
 #endif /* _hndpmu_h_ */

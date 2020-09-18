@@ -11,6 +11,7 @@
  * General Public License for more details.
  */
 
+#include "fingerprint.h"
 #include "qbt2000_common.h"
 
 #include <linux/msm-bus.h>
@@ -75,7 +76,7 @@ static void fill_bus_vector(void)
 }
 
 
-int fps_qbt2000_set_clk(struct qbt2000_drvdata *drvdata, bool onoff)
+int qbt2000_set_clk(struct qbt2000_drvdata *drvdata, bool onoff)
 {
 	int rc = 0;
 
@@ -94,7 +95,7 @@ int fps_qbt2000_set_clk(struct qbt2000_drvdata *drvdata, bool onoff)
 	return rc;
 }
 
-int fps_qbt2000_register_platform_variable(struct qbt2000_drvdata *drvdata)
+int qbt2000_register_platform_variable(struct qbt2000_drvdata *drvdata)
 {
 	int i = 0;
 	// register ddr freq setting table
@@ -109,14 +110,14 @@ int fps_qbt2000_register_platform_variable(struct qbt2000_drvdata *drvdata)
 	return 0;
 }
 
-int fps_qbt2000_unregister_platform_variable(struct qbt2000_drvdata *drvdata)
+int qbt2000_unregister_platform_variable(struct qbt2000_drvdata *drvdata)
 {
 	msm_bus_scale_unregister_client(bus_hdl);
 
 	return 0;
 }
 
-int fps_qbt2000_set_cpu_speedup(struct qbt2000_drvdata *drvdata, int onoff)
+int qbt2000_set_cpu_speedup(struct qbt2000_drvdata *drvdata, int onoff)
 {
 	int rc = 0;
 

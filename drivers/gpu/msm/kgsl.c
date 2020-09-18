@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2008-2019, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2008-2020, The Linux Foundation. All rights reserved.
  */
 
 #include <uapi/linux/sched/types.h>
@@ -967,7 +967,7 @@ void kgsl_svm_addr_mapping_check(pid_t pid, unsigned long fault_addr)
 		if ((fault_addr >= m->gpuaddr) &&
 			(fault_addr < (m->gpuaddr + m->size))) {
 #if !defined(CONFIG_SAMSUNG_PRODUCT_SHIP)
-			pr_err("%s pid : %d fault_addr : 0x%lx m->gpuaddr : 0x%lx m->size : 0x%lx\n", __func__, pid, fault_addr,
+			pr_err("%s pid : %d fault_addr : 0x%lx m->gpuaddr : 0x%llx m->size : 0x%llx\n", __func__, pid, fault_addr,
 					m->gpuaddr, m->size);
 #endif
 			mapped = 1;
@@ -991,6 +991,39 @@ void kgsl_svm_addr_mapping_log(struct kgsl_device *device, pid_t pid)
 	pr_debug("%s : nothing to do\n", __func__);
 }
 #else
+static void kgsl_svm_addr_log_print(struct kgsl_process_private *private)
+{
+	struct kgsl_mem_entry *entry = NULL;
+	struct kgsl_memdesc *m = NULL;
+	char usage[16];
+	int id = 0;
+
+	pr_err("%s : %16s %16s %16s %5s %16s\n", __func__,
+			"gpuaddr", "useraddr", "size", "id", "usage");
+
+	spin_lock(&private->mem_lock);
+
+	for (entry = idr_get_next(&private->mem_idr, &id); entry;
+		id++, entry = idr_get_next(&private->mem_idr, &id)) {
+		m = &entry->memdesc;
+		kgsl_get_memory_usage(usage, sizeof(usage), m->flags);
+
+		if (m->useraddr) {
+			pr_err("%s : %p %p %16llu %5d %16s\n", __func__,
+				(uint64_t *)(uintptr_t) m->gpuaddr,
+				(unsigned long *) m->useraddr,
+				m->size, entry->id, usage);
+		} else {
+			pr_err("%s : %p %pK %16llu %5d %16s\n", __func__,
+				(uint64_t *)(uintptr_t) m->gpuaddr,
+				(unsigned long *) m->useraddr,
+				m->size, entry->id, usage);
+		}
+	}
+
+	spin_unlock(&private->mem_lock);
+}
+
 void kgsl_svm_addr_mapping_log(struct kgsl_device *device, pid_t pid)
 {
 	struct file *fp;
@@ -1003,6 +1036,10 @@ void kgsl_svm_addr_mapping_log(struct kgsl_device *device, pid_t pid)
 	char dir_path[SZ_64] = {0, };
 
 	struct kgsl_process_private *private = NULL;
+
+	static DEFINE_RATELIMIT_STATE(_rs,
+					DEFAULT_RATELIMIT_INTERVAL,
+					DEFAULT_RATELIMIT_BURST);
 
 	private = kgsl_process_private_find(pid);
 	if (IS_ERR_OR_NULL(private)) {
@@ -1032,7 +1069,10 @@ void kgsl_svm_addr_mapping_log(struct kgsl_device *device, pid_t pid)
 
 	fp = filp_open(dir_path, O_RDONLY, 0444);
 	if (IS_ERR(fp)) {
-		dev_err_ratelimited(device->dev,"%s open fail err : %ld\n", dir_path, PTR_ERR(fp));
+		if (__ratelimit(&_rs)) {
+			pr_err("%s %s open fail err : %ld\n", __func__, dir_path, PTR_ERR(fp));
+			kgsl_svm_addr_log_print(private);
+		}
 		goto end;
 	}
 
@@ -5126,7 +5166,7 @@ static int _register_device(struct kgsl_device *device)
 	device->dev = device_create(kgsl_driver.class,
 				    &device->pdev->dev,
 				    dev, device,
-				    device->name);
+				    "%s", device->name);
 
 	if (IS_ERR(device->dev)) {
 		mutex_lock(&kgsl_driver.devlock);

@@ -99,6 +99,11 @@ const char *cam_get_module_name(unsigned int module_id)
 		name = "CAM-SBI";
 		break;
 #endif
+#if defined(CONFIG_USE_CAMERA_HW_BIG_DATA)
+	case CAM_HWB:
+		name = "CAM-HWB";
+		break;
+#endif
 	default:
 		name = "CAM";
 		break;

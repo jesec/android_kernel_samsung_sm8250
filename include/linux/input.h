@@ -184,6 +184,10 @@ struct input_dev {
 	struct list_head	h_list;
 	struct list_head	node;
 
+	unsigned int prev_num_vals;
+	unsigned int touch_slot_cnt;
+	int device_type;
+
 	unsigned int num_vals;
 	unsigned int max_vals;
 	struct input_value *vals;

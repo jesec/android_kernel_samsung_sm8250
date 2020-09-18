@@ -1400,6 +1400,7 @@ static int ss_gct_write(struct samsung_display_driver_data *vdd)
 	u8 vddm_set[MAX_VDDM] = {0x0, 0x10, 0x30};
 	int ret = 0;
 	struct dsi_panel *panel = GET_DSI_PANEL(vdd);
+	int wait_cnt = 1000; /* 1000 * 0.5ms = 500ms */
 
 	LCD_INFO("+\n");
 
@@ -1410,12 +1411,15 @@ static int ss_gct_write(struct samsung_display_driver_data *vdd)
 
 	mutex_lock(&vdd->exclusive_tx.ex_tx_lock);
 	vdd->exclusive_tx.enable = 1;
+	while (!list_empty(&vdd->cmd_lock.wait_list) && --wait_cnt)
+		usleep_range(500, 500);
+
 	for (i = TX_GCT_ENTER; i <= TX_GCT_EXIT; i++)
 		ss_set_exclusive_tx_packet(vdd, i, 1);
 	ss_set_exclusive_tx_packet(vdd, RX_GCT_CHECKSUM, 1);
 	ss_set_exclusive_tx_packet(vdd, TX_REG_READ_POS, 1);
 
-	mdelay(10);
+	usleep_range(10000, 11000);
 
 	checksum = vdd->gct.checksum;
 	for (i = VDDM_LV; i < MAX_VDDM; i++) {
@@ -1427,7 +1431,7 @@ static int ss_gct_write(struct samsung_display_driver_data *vdd)
 		set->cmds[11].msg.tx_buf[1] = vddm_set[i];
 		ss_send_cmd(vdd, TX_GCT_ENTER);
 
-		mdelay(150);
+		msleep(150);
 
 		ss_panel_data_read(vdd, RX_GCT_CHECKSUM, checksum++,
 				LEVEL_KEY_NONE);
@@ -1436,7 +1440,7 @@ static int ss_gct_write(struct samsung_display_driver_data *vdd)
 		LCD_INFO("(%d) TX_GCT_MID\n", i);
 		ss_send_cmd(vdd, TX_GCT_MID);
 
-		mdelay(150);
+		msleep(150);
 
 		ss_panel_data_read(vdd, RX_GCT_CHECKSUM, checksum++,
 				LEVEL_KEY_NONE);
@@ -1467,6 +1471,9 @@ static int ss_gct_write(struct samsung_display_driver_data *vdd)
 	 * So, on commands should be sent before wake up the waitq
 	 * and set exclusive_tx.enable to false.
 	 */
+	ss_set_exclusive_tx_packet(vdd, DSI_CMD_SET_OFF, 1);
+	ss_send_cmd(vdd, DSI_CMD_SET_OFF);
+
 	vdd->panel_state = PANEL_PWR_OFF;
 	dsi_panel_power_off(panel);
 	dsi_panel_power_on(panel);
@@ -1480,6 +1487,7 @@ static int ss_gct_write(struct samsung_display_driver_data *vdd)
 	ss_send_cmd(vdd, DSI_CMD_SET_ON);
 	dsi_panel_update_pps(panel);
 
+	ss_set_exclusive_tx_packet(vdd, DSI_CMD_SET_OFF, 0);
 	ss_set_exclusive_tx_packet(vdd, DSI_CMD_SET_ON, 0);
 	ss_set_exclusive_tx_packet(vdd, TX_LEVEL0_KEY_ENABLE, 0);
 	ss_set_exclusive_tx_packet(vdd, DSI_CMD_SET_PPS, 0);
@@ -1675,14 +1683,17 @@ static int __init samsung_panel_initialize(void)
 				strlen(panel_string)))
 		ndx = SECONDARY_DISPLAY_NDX;
 	else {
-		LCD_ERR("can not find panel_name (%s) / (%s)\n", panel_string, panel_name);
+		LCD_ERR("panel_string %s can not find panel_name (%s, %s)\n", panel_string, panel_name, panel_secondary_name);
 		return 0;
 	}
 
 	vdd = ss_get_vdd(ndx);
 	vdd->panel_func.samsung_panel_init = samsung_panel_init;
 
-	LCD_INFO("%s done.. \n", panel_name);
+	if (ndx == PRIMARY_DISPLAY_NDX)
+		LCD_INFO("%s done.. \n", panel_name);
+	else
+		LCD_INFO("%s done.. \n", panel_secondary_name);
 
 	return 0;
 }

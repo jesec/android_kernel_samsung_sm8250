@@ -39,6 +39,10 @@ config CNSS_ASYNC
 	  probe in parallel with other device drivers and will help to
 	  reduce kernel boot time.
 
+config SEC_SEPARATE_BDFILE
+	bool "Enable/disable SEC_SEPARATE_BDFILE"
+	depends on CNSS2
+
 config BUS_AUTO_SUSPEND
 	bool "Enable/Disable Runtime PM support for PCIe based WLAN Drivers"
 	depends on CNSS2

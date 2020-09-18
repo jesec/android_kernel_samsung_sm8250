@@ -2,7 +2,7 @@
  * Broadcom Dongle Host Driver (DHD), Linux-specific network interface
  * Basically selected code segments from usb-cdc.c and usb-rndis.c
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -413,7 +413,7 @@ sssr_support_onoff(struct dhd_info *dev, const char *buf, size_t count)
 		return -EINVAL;
 	}
 
-	support_sssr_dump = onoff;
+	support_sssr_dump = (uint)onoff;
 
 	return count;
 }
@@ -433,7 +433,7 @@ show_firmware_path(struct dhd_info *dev, char *buf)
 static ssize_t
 store_firmware_path(struct dhd_info *dev, const char *buf, size_t count)
 {
-	if ((int)strlen(buf) > MOD_PARAM_PATHLEN) {
+	if ((int)strlen(buf) >= MOD_PARAM_PATHLEN) {
 		return -EINVAL;
 	}
 
@@ -456,7 +456,7 @@ show_nvram_path(struct dhd_info *dev, char *buf)
 static ssize_t
 store_nvram_path(struct dhd_info *dev, const char *buf, size_t count)
 {
-	if ((int)strlen(buf) > MOD_PARAM_PATHLEN) {
+	if ((int)strlen(buf) >= MOD_PARAM_PATHLEN) {
 		return -EINVAL;
 	}
 
@@ -1293,10 +1293,7 @@ static struct dhd_attr dhd_attr_hang_privcmd_err =
 	__ATTR(hang_privcmd_err, 0660, show_hang_privcmd_err, set_hang_privcmd_err);
 #endif /* DHD_SEND_HANG_PRIVCMD_ERRORS */
 
-#if defined(CUSTOM_CONTROL_LOGTRACE) && defined(SHOW_LOGTRACE)
-/* By default logstr parsing is disabled */
-uint8 control_logtrace = 0;
-
+#if defined(SHOW_LOGTRACE)
 static ssize_t
 show_control_logtrace(struct dhd_info *dev, char *buf)
 {
@@ -1313,14 +1310,14 @@ set_control_logtrace(struct dhd_info *dev, const char *buf, size_t count)
 
 	val = bcm_atoi(buf);
 
-	control_logtrace = val ? 1 : 0;
+	control_logtrace = val;
 	DHD_ERROR(("%s: Set control logtrace: %d\n", __FUNCTION__, control_logtrace));
 	return count;
 }
 
 static struct dhd_attr dhd_attr_control_logtrace =
 __ATTR(control_logtrace, 0660, show_control_logtrace, set_control_logtrace);
-#endif /* CUSTOM_CONTROL_LOGTRACE & SHOW_LOGTRACE */
+#endif /* SHOW_LOGTRACE */
 
 #if defined(DISABLE_HE_ENAB) || defined(CUSTOM_CONTROL_HE_ENAB)
 uint8 control_he_enab = 1;
@@ -1403,9 +1400,9 @@ static struct attribute *default_file_attrs[] = {
 #ifdef DHD_SEND_HANG_PRIVCMD_ERRORS
 	&dhd_attr_hang_privcmd_err.attr,
 #endif /* DHD_SEND_HANG_PRIVCMD_ERRORS */
-#if defined(CUSTOM_CONTROL_LOGTRACE) && defined(SHOW_LOGTRACE)
+#if defined(SHOW_LOGTRACE)
 	&dhd_attr_control_logtrace.attr,
-#endif /* CUSTOM_CONTROL_LOGTRACE && SHOW_LOGTRACE */
+#endif /* SHOW_LOGTRACE */
 #if defined(DHD_TRACE_WAKE_LOCK)
 	&dhd_attr_wklock.attr,
 #endif

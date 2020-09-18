@@ -468,6 +468,9 @@ struct msm_display_topology {
  */
 struct msm_mode_info {
 	uint32_t frame_rate;
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+	uint32_t frame_rate_org;
+#endif
 	uint32_t vtotal;
 	uint32_t prefill_lines;
 	uint32_t jitter_numer;
@@ -577,15 +580,10 @@ struct msm_display_conn_params {
  * struct msm_drm_event - defines custom event notification struct
  * @base: base object required for event notification by DRM framework.
  * @event: event object required for event notification by DRM framework.
- * @info: contains information of DRM object for which events has been
- *        requested.
- * @data: memory location which contains response payload for event.
  */
 struct msm_drm_event {
 	struct drm_pending_event base;
-	struct drm_event event;
-	struct drm_msm_event_req info;
-	u8 data[];
+	struct drm_msm_event_resp event;
 };
 
 /* Commit/Event thread specific structure */

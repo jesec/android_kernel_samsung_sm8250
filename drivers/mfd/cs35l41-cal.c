@@ -42,6 +42,7 @@ static int cs35l41_cal_probe(struct platform_device *pdev)
 	bool right_channel_amp;
 	const char *dsp_part_name;
 	const char *mfd_suffix;
+	bool calibration_disable = false;
 	int ret;
 
 	regmap_read(cs35l41->regmap, 0x00000000, &temp);
@@ -52,6 +53,9 @@ static int cs35l41_cal_probe(struct platform_device *pdev)
 	ret = of_property_read_string(cs35l41->dev->of_node,
 						"cirrus,dsp-part-name",
 						&dsp_part_name);
+	calibration_disable = of_property_read_bool(cs35l41->dev->of_node,
+					"cirrus,calibration-disable");
+
 	if (ret < 0)
 		dsp_part_name = "cs35l41";
 
@@ -64,7 +68,8 @@ static int cs35l41_cal_probe(struct platform_device *pdev)
 	}
 
 	ret = cirrus_cal_amp_add(cs35l41->regmap, mfd_suffix,
-							dsp_part_name);
+							dsp_part_name,
+							calibration_disable);
 
 	if (ret < 0) {
 		dev_info(&pdev->dev,

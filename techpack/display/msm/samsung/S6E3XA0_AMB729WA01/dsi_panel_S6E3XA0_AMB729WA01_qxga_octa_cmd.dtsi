@@ -506,24 +506,21 @@
 		 *  SAMSUNG PANEL COVER CONTROL
 		 * **************************************************************
 		 */
-		samsung,panel_cover_control_enable_cmds_revA = [
 #if 0
+		samsung,panel_cover_control_enable_cmds_revA = [
 			29 01 00 00 00 00 03 F0 5A 5A
 			29 01 00 00 00 00 02 B0 04
 			29 01 00 00 00 00 03 F2 29 F0		/* LDI FPS Change(40.47hz) */
 			29 01 00 00 00 00 03 F0 A5 A5
-#endif
 		];
 
 		samsung,panel_cover_control_disable_cmds_revA = [
-#if 0
 			29 01 00 00 00 00 03 F0 5A 5A
 			29 01 00 00 00 00 02 B0 04
 			29 01 00 00 00 00 03 F2 1C 70		/* LDI FPS Recovery(59.835hz) */
 			29 01 00 00 00 00 03 F0 A5 A5
-#endif
 		];
-
+#endif
 		/* *************************************************************
 		 *   ALPM
 		 * *************************************************************
@@ -667,41 +664,54 @@
 		samsung,elvss_size = <3>;
 		samsung,irc_size = <28>;
 
-		samsung,flash_table_hbm_aor_offset = <0x09D4>;
-		samsung,flash_table_hbm_vint_offset = <0x0A78>;
-		samsung,flash_table_hbm_elvss_offset = <0x0ACA>;
-		samsung,flash_table_hbm_irc_offset = <0x0BC0>;
-
-		samsung,flash_table_normal_gamma_offset = <0x0000>;
-		samsung,flash_table_normal_aor_offset = <0x09E4>;
-		samsung,flash_table_normal_vint_offset = <0x0A80>;
-		samsung,flash_table_normal_elvss_offset = <0x0AE2>;
-		samsung,flash_table_normal_irc_offset = <0x0CA0>;
-
 		/*
 		 *  Below is only for flash
 		 */
-		samsung,support_flash_gamma;
-		samsung,flash_gamma_data_read_addr = <8 9 10>;
+/*		samsung,flash_gamma_type = "flash"; */
+#if 0
+		samsung,br_tables {
+			vrr60@0 {
+				samsung,ddi_vfp = <16>;
+				samsung,ddi_vbp = <16>;
+				samsung,ddi_vactive = <1536>;
 
-		/* FLASH WRITE CHECK */
-		samsung,flash_gamma_write_check_addr = <0x0A14BA>;
+				samsung,flash_gamma_data_read_addr = <8 9 10>;
 
-		/* Here is bank base address */
-		samsung,flash_gamma_start_bank = <0x0A0000>;
-		samsung,flash_gamma_end_bank = <0x0A14B7>;
+				/* Here is bank base address */
+				samsung,flash_gamma_start_bank = <0x0A0000>;
+				samsung,flash_gamma_end_bank = <0x0A14B7>;
 
-		/* Below is offset address of base bank */
-		samsung,flash_gamma_check_sum_start_offset = <0x14B8>;
-		samsung,flash_gamma_check_sum_end_offset = <0x14B9>;
+				samsung,flash_table_hbm_aor_offset = <0x09D4>;
+				samsung,flash_table_hbm_vint_offset = <0x0A78>;
+				samsung,flash_table_hbm_elvss_offset = <0x0ACA>;
+				samsung,flash_table_hbm_irc_offset = <0x0BC0>;
 
-		/* 0xC8 register */
-		samsung,flash_gamma_0xc8_start_offset = <0x2000>;
-		samsung,flash_gamma_0xc8_end_offset = <0x2021>;
-		samsung,flash_gamma_0xc8_size = <34>;
-		samsung,flash_gamma_0xc8_check_sum_start_offset = <0x2022>;
-		samsung,flash_gamma_0xc8_check_sum_end_offset = <0x2023>;
+				samsung,flash_table_normal_gamma_offset = <0x0000>;
+				samsung,flash_table_normal_aor_offset = <0x09E4>;
+				samsung,flash_table_normal_vint_offset = <0x0A80>;
+				samsung,flash_table_normal_elvss_offset = <0x0AE2>;
+				samsung,flash_table_normal_irc_offset = <0x0CA0>;
 
+				/* FLASH WRITE CHECK */
+				samsung,flash_gamma_write_check_addr = <0x0A14BA>;
+
+				/* Here is bank base address */
+				samsung,flash_gamma_start_bank = <0x0A0000>;
+				samsung,flash_gamma_end_bank = <0x0A14B7>;
+
+				/* Below is offset address of base bank */
+				samsung,flash_gamma_check_sum_start_offset = <0x14B8>;
+				samsung,flash_gamma_check_sum_end_offset = <0x14B9>;
+
+				/* 0xC8 register */
+				samsung,flash_gamma_0xc8_start_offset = <0x2000>;
+				samsung,flash_gamma_0xc8_end_offset = <0x2021>;
+				samsung,flash_gamma_0xc8_size = <34>;
+				samsung,flash_gamma_0xc8_check_sum_start_offset = <0x2022>;
+				samsung,flash_gamma_0xc8_check_sum_end_offset = <0x2023>;
+			};
+		};
+#endif
 		samsung,flash_gamma_pre_tx_cmds1_revA = [
 			/* pre-condition for reading flash gamma data */
 			39 01 00 00 00 00 03 9F A5 A5
@@ -778,21 +788,19 @@
 		];
 
 		// TODO: remove ccb
-		samsung,ccb_on_tx_cmds_revA = [
 #if 0
+		samsung,ccb_on_tx_cmds_revA = [
 			29 01 00 00 00 00 03 F0 5A 5A
 			29 00 00 00 00 00 03 B7 00 2A
 			29 01 00 00 00 00 03 F0 A5 A5
-#endif
 		];
 
 		samsung,ccb_off_tx_cmds_revA = [
-#if 0
 			29 01 00 00 00 00 03 F0 5A 5A
 			29 00 00 00 00 00 02 B7 00
 			29 01 00 00 00 00 03 F0 A5 A5
-#endif
 		];
+#endif
 
 		/* *************************************************************
 		 *  IRC
@@ -889,29 +897,24 @@
 			29 01 00 00 64 00 02 F7 03			/* 100 ms Delay */
 			29 01 00 00 00 00 03 F0 A5 A5
 		];
-
+#if 0
 		/* MICRO CRACK Test */
 		samsung,micro_short_test_on_tx_cmds_revA = [
-#if 0
 			29 00 00 00 00 00 03 F0 5A 5A
 			29 00 00 00 00 00 07 F6 41 14 57 43 A2 42
 			29 00 00 00 00 00 03 BF 33 25
 			29 01 00 00 00 00 03 F0 A5 A5
-#endif
 		];
 
 		samsung,micro_short_test_off_tx_cmds_revA = [
-#if 0
 			29 00 00 00 00 00 03 F0 5A 5A
 			29 00 00 00 00 00 07 F6 43 14 57 43 AA C1
 			29 00 00 00 00 00 03 BF 00 07
 			29 01 00 00 00 00 03 F0 A5 A5
-#endif
 		];
 
 		/* ISC Defect Test */
 		samsung,isc_defect_test_on_tx_cmds_revA = [
-#if 0
 			29 01 00 00 01 00 03 F0 5A 5A
 			29 01 00 00 01 00 03 FC 5A 5A
 			29 01 00 00 01 00 02 F5 80
@@ -931,11 +934,9 @@
 			29 01 00 00 01 00 02 F6 43
 			29 01 00 00 01 00 03 F0 A5 A5
 			29 01 00 00 01 00 03 FC A5 A5
-#endif
 		];
 
 		samsung,isc_defect_test_off_tx_cmds_revA = [
-#if 0
 			29 01 00 00 01 00 03 F0 5A 5A
 			29 01 00 00 01 00 03 FC 5A 5A
 			29 01 00 00 01 00 02 B0 09
@@ -945,8 +946,8 @@
 			29 01 00 00 01 00 03 F0 A5 A5
 			29 01 00 00 01 00 03 FC A5 A5
 			05 01 00 00 00 00 01 11			/* Sleep out */
-#endif
 		];
+#endif
 
 		samsung,ccd_test_on_tx_cmds_revA = [
 			29 00 00 00 00 00 03 F0 5A 5A

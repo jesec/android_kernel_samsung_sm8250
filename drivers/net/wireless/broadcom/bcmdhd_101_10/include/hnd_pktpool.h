@@ -1,7 +1,7 @@
 /*
  * HND generic packet pool operation primitives
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,7 +18,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #ifndef _hnd_pktpool_h_
@@ -252,6 +252,7 @@ extern pktpool_t *pktpool_d11hdr;
 extern pktpool_t *pktpool_shared_rxlfrag;
 
 int hnd_pktpool_init(osl_t *osh);
+void hnd_pktpool_deinit(osl_t *osh);
 int hnd_pktpool_fill(pktpool_t *pktpool, bool minimal);
 void hnd_pktpool_refill(bool minimal);
 

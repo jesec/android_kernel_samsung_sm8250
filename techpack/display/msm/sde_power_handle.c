@@ -46,7 +46,6 @@ static void sde_power_event_trigger_locked(struct sde_power_handle *phandle,
 	list_for_each_entry(event, &phandle->event_list, list) {
 		if (event->event_type & event_type) {
 			event->cb_fnc(event_type, event->usr);
-			phandle->last_event_handled = event_type;
 		}
 	}
 }
@@ -560,11 +559,15 @@ int sde_power_resource_init(struct platform_device *pdev,
 		goto clk_err;
 	}
 
+	SDE_EVT32(mp->num_clk,0x1111);
+
 	rc = msm_dss_clk_set_rate(mp->clk_config, mp->num_clk);
 	if (rc) {
 		pr_err("clock set rate failed rc=%d\n", rc);
 		goto bus_err;
 	}
+
+	SDE_EVT32(mp->num_clk,0x2222);
 
 	rc = sde_power_reg_bus_parse(pdev, phandle);
 	if (rc) {

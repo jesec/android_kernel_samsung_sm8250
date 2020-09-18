@@ -75,7 +75,7 @@ static void debug_partition_operation(struct work_struct *work)
 	}
 
 	fs = get_fs();
-	set_fs(get_ds());
+	set_fs(KERNEL_DS);
 
 	sched_data->error = 0;
 
@@ -127,7 +127,7 @@ static void ap_health_work_write_fn(struct work_struct *work)
 	}
 
 	fs = get_fs();
-	set_fs(get_ds());
+	set_fs(KERNEL_DS);
 
 	filp = filp_open(debugpartition_path, (O_RDWR | O_SYNC), 0);
 	if (IS_ERR(filp)) {
@@ -178,7 +178,7 @@ static bool init_lcd_debug_data(void)
 
 	memset((void *)&lcd_debug, 0, sizeof(struct lcd_debug_t));
 
-	pr_info("lcd_debug size[%ld]\n", sizeof(struct lcd_debug_t));
+	pr_info("lcd_debug size[%zu]\n", sizeof(struct lcd_debug_t));
 
 	do {
 		if (retry++) {

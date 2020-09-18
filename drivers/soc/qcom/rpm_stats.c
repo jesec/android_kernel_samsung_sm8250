@@ -64,6 +64,7 @@ struct msm_rpmstats_kobj_attr {
 
 #ifdef CONFIG_SEC_PM
 struct msm_rpmstats_platform_data *debug_pdata;
+u64 last_accumulated[5];
 #endif
 
 static inline u64 get_time_in_sec(u64 counter)
@@ -193,7 +194,7 @@ void debug_rpmstats_show(char *annotation)
 		return;
 	}
 
-	buf_ptr += sprintf(buf_ptr, "PM: %s:", annotation);
+	buf_ptr += sprintf(buf_ptr, "PM: %s: ", annotation);
 	for (i = 0; i < debug_pdata->num_records; i++) {
 		data.stat_type = msm_rpmstats_read_long_register(reg, i,
 				offsetof(struct msm_rpm_stats_data,
@@ -220,12 +221,19 @@ void debug_rpmstats_show(char *annotation)
 		time_since_last_mode = get_time_in_sec(time_since_last_mode);
 		actual_last_sleep = get_time_in_sec(data.accumulated);
 
-		buf_ptr += sprintf(buf_ptr, " %s(%d, %llu, %llu, %llu)",
+#ifdef CONFIG_SEC_PM
+		if (data.accumulated == last_accumulated[i])
+			buf_ptr += sprintf(buf_ptr, " *");
+
+		last_accumulated[i] = data.accumulated;
+#endif
+
+		buf_ptr += sprintf(buf_ptr, "%s(%d, %llu, %llu, %llu)",
 			stat_type, data.count, time_in_last_mode,
 			time_since_last_mode, actual_last_sleep);
 
 		if (i < (debug_pdata->num_records - 1))
-			buf_ptr += sprintf(buf_ptr, ",");
+			buf_ptr += sprintf(buf_ptr, ", ");
 		else
 			buf_ptr += sprintf(buf_ptr, "\n");
 	}

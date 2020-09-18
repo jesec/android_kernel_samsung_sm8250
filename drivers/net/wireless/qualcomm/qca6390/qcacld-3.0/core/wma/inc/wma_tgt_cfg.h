@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2019 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2013-2020 The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -43,6 +43,7 @@
  * @twt_requestor: TWT requestor capability
  * @twt_responder: TWT responder capability
  * @bcn_reception_stats: Beacon Reception stats capability
+ * @is_roam_scan_ch_to_host: Get roam scan channels from fw supported
  */
 struct wma_tgt_services {
 	uint32_t sta_power_save;
@@ -75,6 +76,7 @@ struct wma_tgt_services {
 	bool twt_responder;
 	bool obss_scan_offload;
 	bool bcn_reception_stats;
+	bool is_roam_scan_ch_to_host;
 };
 
 /**
@@ -112,6 +114,7 @@ struct wma_tgt_ht_cap {
  * @vht_mu_bformee: vht mu bformee
  * @vht_max_ampdu_len_exp: vht max ampdu len exp
  * @vht_txop_ps: vht txop ps
+ * @vht_mcs_10_11_supp: VHT MCS 10 & 11 support
  */
 struct wma_tgt_vht_cap {
 	uint32_t vht_max_mpdu;
@@ -127,6 +130,7 @@ struct wma_tgt_vht_cap {
 	uint32_t vht_mu_bformee;
 	uint32_t vht_max_ampdu_len_exp;
 	uint32_t vht_txop_ps;
+	uint32_t vht_mcs_10_11_supp;
 };
 
 /**
@@ -173,7 +177,7 @@ struct board_info {
  * @obss_color_collision_offloaded: obss color collision offloaded to firmware
  * @sar_version: Version of SAR supported by firmware
  * @bcast_twt_support: braodcast twt support
- * @ft_akm_service_bitmap: bitmap of FT akm supported by firmware
+ * @restricted_80p80_bw_supp: Restricted 80+80MHz(165MHz BW) support
  */
 struct wma_tgt_cfg {
 	uint32_t target_fw_version;
@@ -214,6 +218,6 @@ struct wma_tgt_cfg {
 	enum sar_version sar_version;
 	struct nan_tgt_caps nan_caps;
 	bool bcast_twt_support;
-	uint32_t ft_akm_service_bitmap;
+	bool restricted_80p80_bw_supp;
 };
 #endif /* WMA_TGT_CFG_H */

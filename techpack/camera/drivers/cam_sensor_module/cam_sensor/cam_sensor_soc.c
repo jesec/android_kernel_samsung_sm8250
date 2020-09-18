@@ -19,7 +19,11 @@ extern char front_cam_info[150];
 extern char front2_cam_info[150];
 #endif
 #if defined(CONFIG_SAMSUNG_FRONT_TOP)
+#if defined(CONFIG_SAMSUNG_FRONT_DUAL)
 extern char front3_cam_info[150];
+#else
+extern char front2_cam_info[150];
+#endif
 #endif
 
 #if defined(CONFIG_SAMSUNG_SECURE_CAMERA)
@@ -434,8 +438,13 @@ static int32_t cam_sensor_driver_get_dt_data(struct cam_sensor_ctrl_t *s_ctrl)
 		rc = cam_sensor_get_dt_camera_info(of_node, front2_cam_info);
 #endif
 #if defined(CONFIG_SAMSUNG_FRONT_TOP)
-	else if (s_ctrl->id == CAMERA_11)
+	else if (s_ctrl->id == CAMERA_11) {
+#if defined(CONFIG_SAMSUNG_FRONT_DUAL)
 		rc = cam_sensor_get_dt_camera_info(of_node, front3_cam_info);
+#else
+		rc = cam_sensor_get_dt_camera_info(of_node, front2_cam_info);
+#endif
+    }
 #endif
 	if (rc < 0) {
 		CAM_ERR(CAM_SENSOR, "failed: cam_sensor_get_dt_camera_info for cell-index %d rc %d", s_ctrl->id, rc);

@@ -38,6 +38,9 @@
 #include <event_log.h>
 #include <event_trace.h>
 #include <msgtrace.h>
+#ifdef WL_CFG80211
+#include <wl_cfg80211.h>
+#endif /* WL_CFG80211 */
 
 #if defined(DHD_EVENT_LOG_FILTER)
 #include <dhd_event_log_filter.h>
@@ -2256,6 +2259,7 @@ void pr_roam_nbr_req_v1(prcd_event_log_hdr_t *plog_hdr);
 void pr_roam_nbr_rep_v1(prcd_event_log_hdr_t *plog_hdr);
 void pr_roam_bcn_req_v1(prcd_event_log_hdr_t *plog_hdr);
 void pr_roam_bcn_rep_v1(prcd_event_log_hdr_t *plog_hdr);
+void pr_roam_wips_evt_v1(prcd_event_log_hdr_t *plog_hdr);
 
 void pr_roam_scan_start_v2(prcd_event_log_hdr_t *plog_hdr);
 void pr_roam_scan_cmpl_v2(prcd_event_log_hdr_t *plog_hdr);
@@ -2294,6 +2298,7 @@ static const pr_roam_tbl_t roam_log_print_tbl[] =
 	{ROAM_LOG_VER_3, ROAM_LOG_BCN_REQ, pr_roam_bcn_req_v3},
 	{ROAM_LOG_VER_3, ROAM_LOG_BCN_REP, pr_roam_bcn_rep_v3},
 	{ROAM_LOG_VER_3, ROAM_LOG_BTM_REP, pr_roam_btm_rep_v3},
+	{ROAM_LOG_VER_3, ROAM_LOG_WIPS_EVENT, pr_roam_wips_evt_v1},
 
 	{0, PRSV_PERIODIC_ID_MAX, NULL}
 
@@ -2543,6 +2548,31 @@ void pr_roam_btm_rep_v3(prcd_event_log_hdr_t *plog_hdr)
 		plog_hdr->armcycle, log->hdr.version,
 		log->req_mode, log->status, log->result,
 		MAC2STRDBG((uint8 *)&log->target_addr)));
+}
+
+void
+pr_roam_wips_evt_v1(prcd_event_log_hdr_t *plog_hdr)
+{
+	roam_log_wips_evt_v3_t *log = (roam_log_wips_evt_v3_t *)plog_hdr->log_ptr;
+#ifdef WL_CFG80211
+	wl_wips_event_info_t wips_event;
+	bzero(&wips_event, sizeof(wips_event));
+#endif	/* WL_CFG80211 */
+
+	if (log->misdeauth > 1) {
+		DHD_ERROR(("WIPS attack!! cnt=%d curRSSI=%d deauthRSSI=%d MAC=" MACDBG "\n",
+			log->misdeauth, log->current_rssi, log->deauth_rssi,
+			MAC2STRDBG((uint8 *)&log->bssid)));
+#if defined(WL_WIPSEVT) && defined(WL_CFG80211)
+		memcpy(&wips_event.bssid, &log->bssid, ETHER_ADDR_LEN);
+		wips_event.misdeauth = log->misdeauth;
+		wips_event.current_RSSI = log->current_rssi;
+		wips_event.deauth_RSSI = log->deauth_rssi;
+		wips_event.timestamp = log->timestamp;
+
+		wl_cfg80211_wips_event_ext(&wips_event);
+#endif /* WL_WIPSEVT && WL_CFG80211 */
+	}
 }
 
 void

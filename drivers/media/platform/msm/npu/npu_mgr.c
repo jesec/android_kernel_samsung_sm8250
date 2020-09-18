@@ -152,8 +152,6 @@ static int load_fw_nolock(struct npu_device *npu_dev, bool enable)
 		goto load_fw_fail;
 	}
 
-	NPU_INFO("waiting for status ready from fw\n");
-
 	/* Keep reading ctrl status until NPU is ready */
 	ret = wait_for_status_ready(npu_dev, REG_NPU_FW_CTRL_STATUS,
 		FW_CTRL_STATUS_MAIN_THREAD_READY_VAL,

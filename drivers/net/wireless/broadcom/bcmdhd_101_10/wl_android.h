@@ -1,7 +1,7 @@
 /*
  * Linux cfg80211 driver - Android related functions
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,7 +18,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #include <linux/module.h>
@@ -125,6 +125,8 @@ s32 wl_netlink_send_msg(int pid, int type, int seq, const void *data, size_t siz
 #define WL_CH_BANDWIDTH_20MHZ 20
 #define WL_CH_BANDWIDTH_40MHZ 40
 #define WL_CH_BANDWIDTH_80MHZ 80
+#define WL_CH_BANDWIDTH_160MHZ 160
+
 /* max number of mac filter list
  * restrict max number to 10 as maximum cmd string size is 255
  */

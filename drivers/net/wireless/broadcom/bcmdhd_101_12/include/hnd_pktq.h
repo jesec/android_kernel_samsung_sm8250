@@ -235,6 +235,7 @@ extern void *spktq_enq_chain(struct spktq *dspq, struct spktq *sspq);
 extern void *spktq_enq(struct spktq *spq, void *p);
 extern void *spktq_enq_head(struct spktq *spq, void *p);
 extern void *spktq_deq(struct spktq *spq);
+extern void *spktq_deq_virt(struct spktq *spq);
 extern void *spktq_deq_tail(struct spktq *spq);
 
 /* operations on a set of precedences in packet queue */

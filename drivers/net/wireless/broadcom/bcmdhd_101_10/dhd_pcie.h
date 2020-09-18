@@ -1,7 +1,7 @@
 /*
  * Linux DHD Bus Module for PCIE
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -36,36 +36,16 @@
 #include <mach/msm_pcie.h>
 #endif /* CONFIG_PCI_MSM */
 #endif /* CONFIG_ARCH_MSM */
-#ifdef EXYNOS_PCIE_LINKDOWN_RECOVERY
-#if defined(CONFIG_SOC_EXYNOS8890) || defined(CONFIG_SOC_EXYNOS8895) || \
-	defined(CONFIG_SOC_EXYNOS9810) || defined(CONFIG_SOC_EXYNOS9820) || \
-	defined(CONFIG_SOC_EXYNOS9830)
+#ifdef CONFIG_ARCH_EXYNOS
 #include <linux/exynos-pci-noti.h>
 extern int exynos_pcie_register_event(struct exynos_pcie_register_event *reg);
 extern int exynos_pcie_deregister_event(struct exynos_pcie_register_event *reg);
-#endif /* CONFIG_SOC_EXYNOS8890 || CONFIG_SOC_EXYNOS8895
-	* CONFIG_SOC_EXYNOS9810 || CONFIG_SOC_EXYNOS9820
-	* CONFIG_SOC_EXYNOS9830
-	*/
-#endif /* EXYNOS_PCIE_LINKDOWN_RECOVERY */
+#endif /* CONFIG_ARCH_EXYNOS */
 #endif /* SUPPORT_LINKDOWN_RECOVERY */
 
 #ifdef DHD_PCIE_RUNTIMEPM
 #include <linux/mutex.h>
 #include <linux/wait.h>
-
-#define DEFAULT_DHD_RUNTIME_MS 100
-#ifndef CUSTOM_DHD_RUNTIME_MS
-#define CUSTOM_DHD_RUNTIME_MS DEFAULT_DHD_RUNTIME_MS
-#endif /* CUSTOM_DHD_RUNTIME_MS */
-
-#ifndef MAX_IDLE_COUNT
-#define MAX_IDLE_COUNT 16
-#endif /* MAX_IDLE_COUNT */
-
-#ifndef MAX_RESUME_WAIT
-#define MAX_RESUME_WAIT 100
-#endif /* MAX_RESUME_WAIT */
 #endif /* DHD_PCIE_RUNTIMEPM */
 
 /* defines */
@@ -87,17 +67,10 @@ extern int exynos_pcie_deregister_event(struct exynos_pcie_register_event *reg);
 #define struct_pcie_notify		struct msm_pcie_notify
 #define struct_pcie_register_event	struct msm_pcie_register_event
 #endif /* CONFIG_ARCH_MSM */
-#ifdef EXYNOS_PCIE_LINKDOWN_RECOVERY
-#if defined(CONFIG_SOC_EXYNOS8890) || defined(CONFIG_SOC_EXYNOS8895) || \
-	defined(CONFIG_SOC_EXYNOS9810) || defined(CONFIG_SOC_EXYNOS9820) || \
-	defined(CONFIG_SOC_EXYNOS9830)
+#ifdef CONFIG_ARCH_EXYNOS
 #define struct_pcie_notify		struct exynos_pcie_notify
 #define struct_pcie_register_event	struct exynos_pcie_register_event
-#endif /* CONFIG_SOC_EXYNOS8890 || CONFIG_SOC_EXYNOS8895
-	* CONFIG_SOC_EXYNOS9810 || CONFIG_SOC_EXYNOS9820
-	* CONFIG_SOC_EXYNOS9830
-	*/
-#endif /* EXYNOS_PCIE_LINKDOWN_RECOVERY */
+#endif /* CONFIG_ARCH_EXYNOS */
 #endif /* SUPPORT_LINKDOWN_RECOVERY */
 
 #define MAX_DHD_TX_FLOWS	320
@@ -356,19 +329,12 @@ typedef struct dhd_bus {
 	bool	irq_registered;
 	bool	d2h_intr_method;
 #ifdef SUPPORT_LINKDOWN_RECOVERY
-#if defined(CONFIG_ARCH_MSM) || (defined(EXYNOS_PCIE_LINKDOWN_RECOVERY) && \
-	defined(CONFIG_SOC_EXYNOS8890) || defined(CONFIG_SOC_EXYNOS8895) || \
-	defined(CONFIG_SOC_EXYNOS9810) || defined(CONFIG_SOC_EXYNOS9820) || \
-	defined(CONFIG_SOC_EXYNOS9830))
+#if defined(CONFIG_ARCH_MSM) || defined(CONFIG_ARCH_EXYNOS)
 #ifdef CONFIG_ARCH_MSM
 	uint8 no_cfg_restore;
 #endif /* CONFIG_ARCH_MSM */
 	struct_pcie_register_event pcie_event;
-#endif /* CONFIG_ARCH_MSM || (EXYNOS_PCIE_LINKDOWN_RECOVERY &&
-	* (CONFIG_SOC_EXYNOS8890 || CONFIG_SOC_EXYNOS8895 ||
-	* CONFIG_SOC_EXYNOS9810 || CONFIG_SOC_EXYNOS9820 ||
-	* CONFIG_SOC_EXYNOS9830)
-	*/
+#endif /* CONFIG_ARCH_MSM || CONFIG_ARCH_EXYNOS */
 	bool read_shm_fail;
 #endif /* SUPPORT_LINKDOWN_RECOVERY */
 	int32 idletime;                 /* Control for activity timeout */
@@ -422,7 +388,8 @@ typedef struct dhd_bus {
 #endif /* BCMPCIE_OOB_HOST_WAKE */
 	uint64 isr_entry_time;
 	uint64 isr_exit_time;
-	uint64 dpc_sched_time;
+	uint64 isr_sched_dpc_time;
+	uint64 rpm_sched_dpc_time;
 	uint64 dpc_entry_time;
 	uint64 dpc_exit_time;
 	uint64 resched_dpc_time;
@@ -659,6 +626,8 @@ extern void dhdpcie_free_irq(dhd_bus_t *bus);
 extern void dhdpcie_bus_ringbell_fast(struct dhd_bus *bus, uint32 value);
 extern void dhdpcie_bus_ringbell_2_fast(struct dhd_bus *bus, uint32 value, bool devwake);
 extern void dhdpcie_dongle_reset(dhd_bus_t *bus);
+extern int dhd_bus_cfg_sprom_ctrl_bp_reset(struct dhd_bus *bus);
+extern int dhd_bus_cfg_ss_ctrl_bp_reset(struct dhd_bus *bus);
 #ifdef DHD_PCIE_NATIVE_RUNTIMEPM
 extern int dhdpcie_bus_suspend(struct  dhd_bus *bus, bool state, bool byint);
 #else
@@ -685,8 +654,8 @@ extern uint32 dhdpcie_rc_access_cap(dhd_bus_t *bus, int cap, uint offset, bool i
 extern uint32 dhdpcie_ep_access_cap(dhd_bus_t *bus, int cap, uint offset, bool is_ext,
 		bool is_write, uint32 writeval);
 extern uint32 dhd_debug_get_rc_linkcap(dhd_bus_t *bus);
-extern int dhdpcie_start_host_pcieclock(dhd_bus_t *bus);
-extern int dhdpcie_stop_host_pcieclock(dhd_bus_t *bus);
+extern int dhdpcie_start_host_dev(dhd_bus_t *bus);
+extern int dhdpcie_stop_host_dev(dhd_bus_t *bus);
 extern int dhdpcie_disable_device(dhd_bus_t *bus);
 extern int dhdpcie_alloc_resource(dhd_bus_t *bus);
 extern void dhdpcie_free_resource(dhd_bus_t *bus);
@@ -737,6 +706,8 @@ extern void dhd_bus_doorbell_timeout_reset(struct dhd_bus *bus);
 #else
 #error "Not supported platform"
 #endif /* CONFIG_SOC_EXYNOSXXXX & CONFIG_MACH_UNIVERSALXXXX */
+extern void exynos_pcie_pm_suspend(int ch_num);
+extern void exynos_pcie_pm_resume(int ch_num);
 #endif /* CONFIG_ARCH_EXYNOS */
 
 #if defined(CONFIG_ARCH_MSM)
@@ -798,11 +769,6 @@ extern void dhd_bus_doorbell_timeout_reset(struct dhd_bus *bus);
 
 #define DHD_REGULAR_RING    0
 #define DHD_HP2P_RING    1
-
-#ifdef USE_EXYNOS_PCIE_RC_PMPATCH
-extern int exynos_pcie_pm_suspend(int ch_num);
-extern int exynos_pcie_pm_resume(int ch_num);
-#endif /* USE_EXYNOS_PCIE_RC_PMPATCH */
 
 #ifdef CONFIG_ARCH_TEGRA
 extern int tegra_pcie_pm_suspend(void);
@@ -866,16 +832,22 @@ extern bool dhdpcie_bus_get_pcie_dar_supported(dhd_bus_t *bus);
 extern bool dhdpcie_bus_get_hp2p_supported(dhd_bus_t *bus);
 
 static INLINE uint32
-dhd_pcie_config_read(osl_t *osh, uint offset, uint size)
+dhd_pcie_config_read(dhd_bus_t *bus, uint offset, uint size)
 {
+	/* For 4375 or prior chips to 4375 */
+	if (bus->sih->buscorerev <= 64) {
 	OSL_DELAY(100);
-	return OSL_PCI_READ_CONFIG(osh, offset, size);
+	}
+	return OSL_PCI_READ_CONFIG(bus->osh, offset, size);
 }
 
 static INLINE uint32
 dhd_pcie_corereg_read(si_t *sih, uint val)
 {
+	/* For 4375 or prior chips to 4375 */
+	if (sih->buscorerev <= 64) {
 	OSL_DELAY(100);
+	}
 	si_corereg(sih, sih->buscoreidx, OFFSETOF(sbpcieregs_t, configaddr), ~0, val);
 	return si_corereg(sih, sih->buscoreidx, OFFSETOF(sbpcieregs_t, configdata), 0, 0);
 }
@@ -888,5 +860,6 @@ extern void dhd_pcie_intr_count_dump(dhd_pub_t *dhd);
 extern void dhdpcie_bus_clear_intstatus(dhd_bus_t *bus);
 
 extern int dhd_get_pcie_linkspeed(dhd_pub_t *dhd);
+extern void dhdpcie_bar1_window_switch_enab(dhd_bus_t *bus);
 
 #endif /* dhd_pcie_h */

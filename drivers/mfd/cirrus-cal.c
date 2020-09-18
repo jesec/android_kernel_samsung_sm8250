@@ -46,6 +46,7 @@
 #define CIRRUS_CAL_ISC_SAVE_LOCATION		"/efs/cirrus/isc_cal"
 
 #define CS35L41_CAL_COMPLETE_DELAY_MS	1250
+#define CS35L41_CAL_RETRIES		2
 #define CS34L40_CAL_AMBIENT_DEFAULT	23
 #define CS34L40_CAL_RDC_DEFAULT		8580
 
@@ -55,6 +56,7 @@ struct cirrus_cal_t {
 	struct cirrus_mfd_amp *amps;
 	int num_amps;
 	bool cal_running;
+	int cal_retry;
 	struct mutex lock;
 	struct delayed_work cal_complete_work;
 	unsigned int efs_cache_temp;
@@ -62,7 +64,7 @@ struct cirrus_cal_t {
 	unsigned int efs_cache_rdc[CIRRUS_MAX_AMPS];
 	unsigned int efs_cache_vsc[CIRRUS_MAX_AMPS];
 	unsigned int efs_cache_isc[CIRRUS_MAX_AMPS];
-	unsigned int efs_cache_vimon_cal[CIRRUS_MAX_AMPS];	
+	unsigned int efs_cache_vimon_cal[CIRRUS_MAX_AMPS];
 	unsigned int v_validation[CIRRUS_MAX_AMPS];
 	unsigned int dsp_input1_cache[CIRRUS_MAX_AMPS];
 	unsigned int dsp_input2_cache[CIRRUS_MAX_AMPS];
@@ -78,6 +80,8 @@ struct cs35l41_dsp_buf {
 	struct list_head list;
 	void *buf;
 };
+
+static int cirrus_cal_start(void);
 
 struct cirrus_mfd_amp *cirrus_cal_get_amp_from_suffix(const char *suffix)
 {
@@ -125,7 +129,8 @@ int cirrus_cal_component_add(struct snd_soc_component *component, const char *mf
 #endif /* CS35L41_FACTORY_RECOVERY_SYSFS */
 
 int cirrus_cal_amp_add(struct regmap *regmap_new, const char *mfd_suffix,
-					const char *dsp_part_name)
+					const char *dsp_part_name,
+					bool calibration_disable)
 {
 	struct cirrus_mfd_amp *amp = cirrus_cal_get_amp_from_suffix(mfd_suffix);
 
@@ -136,6 +141,7 @@ int cirrus_cal_amp_add(struct regmap *regmap_new, const char *mfd_suffix,
 				mfd_suffix, dsp_part_name);
 			amp->regmap = regmap_new;
 			amp->dsp_part_name = dsp_part_name;
+			amp->calibration_disable = calibration_disable;
 		} else {
 			dev_err(cirrus_cal->dev,
 				"No amp with suffix %s registered\n",
@@ -387,19 +393,23 @@ out:
 static void cirrus_cal_complete_work(struct work_struct *work)
 {
 	int rdc, status, checksum, temp, vsc, isc;
+	int delay = msecs_to_jiffies(CS35L41_CAL_COMPLETE_DELAY_MS);
 	unsigned long long int ohms;
 	unsigned int cal_state;
-	bool vsc_in_range, isc_in_range;	
+	bool vsc_in_range, isc_in_range;
 	char *playback_config_filename;
 	int timeout = 100, amp, index;
 	struct regmap *regmap;
 	const char *dsp_part_name;
-
+	bool cal_retry = false;
 
 
 	mutex_lock(&cirrus_cal->lock);
 
 	for (amp = 0; amp < cirrus_cal->num_amps; amp++) {
+		if (cirrus_cal->amps[amp].calibration_disable)
+			continue;
+
 		regmap = cirrus_cal->amps[amp].regmap;
 		dsp_part_name = cirrus_cal->amps[amp].dsp_part_name;
 		index = cirrus_cal->amps[amp].index;
@@ -451,6 +461,12 @@ static void cirrus_cal_complete_work(struct work_struct *work)
 			rdc = status = checksum = 0;
 			regmap_write(regmap, CS35L41_VIMON_CAL_STATUS,
 					CS35L41_CAL_VIMON_STATUS_INVALID);
+
+			if (cirrus_cal->cal_retry < CS35L41_CAL_RETRIES) {
+				dev_info(cirrus_cal->dev, "Retry Calibration\n");
+
+				cal_retry = true;
+			}
 		}
 
 		dev_info(cirrus_cal->dev, "Calibration finished: cs35l41%s\n",
@@ -523,17 +539,28 @@ static void cirrus_cal_complete_work(struct work_struct *work)
 		cirrus_cal_unmute_dsp_inputs(regmap, index);
 		dev_dbg(cirrus_cal->dev, "DSP Inputs unmuted\n");
 
-		cirrus_cal->cal_running = 0;
+		if (cal_retry == false)
+			cirrus_cal->cal_running = 0;
 		cirrus_cal->efs_cache_read[index] = 0;
 
 		kfree(playback_config_filename);
+	}
+
+	if (cal_retry == true) {
+		cirrus_cal_start();
+		queue_delayed_work(system_unbound_wq,
+			&cirrus_cal->cal_complete_work,
+			delay);
+
+		cirrus_cal->cal_retry++;
 	}
 
 	dev_dbg(cirrus_cal->dev, "Calibration complete\n");
 	mutex_unlock(&cirrus_cal->lock);
 }
 
-static void cirrus_cal_v_val_complete(void)
+static void cirrus_cal_v_val_complete(struct cirrus_mfd_amp *amps, int num_amps,
+					bool separate)
 {
 	char *playback_config_filename;
 	unsigned int cal_state;
@@ -541,10 +568,11 @@ static void cirrus_cal_v_val_complete(void)
 	struct regmap *regmap;
 	const char *dsp_part_name;
 
-	for (amp = 0; amp < cirrus_cal->num_amps; amp++) {
-		regmap = cirrus_cal->amps[amp].regmap;
-		dsp_part_name = cirrus_cal->amps[amp].dsp_part_name;
-		index = cirrus_cal->amps[amp].index;
+	for (amp = 0; amp < num_amps; amp++) {
+		if (amps[amp].v_val_separate && !separate) continue;
+		regmap = amps[amp].regmap;
+		dsp_part_name = amps[amp].dsp_part_name;
+		index = amps[amp].index;
 
 		playback_config_filename = kzalloc(PAGE_SIZE, GFP_KERNEL);
 		snprintf(playback_config_filename,
@@ -645,10 +673,11 @@ static void cirrus_cal_vimon_cal_start(struct cirrus_mfd_amp *amp)
 	regmap_write(regmap, CS35L41_HALO_HEARTBEAT, 0);
 }
 
-static void cirrus_cal_vimon_cal_complete(struct cirrus_mfd_amp *amp)
+static int cirrus_cal_vimon_cal_complete(struct cirrus_mfd_amp *amp)
 {
 	struct regmap *regmap = amp->regmap;
 	unsigned int vimon_cal, vsc, isc;
+	bool vsc_in_range, isc_in_range;
 
 	regmap_read(regmap, CS35L41_VIMON_CAL_STATUS, &vimon_cal);
 	regmap_read(regmap, CS35L41_VIMON_CAL_VSC, &vsc);
@@ -661,6 +690,14 @@ static void cirrus_cal_vimon_cal_complete(struct cirrus_mfd_amp *amp)
 			CS35L41_BST_CTL_MASK, 0);
 	regmap_update_bits(regmap, CS35L41_PWR_CTRL3,
 			CS35L41_WKFET_AMP_EN_MASK, CS35L41_WKFET_AMP_EN_MASK);
+
+	vsc_in_range = cirrus_cal_vsc_in_range(vsc);
+	isc_in_range = cirrus_cal_isc_in_range(isc);
+
+	if (!vsc_in_range || !isc_in_range)
+		vimon_cal = CS35L41_CAL_VIMON_STATUS_INVALID;
+
+	return vimon_cal;
 }
 
 static int cirrus_cal_wait_for_active(struct cirrus_mfd_amp *amp)
@@ -669,6 +706,7 @@ static int cirrus_cal_wait_for_active(struct cirrus_mfd_amp *amp)
 	unsigned int halo_state;
 	struct regmap *regmap = amp->regmap;
 	int timeout = 50;
+
 	regmap_read(regmap,
 			CS35L41_PWR_CTRL1, &global_en);
 	while ((global_en & 1) == 0) {
@@ -687,6 +725,7 @@ static int cirrus_cal_wait_for_active(struct cirrus_mfd_amp *amp)
 	} while ((halo_state == 0) && timeout > 0);
 
 	if (timeout == 0) {
+		dev_err(cirrus_cal->dev, "Failed to setup calibration\n");
 		return -EINVAL;
 	}
 
@@ -810,14 +849,14 @@ int cirrus_cal_apply(const char *mfd_suffix)
 		temp = cirrus_cal->efs_cache_temp;
 		vsc = cirrus_cal->efs_cache_vsc[amp->index];
 		isc = cirrus_cal->efs_cache_isc[amp->index];
-		vimon_cal_status = cirrus_cal->efs_cache_vimon_cal[amp->index];		
+		vimon_cal_status = cirrus_cal->efs_cache_vimon_cal[amp->index];
 	} else {
 		snprintf(efs_name,
 			PAGE_SIZE, "%s%s",
 			CIRRUS_CAL_RDC_SAVE_LOCATION,
 			mfd_suffix);
 		ret = cirrus_cal_read_file(efs_name, &rdc);
-		if (ret < 0) {	
+		if (ret < 0) {
 			dev_err(cirrus_cal->dev,
 				"No saved rdc, writing default\n");
 			rdc = CS34L40_CAL_RDC_DEFAULT;
@@ -826,7 +865,7 @@ int cirrus_cal_apply(const char *mfd_suffix)
 						&temp);
 		if (ret < 0) {
 			dev_err(cirrus_cal->dev,
-				"No saved temp, writing default\n");			
+				"No saved temp, writing default\n");
 			temp = CS34L40_CAL_AMBIENT_DEFAULT;
 		}
 
@@ -852,10 +891,11 @@ int cirrus_cal_apply(const char *mfd_suffix)
 			vimon_cal_status = CS35L41_CAL_VIMON_STATUS_INVALID;
 		}
 
+
 		cirrus_cal->efs_cache_rdc[amp->index] = rdc;
 		cirrus_cal->efs_cache_vsc[amp->index] = vsc;
 		cirrus_cal->efs_cache_isc[amp->index] = isc;
-		cirrus_cal->efs_cache_vimon_cal[amp->index] = vimon_cal_status;		
+		cirrus_cal->efs_cache_vimon_cal[amp->index] = vimon_cal_status;
 		cirrus_cal->efs_cache_temp = temp;
 		cirrus_cal->efs_cache_read[amp->index] = 1;
 	}
@@ -869,7 +909,7 @@ int cirrus_cal_apply(const char *mfd_suffix)
 		"RDC = %d, Temp = %d, Status = %d Checksum = %d\n",
 		rdc, temp, status, checksum);
 	dev_info(cirrus_cal->dev, "VIMON Cal status=%d vsc=%x isc=%x\n",
-		vimon_cal_status, vsc, isc);	
+		vimon_cal_status, vsc, isc);
 
 	regmap_write(regmap, CS35L41_CAL_RDC, rdc);
 	regmap_write(regmap, CS35L41_CAL_AMBIENT, temp);
@@ -883,6 +923,131 @@ int cirrus_cal_apply(const char *mfd_suffix)
 	return ret;
 }
 EXPORT_SYMBOL_GPL(cirrus_cal_apply);
+
+static int cirrus_cal_start(void)
+{
+	int redc_cal_start_retries = 5, vimon_cal_retries = 0;
+	bool vimon_calibration_failed = false;
+	unsigned int cal_state;
+	unsigned int hw_ng_config[CIRRUS_MAX_AMPS] = {0};
+	int amp, index;
+	struct regmap *regmap;
+	int ret;
+
+	for (amp = 0; amp < cirrus_cal->num_amps; amp++) {
+		if (cirrus_cal->amps[amp].calibration_disable)
+			continue;
+
+		regmap = cirrus_cal->amps[amp].regmap;
+		index = cirrus_cal->amps[amp].index;
+
+		regmap_write(regmap, CS35L41_CAL_STATUS, 0);
+		regmap_write(regmap, CS35L41_CAL_RDC, 0);
+		regmap_write(regmap, CS35L41_CAL_AMBIENT, 0);
+		regmap_write(regmap, CS35L41_CAL_CHECKSUM, 0);
+		regmap_write(regmap, CS35L41_VIMON_CAL_VSC,0);
+		regmap_write(regmap, CS35L41_VIMON_CAL_ISC,0);
+
+		ret = cirrus_cal_wait_for_active(&cirrus_cal->amps[amp]);
+		if (ret < 0) {
+			dev_err(cirrus_cal->dev,
+				"Could not start cs35l41%s\n",
+				cirrus_cal->amps[amp].mfd_suffix);
+			mutex_unlock(&cirrus_cal->lock);
+			cirrus_cal_unmute_dsp_inputs(regmap, index);
+			cirrus_cal->cal_running = 0;
+			return -1;
+		}
+
+		regmap_update_bits(regmap,
+			CS35L41_MIXER_NGATE_CH1_CFG,
+			CS35L41_NG_ENABLE_MASK, 0);
+		regmap_update_bits(regmap,
+			CS35L41_MIXER_NGATE_CH2_CFG,
+			CS35L41_NG_ENABLE_MASK, 0);
+		dev_dbg(cirrus_cal->dev, "NOISE GATE DISABLE\n");
+
+		regmap_read(regmap, CS35L41_NG_CFG,
+						&hw_ng_config[index]);
+	}
+
+	do {
+		vimon_calibration_failed = false;
+
+		for (amp = 0; amp < cirrus_cal->num_amps; amp++) {
+			if (cirrus_cal->amps[amp].calibration_disable)
+				continue;
+
+			regmap = cirrus_cal->amps[amp].regmap;
+			index = cirrus_cal->amps[amp].index;
+
+			cirrus_cal_vimon_cal_start(
+						&cirrus_cal->amps[amp]);
+		}
+
+		usleep_range(110000, 112000);
+
+		for (amp = 0; amp < cirrus_cal->num_amps; amp++) {
+			if (cirrus_cal->amps[amp].calibration_disable)
+				continue;
+
+			regmap = cirrus_cal->amps[amp].regmap;
+			index = cirrus_cal->amps[amp].index;
+			ret = cirrus_cal_vimon_cal_complete(
+						&cirrus_cal->amps[amp]);
+			regmap_write(regmap, CS35L41_NG_CFG,
+						hw_ng_config[index]);
+
+			if (ret != CS35L41_CAL_VIMON_STATUS_SUCCESS) {
+				vimon_calibration_failed = true;
+				dev_info(cirrus_cal->dev,
+				  "VIMON Calibration Error cs35l41%s\n",
+				  cirrus_cal->amps[amp].mfd_suffix);
+			}
+		}
+
+		vimon_cal_retries--;
+	} while (vimon_cal_retries >= 0 && vimon_calibration_failed);
+
+	for (amp = 0; amp < cirrus_cal->num_amps; amp++) {
+		if (cirrus_cal->amps[amp].calibration_disable)
+			continue;
+
+		regmap = cirrus_cal->amps[amp].regmap;
+		index = cirrus_cal->amps[amp].index;
+
+		cirrus_cal_redc_start(&cirrus_cal->amps[amp]);
+		usleep_range(80000, 90000);
+
+		regmap_read(regmap, CS35L41_CSPL_STATE,
+			&cal_state);
+
+		while (cal_state == CS35L41_CSPL_STATE_ERROR &&
+			redc_cal_start_retries > 0) {
+			if (cal_state == CS35L41_CSPL_STATE_ERROR) {
+				dev_err(cirrus_cal->dev,
+				    "Calibration load error\n");
+			}
+
+			cirrus_cal_redc_start(&cirrus_cal->amps[amp]);
+			usleep_range(80000, 90000);
+			regmap_read(regmap, CS35L41_CSPL_STATE,
+				&cal_state);
+			redc_cal_start_retries--;
+		}
+
+		if (redc_cal_start_retries == 0) {
+			dev_err(cirrus_cal->dev,
+				"Calibration setup fail @ %d\n", amp);
+			mutex_unlock(&cirrus_cal->lock);
+			cirrus_cal_unmute_dsp_inputs(regmap, index);
+			cirrus_cal->cal_running = 0;
+			return -1;
+		}
+	}
+
+	return 0;
+}
 
 /***** SYSFS Interfaces *****/
 
@@ -915,11 +1080,6 @@ static ssize_t cirrus_cal_status_store(struct device *dev,
 	int prepare;
 	int ret = kstrtos32(buf, 10, &prepare);
 	int delay = msecs_to_jiffies(CS35L41_CAL_COMPLETE_DELAY_MS);
-	int retries = 5;
-	unsigned int cal_state;
-	unsigned int hw_ng_config[CIRRUS_MAX_AMPS];	
-	int amp, index;
-	struct regmap *regmap;
 
 	if (cirrus_cal->cal_running) {
 		dev_err(cirrus_cal->dev,
@@ -931,91 +1091,9 @@ static ssize_t cirrus_cal_status_store(struct device *dev,
 
 	if (ret == 0 && prepare == 1) {
 		cirrus_cal->cal_running = 1;
+		cirrus_cal->cal_retry = 0;
 
-		for (amp = 0; amp < cirrus_cal->num_amps; amp++) {
-			regmap = cirrus_cal->amps[amp].regmap;
-			index = cirrus_cal->amps[amp].index;
-
-			regmap_write(regmap, CS35L41_CAL_STATUS, 0);
-			regmap_write(regmap, CS35L41_CAL_RDC, 0);
-			regmap_write(regmap, CS35L41_CAL_AMBIENT, 0);
-			regmap_write(regmap, CS35L41_CAL_CHECKSUM,0);
-			regmap_write(regmap, CS35L41_CAL_CHECKSUM, 0);
-			regmap_write(regmap, CS35L41_VIMON_CAL_VSC,0);
-			regmap_write(regmap, CS35L41_VIMON_CAL_ISC,0);			
-
-			ret = cirrus_cal_wait_for_active(&cirrus_cal->amps[amp]);
-			if (ret < 0) {
-				dev_err(cirrus_cal->dev,
-					"Could not start cs35l41%s\n",
-					cirrus_cal->amps[amp].mfd_suffix);
-				mutex_unlock(&cirrus_cal->lock);
-				cirrus_cal_unmute_dsp_inputs(regmap, index);
-				cirrus_cal->cal_running = 0;
-				return size;
-			}
-		}
-
-		for (amp = 0; amp < cirrus_cal->num_amps; amp++) {
-			regmap = cirrus_cal->amps[amp].regmap;
-			index = cirrus_cal->amps[amp].index;
-
-			regmap_update_bits(regmap,
-				CS35L41_MIXER_NGATE_CH1_CFG,
-				CS35L41_NG_ENABLE_MASK, 0);
-			regmap_update_bits(regmap,
-				CS35L41_MIXER_NGATE_CH2_CFG,
-				CS35L41_NG_ENABLE_MASK, 0);
-			dev_dbg(cirrus_cal->dev, "NOISE GATE DISABLE\n");
-
-			regmap_read(regmap, CS35L41_NG_CFG,
-							&hw_ng_config[index]);
-			cirrus_cal_vimon_cal_start(&cirrus_cal->amps[amp]);
-		}
-
-		usleep_range(110000, 112000);
-
-		for (amp = 0; amp < cirrus_cal->num_amps; amp++) {
-			regmap = cirrus_cal->amps[amp].regmap;
-			index = cirrus_cal->amps[amp].index;
-			cirrus_cal_vimon_cal_complete(&cirrus_cal->amps[amp]);
-			regmap_write(regmap, CS35L41_NG_CFG,
-							hw_ng_config[index]);
-		}
-
-		for (amp = 0; amp < cirrus_cal->num_amps; amp++) {
-			regmap = cirrus_cal->amps[amp].regmap;
-			index = cirrus_cal->amps[amp].index;
-
-			cirrus_cal_redc_start(&cirrus_cal->amps[amp]);
-			usleep_range(80000, 90000);
-
-			regmap_read(regmap, CS35L41_CSPL_STATE,
-				&cal_state);
-
-			while (cal_state == CS35L41_CSPL_STATE_ERROR &&
-				retries > 0) {
-				if (cal_state == CS35L41_CSPL_STATE_ERROR) {
-					dev_err(cirrus_cal->dev,
-					    "Calibration load error\n");
-				}
-
-				cirrus_cal_redc_start(&cirrus_cal->amps[amp]);
-				usleep_range(80000, 90000);
-				regmap_read(regmap, CS35L41_CSPL_STATE,
-					&cal_state);
-				retries--;
-			}
-
-			if (retries == 0) {
-				dev_err(cirrus_cal->dev,
-					"Calibration setup fail @ %d\n", amp);
-				mutex_unlock(&cirrus_cal->lock);
-				cirrus_cal_unmute_dsp_inputs(regmap, index);
-				cirrus_cal->cal_running = 0;
-				return size;
-			}
-		}
+		cirrus_cal_start();
 
 		dev_dbg(cirrus_cal->dev,
 			"Calibration prepare complete\n");
@@ -1046,12 +1124,15 @@ static ssize_t cirrus_cal_v_status_store(struct device *dev,
 	int ret = kstrtos32(buf, 10, &prepare);
 	int retries = 5;
 	unsigned int cal_state;
-	int i, reg, amp, index;
+	int i, reg, amp, index, num_amps;
 	struct regmap *regmap;
 	unsigned int vmax[CIRRUS_MAX_AMPS];
 	unsigned int vmin[CIRRUS_MAX_AMPS];
 	unsigned int imax[CIRRUS_MAX_AMPS];
 	unsigned int imin[CIRRUS_MAX_AMPS];
+	const char *suffix;
+	struct cirrus_mfd_amp *amps;
+	bool separate = false;
 
 	if (cirrus_cal->cal_running) {
 		dev_err(cirrus_cal->dev,
@@ -1061,12 +1142,32 @@ static ssize_t cirrus_cal_v_status_store(struct device *dev,
 
 	mutex_lock(&cirrus_cal->lock);
 
+	if (strlen(attr->attr.name) > strlen("v_status")) {
+		suffix = &(attr->attr.name[strlen("v_status")]);
+		amps = cirrus_cal_get_amp_from_suffix(suffix);
+		if (amps) {
+			dev_info(dev, "V-validation for amp: cs35l41%s\n",
+					suffix);
+			num_amps = 1;
+			separate = true;
+		} else {
+			mutex_unlock(&cirrus_cal->lock);
+			return size;
+		}
+	} else {
+		num_amps = cirrus_cal->num_amps;
+		amps = cirrus_cal->amps;
+		separate = false;
+	}
+
 	if (ret == 0 && prepare == 1) {
 		cirrus_cal->cal_running = 1;
 
-		for (amp = 0; amp < cirrus_cal->num_amps; amp++) {
-			regmap = cirrus_cal->amps[amp].regmap;
-			index = cirrus_cal->amps[amp].index;
+		for (amp = 0; amp < num_amps; amp++) {
+			if (amps[amp].v_val_separate && !separate) continue;
+
+			regmap = amps[amp].regmap;
+			index = amps[amp].index;
 
 			regmap_write(regmap, CIRRUS_PWR_CSPL_V_PEAK, 0);
 			regmap_write(regmap, CIRRUS_PWR_CSPL_I_PEAK, 0);
@@ -1076,11 +1177,11 @@ static ssize_t cirrus_cal_v_status_store(struct device *dev,
 			imax[amp] = 0;
 			imin[amp] = INT_MAX;
 
-			ret = cirrus_cal_wait_for_active(&cirrus_cal->amps[amp]);
+			ret = cirrus_cal_wait_for_active(&amps[amp]);
 			if (ret < 0) {
 				dev_err(cirrus_cal->dev,
 					"Could not start cs35l41%s\n",
-					cirrus_cal->amps[amp].mfd_suffix);
+					amps[amp].mfd_suffix);
 				mutex_unlock(&cirrus_cal->lock);
 				cirrus_cal_unmute_dsp_inputs(regmap, index);
 				cirrus_cal->cal_running = 0;
@@ -1095,12 +1196,12 @@ static ssize_t cirrus_cal_v_status_store(struct device *dev,
 				CS35L41_NG_ENABLE_MASK, 0);
 			dev_dbg(cirrus_cal->dev, "NOISE GATE DISABLE\n");
 
-			cirrus_cal_redc_start(&cirrus_cal->amps[amp]);
+			cirrus_cal_redc_start(&amps[amp]);
 			usleep_range(80000, 90000);
 
 			regmap_read(regmap, CS35L41_CSPL_STATE,
 				&cal_state);
-			
+
 			while (cal_state == CS35L41_CSPL_STATE_ERROR &&
 				retries > 0) {
 				if (cal_state == CS35L41_CSPL_STATE_ERROR) {
@@ -1108,7 +1209,7 @@ static ssize_t cirrus_cal_v_status_store(struct device *dev,
 					 "Calibration load error\n");
 				}
 
-				cirrus_cal_redc_start(&cirrus_cal->amps[amp]);
+				cirrus_cal_redc_start(&amps[amp]);
 				usleep_range(80000, 90000);
 				regmap_read(regmap, CS35L41_CSPL_STATE,
 					&cal_state);
@@ -1129,8 +1230,9 @@ static ssize_t cirrus_cal_v_status_store(struct device *dev,
 			 "V validation prepare complete\n");
 
 		for (i = 0; i < 400; i++) {
-			for (amp = 0; amp < cirrus_cal->num_amps; amp++) {
-				regmap = cirrus_cal->amps[amp].regmap;
+			for (amp = 0; amp < num_amps; amp++) {
+				if (amps[amp].v_val_separate && !separate) continue;
+				regmap = amps[amp].regmap;
 				regmap_read(regmap,
 					CIRRUS_PWR_CSPL_V_PEAK, &reg);
 				if (reg > vmax[amp]) vmax[amp] = reg;
@@ -1145,11 +1247,12 @@ static ssize_t cirrus_cal_v_status_store(struct device *dev,
 			}
 		}
 
-		for (amp = 0; amp < cirrus_cal->num_amps; amp++) {
+		for (amp = 0; amp < num_amps; amp++) {
+			if (amps[amp].v_val_separate && !separate) continue;
 
 			dev_info(cirrus_cal->dev,
 				"V Validation results for cs35l41%s\n",
-				cirrus_cal->amps[amp].mfd_suffix);
+				amps[amp].mfd_suffix);
 
 			dev_dbg(cirrus_cal->dev, "V Max: 0x%x\n", vmax[amp]);
 			vmax[amp] = cirrus_cal_vpk_to_mv(vmax[amp]);
@@ -1169,18 +1272,18 @@ static ssize_t cirrus_cal_v_status_store(struct device *dev,
 
 			if (vmax[amp] < CIRRUS_CAL_V_VAL_UB_MV &&
 			    vmax[amp] > CIRRUS_CAL_V_VAL_LB_MV) {
-				cirrus_cal->v_validation[amp] = 1;
+				cirrus_cal->v_validation[amps[amp].index] = 1;
 				dev_info(cirrus_cal->dev,
 					"V validation success\n");
 			} else {
-				cirrus_cal->v_validation[amp] = 0xCC;
+				cirrus_cal->v_validation[amps[amp].index] = 0xCC;
 				dev_err(cirrus_cal->dev,
 					"V validation failed\n");
 			}
 
 		}
 
-		cirrus_cal_v_val_complete();
+		cirrus_cal_v_val_complete(amps, num_amps, separate);
 
 		cirrus_cal->cal_running = 0;
 
@@ -1480,6 +1583,12 @@ static DEVICE_ATTR(reinit, 0664, cirrus_cal_reinit_show,
 				cirrus_cal_reinit_store);
 #endif /* CS35L41_FACTORY_RECOVERY_SYSFS */
 
+static struct device_attribute v_val_attribute = {
+	.attr = {.mode = VERIFY_OCTAL_PERMISSIONS(0664)},
+	.show = cirrus_cal_v_status_show,
+	.store = cirrus_cal_v_status_store,
+};
+
 static struct device_attribute generic_amp_attrs[CIRRUS_CAL_NUM_ATTRS_AMP] = {
 	{
 		.attr = {.mode = VERIFY_OCTAL_PERMISSIONS(0444)},
@@ -1527,7 +1636,7 @@ static const char *generic_amp_attr_names[CIRRUS_CAL_NUM_ATTRS_AMP] = {
 	"v_validation",
 	"rdc",
 	"vsc",
-	"isc",	
+	"isc",
 	"temp",
 	"checksum",
 	"set_status",
@@ -1549,6 +1658,8 @@ static struct attribute *cirrus_cal_attr_base[] = {
 static struct device_attribute
 		amp_attrs_prealloc[CIRRUS_MAX_AMPS][CIRRUS_CAL_NUM_ATTRS_AMP];
 static char attr_names_prealloc[CIRRUS_MAX_AMPS][CIRRUS_CAL_NUM_ATTRS_AMP][20];
+static char v_val_attr_names_prealloc[CIRRUS_MAX_AMPS][20];
+static struct device_attribute v_val_attrs_prealloc[CIRRUS_MAX_AMPS];
 
 struct device_attribute *cirrus_cal_create_amp_attrs(const char *mfd_suffix,
 							int index)
@@ -1575,9 +1686,10 @@ struct device_attribute *cirrus_cal_create_amp_attrs(const char *mfd_suffix,
 }
 
 int cirrus_cal_init(struct class *cirrus_amp_class, int num_amps,
-					const char **mfd_suffixes)
+					const char **mfd_suffixes,
+					bool *v_val_separate)
 {
-	int ret, i, j;
+	int ret, i, j, v_val_num_attrs = 0;
 	struct device_attribute *new_attrs;
 
 	cirrus_cal = kzalloc(sizeof(struct cirrus_cal_t), GFP_KERNEL);
@@ -1596,10 +1708,14 @@ int cirrus_cal_init(struct class *cirrus_amp_class, int num_amps,
 	for (i = 0; i < num_amps; i++)
 	{
 		cirrus_cal->amps[i].mfd_suffix = mfd_suffixes[i];
+		cirrus_cal->amps[i].v_val_separate = v_val_separate[i];
 		cirrus_cal->amps[i].index = i;
 
 		cirrus_cal->efs_cache_read[i] = 0;
 		cirrus_cal->v_validation[i] = 0;
+
+		if (v_val_separate[i])
+			v_val_num_attrs++;
 	}
 
 	cirrus_cal->cal_class = cirrus_amp_class;
@@ -1620,10 +1736,12 @@ int cirrus_cal_init(struct class *cirrus_amp_class, int num_amps,
 
 	cirrus_cal_attr_grp.attrs = kzalloc(sizeof(struct attribute *) *
 					(CIRRUS_CAL_NUM_ATTRS_AMP * num_amps +
+					v_val_num_attrs +
 					CIRRUS_CAL_NUM_ATTRS_BASE + 1),
 								GFP_KERNEL);
 	for (i = 0; i < num_amps; i++) {
 		new_attrs = cirrus_cal_create_amp_attrs(mfd_suffixes[i], i);
+
 		for (j = 0; j < CIRRUS_CAL_NUM_ATTRS_AMP; j++) {
 			dev_dbg(cirrus_cal->dev, "New attribute: %s\n",
 				new_attrs[j].attr.name);
@@ -1632,11 +1750,30 @@ int cirrus_cal_init(struct class *cirrus_amp_class, int num_amps,
 		}
 	}
 
-	memcpy(&cirrus_cal_attr_grp.attrs[num_amps * CIRRUS_CAL_NUM_ATTRS_AMP],
+	for (i = j = 0; i < num_amps; i++) {
+		if (v_val_separate[i]){
+			memcpy(&v_val_attrs_prealloc[j],
+				&v_val_attribute, sizeof(struct device_attribute));
+
+			v_val_attrs_prealloc[j].attr.name =
+				v_val_attr_names_prealloc[j];
+			snprintf((char *)v_val_attrs_prealloc[j].attr.name,
+				strlen("v_status") + strlen(mfd_suffixes[i]) + 1,
+				"v_status%s", mfd_suffixes[i]);
+			dev_info(cirrus_cal->dev, "New attribute: %s\n",
+				v_val_attrs_prealloc[j].attr.name);
+			cirrus_cal_attr_grp.attrs[num_amps * CIRRUS_CAL_NUM_ATTRS_AMP
+						  + j] = &v_val_attrs_prealloc[j].attr;
+			j++;
+		}
+	}
+
+	memcpy(&cirrus_cal_attr_grp.attrs[num_amps * CIRRUS_CAL_NUM_ATTRS_AMP +
+					v_val_num_attrs],
 		cirrus_cal_attr_base, sizeof(struct attribute *) *
 					CIRRUS_CAL_NUM_ATTRS_BASE);
 	cirrus_cal_attr_grp.attrs[num_amps * CIRRUS_CAL_NUM_ATTRS_AMP +
-			CIRRUS_CAL_NUM_ATTRS_BASE] = NULL;
+			CIRRUS_CAL_NUM_ATTRS_BASE + v_val_num_attrs] = NULL;
 
 	ret = sysfs_create_group(&cirrus_cal->dev->kobj, &cirrus_cal_attr_grp);
 	if (ret) {

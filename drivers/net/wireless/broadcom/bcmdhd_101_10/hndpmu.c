@@ -2,7 +2,7 @@
  * Misc utility routines for accessing PMU corerev specific features
  * of the SiliconBackplane-based Broadcom chips.
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -19,7 +19,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 /**
@@ -103,6 +103,42 @@ bool	_pmustatsenab = FALSE;
 bool	_bcm_pwr_opt_dis = FALSE;
 
 /**
+ * Reads/writes a chipcontrol reg. Performes core switching if required, at function exit the
+ * original core is restored. Depending on chip type, read/writes to chipcontrol regs in CC core
+ * (older chips) or to chipcontrol regs in PMU core (later chips).
+ */
+uint32
+si_pmu_chipcontrol(si_t *sih, uint reg, uint32 mask, uint32 val)
+{
+	pmu_corereg(sih, SI_CC_IDX, chipcontrol_addr, ~0, reg);
+	return pmu_corereg(sih, SI_CC_IDX, chipcontrol_data, mask, val);
+}
+
+/**
+ * Reads/writes a voltage regulator (vreg) register. Performes core switching if required, at
+ * function exit the original core is restored. Depending on chip type, writes to regulator regs
+ * in CC core (older chips) or to regulator regs in PMU core (later chips).
+ */
+uint32
+si_pmu_vreg_control(si_t *sih, uint reg, uint32 mask, uint32 val)
+{
+	pmu_corereg(sih, SI_CC_IDX, regcontrol_addr, ~0, reg);
+	return pmu_corereg(sih, SI_CC_IDX, regcontrol_data, mask, val);
+}
+
+/**
+ * Reads/writes a PLL control register. Performes core switching if required, at function exit the
+ * original core is restored. Depending on chip type, writes to PLL control regs in CC core (older
+ * chips) or to PLL control regs in PMU core (later chips).
+ */
+uint32
+si_pmu_pllcontrol(si_t *sih, uint reg, uint32 mask, uint32 val)
+{
+	pmu_corereg(sih, SI_CC_IDX, pllcontrol_addr, ~0, reg);
+	return pmu_corereg(sih, SI_CC_IDX, pllcontrol_data, mask, val);
+}
+
+/**
  * Balance between stable SDIO operation and power consumption is achieved using this function.
  * Note that each drive strength table is for a specific VDDIO of the SDIO pads, ideally this
  * function should read the VDDIO itself to select the correct table. For now it has been solved
@@ -148,6 +184,7 @@ si_pmu_wake_bit_offset(si_t *sih)
 		break;
 	case BCM4388_CHIP_GRPID:
 	case BCM4389_CHIP_GRPID:
+	case BCM4397_CHIP_GRPID:
 		wakebit = CC2_4389_GCI2WAKE_MASK;
 		break;
 	default:
@@ -202,6 +239,32 @@ si_pmu_fast_lpo_disable(si_t *sih)
 		0);
 	OSL_DELAY(1000);
 	return BCME_OK;
+}
+
+/*
+* 4389B0/C0 - WL and BT turn on WAR,
+* set below bits in PMU chip control 6
+* - global bit[195] / bit[3] - enable legacy pmu_wakeup to make
+* domain 1 (WL) power request
+* - global bit[206] / bit[14] - perst_wake_en
+*/
+void
+si_pmu_dmn1_perst_wakeup(si_t *sih, bool set)
+{
+	if (PMUREV(sih->pmurev) == 40) {
+		if (set) {
+			si_pmu_chipcontrol(sih, PMU_CHIPCTL6,
+				(PMU_CC6_ENABLE_DMN1_WAKEUP |
+				PMU_CC6_ENABLE_PMU_WAKEUP_PERST),
+				(PMU_CC6_ENABLE_DMN1_WAKEUP |
+				PMU_CC6_ENABLE_PMU_WAKEUP_PERST));
+		} else {
+			si_pmu_chipcontrol(sih, PMU_CHIPCTL6,
+				(PMU_CC6_ENABLE_DMN1_WAKEUP |
+				PMU_CC6_ENABLE_PMU_WAKEUP_PERST),
+				0);
+		}
+	}
 }
 
 #ifdef BCMPMU_STATS
@@ -613,3 +676,46 @@ si_pmu_res_state_pwrsw_main_wait(si_t *sih)
 
 	return ret;
 }
+
+#if defined(BT_WLAN_REG_ON_WAR)
+void
+si_pmu_reg_on_war_ext_wake_perst_set(si_t *sih)
+{
+	uint origidx = si_coreidx(sih);
+	pmuregs_t *pmu = si_setcore(sih, PMU_CORE_ID, 0);
+	osl_t *osh = si_osh(sih);
+
+	if (PMUREV(sih->pmurev) == 40) {
+		/*
+		 * set PCIEPerstReq (bit-5) as a wake-up source in
+		 * ExtWakeMask0 (0x760) register
+		 */
+		W_REG(osh, &pmu->extwakemask0, PMU_EXT_WAKE_MASK_0_PCIE_PERST);
+
+		/*
+		 * configure the wakemask as "common backplane" resources to
+		 * be up during wake-up in ExtWakeReqMask0 (0x770) register
+		 */
+		W_REG(osh, &pmu->extwakereqmask[0], REG_ON_WAR_PMU_EXT_WAKE_REQ_MASK0_VAL);
+	}
+
+	si_setcoreidx(sih, origidx);
+}
+
+void
+si_pmu_reg_on_war_ext_wake_perst_clear(si_t *sih)
+{
+	uint32 val = 0;
+	uint origidx = si_coreidx(sih);
+	pmuregs_t *pmu = si_setcore(sih, PMU_CORE_ID, 0);
+	osl_t *osh = si_osh(sih);
+
+	if (PMUREV(sih->pmurev) == 40) {
+		/* clear all set bits in ExtWakeupStatus (0x744) register */
+		val = R_REG(osh, &pmu->extwakeupstatus);
+		W_REG(osh, &pmu->extwakeupstatus, val);
+	}
+
+	si_setcoreidx(sih, origidx);
+}
+#endif /* BT_WLAN_REG_ON_WAR */

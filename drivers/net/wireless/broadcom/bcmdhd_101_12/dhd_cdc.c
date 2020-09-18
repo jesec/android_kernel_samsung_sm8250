@@ -54,6 +54,10 @@
 				 * round off at the end of buffer
 				 */
 
+/* This value is from Legacy chipsets */
+#define DEFAULT_WLC_API_VERSION_MAJOR	3
+#define DEFAULT_WLC_API_VERSION_MINOR	0
+
 typedef struct dhd_prot {
 	uint16 reqid;
 	uint8 pending;
@@ -248,6 +252,16 @@ dhdcdc_set_ioctl(dhd_pub_t *dhd, int ifidx, uint cmd, void *buf, uint len, uint8
 			goto done;
 		}
 #endif /* DHD_PM_CONTROL_FROM_FILE */
+#ifdef DHD_PM_OVERRIDE
+		{
+			extern bool g_pm_override;
+			if (g_pm_override == TRUE) {
+				DHD_ERROR(("%s: PM override SET PM ignored!(Requested:%d)\n",
+					__FUNCTION__, buf ? *(char *)buf : 0));
+				goto done;
+			}
+		}
+#endif /* DHD_PM_OVERRIDE */
 #if defined(WLAIBSS)
 		if (dhd->op_mode == DHD_FLAG_IBSS_MODE) {
 			DHD_ERROR(("%s: SET PM ignored for IBSS!(Requested:%d)\n",
@@ -567,6 +581,8 @@ dhd_sync_with_dongle(dhd_pub_t *dhd)
 {
 	int ret = 0;
 	wlc_rev_info_t revinfo;
+	char buf[128];
+
 	DHD_TRACE(("%s: Enter\n", __FUNCTION__));
 
 #ifdef DHD_FW_COREDUMP
@@ -583,6 +599,27 @@ dhd_sync_with_dongle(dhd_pub_t *dhd)
 	ret = dhd_wl_ioctl_cmd(dhd, WLC_GET_REVINFO, &revinfo, sizeof(revinfo), FALSE, 0);
 	if (ret < 0)
 		goto done;
+
+	/* query for 'wlc_ver' to get version info from firmware */
+	/* memsetting to zero */
+	bzero(buf, sizeof(buf));
+	ret = bcm_mkiovar("wlc_ver", NULL, 0, buf, sizeof(buf));
+	if (ret == 0) {
+		ret = BCME_BUFTOOSHORT;
+		goto done;
+	}
+	ret = dhd_wl_ioctl_cmd(dhd, WLC_GET_VAR, buf, sizeof(buf), FALSE, 0);
+	if (ret == BCME_UNSUPPORTED) {
+		dhd->wlc_ver_major = DEFAULT_WLC_API_VERSION_MAJOR;
+		dhd->wlc_ver_minor = DEFAULT_WLC_API_VERSION_MINOR;
+	} else if (ret < 0) {
+		DHD_ERROR(("%s failed %d\n", __FUNCTION__, ret));
+		goto done;
+	} else {
+		dhd->wlc_ver_major = ((wl_wlc_version_t*)buf)->wlc_ver_major;
+		dhd->wlc_ver_minor = ((wl_wlc_version_t*)buf)->wlc_ver_minor;
+	}
+	DHD_ERROR(("\nwlc_ver_major %d, wlc_ver_minor %d", dhd->wlc_ver_major, dhd->wlc_ver_minor));
 
 	DHD_SSSR_DUMP_INIT(dhd);
 

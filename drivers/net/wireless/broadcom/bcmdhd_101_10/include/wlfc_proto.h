@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -16,13 +16,11 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
+ * <<Broadcom-WL-IPTag/Dual:>>
  *
  */
 
 /** WL flow control for PROP_TXSTATUS. Related to host AMPDU reordering. */
-
-/** XXX Twiki: [PropTxStatus] */
 
 #ifndef __wlfc_proto_definitions_h__
 #define __wlfc_proto_definitions_h__
@@ -155,7 +153,7 @@ typedef enum {
 #define WLFC_CTL_VALUE_LEN_REQUEST_CREDIT	3	/* credit, MAC-handle, prec_bitmap */
 #define WLFC_CTL_VALUE_LEN_REQUEST_PACKET	3	/* credit, MAC-handle, prec_bitmap */
 
-/* XXX:
+/*
 	WLFC packet identifier: b[31:0] (WLFC_CTL_TYPE_PKTTAG)
 
 	Generation	: b[31]		=> generation number for this packet [host->fw]
@@ -446,12 +444,14 @@ typedef enum {
 #define FLOW_RING_TIM_SET            7u
 #define FLOW_RING_TIM_RESET          8u
 #define FLOW_RING_FLUSH_TXFIFO       9u
-#define FLOW_RING_GET_PKT_MAX       10u
-#define FLOW_RING_RESET_WEIGHT      11u
-#define FLOW_RING_UPD_PRIOMAP       12u
-#define FLOW_RING_HP2P_CREATE       13u
-#define FLOW_RING_HP2P_DELETE       14u
-#define FLOW_RING_GET_BUFFERED_TIME 15u
+#define FLOW_RING_GET_PKT_MAX        10u
+#define FLOW_RING_RESET_WEIGHT       11u
+#define FLOW_RING_UPD_PRIOMAP        12u
+#define FLOW_RING_HP2P_CREATE        13u
+#define FLOW_RING_HP2P_DELETE        14u
+#define FLOW_RING_GET_BUFFERED_TIME  15u
+#define FLOW_RING_HP2P_TXQ_STRT      16u
+#define FLOW_RING_HP2P_TXQ_STOP      17u
 
 /* bit 7, indicating if is TID(1) or AC(0) mapped info in tid field) */
 #define PCIEDEV_IS_AC_TID_MAP_MASK	0x80

@@ -1,7 +1,7 @@
 /*
  * Linux cfg80211 Vendor Extension Code
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,11 +18,11 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 /*
- * xxx New vendor interface additon to nl80211/cfg80211 to allow vendors
+ * New vendor interface additon to nl80211/cfg80211 to allow vendors
  * to implement proprietary features over the cfg80211 stack.
  */
 
@@ -44,7 +44,8 @@ enum brcm_vendor_attr {
 	BRCM_ATTR_DRIVER_KEY_PMK	= 1,
 	BRCM_ATTR_DRIVER_FEATURE_FLAGS	= 2,
 	BRCM_ATTR_DRIVER_RAND_MAC	= 3,
-	BRCM_ATTR_DRIVER_MAX		= 4
+	BRCM_ATTR_SAE_PWE		= 4,
+	BRCM_ATTR_DRIVER_MAX		= 5
 };
 
 enum brcm_wlan_vendor_features {
@@ -91,6 +92,10 @@ enum brcm_wlan_vendor_features {
 
 #define CFG80211_VENDOR_CMD_REPLY_SKB_SZ	100
 #define CFG80211_VENDOR_EVT_SKB_SZ			2048
+
+#define SUPP_SAE_PWE_LOOP	0x00
+#define SUPP_SAE_PWE_H2E	0x01
+#define SUPP_SAE_PWE_TRANS	0x02
 
 typedef enum {
 	/* don't use 0 as a valid subcommand */
@@ -461,7 +466,7 @@ typedef enum {
 	DUMP_LEN_ATTR_AXI_ERROR = 35,
 	DUMP_FILENAME_ATTR_AXI_ERROR_DUMP = 36,
 	DUMP_LEN_ATTR_RTT_LOG = 37
-	/* XXX: Please add new attributes from here to sync up old HAL */
+	/* Please add new attributes from here to sync up old HAL */
 } EWP_DUMP_EVENT_ATTRIBUTE;
 
 /* Attributes associated with DEBUG_GET_DUMP_BUF */
@@ -491,7 +496,7 @@ typedef enum {
 	DUMP_BUF_ATTR_STATUS_LOG = 22,
 	DUMP_BUF_ATTR_AXI_ERROR = 23,
 	DUMP_BUF_ATTR_RTT_LOG = 24
-	/* XXX: Please add new attributes from here to sync up old HAL */
+	/* Please add new attributes from here to sync up old HAL */
 } EWP_DUMP_CMD_ATTRIBUTE;
 
 enum mkeep_alive_attributes {
@@ -688,6 +693,11 @@ typedef struct wifi_roaming_capabilities {
 	u32 max_whitelist_size;
 } wifi_roaming_capabilities_t;
 
+typedef enum {
+	SET_HAL_START_ATTRIBUTE_DEINIT = 0x0001,
+	SET_HAL_START_ATTRIBUTE_PRE_INIT = 0x0002
+} SET_HAL_START_ATTRIBUTE;
+
 /* Capture the BRCM_VENDOR_SUBCMD_PRIV_STRINGS* here */
 #define BRCM_VENDOR_SCMD_CAPA	"cap"
 #define MEMDUMP_PATH_LEN	128
@@ -794,4 +804,8 @@ void wl_copy_hang_info_if_falure(struct net_device *dev, u16 reason, s32 ret);
 #ifdef DHD_PKT_LOGGING
 int wl_cfgvendor_dbg_send_pktlog_dbg_file_dump_evt(struct net_device *ndev);
 #endif /* DHD_PKT_LOGGING */
+int wl_cfgvendor_connect_params_handler(struct wiphy *wiphy, struct wireless_dev *wdev,
+	const void  *data, int len);
+int wl_cfgvendor_start_ap_params_handler(struct wiphy *wiphy, struct wireless_dev *wdev,
+	const void  *data, int len);
 #endif /* _wl_cfgvendor_h_ */

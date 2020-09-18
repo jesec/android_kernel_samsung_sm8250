@@ -872,8 +872,8 @@ static int msm_init_cm_dll(struct sdhci_host *host,
 			msm_host_offset->CORE_DLL_CONFIG);
 
 	/* For hs400es mode, no need to wait for core dll lock */
-	if (msm_host->mmc && msm_host->mmc->card
-				&& !(msm_host->enhanced_strobe &&
+	if (msm_host->mmc->card
+			&& !(msm_host->enhanced_strobe &&
 				mmc_card_strobe(msm_host->mmc->card))) {
 		wait_cnt = 50;
 		/* Wait until DLL_LOCK bit of DLL_STATUS register becomes '1' */
@@ -6096,7 +6096,6 @@ static int sdhci_msm_probe(struct platform_device *pdev)
 	/* do not check SDIO and MMC device */
 	msm_host->mmc->caps2 |= MMC_CAP2_NO_SDIO;
 	msm_host->mmc->caps2 |= MMC_CAP2_NO_MMC;
-	msm_host->mmc->caps2 |= MMC_CAP2_DETECT_ON_ERR;
 	msm_host->mmc->pm_caps |= MMC_PM_KEEP_POWER | MMC_PM_WAKE_SDIO_IRQ;
 #if defined(CONFIG_SEC_HYBRID_TRAY)
 	msm_host->mmc->caps2 |= MMC_CAP2_NO_PRESCAN_POWERUP;

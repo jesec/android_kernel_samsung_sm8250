@@ -58,6 +58,14 @@ struct cirrus_bd_t {
 struct cirrus_bd_ext cirrus_bd_data;
 EXPORT_SYMBOL_GPL(cirrus_bd_data);
 
+struct cirrus_bd_data_t {
+	uint32_t max_temp;
+	uint32_t max_exc;
+	uint32_t over_temp_count;
+	uint32_t over_exc_count;
+	uint32_t abnm_mute;
+};
+
 struct cirrus_bd_t *cirrus_bd;
 static struct attribute_group cirrus_bd_attr_grp;
 
@@ -156,40 +164,43 @@ int cirrus_bd_amp_add(struct regmap *regmap_new, const char *mfd_suffix,
 
 void cirrus_bd_store_values(const char *mfd_suffix)
 {
-	unsigned int max_exc, over_exc_count, max_temp,
-				over_temp_count, abnm_mute;
+	struct cirrus_bd_data_t *data;
 	struct cirrus_mfd_amp *amp = cirrus_bd_get_amp_from_suffix(mfd_suffix);
 	struct regmap *regmap;
+	int ret = 0;
 
 	if (!amp)
 		return;
 
+	data = kzalloc(sizeof(struct cirrus_bd_data_t), GFP_KERNEL);
+	if (data == NULL) {
+		dev_err(cirrus_bd->dev,
+			"%s: Failed to allocate\n", __func__);
+		return;
+	}
+
 	regmap = amp->regmap;
 
-	regmap_read(regmap, CS35L41_BD_MAX_EXC,
-			&max_exc);
-	regmap_read(regmap, CS35L41_BD_OVER_EXC_COUNT,
-			&over_exc_count);
-	regmap_read(regmap, CS35L41_BD_MAX_TEMP,
-			&max_temp);
-	regmap_read(regmap, CS35L41_BD_OVER_TEMP_COUNT,
-			&over_temp_count);
-	regmap_read(regmap, CS35L41_BD_ABNORMAL_MUTE,
-			&abnm_mute);
+	ret = regmap_bulk_read(regmap, CS35L41_BD_MAX_TEMP, data, 5);
+	if (ret != 0) {
+		dev_err(cirrus_bd->dev,
+			"%s: Failed to read\n", __func__);
+		goto err;
+	}
 
-	if (max_temp > (cirrus_bd->max_temp_limit[amp->index] *
+	if (data->max_temp > (cirrus_bd->max_temp_limit[amp->index] *
 			(1 << CS35L41_BD_TEMP_RADIX)) &&
-			over_temp_count == 0)
-		max_temp = (cirrus_bd->max_temp_limit[amp->index] *
+			data->over_temp_count == 0)
+		data->max_temp = (cirrus_bd->max_temp_limit[amp->index] *
 			    (1 << CS35L41_BD_TEMP_RADIX));
 
-	cirrus_bd->over_temp_count[amp->index] += over_temp_count;
-	cirrus_bd->over_exc_count[amp->index] += over_exc_count;
-	if (max_exc > cirrus_bd->max_exc[amp->index])
-		cirrus_bd->max_exc[amp->index] = max_exc;
-	if (max_temp > cirrus_bd->max_temp[amp->index])
-		cirrus_bd->max_temp[amp->index] = max_temp;
-	cirrus_bd->abnm_mute[amp->index] += abnm_mute;
+	cirrus_bd->over_temp_count[amp->index] += data->over_temp_count;
+	cirrus_bd->over_exc_count[amp->index] += data->over_exc_count;
+	if (data->max_exc > cirrus_bd->max_exc[amp->index])
+		cirrus_bd->max_exc[amp->index] = data->max_exc;
+	if (data->max_temp > cirrus_bd->max_temp[amp->index])
+		cirrus_bd->max_temp[amp->index] = data->max_temp;
+	cirrus_bd->abnm_mute[amp->index] += data->abnm_mute;
 
 	cirrus_bd->max_temp_keep[amp->index] = cirrus_bd->max_temp[amp->index];
 
@@ -217,12 +228,20 @@ void cirrus_bd_store_values(const char *mfd_suffix)
 	dev_info(cirrus_bd->dev, "Timestamp:\t\t%llu\n",
 				cirrus_bd->last_update);
 
-	regmap_write(regmap, CS35L41_BD_MAX_EXC, 0);
-	regmap_write(regmap, CS35L41_BD_OVER_EXC_COUNT, 0);
-	regmap_write(regmap, CS35L41_BD_MAX_TEMP, 0);
-	regmap_write(regmap, CS35L41_BD_OVER_TEMP_COUNT, 0);
-	regmap_write(regmap, CS35L41_BD_ABNORMAL_MUTE, 0);
+	data->over_temp_count = 0;
+	data->over_exc_count = 0;
+	data->max_exc = 0;
+	data->max_temp = 0;
+	data->abnm_mute = 0;
 
+	ret = regmap_bulk_write(regmap, CS35L41_BD_MAX_TEMP, data, 5);
+	if (ret != 0) {
+		dev_err(cirrus_bd->dev,
+			"%s: Failed to clear\n", __func__);
+		goto err;
+	}
+err:
+	kfree(data);
 }
 EXPORT_SYMBOL_GPL(cirrus_bd_store_values);
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2019 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2017-2020 The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -96,16 +96,16 @@
  * PMO_ACTION_VHT             21      1
  * ----------------------------+------+-------+
  */
-#define ALLOWED_ACTION_FRAMES_BITMAP0 \
-		((1 << PMO_MAC_ACTION_SPECTRUM_MGMT) | \
-		 (1 << PMO_MAC_ACTION_QOS_MGMT) | \
-		 (1 << PMO_MAC_ACTION_PUBLIC_USAGE) | \
-		 (1 << PMO_MAC_ACTION_SA_QUERY) | \
-		 (1 << PMO_MAC_ACTION_PROT_DUAL_PUB) | \
-		 (1 << PMO_MAC_ACTION_WNM) | \
-		 (1 << PMO_MAC_ACTION_WME) | \
-		 (1 << PMO_MAC_ACTION_FST) | \
-		 (1 << PMO_MAC_ACTION_VHT))
+#define SYSTEM_SUSPEND_ALLOWED_ACTION_FRAMES_BITMAP0 \
+			((1 << PMO_MAC_ACTION_SPECTRUM_MGMT) | \
+			 (1 << PMO_MAC_ACTION_QOS_MGMT) | \
+			 (1 << PMO_MAC_ACTION_PUBLIC_USAGE) | \
+			 (1 << PMO_MAC_ACTION_SA_QUERY) | \
+			 (1 << PMO_MAC_ACTION_PROT_DUAL_PUB) | \
+			 (1 << PMO_MAC_ACTION_WNM) | \
+			 (1 << PMO_MAC_ACTION_WME) | \
+			 (1 << PMO_MAC_ACTION_FST) | \
+			 (1 << PMO_MAC_ACTION_VHT))
 
 #define ALLOWED_ACTION_FRAMES_BITMAP1   0x0
 #define ALLOWED_ACTION_FRAMES_BITMAP2   0x0
@@ -116,6 +116,18 @@
 #define ALLOWED_ACTION_FRAMES_BITMAP7   0x0
 
 #define ALLOWED_ACTION_FRAME_MAP_WORDS (PMO_MAC_ACTION_MAX / 32)
+
+#define RUNTIME_PM_ALLOWED_ACTION_FRAMES_BITMAP0 \
+		((1 << PMO_MAC_ACTION_SPECTRUM_MGMT) | \
+		 (1 << PMO_MAC_ACTION_QOS_MGMT) | \
+		 (1 << PMO_MAC_ACTION_PUBLIC_USAGE) | \
+		 (1 << PMO_MAC_ACTION_RRM) | \
+		 (1 << PMO_MAC_ACTION_SA_QUERY) | \
+		 (1 << PMO_MAC_ACTION_PROT_DUAL_PUB) | \
+		 (1 << PMO_MAC_ACTION_WNM) | \
+		 (1 << PMO_MAC_ACTION_WME) | \
+		 (1 << PMO_MAC_ACTION_FST) | \
+		 (1 << PMO_MAC_ACTION_VHT))
 
 /* Public Action for 20/40 BSS Coexistence */
 #define PMO_MAC_ACTION_MEASUREMENT_PILOT    7
@@ -223,7 +235,7 @@ struct pmo_wow {
 	qdf_event_t target_suspend;
 	qdf_event_t target_resume;
 	int wow_nack;
-	bool wow_initial_wake_up;
+	atomic_t wow_initial_wake_up;
 	qdf_wake_lock_t wow_wake_lock;
 	/*
 	 * currently supports only vdev 0.

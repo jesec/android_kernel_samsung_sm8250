@@ -2034,6 +2034,7 @@ int ipa_mpm_notify_wan_state(struct wan_ioctl_notify_wan_state *state)
 			IPA_MPM_ERR("MHIP remote chan stop fail = %d\n", ret);
 			return ret;
 		}
+		IPA_MPM_DBG("MHIP remote channels are stopped\n");
 
 		status = ipa_mpm_start_stop_mhip_chan(
 					IPA_MPM_MHIP_CHAN_UL, probe_id,

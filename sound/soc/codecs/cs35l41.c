@@ -67,6 +67,7 @@ struct cs35l41_private {
 	int sclk;
 	int amp_mute;
 	int pcm_vol;
+	int pcm_active;
 	int dsprx2_src;
 	int lrclk_fmt;
 	int sclk_fmt;
@@ -271,12 +272,20 @@ static int cs35l41_pcm_vol_put(struct snd_kcontrol *kcontrol,
 	struct snd_soc_component *component = snd_soc_kcontrol_component(kcontrol);
 	struct cs35l41_private *cs35l41 = snd_soc_component_get_drvdata(component);
 
+	if (ucontrol->value.integer.value[0] > 0x391 ||
+		ucontrol->value.integer.value[0] < 0) {
+		dev_err(cs35l41->dev, "%s: Invalid value 0x%lx\n",
+			__func__, ucontrol->value.integer.value[0]);
+		return -EINVAL;
+	}
+
 	dev_info(cs35l41->dev, "%s: 0x%lx\n", __func__,
 	ucontrol->value.integer.value[0]);
 
 	cs35l41->pcm_vol = ucontrol->value.integer.value[0];
 
-	if (cs35l41->amp_mute == 1) { //Amp is unmuted
+	//Amp is unmuted
+	if (cs35l41->amp_mute == 1 && cs35l41->pcm_active == 1) {
 		snd_soc_put_volsw_sx(kcontrol, ucontrol);
 	}
 
@@ -301,22 +310,32 @@ static int cs35l41_amp_mute_put(struct snd_kcontrol *kcontrol,
 	struct cs35l41_private *cs35l41 = snd_soc_component_get_drvdata(component);
 	unsigned int val;
 
+	if (ucontrol->value.integer.value[0] > 1 ||
+		ucontrol->value.integer.value[0] < 0) {
+		dev_err(cs35l41->dev, "%s: Invalid value 0x%lx\n",
+			__func__, ucontrol->value.integer.value[0]);
+		return -EINVAL;
+	}
+
 	cs35l41->amp_mute = ucontrol->value.integer.value[0];
 
-	if (cs35l41->amp_mute == 0) //Mute
-		val = 0;
-	else //Unmute
-		val = cs35l41->pcm_vol;
+	if (cs35l41->pcm_active == 1) {
+		if (cs35l41->amp_mute == 0) //Mute
+			val = 0;
+		else //Unmute
+			val = cs35l41->pcm_vol;
 
-	//convert control val to register val
-	if (val < CS35L41_AMP_VOL_CTRL_DEFAULT)
-		val += CS35L41_AMP_VOL_PCM_MUTE;
-	else
-		val -= CS35L41_AMP_VOL_CTRL_DEFAULT;
+		//convert control val to register val
+		if (val < CS35L41_AMP_VOL_CTRL_DEFAULT)
+			val += CS35L41_AMP_VOL_PCM_MUTE;
+		else
+			val -= CS35L41_AMP_VOL_CTRL_DEFAULT;
 
-	regmap_update_bits(cs35l41->regmap, CS35L41_AMP_DIG_VOL_CTRL,
-			CS35L41_AMP_VOL_PCM_MASK << CS35L41_AMP_VOL_PCM_SHIFT,
-			val << CS35L41_AMP_VOL_PCM_SHIFT);
+		regmap_update_bits(cs35l41->regmap, CS35L41_AMP_DIG_VOL_CTRL,
+				CS35L41_AMP_VOL_PCM_MASK <<
+				CS35L41_AMP_VOL_PCM_SHIFT,
+				val << CS35L41_AMP_VOL_PCM_SHIFT);
+	}
 
 	dev_info(cs35l41->dev, "%s: %s\n", __func__,
 		(cs35l41->amp_mute == 0) ? "Muted" : "Unmuted");
@@ -842,7 +861,7 @@ static int cs35l41_set_csplmboxcmd(struct cs35l41_private *cs35l41,
 	regmap_write(cs35l41->regmap, CS35L41_CSPL_MBOX_CMD_DRV, cmd);
 
 	/* Poll for DSP ACK */
-	for (i = 0; i < 5; i++) {
+	for (i = 0; i < 15; i++) {
 		usleep_range(1000, 1010);
 		ret = regmap_read(cs35l41->regmap, CS35L41_IRQ1_STATUS2, &sts);
 		if (ret < 0) {
@@ -990,7 +1009,7 @@ static int cs35l41_main_amp_event(struct snd_soc_dapm_widget *w,
 		if (cs35l41->halo_booted && cs35l41->halo_routed) {
 			cs35l41_set_csplmboxcmd(cs35l41,
 						CSPL_MBOX_CMD_RESUME);
-		} else {
+		} else if (cs35l41->dsp.preloaded) {
 			if (cs35l41->halo_played == false) {
 				cs35l41_set_csplmboxcmd(cs35l41,
 						CSPL_MBOX_CMD_PAUSE);
@@ -1015,8 +1034,6 @@ static int cs35l41_main_amp_event(struct snd_soc_dapm_widget *w,
 
 		regmap_update_bits(cs35l41->regmap, CS35L41_PWR_CTRL1,
 				CS35L41_GLOBAL_EN_MASK, 0);
-
-		usleep_range(1000, 1100);
 
 		regmap_multi_reg_write_bypassed(cs35l41->regmap,
 					cs35l41_pdn_patch,
@@ -1276,7 +1293,7 @@ static int cs35l41_pcm_mute(struct snd_soc_dai *dai, int mute)
 {
 	struct cs35l41_private *cs35l41 =
 				  snd_soc_component_get_drvdata(dai->component);
-	unsigned int vol, vol_ramp, dsprx2_src;
+	unsigned int vol, vol_ramp, dsprx2_src, status;
 	int vol_ramp_ms;
 
 	dev_info(cs35l41->dev, "%s mute=%d\n", __func__, mute);
@@ -1288,22 +1305,38 @@ static int cs35l41_pcm_mute(struct snd_soc_dai *dai, int mute)
 			CS35L41_AMP_VOL_PCM_SHIFT,
 			CS35L41_AMP_VOL_PCM_MUTE <<
 			CS35L41_AMP_VOL_PCM_SHIFT);
+		cs35l41->pcm_active = 0;
 
 		regmap_read(cs35l41->regmap,
 			CS35L41_AMP_DIG_VOL_CTRL, &vol_ramp);
 		vol_ramp &= CS35L41_AMP_VOL_RAMP_MASK;
 
-		vol_ramp_ms = cs35l41_convert_ramp_rate(cs35l41,
-							vol_ramp);
-		if (vol_ramp_ms < 0)
-			dev_err(cs35l41->dev,
-				"%s: Could not convert ramp rate\n",
-				__func__);
-		else if (vol_ramp_ms < 20)
-			usleep_range(vol_ramp_ms * 1000,
-					vol_ramp_ms * 1000 + 100);
-		else
-			msleep(vol_ramp_ms);
+		regmap_read(cs35l41->regmap,
+			CS35L41_IRQ1_STATUS2, &status);
+
+		if (status & CS35L41_AUX_NG_CH1_ENTRY_MASK &&
+			status & CS35L41_AUX_NG_CH2_ENTRY_MASK &&
+			cs35l41->halo_booted && cs35l41->halo_routed) {
+			cs35l41_dbg(cs35l41->dev,
+				"Aux NG Active, skipping mute sleeps\n");
+		} else {
+
+			vol_ramp_ms = cs35l41_convert_ramp_rate(cs35l41,
+								vol_ramp);
+			if (vol_ramp_ms < 0)
+				dev_err(cs35l41->dev,
+					"%s: Could not convert ramp rate\n",
+					__func__);
+			else if (vol_ramp_ms < 20)
+				usleep_range(vol_ramp_ms * 1000,
+						vol_ramp_ms * 1000 + 100);
+			else
+				msleep(vol_ramp_ms);
+		}
+
+		regmap_write(cs35l41->regmap,
+				CS35L41_CSPL_COMMAND,
+				CS35L41_CSPL_CMD_MUTE);
 
 		regmap_update_bits(cs35l41->regmap,
 				CS35L41_AMP_OUT_MUTE,
@@ -1331,6 +1364,10 @@ static int cs35l41_pcm_mute(struct snd_soc_dai *dai, int mute)
 			regmap_write(cs35l41->regmap, CS35L41_DSP1_RX2_SRC,
 					cs35l41->dsprx2_src);
 
+		regmap_write(cs35l41->regmap,
+				CS35L41_CSPL_COMMAND,
+				CS35L41_CSPL_CMD_UNMUTE);
+
 		dev_info(cs35l41->dev, "%s: %s\n", __func__,
 				(cs35l41->amp_mute == 0) ? "Muted" : "Unmuted");
 
@@ -1348,6 +1385,7 @@ static int cs35l41_pcm_mute(struct snd_soc_dai *dai, int mute)
 					CS35L41_AMP_VOL_PCM_SHIFT,
 					vol << CS35L41_AMP_VOL_PCM_SHIFT);
 		}
+		cs35l41->pcm_active = 1;
 	}
 
 	cs35l41_log_status(cs35l41, mute);
@@ -2259,6 +2297,7 @@ int cs35l41_reinit(struct snd_soc_component *component)
 {
 	struct cs35l41_private *cs35l41 = snd_soc_component_get_drvdata(component);
 	struct snd_soc_dapm_context *dapm = snd_soc_component_get_dapm(component);
+	bool needs_preload = false;
 
 	if (!cs35l41)
 		return 0;
@@ -2272,8 +2311,12 @@ int cs35l41_reinit(struct snd_soc_component *component)
 	usleep_range(2000, 2100);
 
 	cs35l41->halo_booted = 0;
-	snd_soc_component_disable_pin(component, "DSP1 Preload");
-	snd_soc_dapm_sync(dapm);
+
+	if (cs35l41->dsp.preloaded) {
+		snd_soc_component_disable_pin(component, "DSP1 Preload");
+		snd_soc_dapm_sync(dapm);
+		needs_preload = true;
+	}
 
 	mutex_lock(&cs35l41->dsp.pwr_lock);
 	cs35l41->dsp.running = false;
@@ -2310,8 +2353,10 @@ int cs35l41_reinit(struct snd_soc_component *component)
 	cs35l41->pll_freq_last = 0;
 	cs35l41->pcm_source_last = CS35L41_DAC_PCM1_SRC;
 
-	snd_soc_component_force_enable_pin(component, "DSP1 Preload");
-	snd_soc_dapm_sync(dapm);
+	if (needs_preload) {
+		snd_soc_component_force_enable_pin(component, "DSP1 Preload");
+		snd_soc_dapm_sync(dapm);
+	}
 
 	/* wait for HALO load completion on workqueue */
 	mutex_lock(&cs35l41->dsp.pwr_lock);

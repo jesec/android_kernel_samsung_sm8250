@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011-2019 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2011-2020 The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -45,7 +45,7 @@ typedef enum {
 typedef struct sCsrNeighborRoamCfgParams {
 	uint32_t neighborScanPeriod;
 	uint32_t neighbor_scan_min_period;
-	tCsrChannelInfo channelInfo;
+	tCsrChannelInfo specific_chan_info;
 	uint8_t neighborLookupThreshold;
 	int8_t rssi_thresh_offset_5g;
 	uint8_t neighborReassocThreshold;
@@ -63,6 +63,15 @@ typedef struct sCsrNeighborRoamCfgParams {
 	uint32_t hi_rssi_scan_rssi_delta;
 	uint32_t hi_rssi_scan_delay;
 	int32_t hi_rssi_scan_rssi_ub;
+	tCsrChannelInfo pref_chan_info;
+	uint32_t full_roam_scan_period;
+	bool enable_scoring_for_roam;
+	uint8_t roam_rssi_diff;
+	uint16_t roam_scan_home_away_time;
+	uint8_t roam_scan_n_probes;
+	uint32_t roam_scan_inactivity_time;
+	uint32_t roam_inactive_data_packet_count;
+	uint32_t roam_scan_period_after_inactivity;
 } tCsrNeighborRoamCfgParams, *tpCsrNeighborRoamCfgParams;
 
 #define CSR_NEIGHBOR_ROAM_INVALID_CHANNEL_INDEX    255
@@ -92,12 +101,6 @@ typedef struct sCsrPreauthFailListInfo {
 	tSirMacAddr macAddress[MAX_NUM_PREAUTH_FAIL_LIST_ADDRESS];
 } tCsrPreauthFailListInfo, *tpCsrPreauthFailListInfo;
 
-typedef struct sCsrNeighborReportBssInfo {
-	uint8_t channelNum;
-	uint8_t neighborScore;
-	tSirMacAddr neighborBssId;
-} tCsrNeighborReportBssInfo, *tpCsrNeighborReportBssInfo;
-
 typedef struct sCsr11rAssocNeighborInfo {
 	bool preauthRspPending;
 	bool neighborRptPending;
@@ -108,13 +111,21 @@ typedef struct sCsr11rAssocNeighborInfo {
 	tDblLinkList preAuthDoneList;   /* llist which consists/preauth nodes */
 } tCsr11rAssocNeighborInfo, *tpCsr11rAssocNeighborInfo;
 
-/* Complete control information for neighbor roam algorithm */
+/**
+ * struct sCsr11rAssocNeighborInfo - Control info for neighbor roam algorithm
+ * @roam_control_enable: Flag used to cache the status of roam control
+ *			 configuration. This will be set only if the
+ *			 corresponding vendor command data is configured to
+ *			 driver/firmware successfully. The same shall be
+ *			 returned to userspace whenever queried for roam
+ *			 control config status.
+ */
 typedef struct sCsrNeighborRoamControlInfo {
 	eCsrNeighborRoamState neighborRoamState;
 	eCsrNeighborRoamState prevNeighborRoamState;
 	tCsrNeighborRoamCfgParams cfgParams;
 	struct qdf_mac_addr currAPbssid;  /* current assoc AP */
-	uint8_t currAPoperationChannel; /* current assoc AP */
+	uint32_t curr_ap_op_chan_freq; /* current assoc AP */
 	tCsrNeighborRoamChannelInfo roamChannelInfo;
 	uint8_t currentNeighborLookupThreshold;
 	uint8_t currentOpportunisticThresholdDiff;
@@ -142,8 +153,8 @@ typedef struct sCsrNeighborRoamControlInfo {
 	uint8_t currentRoamBmissFinalBcnt;
 	uint8_t currentRoamBeaconRssiWeight;
 	uint8_t last_sent_cmd;
-	bool b_roam_scan_offload_started;
 	struct scan_result_list *scan_res_lfr2_roam_ap;
+	bool roam_control_enable;
 } tCsrNeighborRoamControlInfo, *tpCsrNeighborRoamControlInfo;
 
 /* All the necessary Function declarations are here */
@@ -153,8 +164,6 @@ QDF_STATUS csr_neighbor_roam_indicate_disconnect(struct mac_context *mac,
 		uint8_t sessionId);
 QDF_STATUS csr_neighbor_roam_init(struct mac_context *mac, uint8_t sessionId);
 void csr_neighbor_roam_close(struct mac_context *mac, uint8_t sessionId);
-QDF_STATUS csr_neighbor_roam_prepare_scan_profile_filter(struct mac_context *mac,
-		tCsrScanResultFilter *pScanFilter, uint8_t sessionId);
 QDF_STATUS csr_neighbor_roam_preauth_rsp_handler(struct mac_context *mac,
 		uint8_t sessionId, QDF_STATUS limStatus);
 bool csr_neighbor_roam_is11r_assoc(struct mac_context *mac, uint8_t sessionId);
@@ -162,22 +171,6 @@ bool csr_neighbor_roam_is11r_assoc(struct mac_context *mac, uint8_t sessionId);
 void csr_neighbor_roam_tranistion_preauth_done_to_disconnected(
 		struct mac_context *mac, uint8_t sessionId);
 bool csr_neighbor_roam_state_preauth_done(struct mac_context *mac,
-		uint8_t sessionId);
-QDF_STATUS csr_roam_issue_reassociate_cmd(struct mac_context *mac,
-		uint32_t sessionId);
-void csr_neighbor_roam_free_roamable_bss_list(struct mac_context *mac_ctx,
-		tDblLinkList *llist);
-bool csr_neighbor_roam_get_handoff_ap_info(struct mac_context *mac,
-		tpCsrNeighborRoamBSSInfo pHandoffNode, uint8_t sessionId);
-QDF_STATUS csr_roam_issue_reassociate(struct mac_context *mac,
-		uint32_t sessionId, struct bss_description *pSirBssDesc,
-		tDot11fBeaconIEs *pIes, struct csr_roam_profile *pProfile);
-void csr_neighbor_roam_request_handoff(struct mac_context *mac, uint8_t sessionId);
-QDF_STATUS csr_neighbor_roam_candidate_found_ind_hdlr(struct mac_context *mac,
-		void *pMsg);
-QDF_STATUS csr_neighbor_roam_process_scan_complete(struct mac_context *mac,
-		uint8_t sessionId);
-bool csr_neighbor_roam_is_handoff_in_progress(struct mac_context *mac,
 		uint8_t sessionId);
 void csr_neighbor_roam_reset_preauth_control_info(
 		struct mac_context *mac_ctx, uint8_t session_id);
@@ -188,35 +181,8 @@ static inline bool csr_neighbor_roam_state_preauth_done(struct mac_context *mac,
 {
 	return false;
 }
-static inline QDF_STATUS csr_roam_issue_reassociate_cmd(struct mac_context *mac,
-		uint32_t sessionId)
-{
-	return QDF_STATUS_E_NOSUPPORT;
-}
-static inline QDF_STATUS csr_roam_issue_reassociate(struct mac_context *mac,
-		uint32_t sessionId, struct bss_description *pSirBssDesc,
-		tDot11fBeaconIEs *pIes, struct csr_roam_profile *pProfile)
-{
-	return QDF_STATUS_E_NOSUPPORT;
-}
-static inline QDF_STATUS csr_neighbor_roam_candidate_found_ind_hdlr(
-		struct mac_context *mac, void *pMsg)
-{
-	return QDF_STATUS_E_NOSUPPORT;
-}
-static inline QDF_STATUS csr_neighbor_roam_process_scan_complete(
-		struct mac_context *mac, uint8_t sessionId)
-{
-	return QDF_STATUS_E_NOSUPPORT;
-}
 static inline void csr_neighbor_roam_tranistion_preauth_done_to_disconnected(
 		struct mac_context *mac, uint8_t sessionId)
-{}
-static inline void csr_neighbor_roam_free_roamable_bss_list(
-		struct mac_context *mac_ctx, tDblLinkList *llist)
-{}
-static inline void csr_neighbor_roam_request_handoff(struct mac_context *mac,
-		uint8_t sessionId)
 {}
 static inline void csr_neighbor_roam_reset_preauth_control_info(
 		struct mac_context *mac_ctx, uint8_t session_id)
@@ -224,16 +190,6 @@ static inline void csr_neighbor_roam_reset_preauth_control_info(
 static inline void csr_neighbor_roam_purge_preauth_failed_list(
 		struct mac_context *mac)
 {}
-static inline bool csr_neighbor_roam_get_handoff_ap_info(struct mac_context *mac,
-		tpCsrNeighborRoamBSSInfo pHandoffNode, uint8_t sessionId)
-{
-	return false;
-}
-static inline bool csr_neighbor_roam_is_handoff_in_progress(struct mac_context *mac,
-		uint8_t sessionId)
-{
-	return false;
-}
 #endif
 bool csr_neighbor_middle_of_roaming(struct mac_context *mac, uint8_t sessionId);
 QDF_STATUS csr_neighbor_roam_update_config(struct mac_context *mac_ctx,
@@ -242,14 +198,14 @@ QDF_STATUS csr_neighbor_roam_update_fast_roaming_enabled(struct mac_context *mac
 		uint8_t sessionId, const bool fastRoamEnabled);
 QDF_STATUS csr_neighbor_roam_channels_filter_by_current_band(
 		struct mac_context *mac, uint8_t sessionId,
-		uint8_t *pInputChannelList,
+		uint32_t *input_chan_freq_list,
 		uint8_t inputNumOfChannels,
-		uint8_t *pOutputChannelList,
+		uint32_t *out_chan_freq_list,
 		uint8_t *pMergedOutputNumOfChannels);
 QDF_STATUS csr_neighbor_roam_merge_channel_lists(struct mac_context *mac,
-		uint8_t *pInputChannelList,
+		uint32_t *pinput_chan_freq_list,
 		uint8_t inputNumOfChannels,
-		uint8_t *pOutputChannelList,
+		uint32_t *out_chan_freq_list,
 		uint8_t outputNumOfChannels,
 		uint8_t *pMergedOutputNumOfChannels);
 void csr_roam_reset_roam_params(struct mac_context *mac_ptr);
@@ -302,13 +258,93 @@ void csr_roam_reset_roam_params(struct mac_context *mac_ptr);
 #define REASON_FILS_PARAMS_CHANGED                  41
 #define REASON_SME_ISSUED                           42
 #define REASON_DRIVER_ENABLED                       43
+#define REASON_ROAM_FULL_SCAN_PERIOD_CHANGED        44
+#define REASON_SCORING_CRITERIA_CHANGED             45
+#define REASON_SUPPLICANT_INIT_ROAMING              46
+#define REASON_SUPPLICANT_DE_INIT_ROAMING           47
+#define REASON_DRIVER_DISABLED                      48
+#define REASON_ROAM_CONTROL_CONFIG_RESTORED         49
+#define REASON_ROAM_CONTROL_CONFIG_ENABLED          50
 
 #if defined(WLAN_FEATURE_HOST_ROAM) || defined(WLAN_FEATURE_ROAM_OFFLOAD)
 QDF_STATUS csr_roam_offload_scan(struct mac_context *mac, uint8_t sessionId,
 		uint8_t command, uint8_t reason);
+
+/**
+ * csr_post_roam_state_change() - Post roam state change to roam state machine
+ * @mac: mac context
+ * @vdev_id: vdev id
+ * @state: roam state to be set for the requested vdev id
+ * @reason: reason for changing roam state for the requested vdev id
+ *
+ * Return: QDF_STATUS
+ */
+QDF_STATUS csr_post_roam_state_change(struct mac_context *mac, uint8_t vdev_id,
+				      enum roam_offload_state state,
+				      uint8_t reason);
+
+/**
+ * csr_post_rso_stop() - Post RSO stop message to WMA
+ * @mac: mac context
+ * @vdev_id: vdev id
+ * @reason: reason for requesting RSO stop
+ *
+ * Return: QDF_STATUS
+ */
+QDF_STATUS
+csr_post_rso_stop(struct mac_context *mac, uint8_t vdev_id, uint16_t reason);
+
+/**
+ * csr_enable_roaming_on_connected_sta() - Enable roaming on other connected
+ *  sta vdev
+ * @mac: mac context
+ * @vdev_id: vdev id on which roaming should not be enabled
+ * @reason: reason for enabling roaming on connected sta vdev
+ *
+ * Return: QDF_STATUS
+ */
+QDF_STATUS
+csr_enable_roaming_on_connected_sta(struct mac_context *mac, uint8_t vdev_id);
+
+/**
+ * csr_roam_update_cfg() - Process RSO update cfg request
+ * @mac: mac context
+ * @vdev_id: vdev id
+ * @reason: reason for requesting RSO update cfg
+ *
+ * Return: QDF_STATUS
+ */
+QDF_STATUS
+csr_roam_update_cfg(struct mac_context *mac, uint8_t vdev_id, uint8_t reason);
 #else
 static inline QDF_STATUS csr_roam_offload_scan(struct mac_context *mac,
 		uint8_t sessionId, uint8_t command, uint8_t reason)
+{
+	return QDF_STATUS_E_NOSUPPORT;
+}
+
+static inline
+QDF_STATUS csr_post_roam_state_change(struct mac_context *mac, uint8_t vdev_id,
+				      enum roam_offload_state state,
+				      uint8_t reason)
+{
+	return QDF_STATUS_E_NOSUPPORT;
+}
+
+static inline
+csr_post_rso_stop(struct mac_context *mac, uint8_t vdev_id, uint16_t reason)
+{
+	return QDF_STATUS_E_NOSUPPORT;
+}
+
+static inline QDF_STATUS
+csr_enable_roaming_on_connected_sta(struct mac_context *mac, uint8_t vdev_id)
+{
+	return QDF_STATUS_E_NOSUPPORT;
+}
+
+static inline QDF_STATUS
+csr_roam_update_cfg(struct mac_context *mac, uint8_t vdev_id, uint8_t reason)
 {
 	return QDF_STATUS_E_NOSUPPORT;
 }
@@ -361,6 +397,69 @@ QDF_STATUS csr_roam_read_tsf(struct mac_context *mac, uint8_t *pTimestamp,
 QDF_STATUS csr_roam_synch_callback(struct mac_context *mac,
 	struct roam_offload_synch_ind *roam_synch_data,
 	struct bss_description *bss_desc_ptr, enum sir_roam_op_code reason);
+
+/**
+ * csr_roam_auth_offload_callback() - Registered CSR Callback function to handle
+ * WPA3 roam pre-auth event from firmware.
+ * @mac_ctx: Global mac context pointer
+ * @vdev_id: Vdev id
+ * @bssid: candidate AP bssid
+ */
+QDF_STATUS
+csr_roam_auth_offload_callback(struct mac_context *mac_ctx,
+			       uint8_t vdev_id,
+			       struct qdf_mac_addr bssid);
+
+/**
+ * csr_fast_reassoc() - invokes FAST REASSOC command
+ * @mac_handle: handle returned by mac_open
+ * @profile: current connected profile
+ * @bssid: bssid to look for in scan cache
+ * @ch_freq: channel on which reassoc should be send
+ * @vdev_id: vdev id
+ * @connected_bssid: bssid of currently connected profile
+ *
+ * Return: QDF_STATUS
+ */
+QDF_STATUS csr_fast_reassoc(mac_handle_t mac_handle,
+			    struct csr_roam_profile *profile,
+			    const tSirMacAddr bssid, uint32_t ch_freq,
+			    uint8_t vdev_id, const tSirMacAddr connected_bssid);
+
+#ifdef WLAN_FEATURE_FIPS
+/**
+ * csr_roam_pmkid_req_callback() - Registered CSR Callback function to handle
+ * roam event from firmware for pmkid generation fallback.
+ * @vdev_id: Vdev id
+ * @bss_list: candidate AP bssid list
+ */
+QDF_STATUS
+csr_roam_pmkid_req_callback(uint8_t vdev_id,
+			    struct roam_pmkid_req_event *bss_list);
+
+/**
+ * csr_process_roam_pmkid_req_callback() - API to trigger the pmkid
+ * generation fallback event for candidate AP received from firmware.
+ * @mac_ctx: Global mac context pointer
+ * @vdev_id: Vdev id
+ * @roam_bsslist: roam candidate AP bssid list
+ *
+ * This function calls the hdd_sme_roam_callback with reason
+ * eCSR_ROAM_FIPS_PMK_REQUEST to trigger pmkid generation in supplicant.
+ */
+QDF_STATUS
+csr_process_roam_pmkid_req_callback(struct mac_context *mac_ctx,
+				    uint8_t vdev_id,
+				    struct roam_pmkid_req_event *roam_bsslist);
+#else
+static inline QDF_STATUS
+csr_roam_pmkid_req_callback(uint8_t vdev_id,
+			    struct roam_pmkid_req_event *bss_list)
+{
+	return QDF_STATUS_SUCCESS;
+}
+#endif /* WLAN_FEATURE_FIPS */
+
 #else
 static inline QDF_STATUS csr_roam_synch_callback(struct mac_context *mac,
 	struct roam_offload_synch_ind *roam_synch_data,
@@ -368,17 +467,34 @@ static inline QDF_STATUS csr_roam_synch_callback(struct mac_context *mac,
 {
 	return QDF_STATUS_E_NOSUPPORT;
 }
+
+static inline QDF_STATUS
+csr_roam_auth_offload_callback(struct mac_context *mac_ctx,
+			       uint8_t vdev_id,
+			       struct qdf_mac_addr bssid)
+{
+	return QDF_STATUS_E_NOSUPPORT;
+}
+
+static inline
+QDF_STATUS csr_fast_reassoc(mac_handle_t mac_handle,
+			    struct csr_roam_profile *profile,
+			    const tSirMacAddr bssid, uint32_t ch_freq,
+			    uint8_t vdev_id, const tSirMacAddr connected_bssid)
+{
+	return QDF_STATUS_SUCCESS;
+}
+
+static inline QDF_STATUS
+csr_roam_pmkid_req_callback(uint8_t vdev_id,
+			    struct roam_pmkid_req_event *bss_list)
+{
+	return QDF_STATUS_E_NOSUPPORT;
+}
 #endif
 void csr_neighbor_roam_state_transition(struct mac_context *mac_ctx,
 		uint8_t newstate, uint8_t session);
 uint8_t *csr_neighbor_roam_state_to_string(uint8_t state);
-tpCsrNeighborRoamBSSInfo csr_neighbor_roam_next_roamable_ap(
-		struct mac_context *mac_ctx, tDblLinkList *llist,
-		tpCsrNeighborRoamBSSInfo neighbor_entry);
-bool csr_neighbor_roam_remove_roamable_ap_list_entry(struct mac_context *mac,
-		tDblLinkList *pList, tpCsrNeighborRoamBSSInfo pNeighborEntry);
-void csr_neighbor_roam_free_neighbor_roam_bss_node(struct mac_context *mac,
-		tpCsrNeighborRoamBSSInfo neighborRoamBSSNode);
 QDF_STATUS csr_neighbor_roam_issue_preauth_req(struct mac_context *mac,
 		uint8_t sessionId);
 bool csr_neighbor_roam_is_preauth_candidate(struct mac_context *mac,

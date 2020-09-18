@@ -1,7 +1,7 @@
 /*
  * Header for Linux cfg80211 scan
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,7 +18,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #ifndef _wl_cfgscan_h_
@@ -45,6 +45,14 @@
 	(scan_request && scan_request->dev) ? scan_request->dev->ieee80211_ptr : NULL;
 #endif /* WL_SCHED_SCAN */
 
+#ifdef DUAL_ESCAN_RESULT_BUFFER
+#define wl_escan_set_sync_id(a, b) ((a) = (b)->escan_info.cur_sync_id)
+#define wl_escan_set_type(a, b) ((a)->escan_info.escan_type\
+				[((a)->escan_info.cur_sync_id)%SCAN_BUF_CNT] = (b))
+#else
+#define wl_escan_set_sync_id(a, b) ((a) = htod16((b)->escan_sync_id_cntr++))
+#define wl_escan_set_type(a, b)
+#endif /* DUAL_ESCAN_RESULT_BUFFER */
 extern s32 wl_escan_handler(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 	const wl_event_msg_t *e, void *data);
 extern s32 wl_do_escan(struct bcm_cfg80211 *cfg, struct wiphy *wiphy,
@@ -126,4 +134,10 @@ extern s32 wl_cfgscan_remain_on_channel(struct wiphy *wiphy, bcm_struct_cfgdev *
 extern s32 wl_cfgscan_cancel_remain_on_channel(struct wiphy *wiphy,
 	bcm_struct_cfgdev *cfgdev, u64 cookie);
 extern chanspec_t wl_freq_to_chanspec(int freq);
+extern s32 wl_inform_single_bss(struct bcm_cfg80211 *cfg, wl_bss_info_t *bi, bool update_ssid);
+#ifdef WL_GET_RCC
+extern int wl_android_get_roam_scan_chanlist(struct bcm_cfg80211 *cfg);
+#endif /* WL_GET_RCC */
+extern s32 wl_get_assoc_channels(struct bcm_cfg80211 *cfg,
+	struct net_device *dev, wlcfg_assoc_info_t *info);
 #endif /* _wl_cfgscan_h_ */

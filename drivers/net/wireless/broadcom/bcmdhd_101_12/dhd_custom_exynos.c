@@ -61,6 +61,10 @@
 #include <linux/sec_class.h>
 #endif /* CONFIG_SEC_SYSFS */
 
+#if defined(CONFIG_MACH_A7LTE) || defined(CONFIG_NOBLESSE)
+#define PINCTL_DELAY 150
+#endif /* CONFIG_MACH_A7LTE || CONFIG_NOBLESSE */
+
 #ifdef CONFIG_BROADCOM_WIFI_RESERVED_MEM
 extern int dhd_init_wlan_mem(void);
 extern void *dhd_wlan_mem_prealloc(int section, unsigned long size);
@@ -74,6 +78,10 @@ static int wlan_host_wake_irq = 0;
 EXPORT_SYMBOL(wlan_host_wake_irq);
 static unsigned int wlan_host_wake_up = -1;
 #endif /* CONFIG_BCMDHD_OOB_HOST_WAKE */
+
+#if defined(CONFIG_MACH_A7LTE) || defined(CONFIG_NOBLESSE)
+extern struct device *mmc_dev_for_wlan;
+#endif /* CONFIG_MACH_A7LTE || CONFIG_NOBLESSE */
 
 #ifdef CONFIG_BCMDHD_PCIE
 #define EXYNOS_PCIE_RC_ONOFF
@@ -91,14 +99,18 @@ extern void exynos_pcie_pm_resume(int);
 extern void exynos_pcie_pm_suspend(int);
 #endif /* EXYNOS_PCIE_RC_ONOFF */
 
-#if defined(CONFIG_SOC_EXYNOS7870)
+#if defined(CONFIG_SOC_EXYNOS7870) || defined(CONFIG_SOC_EXYNOS9110)
 extern struct mmc_host *wlan_mmc;
 extern void mmc_ctrl_power(struct mmc_host *host, bool onoff);
-#endif /* SOC_EXYNOS7870 */
+#endif /* SOC_EXYNOS7870 || CONFIG_SOC_EXYNOS9110 */
 
 static int
 dhd_wlan_power(int onoff)
 {
+#if defined(CONFIG_MACH_A7LTE) || defined(CONFIG_NOBLESSE)
+	struct pinctrl *pinctrl = NULL;
+#endif /* CONFIG_MACH_A7LTE || ONFIG_NOBLESSE */
+
 	printk(KERN_INFO"%s Enter: power %s\n", __FUNCTION__, onoff ? "on" : "off");
 
 #ifdef EXYNOS_PCIE_RC_ONOFF
@@ -126,15 +138,33 @@ dhd_wlan_power(int onoff)
 		exynos_pcie_pm_resume(SAMSUNG_PCIE_CH_NUM);
 	}
 #else
+#if defined(CONFIG_MACH_A7LTE) || defined(CONFIG_NOBLESSE)
+	if (onoff) {
+		pinctrl = devm_pinctrl_get_select(mmc_dev_for_wlan, "sdio_wifi_on");
+		if (IS_ERR(pinctrl))
+			printk(KERN_INFO "%s WLAN SDIO GPIO control error\n", __FUNCTION__);
+		msleep(PINCTL_DELAY);
+	}
+#endif /* CONFIG_MACH_A7LTE || CONFIG_NOBLESSE */
+
 	if (gpio_direction_output(wlan_pwr_on, onoff)) {
 		printk(KERN_ERR "%s failed to control WLAN_REG_ON to %s\n",
 			__FUNCTION__, onoff ? "HIGH" : "LOW");
 		return -EIO;
 	}
-#if defined(CONFIG_SOC_EXYNOS7870)
+
+#if defined(CONFIG_MACH_A7LTE) || defined(CONFIG_NOBLESSE)
+	if (!onoff) {
+		pinctrl = devm_pinctrl_get_select(mmc_dev_for_wlan, "sdio_wifi_off");
+		if (IS_ERR(pinctrl))
+			printk(KERN_INFO "%s WLAN SDIO GPIO control error\n", __FUNCTION__);
+	}
+#endif /* CONFIG_MACH_A7LTE || CONFIG_NOBLESSE */
+
+#if defined(CONFIG_SOC_EXYNOS7870) || defined(CONFIG_SOC_EXYNOS9110)
 	if (wlan_mmc)
 		mmc_ctrl_power(wlan_mmc, onoff);
-#endif /* SOC_EXYNOS7870 */
+#endif /* SOC_EXYNOS7870 || CONFIG_SOC_EXYNOS9110 */
 #endif /* EXYNOS_PCIE_RC_ONOFF */
 	return 0;
 }
@@ -148,10 +178,12 @@ dhd_wlan_reset(int onoff)
 #ifndef CONFIG_BCMDHD_PCIE
 extern void (*notify_func_callback)(void *dev_id, int state);
 extern void *mmc_host_dev;
+#endif /* !CONFIG_BCMDHD_PCIE */
 
 static int
 dhd_wlan_set_carddetect(int val)
 {
+#ifndef CONFIG_BCMDHD_PCIE
 	pr_err("%s: notify_func=%p, mmc_host_dev=%p, val=%d\n",
 		__FUNCTION__, notify_func_callback, mmc_host_dev, val);
 
@@ -160,10 +192,16 @@ dhd_wlan_set_carddetect(int val)
 	} else {
 		pr_warning("%s: Nobody to notify\n", __FUNCTION__);
 	}
+#else
+	if (val) {
+		exynos_pcie_pm_resume(SAMSUNG_PCIE_CH_NUM);
+	} else {
+		exynos_pcie_pm_suspend(SAMSUNG_PCIE_CH_NUM);
+	}
+#endif /* CONFIG_BCMDHD_PCIE */
 
 	return 0;
 }
-#endif /* !CONFIG_BCMDHD_PCIE */
 
 int __init
 dhd_wlan_init_gpio(void)
@@ -254,9 +292,7 @@ EXPORT_SYMBOL(dhd_wlan_resources);
 struct wifi_platform_data dhd_wlan_control = {
 	.set_power	= dhd_wlan_power,
 	.set_reset	= dhd_wlan_reset,
-#ifndef CONFIG_BCMDHD_PCIE
 	.set_carddetect	= dhd_wlan_set_carddetect,
-#endif /* !CONFIG_BCMDHD_PCIE */
 #ifdef CONFIG_BROADCOM_WIFI_RESERVED_MEM
 	.mem_prealloc	= dhd_wlan_mem_prealloc,
 #endif /* CONFIG_BROADCOM_WIFI_RESERVED_MEM */

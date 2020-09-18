@@ -13,11 +13,12 @@
 #include <linux/regulator/consumer.h>
 #include <linux/of_gpio.h>
 #include <linux/spu-verify.h>
-#include <linux/usb/manager/usb_typec_manager_notifier.h>
-
 #include "wacom_reg.h"
 
 #undef CONFIG_USB_TYPEC_MANAGER_NOTIFIER
+#if defined(CONFIG_USB_TYPEC_MANAGER_NOTIFIER)
+#include <linux/usb/typec/manager/usb_typec_manager_notifier.h>
+#endif
 
 #ifdef CONFIG_BATTERY_SAMSUNG
 extern unsigned int lpcharge;
@@ -46,9 +47,12 @@ extern unsigned int lpcharge;
 #define WACOM_I2C_MODE_NORMAL		false
 #define WACOM_I2C_MODE_BOOT		true
 
+#define WACOM_BLE_HISTORY_SIZE		(22 * 150)
+#define WACOM_BLE_HISTORY1_SIZE		(22)
+
 /* wacom features */
 #define USE_OPEN_CLOSE
-#define WACOM_USE_SURVEY_MODE /* SURVEY MODE is LPM mode : Only detect grage(pdct) & aop */
+#define WACOM_USE_SURVEY_MODE /* SURVEY MODE is LPM mode : Only detect garage(pdct) & aop */
 
 #ifdef WACOM_USE_SURVEY_MODE
 #define EPEN_RESUME_DELAY		0
@@ -61,8 +65,8 @@ extern unsigned int lpcharge;
 #define COM_COORD_NUM			16
 #define COM_RESERVED_NUM		0
 #define COM_QUERY_NUM			15
-#define COM_QUERY_POS			(COM_COORD_NUM+COM_RESERVED_NUM)
-#define COM_QUERY_BUFFER		(COM_QUERY_POS+COM_QUERY_NUM)
+#define COM_QUERY_POS			(COM_COORD_NUM + COM_RESERVED_NUM)
+#define COM_QUERY_BUFFER		(COM_QUERY_POS + COM_QUERY_NUM)
 
 /* packet ID for wacom data */
 enum PACKET_ID {
@@ -80,6 +84,7 @@ enum NOTI_SUB_ID {
 	TSP_STOP_PACKET,
 	OOK_PACKET,
 	CMD_PACKET,
+	GCF_PACKET		= 7,	/* Garage Charging Finished notification data*/
 };
 
 enum REPLY_SUB_ID {
@@ -101,7 +106,13 @@ enum TABLE_SWAP {
 	TABLE_SWAP_KBD_COVER = 2,
 };
 
-#define WACOM_PATH_EXTERNAL_FW	"/sdcard/FIRMWARE/WACOM/wacom.bin"
+enum COVER_STATE {
+	NOMAL_MODE = 0,
+	BOOKCOVER_MODE,
+	KBDCOVER_MODE,
+};
+
+#define WACOM_PATH_EXTERNAL_FW		"/sdcard/FIRMWARE/WACOM/wacom.bin"
 #define WACOM_PATH_EXTERNAL_FW_SIGNED	"/sdcard/FIRMWARE/WACOM/wacom_signed.bin"
 #define WACOM_PATH_SPU_FW_SIGNED	"/spu/WACOM/ffu_wacom.bin"
 
@@ -156,9 +167,9 @@ struct fw_image {
  * ( 0: IN / 1: OUT )
  *--------------------------------------------------
  */
-#define EPEN_EVENT_PEN_OUT		(0x1<<0)
-#define EPEN_EVENT_GARAGE		(0x1<<1)
-#define EPEN_EVENT_AOP			(0x1<<2)
+#define EPEN_EVENT_PEN_OUT		(1 << 0)
+#define EPEN_EVENT_GARAGE		(1 << 1)
+#define EPEN_EVENT_AOP			(1 << 2)
 #define EPEN_EVENT_SURVEY		(EPEN_EVENT_GARAGE | EPEN_EVENT_AOP)
 
 #define EPEN_SURVEY_MODE_NONE		0x0
@@ -184,7 +195,7 @@ struct fw_image {
 #define EPEN_SETMODE_AOP_OPTION_AOD_LCD_ON	(EPEN_SETMODE_AOP_OPTION_AOD | EPEN_SETMODE_AOP_OPTION_AOD_LCD_STATUS)
 #define EPEN_SETMODE_AOP_OPTION_AOD_LCD_OFF	EPEN_SETMODE_AOP_OPTION_AOD
 #define EPEN_SETMODE_AOP			(EPEN_SETMODE_AOP_OPTION_AOD | EPEN_SETMODE_AOP_OPTION_SCREENOFFMEMO | \
-						 EPEN_SETMODE_AOP_OPTION_AOT)
+						EPEN_SETMODE_AOP_OPTION_AOT)
 
 enum {
 	EPEN_POS_ID_SCREEN_OF_MEMO = 1,
@@ -229,17 +240,15 @@ enum SCAN_MODE {
 	LOCAL_MODE,
 };
 
-
 #define WACOM_STOP_CMD				0x00
 #define WACOM_START_CMD				0x01
 #define WACOM_STOP_AND_START_CMD	0x02
 
-/* skip event for keyboard cover */
-#define KEYBOARD_COVER_BOUNDARY  10400
-enum epen_virtual_event_mode {
-	EPEN_POS_NONE	= 0,
-	EPEN_POS_VIEW	= 1,
-	EPEN_POS_COVER	= 2,
+#define EPEN_CHARGER_OFF_TIME	90	/* default 60s + buffer time */
+enum epen_scan_info{
+	EPEN_CHARGE_OFF			= 0,
+	EPEN_CHARGE_ON			= 1,
+	EPEN_CHARGE_HAPPENED	= 2,
 };
 
 typedef enum {
@@ -247,12 +256,29 @@ typedef enum {
 	WACOM_DISABLE = 1,
 } wacom_disable_mode_t;
 
+/* WACOM_DEBUG : Print event contents */
+#define WACOM_DEBUG_PRINT_I2C_READ_CMD		0x01
+#define WACOM_DEBUG_PRINT_I2C_WRITE_CMD		0x02
+#define WACOM_DEBUG_PRINT_COORDEVENT		0x04
+#define WACOM_DEBUG_PRINT_ALLEVENT		0x08
+
+/* digitizer & garage open test */
+#define EPEN_OPEN_TEST_PASS			0
+#define EPEN_OPEN_TEST_NOTSUPPORT	-1
+#define EPEN_OPEN_TEST_EIO			-2
+#define EPEN_OPEN_TEST_FAIL			-3
+#define EPEN_OPEN_TEST_EMODECHG		-4
+enum {
+	WACOM_GARAGE_TEST = 0,
+	WACOM_DIGITIZER_TEST,
+};
+
 /* elec data */
 #define COM_ELEC_NUM			38
 #define COM_ELEC_DATA_NUM		12
 #define COM_ELEC_DATA_POS		14
 
-#define POWER_OFFSET		1000000000000
+#define POWER_OFFSET			1000000000000
 
 enum {
 	SEC_NORMAL = 0,
@@ -262,12 +288,12 @@ enum {
 
 enum epen_elec_spec_mode {
 	EPEN_ELEC_DATA_MAIN	= 0,
-	EPEN_ELEC_DATA_UNIT	= 1,
-	EPEN_ELEC_DATA_ASSY	= 2,
+	EPEN_ELEC_DATA_UNIT	= 1,	// pretest
+//	EPEN_ELEC_DATA_ASSY	= 2,	// reserved
 };
 
 struct wacom_elec_data {
-	long long spec_ver;
+	u32 spec_ver[2];
 	u8 max_x_ch;
 	u8 max_y_ch;
 	u8 shift_value;
@@ -322,14 +348,14 @@ struct wacom_elec_data {
 
 struct wacom_g5_platform_data {
 	struct wacom_elec_data *edata;		/* currnet test spec */
-	struct wacom_elec_data *edatas[3];	/* 0:main, 1:sub unit, 2:sub assy */
+	struct wacom_elec_data *edatas[3];	/* 0:main, 1:sub unit, 2:sub assy(reserved) */
 
 	int irq_gpio;
 	int pdct_gpio;
 	int fwe_gpio;
 	int boot_addr;
-	int irq_type;
-	int pdct_type;
+	const char *regulator_avdd;
+
 	int x_invert;
 	int y_invert;
 	int xy_switch;
@@ -345,12 +371,15 @@ struct wacom_g5_platform_data {
 #if WACOM_SEC_FACTORY
 	const char *fw_fac_path;
 #endif
-	u32 ic_type;
+	u8 ic_type;
+	u8 bl_ver;
 	u32 module_ver;
+	u32 support_garage_open_test;
 	bool use_garage;
 	u32 table_swap;
-	bool use_vddio;
+	bool regulator_boot_on;
 	u32 bringup;
+	bool support_cover_noti;
 
 	u32	area_indicator;
 	u32	area_navigation;
@@ -365,15 +394,20 @@ struct wacom_i2c {
 	struct i2c_client *client_boot;
 	struct input_dev *input_dev;
 	struct sec_cmd_data sec;
+	struct mutex i2c_mutex;
 	struct mutex lock;
 	struct mutex update_lock;
 	struct mutex irq_lock;
+	struct mutex ble_lock;
+	struct mutex ble_charge_mode_lock;
 	bool power_enable;
 	struct wake_lock wakelock;
 	bool pm_suspend;
 	volatile bool probe_done;
 	bool query_status;
 	struct completion resume_done;
+	struct regulator *regulator_avdd;
+	struct regulator *regulator_dvdd;
 
 	int irq;
 	int irq_pdct;
@@ -392,9 +426,11 @@ struct wacom_i2c {
 
 	/* ble(ook) */
 	volatile u8 ble_mode;
-	volatile bool is_mode_change;
+	long chg_time_stamp;
+	volatile bool ble_mode_change;
 	volatile bool ble_block_flag;
-	u32 chg_time_stamp;
+	bool ble_charging_state;
+	bool ble_disable_flag;
 
 	/* for tui or factory test */
 	bool epen_blocked;
@@ -406,8 +442,8 @@ struct wacom_i2c {
 	u16 p_y;
 	u16 x;
 	u16 y;
-	u16 tilt_x;
-	u16 tilt_y;
+	s8 tilt_x;
+	s8 tilt_y;
 	u16 pressure;
 	u16 height;	
 	int tool;
@@ -423,8 +459,9 @@ struct wacom_i2c {
 	struct fw_image *fw_img;
 	const struct firmware *firm_data;
 
-	u32 fw_ver_ic;
-	u32 fw_ver_bin;
+	u16 fw_ver_ic;
+	u16 fw_ver_bin;
+	u16 fw_ver_spu;
 	int update_status;
 	u8 *fw_data;
 	u8 fw_update_way;
@@ -448,9 +485,6 @@ struct wacom_i2c {
 	struct work_struct kbd_work;
 	u8 kbd_conn_state;
 	u8 kbd_cur_conn_state;
-	bool keyboard_cover_mode;
-	bool keyboard_area;
-	int virtual_tracking;
 
 	struct notifier_block typec_nb;
 	struct work_struct typec_work;
@@ -461,11 +495,18 @@ struct wacom_i2c {
 
 	/* open test*/
 	volatile bool is_open_test;
+	// digitizer
 	bool connection_check;
 	int  fail_channel;
 	int  min_adc_val;
 	int  error_cal;
 	int  min_cal_val;
+	// garage
+	bool garage_connection_check;
+	int  garage_fail_channel;
+	int  garage_min_adc_val;
+	int  garage_error_cal;
+	int  garage_min_cal_val;
 
 	/* check abnormal case*/
 	struct delayed_work work_print_info;
@@ -476,7 +517,7 @@ struct wacom_i2c {
 	u32 abnormal_reset_count;
 	u32 pen_out_count;
 	volatile bool reset_flag;
-
+	u8 debug_flag;
 #if WACOM_SEC_FACTORY
 	volatile bool fac_garage_mode;
 	u32 garage_gain0;
@@ -484,11 +525,20 @@ struct wacom_i2c {
 	u32 garage_freq0;
 	u32 garage_freq1;
 #endif
+	char *ble_hist;
+	char *ble_hist1;
+	int ble_hist_index;
+	char cover;
 };
 
+extern struct wacom_i2c *g_wac_i2c;
+#ifdef CONFIG_DISPLAY_SAMSUNG
+extern int get_lcd_attached(char *mode);
+#endif
+#ifdef CONFIG_EXYNOS_DPU30
+extern int get_lcd_info(char *arg);
+#endif
 
-
-struct wacom_i2c *wacom_get_drv_data(void *data);
 int wacom_power(struct wacom_i2c *, bool on);
 void wacom_reset_hw(struct wacom_i2c *);
 
@@ -504,7 +554,6 @@ int wacom_fw_update_on_hidden_menu(struct wacom_i2c *, u8 fw_update_way);
 int wacom_i2c_flash(struct wacom_i2c *);
 
 void wacom_enable_irq(struct wacom_i2c *, bool enable);
-void wacom_enable_pdct_irq(struct wacom_i2c *, bool enable);
 
 int wacom_i2c_send(struct wacom_i2c *, const char *buf, int count);
 int wacom_i2c_send_boot(struct wacom_i2c *, const char *buf, int count);
@@ -515,14 +564,14 @@ int wacom_i2c_query(struct wacom_i2c *);
 int wacom_checksum(struct wacom_i2c *);
 int wacom_i2c_set_sense_mode(struct wacom_i2c *);
 
-void forced_release(struct wacom_i2c *);
+void wacom_forced_release(struct wacom_i2c *);
 void forced_release_fullscan(struct wacom_i2c *wac_i2c);
 
 void wacom_select_survey_mode(struct wacom_i2c *, bool enable);
 int wacom_i2c_set_survey_mode(struct wacom_i2c *, int mode);
 int wacom_start_stop_cmd(struct wacom_i2c *wac_i2c, int mode);
 
-int wacom_open_test(struct wacom_i2c *wac_i2c);
+int wacom_open_test(struct wacom_i2c *wac_i2c, int test_mode);
 
 int wacom_sec_init(struct wacom_i2c *);
 void wacom_sec_remove(struct wacom_i2c *);
@@ -531,8 +580,7 @@ void wacom_print_info(struct wacom_i2c *wac_i2c);
 void wacom_i2c_coord_modify(struct wacom_i2c *wac_i2c);
 void wacom_disable_mode(struct wacom_i2c *wac_i2c, wacom_disable_mode_t mode);
 
-extern int set_scan_mode(int mode);
-#if WACOM_SEC_FACTORY
-bool wacom_check_ub(struct wacom_i2c *wac_i2c);
-#endif
+int wacom_check_ub(struct i2c_client *client);
 
+void wacom_swap_compensation(struct wacom_i2c *wac_i2c, char cmd);
+int wacom_ble_charge_mode(struct wacom_i2c *wac_i2c, int mode);

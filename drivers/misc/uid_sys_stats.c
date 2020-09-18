@@ -419,11 +419,13 @@ static int uid_cputime_show(struct seq_file *m, void *v)
 	}
 
 	rcu_read_lock();
+	read_lock(&tasklist_lock);
 	do_each_thread(temp, task) {
 		uid = from_kuid_munged(user_ns, task_uid(task));
 		if (!uid_entry || uid_entry->uid != uid)
 			uid_entry = find_or_register_uid(uid);
 		if (!uid_entry) {
+			read_unlock(&tasklist_lock);
 			rcu_read_unlock();
 			rt_mutex_unlock(&uid_lock);
 			pr_err("%s: failed to find the uid_entry for uid %d\n",
@@ -434,6 +436,7 @@ static int uid_cputime_show(struct seq_file *m, void *v)
 		uid_entry->active_utime += utime;
 		uid_entry->active_stime += stime;
 	} while_each_thread(temp, task);
+	read_unlock(&tasklist_lock);
 	rcu_read_unlock();
 
 	hash_for_each(hash_table, bkt, uid_entry, hash) {
@@ -549,6 +552,7 @@ static void update_io_stats_all_locked(void)
 	}
 
 	rcu_read_lock();
+	read_lock(&tasklist_lock);
 	do_each_thread(temp, task) {
 		uid = from_kuid_munged(user_ns, task_uid(task));
 		if (!uid_entry || uid_entry->uid != uid)
@@ -557,6 +561,7 @@ static void update_io_stats_all_locked(void)
 			continue;
 		add_uid_io_stats(uid_entry, task, UID_STATE_TOTAL_CURR);
 	} while_each_thread(temp, task);
+	read_unlock(&tasklist_lock);
 	rcu_read_unlock();
 
 	hash_for_each(hash_table, bkt, uid_entry, hash) {
@@ -578,11 +583,13 @@ static void update_io_stats_uid_locked(struct uid_entry *uid_entry)
 	set_io_uid_tasks_zero(uid_entry);
 
 	rcu_read_lock();
+	read_lock(&tasklist_lock);
 	do_each_thread(temp, task) {
 		if (from_kuid_munged(user_ns, task_uid(task)) != uid_entry->uid)
 			continue;
 		add_uid_io_stats(uid_entry, task, UID_STATE_TOTAL_CURR);
 	} while_each_thread(temp, task);
+	read_unlock(&tasklist_lock);
 	rcu_read_unlock();
 
 	compute_io_bucket_stats(&uid_entry->io[uid_entry->state],

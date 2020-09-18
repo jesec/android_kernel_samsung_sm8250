@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2019 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2020 The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -113,23 +113,23 @@
 #define CFG_VHT_RX_SUPP_DATA_RATE CFG_UINT( \
 		"rx_supp_data_rate", \
 		0, \
-		780, \
-		780, \
+		866, \
+		866, \
 		CFG_VALUE_OR_DEFAULT, \
 		"VHT RX SUPP DATA RATE")
 
 #define CFG_VHT_TX_SUPP_DATA_RATE CFG_UINT( \
 		"tx_supp_data_rate", \
 		0, \
-		780, \
-		780, \
+		866, \
+		866, \
 		CFG_VALUE_OR_DEFAULT, \
 		"VHT TX SUPP DATA RATE")
 
-#define CFG_TX_BF_CAP CFG_INT( \
+#define CFG_TX_BF_CAP CFG_UINT( \
 		"tx_bf_cap", \
 		0, \
-		-1, \
+		4294967295, \
 		0, \
 		CFG_VALUE_OR_DEFAULT, \
 		"TX BF CAP")

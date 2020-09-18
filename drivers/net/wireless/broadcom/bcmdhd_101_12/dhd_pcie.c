@@ -271,7 +271,11 @@ static int dhdpcie_init_d11status(struct dhd_bus *bus);
 
 static int dhdpcie_wrt_rnd(struct dhd_bus *bus);
 
+#ifdef DHD_FW_MEM_CORRUPTION
 #define NUM_PATTERNS 2
+#else
+#define NUM_PATTERNS 6
+#endif /* DHD_FW_MEM_CORRUPTION */
 static bool dhd_bus_tcm_test(struct dhd_bus *bus);
 
 #if defined(FW_SIGNATURE)
@@ -2154,13 +2158,12 @@ dhdpcie_bus_release_dongle(dhd_bus_t *bus, osl_t *osh, bool dongle_isolation, bo
 		bus->dhd, bus->dhd->dongle_reset));
 
 	if ((bus->dhd && bus->dhd->dongle_reset) && reset_flag) {
-		DHD_TRACE(("%s Exit\n", __FUNCTION__));
-		return;
+		goto fail;
 	}
 
 	if (bus->is_linkdown) {
 		DHD_ERROR(("%s : Skip release dongle due to linkdown \n", __FUNCTION__));
-		return;
+		goto fail;
 	}
 
 	if (bus->sih) {
@@ -2191,13 +2194,15 @@ dhdpcie_bus_release_dongle(dhd_bus_t *bus, osl_t *osh, bool dongle_isolation, bo
 			/* Disable CLKREQ# */
 			dhdpcie_clkreq(bus->osh, 1, 0);
 		}
-
-		if (bus->sih != NULL) {
-			si_detach(bus->sih);
-			bus->sih = NULL;
-		}
-		if (bus->vars && bus->varsz)
-			MFREE(osh, bus->vars, bus->varsz);
+	}
+fail:
+	/* Resources should be freed */
+	if (bus->sih) {
+		si_detach(bus->sih);
+		bus->sih = NULL;
+	}
+	if (bus->vars && bus->varsz) {
+		MFREE(osh, bus->vars, bus->varsz);
 		bus->vars = NULL;
 	}
 
@@ -2480,311 +2485,12 @@ static int concate_revision_bcm4359(dhd_bus_t *bus, char *fw_path, char *nv_path
 	return 0;
 }
 
-#if defined(USE_CID_CHECK)
-
-#define MAX_EXTENSION 20
-#define MODULE_BCM4361_INDEX	3
-#define CHIP_REV_A0	1
-#define CHIP_REV_A1	2
-#define CHIP_REV_B0	3
-#define CHIP_REV_B1	4
-#define CHIP_REV_B2	5
-#define CHIP_REV_C0	6
-#define BOARD_TYPE_EPA				0x080f
-#define BOARD_TYPE_IPA				0x0827
-#define BOARD_TYPE_IPA_OLD			0x081a
-#define DEFAULT_CIDINFO_FOR_EPA		"r00a_e000_a0_ePA"
-#define DEFAULT_CIDINFO_FOR_IPA		"r00a_e000_a0_iPA"
-#define DEFAULT_CIDINFO_FOR_A1		"r01a_e30a_a1"
-#define DEFAULT_CIDINFO_FOR_B0		"r01i_e32_b0"
-#define MAX_VID_LEN					8
-#define CIS_TUPLE_HDR_LEN		2
-#if defined(BCM4375_CHIP)
-#define CIS_TUPLE_START_ADDRESS     0x18011120
-#define CIS_TUPLE_END_ADDRESS       0x18011177
-#else
-#define CIS_TUPLE_START_ADDRESS     0x18011110
-#define CIS_TUPLE_END_ADDRESS       0x18011167
-#endif /* defined(BCM4375_CHIP) */
-#define CIS_TUPLE_MAX_COUNT            (uint32)((CIS_TUPLE_END_ADDRESS - CIS_TUPLE_START_ADDRESS\
-						+ 1) / sizeof(uint32))
-#define CIS_TUPLE_TAG_START			0x80
-#define CIS_TUPLE_TAG_VENDOR		0x81
-#define CIS_TUPLE_TAG_BOARDTYPE		0x1b
-#define CIS_TUPLE_TAG_LENGTH		1
-#define NVRAM_FEM_MURATA			"_murata"
-#define CID_FEM_MURATA				"_mur_"
-
-typedef struct cis_tuple_format {
-	uint8	id;
-	uint8	len;	/* total length of tag and data */
-	uint8	tag;
-	uint8	data[1];
-} cis_tuple_format_t;
-
-typedef struct {
-	char cid_ext[MAX_EXTENSION];
-	char nvram_ext[MAX_EXTENSION];
-	char fw_ext[MAX_EXTENSION];
-} naming_info_t;
-
-naming_info_t bcm4361_naming_table[] = {
-	{ {""}, {""}, {""} },
-	{ {"r00a_e000_a0_ePA"}, {"_a0_ePA"}, {"_a0_ePA"} },
-	{ {"r00a_e000_a0_iPA"}, {"_a0"}, {"_a1"} },
-	{ {"r01a_e30a_a1"}, {"_r01a_a1"}, {"_a1"} },
-	{ {"r02a_e30a_a1"}, {"_r02a_a1"}, {"_a1"} },
-	{ {"r02c_e30a_a1"}, {"_r02c_a1"}, {"_a1"} },
-	{ {"r01d_e31_b0"}, {"_r01d_b0"}, {"_b0"} },
-	{ {"r01f_e31_b0"}, {"_r01f_b0"}, {"_b0"} },
-	{ {"r02g_e31_b0"}, {"_r02g_b0"}, {"_b0"} },
-	{ {"r01h_e32_b0"}, {"_r01h_b0"}, {"_b0"} },
-	{ {"r01i_e32_b0"}, {"_r01i_b0"}, {"_b0"} },
-	{ {"r02j_e32_b0"}, {"_r02j_b0"}, {"_b0"} },
-	{ {"r012_1kl_a1"}, {"_r012_a1"}, {"_a1"} },
-	{ {"r013_1kl_b0"}, {"_r013_b0"}, {"_b0"} },
-	{ {"r013_1kl_b0"}, {"_r013_b0"}, {"_b0"} },
-	{ {"r014_1kl_b0"}, {"_r014_b0"}, {"_b0"} },
-	{ {"r015_1kl_b0"}, {"_r015_b0"}, {"_b0"} },
-	{ {"r020_1kl_b0"}, {"_r020_b0"}, {"_b0"} },
-	{ {"r021_1kl_b0"}, {"_r021_b0"}, {"_b0"} },
-	{ {"r022_1kl_b0"}, {"_r022_b0"}, {"_b0"} },
-	{ {"r023_1kl_b0"}, {"_r023_b0"}, {"_b0"} },
-	{ {"r024_1kl_b0"}, {"_r024_b0"}, {"_b0"} },
-	{ {"r030_1kl_b0"}, {"_r030_b0"}, {"_b0"} },
-	{ {"r031_1kl_b0"}, {"_r030_b0"}, {"_b0"} },	/* exceptional case : r31 -> r30 */
-	{ {"r032_1kl_b0"}, {"_r032_b0"}, {"_b0"} },
-	{ {"r033_1kl_b0"}, {"_r033_b0"}, {"_b0"} },
-	{ {"r034_1kl_b0"}, {"_r034_b0"}, {"_b0"} },
-	{ {"r02a_e32a_b2"}, {"_r02a_b2"}, {"_b2"} },
-	{ {"r02b_e32a_b2"}, {"_r02b_b2"}, {"_b2"} },
-	{ {"r020_1qw_b2"}, {"_r020_b2"}, {"_b2"} },
-	{ {"r021_1qw_b2"}, {"_r021_b2"}, {"_b2"} },
-	{ {"r022_1qw_b2"}, {"_r022_b2"}, {"_b2"} },
-	{ {"r031_1qw_b2"}, {"_r031_b2"}, {"_b2"} }
-};
-
-#define MODULE_BCM4375_INDEX    3
-
-naming_info_t bcm4375_naming_table[] = {
-	{ {""}, {""}, {""} },
-	{ {"e41_es11"}, {"_ES00_semco_b0"}, {"_b0"} },
-	{ {"e43_es33"}, {"_ES01_semco_b0"}, {"_b0"} },
-	{ {"e43_es34"}, {"_ES02_semco_b0"}, {"_b0"} },
-	{ {"e43_es35"}, {"_ES02_semco_b0"}, {"_b0"} },
-	{ {"e43_es36"}, {"_ES03_semco_b0"}, {"_b0"} },
-	{ {"e43_cs41"}, {"_CS00_semco_b1"}, {"_b1"} },
-	{ {"e43_cs51"}, {"_CS01_semco_b1"}, {"_b1"} },
-	{ {"e43_cs53"}, {"_CS01_semco_b1"}, {"_b1"} },
-	{ {"e43_cs61"}, {"_CS00_skyworks_b1"}, {"_b1"} },
-	{ {"1rh_es10"}, {"_1rh_es10_b0"}, {"_b0"} },
-	{ {"1rh_es11"}, {"_1rh_es11_b0"}, {"_b0"} },
-	{ {"1rh_es12"}, {"_1rh_es12_b0"}, {"_b0"} },
-	{ {"1rh_es13"}, {"_1rh_es13_b0"}, {"_b0"} },
-	{ {"1rh_es20"}, {"_1rh_es20_b0"}, {"_b0"} },
-	{ {"1rh_es32"}, {"_1rh_es32_b0"}, {"_b0"} },
-	{ {"1rh_es41"}, {"_1rh_es41_b1"}, {"_b1"} },
-	{ {"1rh_es42"}, {"_1rh_es42_b1"}, {"_b1"} },
-	{ {"1rh_es43"}, {"_1rh_es43_b1"}, {"_b1"} },
-	{ {"1rh_es44"}, {"_1rh_es44_b1"}, {"_b1"} }
-};
-
-#if defined(BCM4361_CHIP) || defined(BCM4375_CHIP)
-static naming_info_t *
-dhd_find_naming_info(naming_info_t table[], int table_size, char *module_type)
-{
-	int index_found = 0, i = 0;
-
-	if (module_type && strlen(module_type) > 0) {
-		for (i = 1; i < table_size; i++) {
-			if (!strncmp(table[i].cid_ext, module_type, strlen(table[i].cid_ext))) {
-				index_found = i;
-				break;
-			}
-		}
-	}
-
-	DHD_INFO(("%s: index_found=%d\n", __FUNCTION__, index_found));
-
-	return &table[index_found];
-}
-
-static naming_info_t *
-dhd_find_naming_info_by_cid(naming_info_t table[], int table_size,
-	char *cid_info)
-{
-	int index_found = 0, i = 0;
-	char *ptr;
-
-	/* truncate extension */
-	for (i = 1, ptr = cid_info; i < MODULE_BCM4361_INDEX && ptr; i++) {
-		ptr = bcmstrstr(ptr, "_");
-		if (ptr) {
-			ptr++;
-		}
-	}
-
-	for (i = 1; i < table_size && ptr; i++) {
-		if (!strncmp(table[i].cid_ext, ptr, strlen(table[i].cid_ext))) {
-			index_found = i;
-			break;
-		}
-	}
-
-	DHD_INFO(("%s: index_found=%d\n", __FUNCTION__, index_found));
-
-	return &table[index_found];
-}
-
 static int
-dhd_parse_board_information_bcm(dhd_bus_t *bus, int *boardtype,
-		unsigned char *vid, int *vid_length)
-{
-	int boardtype_backplane_addr[] = {
-		0x18010324, /* OTP Control 1 */
-		0x18012618, /* PMU min resource mask */
-	};
-	int boardtype_backplane_data[] = {
-		0x00fa0000,
-		0x0e4fffff /* Keep on ARMHTAVAIL */
-	};
-	int int_val = 0, i = 0;
-	cis_tuple_format_t *tuple;
-	int totlen, len;
-	uint32 raw_data[CIS_TUPLE_MAX_COUNT];
-
-	for (i = 0; i < ARRAYSIZE(boardtype_backplane_addr); i++) {
-		/* Write new OTP and PMU configuration */
-		if (si_backplane_access(bus->sih, boardtype_backplane_addr[i], sizeof(int),
-				&boardtype_backplane_data[i], FALSE) != BCME_OK) {
-			DHD_ERROR(("invalid size/addr combination\n"));
-			return BCME_ERROR;
-		}
-
-		if (si_backplane_access(bus->sih, boardtype_backplane_addr[i], sizeof(int),
-				&int_val, TRUE) != BCME_OK) {
-			DHD_ERROR(("invalid size/addr combination\n"));
-			return BCME_ERROR;
-		}
-
-		DHD_INFO(("%s: boardtype_backplane_addr 0x%08x rdata 0x%04x\n",
-			__FUNCTION__, boardtype_backplane_addr[i], int_val));
-	}
-
-	/* read tuple raw data */
-	for (i = 0; i < CIS_TUPLE_MAX_COUNT; i++) {
-		if (si_backplane_access(bus->sih, CIS_TUPLE_START_ADDRESS + i * sizeof(uint32),
-				sizeof(uint32),	&raw_data[i], TRUE) != BCME_OK) {
-			break;
-		}
-	}
-
-	totlen = i * sizeof(uint32);
-	tuple = (cis_tuple_format_t *)raw_data;
-
-	/* check the first tuple has tag 'start' */
-	if (tuple->id != CIS_TUPLE_TAG_START) {
-		return BCME_ERROR;
-	}
-
-	*vid_length = *boardtype = 0;
-
-	/* find tagged parameter */
-	while ((totlen >= (tuple->len + CIS_TUPLE_HDR_LEN)) &&
-			(*vid_length == 0 || *boardtype == 0)) {
-		len = tuple->len;
-
-		if ((tuple->tag == CIS_TUPLE_TAG_VENDOR) &&
-				(totlen >= (int)(len + CIS_TUPLE_HDR_LEN))) {
-			/* found VID */
-			memcpy(vid, tuple->data, tuple->len - CIS_TUPLE_TAG_LENGTH);
-			*vid_length = tuple->len - CIS_TUPLE_TAG_LENGTH;
-			prhex("OTP VID", tuple->data, tuple->len - CIS_TUPLE_TAG_LENGTH);
-		}
-		else if ((tuple->tag == CIS_TUPLE_TAG_BOARDTYPE) &&
-				(totlen >= (int)(len + CIS_TUPLE_HDR_LEN))) {
-			/* found boardtype */
-			*boardtype = (int)tuple->data[0];
-			prhex("OTP boardtype", tuple->data, tuple->len - CIS_TUPLE_TAG_LENGTH);
-		}
-
-		tuple = (cis_tuple_format_t*)((uint8*)tuple + (len + CIS_TUPLE_HDR_LEN));
-		totlen -= (len + CIS_TUPLE_HDR_LEN);
-	}
-
-	if (*vid_length <= 0 || *boardtype <= 0) {
-		DHD_ERROR(("failed to parse information (vid=%d, boardtype=%d)\n",
-			*vid_length, *boardtype));
-		return BCME_ERROR;
-	}
-
-	return BCME_OK;
-
-}
-
-static naming_info_t *
-dhd_find_naming_info_by_chip_rev(naming_info_t table[], int table_size,
-	dhd_bus_t *bus, bool *is_murata_fem)
-{
-	int board_type = 0, chip_rev = 0, vid_length = 0;
-	unsigned char vid[MAX_VID_LEN];
-	naming_info_t *info = &table[0];
-	char *cid_info = NULL;
-
-	if (!bus || !bus->sih) {
-		DHD_ERROR(("%s:bus(%p) or bus->sih is NULL\n", __FUNCTION__, bus));
-		return NULL;
-	}
-	chip_rev = bus->sih->chiprev;
-
-	if (dhd_parse_board_information_bcm(bus, &board_type, vid, &vid_length)
-			!= BCME_OK) {
-		DHD_ERROR(("%s:failed to parse board information\n", __FUNCTION__));
-		return NULL;
-	}
-
-	DHD_INFO(("%s:chip version %d\n", __FUNCTION__, chip_rev));
-
-#if defined(BCM4361_CHIP)
-	/* A0 chipset has exception only */
-	if (chip_rev == CHIP_REV_A0) {
-		if (board_type == BOARD_TYPE_EPA) {
-			info = dhd_find_naming_info(table, table_size,
-				DEFAULT_CIDINFO_FOR_EPA);
-		} else if ((board_type == BOARD_TYPE_IPA) ||
-				(board_type == BOARD_TYPE_IPA_OLD)) {
-			info = dhd_find_naming_info(table, table_size,
-				DEFAULT_CIDINFO_FOR_IPA);
-		}
-	} else {
-		cid_info = dhd_get_cid_info(vid, vid_length);
-		if (cid_info) {
-			info = dhd_find_naming_info_by_cid(table, table_size, cid_info);
-			if (strstr(cid_info, CID_FEM_MURATA)) {
-				*is_murata_fem = TRUE;
-			}
-		}
-	}
-#else
-	cid_info = dhd_get_cid_info(vid, vid_length);
-	if (cid_info) {
-		info = dhd_find_naming_info_by_cid(table, table_size, cid_info);
-		if (strstr(cid_info, CID_FEM_MURATA)) {
-			*is_murata_fem = TRUE;
-		}
-	}
-#endif /* BCM4361_CHIP */
-
-	return info;
-}
-#endif /* BCM4361_CHIP || BCM4375_CHIP */
-#endif /* USE_CID_CHECK */
-
-static int
-concate_revision_bcm4361(dhd_bus_t *bus, char *fw_path, char *nv_path)
+concate_revision_from_cisinfo(dhd_bus_t *bus, char *fw_path, char *nv_path)
 {
 	int ret = BCME_OK;
-#if defined(SUPPORT_BCM4361_MIXED_MODULES) && defined(USE_CID_CHECK)
+#if defined(SUPPORT_MIXED_MODULES)
+#if defined(USE_CID_CHECK)
 	char module_type[MAX_VNAME_LEN];
 	naming_info_t *info = NULL;
 	bool is_murata_fem = FALSE;
@@ -2792,81 +2498,39 @@ concate_revision_bcm4361(dhd_bus_t *bus, char *fw_path, char *nv_path)
 	memset(module_type, 0, sizeof(module_type));
 
 	if (dhd_check_module_bcm(module_type,
-			MODULE_BCM4361_INDEX, &is_murata_fem) == BCME_OK) {
-		info = dhd_find_naming_info(bcm4361_naming_table,
-			ARRAYSIZE(bcm4361_naming_table), module_type);
+			MODULE_NAME_INDEX_MAX, &is_murata_fem) == BCME_OK) {
+		info = dhd_find_naming_info(bus->dhd, module_type);
 	} else {
 		/* in case of .cid.info doesn't exists */
-		info = dhd_find_naming_info_by_chip_rev(bcm4361_naming_table,
-			ARRAYSIZE(bcm4361_naming_table), bus, &is_murata_fem);
+		info = dhd_find_naming_info_by_chip_rev(bus->dhd, &is_murata_fem);
 	}
 
+#ifdef BCM4361_CHIP
 	if (bcmstrnstr(nv_path, PATH_MAX,  "_murata", 7)) {
 		is_murata_fem = FALSE;
 	}
+#endif /* BCM4361_CHIP */
 
 	if (info) {
+#ifdef BCM4361_CHIP
 		if (is_murata_fem) {
 			strncat(nv_path, NVRAM_FEM_MURATA, strlen(NVRAM_FEM_MURATA));
 		}
+#endif /* BCM4361_CHIP */
 		strncat(nv_path, info->nvram_ext, strlen(info->nvram_ext));
 		strncat(fw_path, info->fw_ext, strlen(info->fw_ext));
 	} else {
 		DHD_ERROR(("%s:failed to find extension for nvram and firmware\n", __FUNCTION__));
 		ret = BCME_ERROR;
 	}
-#else /* SUPPORT_MULTIPLE_MODULE_CIS && USE_CID_CHECK */
+#endif /* USE_CID_CHECK */
+#else /* SUPPORT_MULTIPLE_MODULE_CIS */
 	char chipver_tag[10] = {0, };
 
 	strcat(fw_path, chipver_tag);
 	strcat(nv_path, chipver_tag);
-#endif /* SUPPORT_MULTIPLE_MODULE_CIS && USE_CID_CHECK */
+#endif /* SUPPORT_MULTIPLE_MODULE_CIS */
 
-	return ret;
-}
-
-static int
-concate_revision_bcm4375(dhd_bus_t *bus, char *fw_path, char *nv_path)
-{
-	int ret = BCME_OK;
-#if defined(SUPPORT_BCM4375_MIXED_MODULES) && defined(USE_CID_CHECK)
-	char module_type[MAX_VNAME_LEN];
-	naming_info_t *info = NULL;
-	bool is_murata_fem = FALSE;
-
-	memset(module_type, 0, sizeof(module_type));
-
-	if (dhd_check_module_bcm(module_type,
-			MODULE_BCM4375_INDEX, &is_murata_fem) == BCME_OK) {
-		info = dhd_find_naming_info(bcm4375_naming_table,
-				ARRAYSIZE(bcm4375_naming_table), module_type);
-	} else {
-		/* in case of .cid.info doesn't exists */
-		info = dhd_find_naming_info_by_chip_rev(bcm4375_naming_table,
-				ARRAYSIZE(bcm4375_naming_table), bus, &is_murata_fem);
-	}
-
-	if (info) {
-		strncat(nv_path, info->nvram_ext, strlen(info->nvram_ext));
-		strncat(fw_path, info->fw_ext, strlen(info->fw_ext));
-	} else {
-		DHD_ERROR(("%s:failed to find extension for nvram and firmware\n", __FUNCTION__));
-		ret = BCME_ERROR;
-	}
-#else /* SUPPORT_BCM4375_MIXED_MODULES && USE_CID_CHECK */
-	char chipver_tag[10] = {0, };
-
-	strcat(fw_path, chipver_tag);
-	strcat(nv_path, chipver_tag);
-#endif /* SUPPORT_BCM4375_MIXED_MODULES && USE_CID_CHECK */
-
-	return ret;
-}
-
-static int
-concate_revision_bcm4389(dhd_bus_t *bus, char *fw_path, char *nv_path)
-{
-	int ret = BCME_OK;
 	return ret;
 }
 
@@ -2897,13 +2561,9 @@ concate_revision(dhd_bus_t *bus, char *fw_path, char *nv_path)
 		break;
 	case BCM4361_CHIP_ID:
 	case BCM4347_CHIP_ID:
-		res = concate_revision_bcm4361(bus, fw_path, nv_path);
-		break;
 	case BCM4375_CHIP_ID:
-		res = concate_revision_bcm4375(bus, fw_path, nv_path);
-		break;
 	case BCM4389_CHIP_ID:
-		res = concate_revision_bcm4389(bus, fw_path, nv_path);
+		res = concate_revision_from_cisinfo(bus, fw_path, nv_path);
 		break;
 	default:
 		DHD_ERROR(("REVISION SPECIFIC feature is not required\n"));
@@ -3618,6 +3278,28 @@ dhdpcie_checkdied(dhd_bus_t *bus, char *data, uint size)
 		*/
 		if (dongle_trap_occured) {
 			bus->dhd->dongle_trap_occured = TRUE;
+			if (bus->dhd->check_trap_rot &&
+				bus->dhd->ext_trap_data_supported &&
+				bus->pcie_sh->flags2 & PCIE_SHARED2_ETD_ADDR_SUPPORT) {
+				uint32 trap_data = *(uint32 *)bus->dhd->extended_trap_data;
+				DHD_ERROR(("%s : etd data : %x\n", __FUNCTION__, trap_data));
+				if (!(trap_data & D2H_DEV_EXT_TRAP_DATA)) {
+					uint32 *ext_data = bus->dhd->extended_trap_data;
+					/* Skip the first word which is trap_data */
+					ext_data++;
+					DHD_ERROR(("Dongle trap but no etd\n"));
+					if (dhdpcie_bus_membytes(bus, FALSE,
+						local_pciedev_shared->etd_addr,
+						(uint8 *)ext_data,
+						BCMPCIE_EXT_TRAP_DATA_MAXLEN -
+							sizeof(trap_data)) < 0) {
+						DHD_ERROR(("Error to read etd from dongle\n"));
+					}
+				} else {
+					DHD_ERROR(("Dongle trap with etd\n"));
+				}
+			}
+
 		}
 
 #ifdef WL_CFGVENDOR_SEND_HANG_EVENT
@@ -3700,7 +3382,9 @@ dhdpcie_get_mem_dump(dhd_bus_t *bus)
 	int start = 0;
 	int read_size = 0; /* Read size of each iteration */
 	uint8 *p_buf = NULL, *databuf = NULL;
+#ifdef BOARD_HIKEY
 	unsigned long flags_bus;
+#endif /* BOARD_HIKEY */
 
 	if (!bus) {
 		DHD_ERROR(("%s: bus is NULL\n", __FUNCTION__));
@@ -3726,9 +3410,10 @@ dhdpcie_get_mem_dump(dhd_bus_t *bus)
 	/* Read mem content */
 	DHD_TRACE_HW4(("Dump dongle memory\n"));
 	databuf = p_buf;
-
+#ifdef BOARD_HIKEY
 	/* Hold BUS_LP_STATE_LOCK to avoid simultaneous bus access */
 	DHD_BUS_LP_STATE_LOCK(bus->bus_lp_state_lock, flags_bus);
+#endif /* BOARD_HIKEY */
 	while (size > 0) {
 		read_size = MIN(MEMBLOCK, size);
 		ret = dhdpcie_bus_membytes(bus, FALSE, start, databuf, read_size);
@@ -3746,8 +3431,9 @@ dhdpcie_get_mem_dump(dhd_bus_t *bus)
 		start += read_size;
 		databuf += read_size;
 	}
+#ifdef BOARD_HIKEY
 	DHD_BUS_LP_STATE_UNLOCK(bus->bus_lp_state_lock, flags_bus);
-
+#endif /* BOARD_HIKEY */
 	return ret;
 }
 
@@ -6525,7 +6211,7 @@ dhd_bus_dump_dar_registers(struct dhd_bus *bus)
 	uint32 dar_clk_ctrl_reg, dar_pwr_ctrl_reg, dar_intstat_reg,
 		dar_errlog_reg, dar_erraddr_reg, dar_pcie_mbint_reg;
 
-	if (bus->is_linkdown && !bus->cto_triggered) {
+	if (bus->is_linkdown) {
 		DHD_ERROR(("%s: link is down\n", __FUNCTION__));
 		return;
 	}
@@ -6949,7 +6635,6 @@ dhdpcie_bus_suspend(struct dhd_bus *bus, bool state)
 
 			/* check if the D3 ACK timeout due to scheduling issue */
 			bus->dhd->is_sched_error = !dhd_query_bus_erros(bus->dhd) &&
-				bus->isr_entry_time > bus->last_d3_inform_time &&
 				dhd_bus_query_dpc_sched_errors(bus->dhd);
 			bus->dhd->d3ack_timeout_occured = TRUE;
 			/* If the D3 Ack has timeout */
@@ -6984,8 +6669,18 @@ dhdpcie_bus_suspend(struct dhd_bus *bus, bool state)
 			/* XXX : avoid multiple socram dump from dongle trap and
 			 * invalid PCIe bus assceess due to PCIe link down
 			 */
-			if (!bus->dhd->dongle_trap_occured &&
-				!bus->is_linkdown &&
+			if (bus->dhd->check_trap_rot) {
+				DHD_ERROR(("Check dongle trap in the case of d3 ack timeout\n"));
+				dhdpcie_checkdied(bus, NULL, 0);
+			}
+			if (bus->dhd->dongle_trap_occured) {
+#ifdef SUPPORT_LINKDOWN_RECOVERY
+#ifdef CONFIG_ARCH_MSM
+				bus->no_cfg_restore = 1;
+#endif /* CONFIG_ARCH_MSM */
+#endif /* SUPPORT_LINKDOWN_RECOVERY */
+				dhd_os_check_hang(bus->dhd, 0, -EREMOTEIO);
+			} else if (!bus->is_linkdown &&
 				!bus->cto_triggered) {
 				uint32 intstatus = 0;
 
@@ -10929,6 +10624,7 @@ void dhd_bus_clean_flow_ring(dhd_bus_t *bus, void *node)
 	/* Hold flowring_list_lock to ensure no race condition while accessing the List */
 	DHD_FLOWRING_LIST_LOCK(bus->dhd->flowring_list_lock, flags);
 	dll_delete(&flow_ring_node->list);
+	dll_init(&flow_ring_node->list);
 	DHD_FLOWRING_LIST_UNLOCK(bus->dhd->flowring_list_lock, flags);
 
 	/* Release the flowring object back into the pool */
@@ -13644,7 +13340,7 @@ dhd_pcie_debug_info_dump(dhd_pub_t *dhd)
 	DHD_ERROR(("RootPort PCIe linkcap=0x%08x\n",
 		dhd_debug_get_rc_linkcap(dhd->bus)));
 #ifdef CUSTOMER_HW4_DEBUG
-	if (dhd->bus->is_linkdown && !dhd->bus->cto_triggered) {
+	if (dhd->bus->is_linkdown) {
 		DHD_ERROR(("Skip dumping the PCIe Config and Core registers. "
 			"link may be DOWN\n"));
 		return 0;
@@ -13818,6 +13514,12 @@ dhd_bus_tcm_test(struct dhd_bus *bus)
 	uint8 init_val[NUM_PATTERNS] = {
 		0xFFu, /* 11111111 */
 		0x00u, /* 00000000 */
+#if !defined(DHD_FW_MEM_CORRUPTION)
+		0x77u, /* 01110111 */
+		0x22u, /* 00100010 */
+		0x27u, /* 00100111 */
+		0x72u, /* 01110010 */
+#endif /* !DHD_FW_MEM_CORRUPTION */
 	};
 
 	if (!bus) {
@@ -13906,4 +13608,10 @@ dhd_get_pcie_linkspeed(dhd_pub_t *dhd)
 	pcie_lnkspeed = (pcie_lnkst >> PCI_CFG_LINK_SPEED_SHIFT) & PCI_LINK_SPEED_MASK;
 	DHD_INFO(("%s: Link speed: %d\n", __FUNCTION__, pcie_lnkspeed));
 	return pcie_lnkspeed;
+}
+
+int
+dhd_bus_checkdied(struct dhd_bus *bus, char *data, uint size)
+{
+	return dhdpcie_checkdied(bus, data, size);
 }

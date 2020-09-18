@@ -222,6 +222,7 @@ struct qpnp_pon {
 	struct list_head	list;
 	struct delayed_work	bark_work;
 	struct dentry		*debugfs;
+	const char		*label;
 	u16			base;
 	u8			subtype;
 	u8			pon_ver;
@@ -1659,7 +1660,7 @@ qpnp_pon_config_input(struct qpnp_pon *pon, struct qpnp_pon_config *cfg)
 		if (!pon->pon_input)
 			return -ENOMEM;
 
-		pon->pon_input->name = "qpnp_pon";
+		pon->pon_input->name = pon->label ? pon->label : "qpnp_pon";
 		pon->pon_input->phys = "qpnp_pon/input0";
 	}
 
@@ -2936,6 +2937,9 @@ static int qpnp_pon_probe(struct platform_device *pdev)
 		spin_unlock_irqrestore(&spon_list_slock, flags);
 		pon->is_spon = true;
 	}
+
+	if (of_property_read_string(dev->of_node, "qcom,label", &pon->label))
+		pon->label = NULL;
 
 	/* Register the PON configurations */
 	rc = qpnp_pon_config_init(pon, pdev);

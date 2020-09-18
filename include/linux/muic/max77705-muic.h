@@ -69,6 +69,17 @@ enum max77705_muic_command_opcode {
 	COMMAND_NONE			= 0xff,
 };
 
+enum max77705_muic_irq_info {
+	MAX77705_MUIC_IRQ_UIADC,
+	MAX77705_MUIC_IRQ_CHGTYP,
+	MAX77705_MUIC_IRQ_SPR,
+	MAX77705_MUIC_IRQ_DCDTMO,
+	MAX77705_MUIC_IRQ_VBADC,
+	MAX77705_MUIC_IRQ_VBUSDET,
+	MAX77705_MUIC_IRQ_UNKNOWN,
+	MAX77705_MUIC_IRQ_SIZE
+};
+
 #define AFC_OP_OUT_LEN 11 /* OPCODE(1) + Result(1) + VBADC(1) + RX Data(8) */
 
 #if defined(CONFIG_MUIC_MAX77705_CCIC)
@@ -105,6 +116,7 @@ struct max77705_muic_data {
 	int				irq_dcdtmo;
 	int				irq_vbadc;
 	int				irq_vbusdet;
+	int				irq_fail_count[MAX77705_MUIC_IRQ_SIZE];
 
 	/* model dependant muic platform data */
 	struct muic_platform_data	*pdata;
@@ -131,6 +143,8 @@ struct max77705_muic_data {
 	bool				is_charger_ready;
 	bool				is_charger_mode;
 
+	bool				is_irq_vbusdet_high;
+
 	u8				is_boot_dpdnvden;
 
 	struct delayed_work		afc_work;
@@ -138,6 +152,8 @@ struct max77705_muic_data {
 	unsigned char			afc_op_dataout[AFC_OP_OUT_LEN];
 	int				hv_voltage;
 	int				afc_retry;
+	int				dcdtmo_retry;
+	int				bc1p2_retry_count;
 
 	/* muic status value */
 	u8				status1;

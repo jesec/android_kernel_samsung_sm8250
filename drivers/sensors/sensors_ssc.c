@@ -26,9 +26,18 @@
 
 #include <soc/qcom/subsystem_restart.h>
 
+#if defined(CONFIG_SEC_FACTORY) && defined(CONFIG_SUPPORT_DUAL_6AXIS)
+static bool pretest = false;
+#endif
+
 #define IMAGE_LOAD_CMD 1
 #define IMAGE_UNLOAD_CMD 0
 #define SSR_RESET_CMD 1
+#define SET_PRETEST_SSR 2
+#define CLR_PRETEST_SSR 3
+#define SET_DHALL_SSR 4
+#define CLR_DHALL_SSR 5
+#define SSR_FORCE_RESET_CMD 9
 #define CLASS_NAME	"ssc"
 #define DRV_NAME	"sensors"
 #define DRV_VERSION	"2.00"
@@ -263,9 +272,28 @@ static ssize_t slpi_ssr_store(struct kobject *kobj,
 
 	if (kstrtoint(buf, 10, &ssr_cmd) < 0)
 		return -EINVAL;
-
-	if (ssr_cmd != SSR_RESET_CMD)
+#if defined(CONFIG_SEC_FACTORY) && defined(CONFIG_SUPPORT_DUAL_6AXIS)
+	if (ssr_cmd == SET_PRETEST_SSR) {
+		pr_info("[FACTORY] Set Pretest SSR. slpi will be restarted!!\n");
+		pretest = true;
+	} else if (ssr_cmd == CLR_PRETEST_SSR) {
+		pr_info("[FACTORY] Clear Pretest SSR. return without slpi ssr!!\n");
+		pretest = false;
+		return count;
+	} else if (ssr_cmd == SET_DHALL_SSR) {
+		pr_info("[FACTORY] SET_DHALL_SSR. slpi will be restarted!!\n");
+		pretest = true;
+	} else if (ssr_cmd == CLR_DHALL_SSR) {
+		pr_info("[FACTORY] CLR_DHALL_SSR. return without slpi ssr!!\n");
+		pretest = false;
+		return count;
+	} else if (ssr_cmd != SSR_RESET_CMD) {
 		return -EINVAL;
+	}
+#else
+	if (ssr_cmd != SSR_RESET_CMD && ssr_cmd != SSR_FORCE_RESET_CMD)
+		return -EINVAL;
+#endif
 
 	priv = platform_get_drvdata(pdev);
 	if (!priv)
@@ -276,7 +304,10 @@ static ssize_t slpi_ssr_store(struct kobject *kobj,
 		return -EINVAL;
 
 	dev_err(&pdev->dev, "Something went wrong with SLPI, restarting\n");
-
+	if (ssr_cmd == SSR_FORCE_RESET_CMD) {
+		pr_info("Run Force SSR for SS\n");
+		subsys_set_fssr(sns_dev, true);
+	}
 	/* subsystem_restart_dev has worker queue to handle */
 	if (subsystem_restart_dev(sns_dev) != 0) {
 		dev_err(&pdev->dev, "subsystem_restart_dev failed\n");
@@ -286,6 +317,50 @@ static ssize_t slpi_ssr_store(struct kobject *kobj,
 	dev_dbg(&pdev->dev, "SLPI restarted\n");
 	return count;
 }
+
+#if defined(CONFIG_SEC_FACTORY) && defined(CONFIG_SUPPORT_DUAL_6AXIS)
+bool is_pretest(void)
+{
+	return pretest;
+}
+EXPORT_SYMBOL(is_pretest);
+#endif
+
+#ifdef CONFIG_DSP_SLEEP_RECOVERY
+int slpi_ssr(void)
+{
+	struct subsys_device *slpi_dev = NULL;
+	struct platform_device *pdev = slpi_private;
+	struct slpi_loader_private *priv = NULL;
+	int rc;
+
+	dev_dbg(&pdev->dev, "%s: going to call slpi ssr\n ", __func__);
+
+	priv = platform_get_drvdata(pdev);
+	if (!priv)
+		return -EINVAL;
+
+	slpi_dev = (struct subsys_device *)priv->pil_h;
+	if (!slpi_dev)
+		return -EINVAL;
+
+	dev_info(&pdev->dev, "requesting for slpi restart\n");
+
+#ifndef CONFIG_SEC_SLPI_SLEEP_DEBUG
+	dev_info(&pdev->dev, "Set force slpi ssr regardless of debug level\n");
+	subsys_set_fssr(slpi_dev, true);
+#endif
+	/* subsystem_restart_dev has worker queue to handle */
+	rc = subsystem_restart_dev(slpi_dev);
+	if (rc) {
+		dev_err(&pdev->dev, "subsystem_restart_dev failed\n");
+		return rc;
+	}
+
+	dev_info(&pdev->dev, "slpi restarted by intention\n");
+	return 0;
+}
+#endif
 
 static ssize_t slpi_boot_store(struct kobject *kobj,
 	struct kobj_attribute *attr,

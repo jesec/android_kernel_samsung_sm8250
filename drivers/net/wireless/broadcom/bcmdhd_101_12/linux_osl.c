@@ -18,7 +18,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #define LINUX_PORT
@@ -147,12 +147,14 @@ static int16 linuxbcmerrormap[] =
 	-EINVAL,		/* BCME_NOCHAN */
 	-EINVAL,		/* BCME_PKTTOSS */
 	-EINVAL,		/* BCME_DNGL_DEVRESET */
+	-EINVAL,		/* BCME_ROAM */
+	-EOPNOTSUPP,		/* BCME_NO_SIG_FILE */
 
 /* When an new error code is added to bcmutils.h, add os
  * specific error translation here as well
  */
 /* check if BCME_LAST changed since the last time this function was updated */
-#if BCME_LAST != -72
+#if BCME_LAST != BCME_NO_SIG_FILE
 #error "You need to add a OS error translation in the linuxbcmerrormap \
 	for new error code defined in bcmutils.h"
 #endif
@@ -204,8 +206,8 @@ osl_dma_map_log_init(uint32 item_len)
 {
 	dhd_map_log_t *map_log;
 	gfp_t flags;
-	uint32 alloc_size = sizeof(dhd_map_log_t) +
-		(item_len * sizeof(dhd_map_item_t));
+	uint32 alloc_size = (uint32)(sizeof(dhd_map_log_t) +
+		(item_len * sizeof(dhd_map_item_t)));
 
 	flags = CAN_SLEEP() ? GFP_KERNEL : GFP_ATOMIC;
 	map_log = (dhd_map_log_t *)kmalloc(alloc_size, flags);
@@ -298,10 +300,8 @@ osl_attach(void *pdev, uint bustype, bool pkttag)
 	atomic_add(1, &osh->cmn->refcount);
 
 	bcm_object_trace_init();
-
 	/* Check that error map has the right number of entries in it */
 	ASSERT(ABS(BCME_LAST) == (ARRAYSIZE(linuxbcmerrormap) - 1));
-
 	osh->failed = 0;
 	osh->pdev = pdev;
 	osh->pub.pkttag = pkttag;

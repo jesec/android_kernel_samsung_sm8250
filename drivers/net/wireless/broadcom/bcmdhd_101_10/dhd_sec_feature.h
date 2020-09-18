@@ -1,7 +1,7 @@
 /*
  * Customer HW 4 dependant file
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -84,19 +84,6 @@
 #if defined(CONFIG_ARCH_MSM8996) || defined(CONFIG_SOC_EXYNOS8890)
 #define SUPPORT_BCM4359_MIXED_MODULES
 #endif /* CONFIG_ARCH_MSM8996 || CONFIG_SOC_EXYNOS8890 */
-
-#ifdef BCMPCIE
-/* For EXYNOS PCIe RC Control */
-#if defined(CONFIG_MACH_UNIVERSAL7420) || defined(CONFIG_SOC_EXYNOS8890) || \
-	defined(CONFIG_SOC_EXYNOS8895) || defined(CONFIG_SOC_EXYNOS9810) || \
-	defined(CONFIG_SOC_EXYNOS9820) || defined(CONFIG_SOC_EXYNOS9830)
-#define EXYNOS_PCIE_LINKDOWN_RECOVERY
-#define USE_EXYNOS_PCIE_RC_PMPATCH
-#endif /* CONFIG_MACH_UNIVERSAL7420 ||
-	* CONFIG_SOC_EXYNOS8890 || CONFIG_SOC_EXYNOS8895 || CONFIG_SOC_EXYNOS9810 || \
-	* CONFIG_SOC_EXYNOS9820 || CONFIG_SOC_EXYNOS9830
-	*/
-#endif /* BCMPCIE */
 
 #if defined(CONFIG_ARGOS)
 #if defined(CONFIG_SPLIT_ARGOS_SET)

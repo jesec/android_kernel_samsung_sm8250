@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2019 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2020 The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -22,6 +22,8 @@
 
 #ifndef __HDD_CONFIG_H
 #define __HDD_CONFIG_H
+
+#include "hdd_sar_safety_config.h"
 
 #if defined(CONFIG_HL_SUPPORT)
 #include "wlan_tgt_def_config_hl.h"
@@ -188,7 +190,7 @@ enum hdd_dot11_mode {
 			CFG_VALUE_OR_DEFAULT, \
 			"Timer Multiplier")
 
-#define CFG_BUG_ON_REINIT_FAILURE_DEFAULT 1
+#define CFG_BUG_ON_REINIT_FAILURE_DEFAULT 0
 /*
  * <ini>
  * g_bug_on_reinit_failure  - Enable/Disable bug on reinit
@@ -277,6 +279,66 @@ enum hdd_dot11_mode {
 
 /*
  * <ini>
+ * host_log_custom_nl_proto - Host log netlink protocol
+ * @Min: 0
+ * @Max: 32
+ * @Default: 2
+ *
+ * This ini is used to set host log netlink protocol. The default
+ * value is 2 (NETLINK_USERSOCK), customer should avoid selecting the
+ * netlink protocol that already used on their platform by other
+ * applications or services. By choosing the non-default value(2),
+ * Customer need to change the netlink protocol of application receive
+ * tool(cnss_diag) accordingly. Available values could be:
+ *
+ * host_log_custom_nl_proto = 0 -	NETLINK_ROUTE, Routing/device hook
+ * host_log_custom_nl_proto = 1 -	NETLINK_UNUSED, Unused number
+ * host_log_custom_nl_proto = 2 -	NETLINK_USERSOCK, Reserved for user
+ *					mode socket protocols
+ * host_log_custom_nl_proto = 3 -	NETLINK_FIREWALL, Unused number,
+ *					formerly ip_queue
+ * host_log_custom_nl_proto = 4 -	NETLINK_SOCK_DIAG, socket monitoring
+ * host_log_custom_nl_proto = 5 -	NETLINK_NFLOG, netfilter/iptables ULOG
+ * host_log_custom_nl_proto = 6 -	NETLINK_XFRM, ipsec
+ * host_log_custom_nl_proto = 7 -	NETLINK_SELINUX, SELinux event
+ *					notifications
+ * host_log_custom_nl_proto = 8 -	NETLINK_ISCSI, Open-iSCSI
+ * host_log_custom_nl_proto = 9 -	NETLINK_AUDIT, auditing
+ * host_log_custom_nl_proto = 10 -	NETLINK_FIB_LOOKUP
+ * host_log_custom_nl_proto = 11 -	NETLINK_CONNECTOR
+ * host_log_custom_nl_proto = 12 -	NETLINK_NETFILTER, netfilter subsystem
+ * host_log_custom_nl_proto = 13 -	NETLINK_IP6_FW
+ * host_log_custom_nl_proto = 14 -	NETLINK_DNRTMSG, DECnet routing messages
+ * host_log_custom_nl_proto = 15 -	NETLINK_KOBJECT_UEVENT, Kernel
+ *					messages to userspace
+ * host_log_custom_nl_proto = 16 -	NETLINK_GENERIC, leave room for
+ *					NETLINK_DM (DM Events)
+ * host_log_custom_nl_proto = 18 -	NETLINK_SCSITRANSPORT, SCSI Transports
+ * host_log_custom_nl_proto = 19 -	NETLINK_ECRYPTFS
+ * host_log_custom_nl_proto = 20 -	NETLINK_RDMA
+ * host_log_custom_nl_proto = 21 -	NETLINK_CRYPTO, Crypto layer
+ * host_log_custom_nl_proto = 22 -	NETLINK_SMC, SMC monitoring
+ *
+ * The max value is: MAX_LINKS which is 32
+ *
+ * Related: None
+ *
+ * Supported Feature: STA
+ *
+ * Usage: Internal/External
+ *
+ * </ini>
+ */
+#define CFG_HOST_LOG_CUSTOM_NETLINK_PROTO CFG_INI_UINT( \
+	"host_log_custom_nl_proto", \
+	0, \
+	32, \
+	2, \
+	CFG_VALUE_OR_DEFAULT, \
+	"host log custom netlink protocol")
+
+/*
+ * <ini>
  * wlanLoggingToConsole - Wlan logging to console
  * @Min: 0
  * @Max: 1
@@ -291,7 +353,8 @@ enum hdd_dot11_mode {
 
 #define CFG_WLAN_LOGGING_SUPPORT_ALL \
 	CFG(CFG_WLAN_LOGGING_SUPPORT) \
-	CFG(CFG_WLAN_LOGGING_CONSOLE_SUPPORT)
+	CFG(CFG_WLAN_LOGGING_CONSOLE_SUPPORT) \
+	CFG(CFG_HOST_LOG_CUSTOM_NETLINK_PROTO)
 #else
 #define CFG_WLAN_LOGGING_SUPPORT_ALL
 #endif
@@ -388,15 +451,31 @@ enum hdd_dot11_mode {
 #endif
 
 #ifdef FEATURE_RUNTIME_PM
+
+/**
+ * enum hdd_runtime_pm_cfg - Runtime PM (RTPM) configuration options
+ * @hdd_runtime_pm_disabled: RTPM and CxPC aware RTPM  disabled
+ * @hdd_runtime_pm_static: RTPM enabled, but CxPC aware RTPM disabled
+ * @hdd_runtime_pm_dynamic: RTPM and CxPC aware RTPM enabled
+ */
+enum hdd_runtime_pm_cfg {
+	hdd_runtime_pm_disabled = 0,
+	hdd_runtime_pm_static = 1,
+	hdd_runtime_pm_dynamic = 2,
+};
+
 /*
  * <ini>
  * gRuntimePM - enable runtime suspend
  * @Min: 0
- * @Max: 1
+ * @Max: 2
  * @Default: 0
  *
- * This ini is used to enable runtime_suspend
+ * This ini is used to enable runtime PM
  *
+ * 0: RTPM disabled, so CxPC aware RTPM will be disabled as well
+ * 1: RTPM enabled, but CxPC aware RTPM disabled
+ * 2: RTPM enabled and CxPC aware RTPM enabled as well
  * Related: None
  *
  * Supported Feature: Power Save
@@ -405,9 +484,12 @@ enum hdd_dot11_mode {
  *
  * </ini>
  */
-#define CFG_ENABLE_RUNTIME_PM CFG_INI_BOOL( \
+#define CFG_ENABLE_RUNTIME_PM CFG_INI_UINT( \
 		"gRuntimePM", \
 		0, \
+		2, \
+		0, \
+		CFG_VALUE_OR_DEFAULT, \
 		"This ini is used to enable runtime_suspend")
 #define CFG_ENABLE_RUNTIME_PM_ALL \
 	CFG(CFG_ENABLE_RUNTIME_PM)
@@ -493,12 +575,12 @@ enum hdd_dot11_mode {
 
 /*
  * <ini>
- * gOperatingChannel- Default STA operating channel
+ * def_sta_operating_freq - Default STA operating Freq
  * @Min: 0
- * @Max: 14
- * @Default: 1
+ * @Max: 2484
+ * @Default: 2412
  *
- * This ini is used to specify the default operating channel of a STA during
+ * This ini is used to specify the default operating frequency of a STA during
  * initialization.
  *
  * Related: None
@@ -509,14 +591,13 @@ enum hdd_dot11_mode {
  *
  * </ini>
  */
-#define CFG_OPERATING_CHANNEL CFG_INI_UINT( \
-			"gOperatingChannel", \
+#define CFG_OPERATING_FREQUENCY CFG_INI_UINT( \
+			"def_sta_operating_freq", \
 			0, \
-			14, \
-			1, \
+			2484, \
+			2412, \
 			CFG_VALUE_OR_DEFAULT, \
-			"Default Operating Channel")
-
+			"Default STA Operating Frequency")
 #ifdef DHCP_SERVER_OFFLOAD
 #define IPADDR_NUM_ENTRIES     (4)
 #define IPADDR_STRING_LENGTH   (16)
@@ -844,7 +925,7 @@ struct dhcp_server {
 /*
  * <ini>
  * gActionOUIConnect1x1 - Used to specify action OUIs for 1x1 connection
- * @Default: 000C43 00 25 42 001018 06 02FFF02C0000 BC 25 42 001018 06 02FF040C0000 BC 25 42 00037F 00 35 6C
+ * @Default: 000C43 00 25 C2 001018 06 02FFF02C0000 BC 25 42 001018 06 02FF040C0000 BC 25 42 00037F 00 35 6C 001018 06 02FF009C0000 BC 25 48
  * Note: User should strictly add new action OUIs at the end of this
  * default value.
  *
@@ -852,7 +933,7 @@ struct dhcp_server {
  * OUI 1 : 000C43
  *   OUI data Len : 00
  *   Info Mask : 25 - Check for NSS and Band
- *   Capabilities: 42 - NSS == 2 && Band == 2G
+ *   Capabilities: C2 - NSS == 2 && Band == 2G || Band == 5G
  * OUI 2 : 001018
  *   OUI data Len : 06
  *   OUI Data : 02FFF02C0000
@@ -891,7 +972,7 @@ struct dhcp_server {
 	"gActionOUIConnect1x1", \
 	0, \
 	ACTION_OUI_MAX_STR_LEN, \
-	"000C43 00 25 42 001018 06 02FFF02C0000 BC 25 42 001018 06 02FF040C0000 BC 25 42 00037F 00 35 6C 001018 06 02FF009C0000 BC 25 48", \
+	"000C43 00 25 C2 001018 06 02FFF02C0000 BC 25 42 001018 06 02FF040C0000 BC 25 42 00037F 00 35 6C 001018 06 02FF009C0000 BC 25 48", \
 	"Used to specify action OUIs for 1x1 connection")
 
 /*
@@ -1109,7 +1190,75 @@ struct dhcp_server {
 	"FFFFFF 00 2A F85971000000 E0 50 FFFFFF 00 2A 14ABC5000000 E0 50", \
 	"Used to specify action OUIs to disable aggressive TX")
 
- /* End of action oui inis */
+/*
+ * <ini>
+ * gActionOUIDisableAggressiveEDCA - Used to specify action OUIs to control
+ * EDCA configuration when join the candidate AP
+ *
+ * @Default: NULL
+ * Note: User should strictly add new action OUIs at the end of this
+ * default value.
+ *
+ * This ini is used to specify AP OUIs. The station's EDCA should follow the
+ * APs' when connecting to those AP, even if the gEnableEdcaParams is set.
+ * For example, it follows the AP's EDCA whose OUI is 0050F2 with the
+ * following setting:
+ *     gActionOUIDisableAggressiveEDCA=0050F2 00 01
+ *          Explain: 0050F2: OUI
+ *                   00: data length is 0
+ *                   01: info mask, only OUI present in Info mask
+ * Refer to gEnableActionOUI for more detail about the format.
+ *
+ * Related: gEnableEdcaParams, gEnableActionOUI
+ *
+ * Supported Feature: Action OUIs
+ *
+ * Usage: External
+ *
+ * </ini>
+ */
+#define CFG_ACTION_OUI_DISABLE_AGGRESSIVE_EDCA CFG_INI_STRING( \
+	"gActionOUIDisableAggressiveEDCA", \
+	0, \
+	ACTION_OUI_MAX_STR_LEN, \
+	"", \
+	"Used to specify action OUIs to control edca configuration")
+
+/*
+ * <ini>
+ * gActionOUIReconnAssocTimeout - Used to specify action OUIs to
+ * reconnect to same BSSID when wait for association response timeout
+ *
+ * This ini is used to specify AP OUIs. Some of AP doesn't response our
+ * first association request, but it would response our second association
+ * request. Add such OUI configuration INI to apply reconnect logic when
+ * association timeout happends with such AP.
+ * For default:
+ *     gActionOUIReconnAssocTimeout=00E04C 00 01
+ *          Explain: 00E04C: OUI
+ *                   00: data length is 0
+ *                   01: info mask, only OUI present in Info mask
+ * Note: User should strictly add new action OUIs at the end of this
+ * default value.
+ * Refer to gEnableActionOUI for more detail about the format.
+ *
+ * Related: gEnableActionOUI
+ *
+ * Supported Feature: Action OUIs
+ *
+ * Usage: External
+ *
+ * </ini>
+ */
+#define CFG_ACTION_OUI_RECONN_ASSOCTIMEOUT CFG_INI_STRING( \
+	"gActionOUIReconnAssocTimeout", \
+	0, \
+	ACTION_OUI_MAX_STR_LEN, \
+	"00E04C 00 01", \
+	"Used to specify action OUIs to reconnect when assoc timeout")
+
+/* End of action oui inis */
+
 #ifdef ENABLE_MTRACE_LOG
 /*
  * <ini>
@@ -1134,29 +1283,6 @@ struct dhcp_server {
 #else
 #define CFG_ENABLE_MTRACE_ALL
 #endif
-
-/*
- * <ini>
- * gEnableRTTsupport
- *
- * @Min: 0 - Disabled
- * @Max: 1 - Enabled
- * @Default: 1 - Enabled
- *
- * The param is used to enable/disable support for RTT
- *
- * Related: None.
- *
- * Supported Feature: RTT
- *
- * Usage: Internal/External
- *
- * </ini>
- */
-#define CFG_ENABLE_RTT_SUPPORT CFG_INI_BOOL( \
-		"gEnableRTTSupport", \
-		1, \
-		"The param is used to enable/disable support for RTT")
 
 /*
  * <ini>
@@ -1223,26 +1349,27 @@ struct dhcp_server {
 
 /*
  * <ini>
- * gSarVersion - Used to specify SAR version
+ * gEnableSARV1toSARV2 - Used to Enable/Disable SAR version conversion
  *
- * @Min: 1
- * @Max: 2
- * Default: 1
+ * @Min: 0
+ * @Max: 1
+ * Default: 0
  *
- * This ini is used to specify the SAR feature version.
- * If value of this ini is set to 2, SAR version 2 will
- * be used.
+ * If user space is using SARV1 and FW is using SARV2 in BDF in that case
+ * this ini is used to enable conversion from user specified SARV1 command
+ * to FW expected SARV2 command.
+ * If value of this ini is set to 0, SAR version 1 will
+ * not be converted to SARV2 and command will be rejected.
+ * If value of this ini is set to 1 SAR version 1 will be converted to
+ * SARV2 based on FW capability
  * Usage: External
  *
  * </ini>
  */
-#define CFG_SAR_VERSION  CFG_INI_UINT( \
-			"gSarVersion", \
-			1, \
-			2, \
-			1, \
-			CFG_VALUE_OR_DEFAULT, \
-			"Specify the SAR version")
+#define CFG_SAR_CONVERSION  CFG_INI_BOOL( \
+			"gEnableSARV1toSARV2", \
+			0, \
+			"Enable/Disable conversion from SARV1 to SARV2")
 
 /*
  * <ini>
@@ -1267,6 +1394,70 @@ struct dhcp_server {
 			0, \
 			CFG_VALUE_OR_DEFAULT, \
 			"Disable wow feature")
+
+#ifdef WLAN_FEATURE_PERIODIC_STA_STATS
+/*
+ * <ini>
+ * periodic_stats_timer_interval - Print selective stats on this specified
+ *				   interval
+ *
+ * @Min: 0
+ * @Max: 10000
+ * Default: 3000
+ *
+ * This ini is used to specify interval in milliseconds for periodic stats
+ * timer. This timer will print selective stats after expiration of each
+ * interval. STA starts this periodic timer after initial connection or after
+ * roaming is successful. This will be restarted for every
+ * periodic_stats_timer_interval till the periodic_stats_timer_duration expires.
+ *
+ * Supported Feature: STA
+ *
+ * Usage: Internal
+ *
+ * </ini>
+ */
+#define CFG_PERIODIC_STATS_TIMER_INTERVAL  CFG_INI_UINT( \
+				"periodic_stats_timer_interval", \
+				0, \
+				10000, \
+				3000, \
+				CFG_VALUE_OR_DEFAULT, \
+				"Periodic stats timer interval")
+
+/*
+ * <ini>
+ * periodic_stats_timer_duration - Used as duration for which periodic timer
+ *				   should run
+ *
+ * @Min: 0
+ * @Max: 60000
+ * Default: 30000
+ *
+ * This ini is used as duration in milliseconds for which periodic stats timer
+ * should run. This periodic timer will print selective stats for every
+ * periodic_stats_timer_interval until this duration is reached.
+ *
+ * Supported Feature: STA
+ *
+ * Usage: Internal
+ *
+ * </ini>
+ */
+#define CFG_PERIODIC_STATS_TIMER_DURATION  CFG_INI_UINT( \
+			"periodic_stats_timer_duration", \
+			0, \
+			60000, \
+			30000, \
+			CFG_VALUE_OR_DEFAULT, \
+			"Periodic stats timer duration")
+
+#define CFG_WLAN_STA_PERIODIC_STATS \
+	 CFG(CFG_PERIODIC_STATS_TIMER_DURATION) \
+	 CFG(CFG_PERIODIC_STATS_TIMER_INTERVAL)
+#else
+#define CFG_WLAN_STA_PERIODIC_STATS
+#endif /* WLAN_FEATURE_PERIODIC_STA_STATS */
 
 /**
  * enum host_log_level - Debug verbose level imposed by user
@@ -1384,6 +1575,7 @@ enum host_log_level {
 	CFG_VC_MODE_BITMAP_ALL \
 	CFG_WLAN_AUTO_SHUTDOWN_ALL \
 	CFG_WLAN_LOGGING_SUPPORT_ALL \
+	CFG_WLAN_STA_PERIODIC_STATS \
 	CFG(CFG_ACTION_OUI_CCKM_1X1) \
 	CFG(CFG_ACTION_OUI_CONNECT_1X1) \
 	CFG(CFG_ACTION_OUI_CONNECT_1X1_WITH_1_CHAIN) \
@@ -1391,7 +1583,9 @@ enum host_log_level {
 	CFG(CFG_ACTION_OUI_ITO_EXTENSION) \
 	CFG(CFG_ACTION_OUI_DISABLE_AGGRESSIVE_TX) \
 	CFG(CFG_ACTION_OUI_FORCE_MAX_NSS) \
+	CFG(CFG_ACTION_OUI_DISABLE_AGGRESSIVE_EDCA) \
 	CFG(CFG_ACTION_OUI_SWITCH_TO_11N_MODE) \
+	CFG(CFG_ACTION_OUI_RECONN_ASSOCTIMEOUT) \
 	CFG(CFG_ADVERTISE_CONCURRENT_OPERATION) \
 	CFG(CFG_BUG_ON_REINIT_FAILURE) \
 	CFG(CFG_DBS_SCAN_SELECTION) \
@@ -1403,19 +1597,19 @@ enum host_log_level {
 	CFG(CFG_ENABLE_MAC_PROVISION) \
 	CFG_ENABLE_MTRACE_ALL \
 	CFG(CFG_ENABLE_RAMDUMP_COLLECTION) \
-	CFG(CFG_ENABLE_RTT_SUPPORT) \
 	CFG(CFG_ENABLE_UNIT_TEST_FRAMEWORK) \
 	CFG(CFG_INTERFACE_CHANGE_WAIT) \
 	CFG(CFG_INFORM_BSS_RSSI_RAW) \
 	CFG(CFG_MULTICAST_HOST_FW_MSGS) \
 	CFG(CFG_NUM_VDEV_ENABLE) \
-	CFG(CFG_OPERATING_CHANNEL) \
+	CFG(CFG_OPERATING_FREQUENCY) \
 	CFG(CFG_PRIVATE_WEXT_CONTROL) \
 	CFG(CFG_PROVISION_INTERFACE_POOL) \
 	CFG(CFG_TIMER_MULTIPLIER) \
 	CFG(CFG_HDD_DOT11_MODE) \
 	CFG(CFG_ENABLE_DISABLE_CHANNEL) \
-	CFG(CFG_SAR_VERSION) \
+	CFG(CFG_SAR_CONVERSION) \
 	CFG(CFG_WOW_DISABLE) \
-	CFG(CFG_ENABLE_HOST_MODULE_LOG_LEVEL)
+	CFG(CFG_ENABLE_HOST_MODULE_LOG_LEVEL) \
+	SAR_SAFETY_FEATURE_ALL
 #endif

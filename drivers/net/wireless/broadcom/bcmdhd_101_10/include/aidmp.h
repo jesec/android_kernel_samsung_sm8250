@@ -1,7 +1,7 @@
 /*
  * Broadcom AMBA Interconnect definitions.
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,7 +18,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #ifndef	_AIDMP_H
@@ -305,6 +305,7 @@ typedef volatile struct _aidmp {
 #define	AI_IOCTRLSET		0x400
 #define	AI_IOCTRLCLEAR		0x404
 #define	AI_IOCTRL		0x408
+#define AI_IOCTRL_BOOKER        0x248 /* Starting from OOBR base - 0x18006000 */
 #define	AI_IOSTATUS		0x500
 #define	AI_RESETCTRL		0x800
 #define	AI_RESETSTATUS		0x804

@@ -116,6 +116,7 @@
 #define PKTPTR(skb)             (skb)
 #define PKTID(skb)              ({BCM_REFERENCE(skb); 0;})
 #define PKTSETID(skb, id)       ({BCM_REFERENCE(skb); BCM_REFERENCE(id);})
+#define PKTIDAVAIL()            (0xFFFFFFFFu)
 #define PKTSHRINK(osh, m)		({BCM_REFERENCE(osh); m;})
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 6, 0)) && defined(TSQ_MULTIPLIER)
 #define PKTORPHAN(skb)          osl_pkt_orphan_partial(skb)
@@ -220,6 +221,8 @@ extern struct sk_buff *osl_pkt_tonative(osl_t *osh, void *pkt);
 
 #define PKTALLOCED(osh)		osl_pktalloced(osh)
 extern uint osl_pktalloced(osl_t *osh);
+
+#define PKTPOOLHEAPCOUNT()            (0u)
 
 #endif /* BCMDRIVER */
 

@@ -326,8 +326,8 @@ static int __init sec_debug_ex_info_setup(char *str)
 		sec_debug_reset_ex_info_size =
 					(size + 0x1000 - 1) & ~(0x1000 - 1);
 
-		pr_info("ex info phy=0x%llx, size=0x%x\n",
-				(uint64_t)sec_debug_reset_ex_info_paddr,
+		pr_info("ex info phy=%pa, size=0x%x\n",
+				&sec_debug_reset_ex_info_paddr,
 				sec_debug_reset_ex_info_size);
 	}
 	return 1;
@@ -464,9 +464,6 @@ static const struct file_operations sec_debug_rdx_bootdev_fops = {
 
 static int __init sec_debug_map_rdx_bootdev_region(void)
 {
-#if !defined(CONFIG_SAMSUNG_USER_TRIAL) && defined(CONFIG_SAMSUNG_PRODUCT_SHIP)
-	return 0;
-#else
 	struct device_node *parent, *node;
 	int ret = 0;
 	u64 temp[2];
@@ -511,7 +508,6 @@ static int __init sec_debug_map_rdx_bootdev_region(void)
 
 	mutex_unlock(&rdx_bootdev_mutex);
 	return 0;
-#endif
 }
 arch_initcall_sync(sec_debug_map_rdx_bootdev_region);
 
@@ -1465,7 +1461,9 @@ void sec_debug_backtrace(void)
 	if (!once++) {
 		frame.fp = (unsigned long)__builtin_frame_address(0);
 		frame.pc = (unsigned long)sec_debug_backtrace;
-
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4,14,0)
+		frame.sp = current_stack_pointer;
+#endif
 		while (1) {
 			int ret;
 

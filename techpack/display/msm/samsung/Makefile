@@ -1,4 +1,4 @@
-ccflags-y := -I$(srctree)/include/drm -I$(srctree)/techpack/display/msm -I$(srctree)/techpack/display/msm/dsi -I$(srctree)/techpack/display/msm/sde -I$(srctree)/techpack/display/msm/samsung
+ccflags-y := -Wformat -I$(srctree)/include/drm -I$(srctree)/techpack/display/msm -I$(srctree)/techpack/display/msm/dsi -I$(srctree)/techpack/display/msm/sde -I$(srctree)/techpack/display/msm/samsung
 
 obj-y += ss_dsi_panel_sysfs.o
 obj-y += ss_dsi_panel_debug.o
@@ -85,3 +85,45 @@ obj-$(CONFIG_PANEL_S6E3HAB_AMB623TS01_WQHD) += S6E3HAB_AMB623TS01/
 
 # Hubble Z3 DSC panel - 3200
 obj-$(CONFIG_PANEL_S6E3HAB_AMB687TZ01_WQHD) += S6E3HAB_AMB687TZ01/
+
+# Canvas1 DSC panel - 1st panel
+obj-$(CONFIG_PANEL_S6E3FAB_AMB643VW01_FHD) += S6E3FAB_AMB643VW01/
+
+# Canvas1 DSC panel - 2nd panel
+obj-$(CONFIG_PANEL_S6E3FA9_AMB667UM01_FHD) += S6E3FA9_AMB667UM01/
+
+# Canvas2 DSC panel
+obj-$(CONFIG_PANEL_S6E3HAC_AMB687VX01_WQHD) += S6E3HAC_AMB687VX01/
+
+# TABS7 TFT panel - 2560 * 1600
+obj-$(CONFIG_PANEL_NT36523_PPA957DB1_WQXGA) += NT36523_PPA957DB1/
+
+# BLOOM DSC panel - 2640
+obj-$(CONFIG_PANEL_S6E3HA9_AMF670UH01_FHD) += S6E3HA9_AMF670UH01/
+
+# bloom sub panel
+obj-$(CONFIG_PANEL_S6E36W3_AMB114EU09) += S6E36W3_AMB114EU09/
+
+# TABS7P DSC panel - 2808 * 1752
+obj-$(CONFIG_PANEL_S6TUUM0_AMSA24VU01_WQXGA) += S6TUUM0_AMSA24VU01/
+
+# TABS7P DSC panel - 2800 * 1752 1lane
+obj-$(CONFIG_PANEL_S6TUUM1_AMSA24VU01_WQXGA) += S6TUUM1_AMSA24VU01/
+
+# TABS7P DSC panel - 2800 * 1752 4lane
+obj-$(CONFIG_PANEL_S6TUUM2_AMSA24VU01_WQXGA) += S6TUUM2_AMSA24VU01/
+
+# TABS7P DSC panel - 2800 * 1752 PV2-3
+obj-$(CONFIG_PANEL_S6TUUM3_AMSA24VU01_WQXGA) += S6TUUM3_AMSA24VU01/
+
+# TOP main panel
+obj-$(CONFIG_PANEL_S6E3XA1_AMF759VG01_QXGA) += S6E3XA1_AMF759VG01/
+
+# TOP sub panel
+obj-$(CONFIG_PANEL_S6E3FA7_AMB623VH01_HD) += S6E3FA7_AMB623VH01/
+
+# R8_Rev00 panel
+obj-$(CONFIG_PANEL_EA8076A_AMS646UJ10_FHD) += EA8076A_AMS646UJ10/
+
+# R8_Rev01 panel
+obj-$(CONFIG_PANEL_EA8079B_AMS646YB01_FHD) += EA8079B_AMS646YB01/

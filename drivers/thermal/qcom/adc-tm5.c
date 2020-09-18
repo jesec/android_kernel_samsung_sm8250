@@ -95,7 +95,7 @@ static int adc_tm5_get_temp(struct adc_tm_sensor *sensor, int *temp)
 	if (ret < 0)
 		return ret;
 
-#ifdef CONFIG_SEC_EXT_THERMAL_MONITOR 
+#ifdef CONFIG_SEC_EXT_THERMAL_MONITOR
 	if (sensor->adc_ch == 0x4d || sensor->adc_ch == 0x52)
 		*temp = sec_bat_convert_adc_to_temp(sensor->adc_ch, milli_celsius);
 	else
@@ -806,7 +806,7 @@ static int adc_tm5_set_trip_temp(struct adc_tm_sensor *sensor,
 			__func__, sensor->adc_ch, low_temp, high_temp);
 
 		/* NOTE: Remap trip threshold voltage for adc-tm interrupt
-		 * if remap_voltage is nonzero, then reset threshold voltage. 
+		 * if remap_voltage is nonzero, then reset threshold voltage.
 		 * Otherwise, it means sec_adc driver is not ready, so skip it.
 		 */
 		if (high_temp != INT_MAX) {
@@ -814,7 +814,7 @@ static int adc_tm5_set_trip_temp(struct adc_tm_sensor *sensor,
 				sec_bat_get_thr_voltage(sensor->adc_ch, (high_temp/100));
 
 			if (remap_low_thr_voltage) {
-				pr_info("%s: adc_ch(0x%x) high_temp %d - voltage %d\n",
+				pr_info("%s: adc_ch(0x%x) high_temp %d - voltage %lld\n",
 					__func__, sensor->adc_ch, high_temp, remap_low_thr_voltage);
 				tm_config.low_thr_voltage =
 					remap_low_thr_voltage * chip->data->full_scale_code_volt;
@@ -827,7 +827,7 @@ static int adc_tm5_set_trip_temp(struct adc_tm_sensor *sensor,
 				sec_bat_get_thr_voltage(sensor->adc_ch, (low_temp/100)) + 1;
 
 			if (remap_high_thr_voltage) {
-				pr_info("%s: adc_ch(0x%x) low_temp %d - voltage %d\n",
+				pr_info("%s: adc_ch(0x%x) low_temp %d - voltage %lld\n",
 					__func__, sensor->adc_ch, low_temp, remap_high_thr_voltage);
 				tm_config.high_thr_voltage =
 					remap_high_thr_voltage * chip->data->full_scale_code_volt;

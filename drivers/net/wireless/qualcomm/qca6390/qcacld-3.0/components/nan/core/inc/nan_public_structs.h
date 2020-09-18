@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2019 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2017-2020 The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -45,6 +45,7 @@ struct wlan_objmgr_vdev;
 #define NAN_PASSPHRASE_MIN_LEN 8
 #define NAN_PASSPHRASE_MAX_LEN 63
 #define NAN_CH_INFO_MAX_CHANNELS 4
+#define WLAN_WAIT_TIME_NDP_END 2000
 
 #define NAN_PSEUDO_VDEV_ID CFG_TGT_NUM_VDEV
 
@@ -515,6 +516,7 @@ enum nan_event_id_types {
  * @evt_type: NAN Discovery event type
  * @is_nan_enable_success: Status from the NAN Enable Response event
  * @mac_id: MAC ID associated with NAN Discovery from NAN Enable Response event
+ * @vdev_id: vdev id of the interface created for NAN discovery
  * @buf_len: Event buffer length
  * @buf: Event buffer starts here
  */
@@ -523,6 +525,7 @@ struct nan_event_params {
 	enum nan_event_id_types evt_type;
 	bool is_nan_enable_success;
 	uint8_t mac_id;
+	uint8_t vdev_id;
 	uint32_t buf_len;
 	/* Variable length, do not add anything after this */
 	uint8_t buf[];
@@ -532,9 +535,11 @@ struct nan_event_params {
  * struct nan_msg_params - NAN request params
  * @request_data_len: request data length
  * @request_data: request data
+ * @rtt_cap: indicate if responder/initiator role is supported
  */
 struct nan_msg_params {
 	uint16_t request_data_len;
+	uint32_t rtt_cap;
 	/* Variable length, do not add anything after this */
 	uint8_t request_data[];
 };
@@ -568,14 +573,14 @@ struct nan_disable_req {
 /**
  * struct nan_enable_req - NAN request to enable NAN Discovery
  * @psoc: Pointer to the psoc object
- * @social_chan_2g: Social channel in 2G band for the NAN Discovery
- * @social_chan_5g: Social channel in 5G band for the NAN Discovery
+ * @social_chan_2g_freq: Social channel in 2G band for the NAN Discovery
+ * @social_chan_5g_freq: Social channel in 5G band for the NAN Discovery
  * @params: NAN request structure containing message for the target
  */
 struct nan_enable_req {
 	struct wlan_objmgr_psoc *psoc;
-	uint8_t social_chan_2g;
-	uint8_t social_chan_5g;
+	uint32_t social_chan_2g_freq;
+	uint32_t social_chan_5g_freq;
 	/* Variable length, do not add anything after this */
 	struct nan_msg_params params;
 };
@@ -605,6 +610,17 @@ struct nan_datapath_end_indication_event {
 	struct wlan_objmgr_vdev *vdev;
 	uint32_t num_ndp_ids;
 	struct peer_nan_datapath_map ndp_map[];
+};
+
+/**
+ * struct nan_datapath_peer_ind - ndp peer indication
+ * @msg: msg received by FW
+ * @data_len: data length
+ *
+ */
+struct nan_dump_msg {
+	uint8_t *msg;
+	uint32_t data_len;
 };
 
 /**
@@ -722,8 +738,8 @@ struct nan_datapath_host_event {
  * struct nan_callbacks - struct containing callback to non-converged driver
  * @os_if_nan_event_handler: OS IF Callback for handling NAN Discovery events
  * @os_if_ndp_event_handler: OS IF Callback for handling NAN Datapath events
- * @ucfg_explicit_disable_cb: UCFG Callback to indicate NAN explicit disable is
- * complete
+ * @ucfg_nan_request_process_cb: Callback to indicate NAN enable/disable
+ * request processing is complete
  * @ndi_open: HDD callback for creating the NAN Datapath Interface
  * @ndi_start: HDD callback for starting the NAN Datapath Interface
  * @ndi_close: HDD callback for closing the NAN Datapath Interface
@@ -743,7 +759,7 @@ struct nan_callbacks {
 	void (*os_if_ndp_event_handler)(struct wlan_objmgr_psoc *psoc,
 					struct wlan_objmgr_vdev *vdev,
 					uint32_t type, void *msg);
-	void (*ucfg_explicit_disable_cb)(void *cookie);
+	void (*ucfg_nan_request_process_cb)(void *cookie);
 	int (*ndi_open)(char *iface_name);
 	int (*ndi_start)(char *iface_name, uint16_t);
 	void (*ndi_close)(uint8_t);
@@ -789,6 +805,9 @@ struct wlan_nan_rx_ops {
  * @ndi_dbs_supported: Target supports NAN Datapath with DBS
  * @nan_sap_supported: Target supports NAN Discovery with SAP concurrency
  * @ndi_sap_supported: Target supports NAN Datapth with SAP concurrency
+ * @nan_vdev_allowed: Allow separate vdev creation for NAN discovery
+ * @sta_nan_ndi_ndi_allowed: 4 port concurrency of STA+NAN+NDI+NDI is supported
+ * by Fw or not.
  */
 struct nan_tgt_caps {
 	uint32_t nan_disable_supported:1;
@@ -796,6 +815,8 @@ struct nan_tgt_caps {
 	uint32_t ndi_dbs_supported:1;
 	uint32_t nan_sap_supported:1;
 	uint32_t ndi_sap_supported:1;
+	uint32_t nan_vdev_allowed:1;
+	uint32_t sta_nan_ndi_ndi_allowed:1;
 };
 
 #endif

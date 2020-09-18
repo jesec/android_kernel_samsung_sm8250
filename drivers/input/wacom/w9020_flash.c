@@ -15,8 +15,8 @@
 #include "wacom_dev.h"
 
 static bool wacom_i2c_set_feature(struct wacom_i2c *wac_i2c, u8 report_id,
-			   unsigned int buf_size, u8 *data, u16 cmdreg,
-			   u16 datareg)
+		unsigned int buf_size, u8 *data, u16 cmdreg,
+		u16 datareg)
 {
 	int i, ret = -1;
 	int total = SFEATURE_SIZE + buf_size;
@@ -26,7 +26,7 @@ static bool wacom_i2c_set_feature(struct wacom_i2c *wac_i2c, u8 report_id,
 	sFeature = kzalloc(sizeof(u8) * total, GFP_KERNEL);
 	if (!sFeature) {
 		input_err(true, &wac_i2c->client->dev,
-			  "%s cannot preserve memory\n", __func__);
+				"%s cannot preserve memory\n", __func__);
 		goto out;
 	}
 
@@ -53,7 +53,7 @@ static bool wacom_i2c_set_feature(struct wacom_i2c *wac_i2c, u8 report_id,
 	ret = wacom_i2c_send_boot(wac_i2c, sFeature, total);
 	if (ret != total) {
 		input_err(true, &wac_i2c->client->dev,
-			  "Sending Set_Feature failed sent bytes: %d\n", ret);
+				"Sending Set_Feature failed sent bytes: %d\n", ret);
 		goto err;
 	}
 
@@ -68,8 +68,8 @@ out:
 }
 
 static bool wacom_i2c_get_feature(struct wacom_i2c *wac_i2c, u8 report_id,
-			   unsigned int buf_size, u8 *data, u16 cmdreg,
-			   u16 datareg, int delay)
+		unsigned int buf_size, u8 *data, u16 cmdreg,
+		u16 datareg, int delay)
 {
 	/*"+ 2", adding 2 more spaces for organizeing again later in the passed data, "data" */
 	unsigned int total = buf_size + 2;
@@ -88,7 +88,7 @@ static bool wacom_i2c_get_feature(struct wacom_i2c *wac_i2c, u8 report_id,
 	recv = kzalloc(sizeof(u8) * total, GFP_KERNEL);
 	if (!recv) {
 		input_err(true, &wac_i2c->client->dev,
-			  "%s cannot preserve memory\n", __func__);
+				"%s cannot preserve memory\n", __func__);
 		goto err_alloc_memory;
 	}
 
@@ -98,8 +98,8 @@ static bool wacom_i2c_get_feature(struct wacom_i2c *wac_i2c, u8 report_id,
 	ret = wacom_i2c_send_boot(wac_i2c, gFeature, GFEATURE_SIZE);
 	if (ret != GFEATURE_SIZE) {
 		input_info(true, &wac_i2c->client->dev,
-			   "%s Sending Get_Feature failed; sent bytes: %d\n",
-			   __func__, ret);
+				"%s Sending Get_Feature failed; sent bytes: %d\n",
+				__func__, ret);
 
 		udelay(delay);
 
@@ -111,8 +111,8 @@ static bool wacom_i2c_get_feature(struct wacom_i2c *wac_i2c, u8 report_id,
 	ret = wacom_i2c_recv_boot(wac_i2c, recv, total);
 	if (ret != total) {
 		input_err(true, &wac_i2c->client->dev,
-			  "%s Receiving data failed; recieved bytes: %d\n",
-			  __func__, ret);
+				"%s Receiving data failed; recieved bytes: %d\n",
+				__func__, ret);
 		goto err_fail_i2c;
 	}
 
@@ -146,7 +146,7 @@ static int wacom_flash_cmd(struct wacom_i2c *wac_i2c)
 	ret = wacom_i2c_send_boot(wac_i2c, command, len);
 	if (ret < 0) {
 		input_err(true, &wac_i2c->client->dev,
-			  "Sending flash command failed\n");
+				"Sending flash command failed\n");
 		return -EXIT_FAIL;
 	}
 
@@ -167,24 +167,24 @@ static int flash_query_w9020(struct wacom_i2c *wac_i2c)
 	command[len++] = ECH = 7;		/* Report:echo */
 
 	bRet = wacom_i2c_set_feature(wac_i2c, REPORT_ID_1, len, command,
-					COMM_REG, DATA_REG);
+			COMM_REG, DATA_REG);
 	if (!bRet) {
 		input_err(true, &wac_i2c->client->dev,
-			  "%s failed to set feature\n", __func__);
+				"%s failed to set feature\n", __func__);
 		return -EXIT_FAIL_SEND_QUERY_COMMAND;
 	}
 
 	bRet = wacom_i2c_get_feature(wac_i2c, REPORT_ID_2, BOOT_RSP_SIZE, response,
-					COMM_REG, DATA_REG, (10 * 1000));
+			COMM_REG, DATA_REG, (10 * 1000));
 	if (!bRet) {
 		input_err(true, &wac_i2c->client->dev,
-			  "%s failed to get feature\n", __func__);
+				"%s failed to get feature\n", __func__);
 		return -EXIT_FAIL_SEND_QUERY_COMMAND;
 	}
 
 	if ((response[1] != BOOT_CMD_REPORT_ID) || (response[2] != ECH) ) {
 		input_err(true, &wac_i2c->client->dev, "%s res1:%x res2:%x\n",
-			__func__, response[1], response[2]);
+				__func__, response[1], response[2]);
 		return -EXIT_FAIL_SEND_QUERY_COMMAND;
 	}
 
@@ -194,19 +194,19 @@ static int flash_query_w9020(struct wacom_i2c *wac_i2c)
 		return -EXIT_FAIL_SEND_QUERY_COMMAND;
 	}
 
-	/*
+/*
 	if ((response[3] != QUERY_CMD) || (response[4] != ECH)) {
 		input_err(true, &wac_i2c->client->dev, "%s res3:%x res4:%x\n",
-			  __func__, response[3], response[4]);
+				__func__, response[3], response[4]);
 		return -EXIT_FAIL_SEND_QUERY_COMMAND;
 	}
 
 	if (response[5] != QUERY_RSP) {
 		input_err(true, &wac_i2c->client->dev, "%s res5:%x\n",
-			  __func__, response[5]);
-		return -EXIT_FAIL_SEND_QUERY_COMMAND;
+				__func__, response[5]);
+	return -EXIT_FAIL_SEND_QUERY_COMMAND;
 	}
-	*/
+*/
 	input_info(true, &wac_i2c->client->dev, "QUERY SUCCEEDED\n");
 
 	return 0;
@@ -224,18 +224,18 @@ static bool flash_blver_w9020(struct wacom_i2c *wac_i2c, int *blver)
 	command[len++] = ECH = 7;		/* Report:echo */
 
 	bRet = wacom_i2c_set_feature(wac_i2c, REPORT_ID_1, len, command, COMM_REG,
-					DATA_REG);
+			DATA_REG);
 	if (!bRet) {
 		input_err(true, &wac_i2c->client->dev,
-			  "%s failed to set feature1\n", __func__);
+				"%s failed to set feature1\n", __func__);
 		return false;
 	}
 
 	bRet = wacom_i2c_get_feature(wac_i2c, REPORT_ID_2, BOOT_RSP_SIZE, response,
-				  COMM_REG, DATA_REG, (10 * 1000));
+			COMM_REG, DATA_REG, (10 * 1000));
 	if (!bRet) {
 		input_err(true, &wac_i2c->client->dev,
-			  "%s 2 failed to set feature\n", __func__);
+				"%s 2 failed to set feature\n", __func__);
 		return false;
 	}
 
@@ -244,13 +244,13 @@ static bool flash_blver_w9020(struct wacom_i2c *wac_i2c, int *blver)
 				__func__, response[1], response[2]);
 		return false;
 	}
-	/*
+/*
 	if ((response[3] != BOOT_CMD) || (response[4] != ECH)) {
 		input_err(true, &wac_i2c->client->dev, "%s res3:%x res4:%x\n",
-			  __func__, response[3], response[4]);
+				__func__, response[3], response[4]);
 		return false;
 	}
-	*/
+*/
 	*blver = (int)response[3];
 
 	return true;
@@ -268,18 +268,18 @@ static bool flash_mputype_w9020(struct wacom_i2c *wac_i2c, int *pMpuType)
 	command[len++] = ECH = 7;	/* Report:echo */
 
 	bRet = wacom_i2c_set_feature(wac_i2c, REPORT_ID_1, len, command, COMM_REG,
-					DATA_REG);
+			DATA_REG);
 	if (!bRet) {
 		input_err(true, &wac_i2c->client->dev,
-			  "%s failed to set feature\n", __func__);
+				"%s failed to set feature\n", __func__);
 		return false;
 	}
 
 	bRet = wacom_i2c_get_feature(wac_i2c, REPORT_ID_2, BOOT_RSP_SIZE, response,
-					COMM_REG, DATA_REG, (10 * 1000));
+			COMM_REG, DATA_REG, (10 * 1000));
 	if (!bRet) {
 		input_err(true, &wac_i2c->client->dev,
-			  "%s failed to get feature\n", __func__);
+				"%s failed to get feature\n", __func__);
 		return false;
 	}
 
@@ -288,13 +288,13 @@ static bool flash_mputype_w9020(struct wacom_i2c *wac_i2c, int *pMpuType)
 				__func__, response[1], response[2]);
 		return false;
 	}
-	/*
+/*
 	if ((response[3] != MPU_CMD) || (response[4] != ECH)) {
 		input_err(true, &wac_i2c->client->dev, "%s res3:%x res4:%x\n",
-			  __func__, response[3], response[4]);
+				__func__, response[3], response[4]);
 		return false;
 	}
-	*/
+*/
 	*pMpuType = (int)response[3];
 	return true;
 }
@@ -310,10 +310,10 @@ static bool flash_end_w9020(struct wacom_i2c *wac_i2c)
 	command[len++] = 0;
 
 	bRet = wacom_i2c_set_feature(wac_i2c, REPORT_ID_1, len, command, COMM_REG,
-					DATA_REG);
+			DATA_REG);
 	if (!bRet) {
 		input_err(true, &wac_i2c->client->dev,
-			  "%s failed to set feature 1\n", __func__);
+				"%s failed to set feature 1\n", __func__);
 		return false;
 	}
 
@@ -333,7 +333,7 @@ static int check_progress(struct wacom_i2c *wac_i2c, u8 *data, size_t size, u8 c
 	case PROCESS_CHKSUM2_ERR:
 	case PROCESS_TIMEOUT_ERR:
 		input_err(true, &wac_i2c->client->dev, "%s error: %x\n",
-			__func__, data[2]);
+				__func__, data[2]);
 		return -EXIT_FAIL;
 	}
 
@@ -363,19 +363,19 @@ static bool flash_erase_all(struct wacom_i2c *wac_i2c)
 	command[len++] = ~sum + 1;
 
 	bRet = wacom_i2c_set_feature(wac_i2c, REPORT_ID_1, len, command, COMM_REG,
-					DATA_REG);
+			DATA_REG);
 	if (!bRet) {
 		input_err(true, &wac_i2c->client->dev,
-			  "%s failed to set feature\n", __func__);
+				"%s failed to set feature\n", __func__);
 		return false;
 	}
 
 	do {
 		bRet = wacom_i2c_get_feature(wac_i2c, REPORT_ID_2, BOOT_RSP_SIZE,
-						response, COMM_REG, DATA_REG, 0);
+				response, COMM_REG, DATA_REG, 0);
 		if (!bRet) {
 			input_err(true, &wac_i2c->client->dev,
-				  "%s failed to set feature\n", __func__);
+					"%s failed to set feature\n", __func__);
 			return false;
 		}
 
@@ -389,8 +389,8 @@ static bool flash_erase_all(struct wacom_i2c *wac_i2c)
 }
 
 static bool flash_write_block_w9020(struct wacom_i2c *wac_i2c, char *flash_data,
-				    unsigned long ulAddress, u8 *pcommand_id,
-				    int *ECH)
+		unsigned long ulAddress, u8 *pcommand_id,
+		int *ECH)
 {
 	const int MAX_COM_SIZE = (8 + FLASH_BLOCK_SIZE + 2);	/* 8: num of command[0] to command[7] */
 	/* FLASH_BLOCK_SIZE: unit to erase the block */
@@ -428,10 +428,10 @@ static bool flash_write_block_w9020(struct wacom_i2c *wac_i2c, char *flash_data,
 
 	/*Subtract 8 for the first 8 bytes */
 	bRet = wacom_i2c_set_feature(wac_i2c, REPORT_ID_1, (BOOT_CMD_SIZE + 4 - 8),
-					command, COMM_REG, DATA_REG);
+			command, COMM_REG, DATA_REG);
 	if (!bRet) {
 		input_err(true, &wac_i2c->client->dev,
-			  "%s failed to set feature\n", __func__);
+				"%s failed to set feature\n", __func__);
 		return false;
 	}
 
@@ -441,9 +441,9 @@ static bool flash_write_block_w9020(struct wacom_i2c *wac_i2c, char *flash_data,
 }
 
 static bool flash_write_w9020(struct wacom_i2c *wac_i2c,
-			      unsigned char *flash_data,
-			      unsigned long start_address,
-			      unsigned long *max_address)
+		unsigned char *flash_data,
+		unsigned long start_address,
+		unsigned long *max_address)
 {
 	bool bRet = false;
 	u8 command_id = 0;
@@ -463,7 +463,7 @@ static bool flash_write_w9020(struct wacom_i2c *wac_i2c,
 			continue;
 
 		bRet = flash_write_block_w9020(wac_i2c, flash_data, ulAddress,
-						&command_id, &ECH);
+				&command_id, &ECH);
 		if (!bRet)
 			return false;
 
@@ -475,24 +475,24 @@ static bool flash_write_w9020(struct wacom_i2c *wac_i2c,
 			for (j = 0; j < 3; j++) {
 				do {
 					bRet = wacom_i2c_get_feature(wac_i2c,
-								  REPORT_ID_2,
-								  BOOT_RSP_SIZE,
-								  response,
-								  COMM_REG,
-								  DATA_REG, 50);
+							REPORT_ID_2,
+							BOOT_RSP_SIZE,
+							response,
+							COMM_REG,
+							DATA_REG, 50);
 					if (!bRet) {
 						input_err(true,
-							  &wac_i2c->client->dev,
-							  "%s failed to set feature\n",
-							  __func__);
+								&wac_i2c->client->dev,
+								"%s failed to set feature\n",
+								__func__);
 						return false;
 					}
 
 					ret = check_progress(wac_i2c, &response[1], (BOOT_RSP_SIZE - 3), 0x01, ECH_ARRAY[j]);
 					if (ret < 0) {
 						input_err(true, &wac_i2c->client->dev,
-							  "%s mismatched echo array\n",
-							  __func__);
+								"%s mismatched echo array\n",
+								__func__);
 						return false;
 					}
 				} while (ret == PROCESS_INPROGRESS);
@@ -508,13 +508,17 @@ static int wacom_i2c_flash_w9020(struct wacom_i2c *wac_i2c, unsigned char *fw_da
 	struct i2c_client *client = wac_i2c->client;
 	bool bRet = false;
 	int iBLVer = 0, iMpuType = 0;
+#ifdef CONFIG_EPEN_WACOM_W9021
+	unsigned long max_address = W9021_END_ADDR;	/* Max.address of Load data */
+	unsigned long start_address = W9021_START_ADDR;	/* Start.address of Load data */
+#else
 	unsigned long max_address = W9020_END_ADDR;	/* Max.address of Load data */
 	unsigned long start_address = W9020_START_ADDR;	/* Start.address of Load data */
-
+#endif
 	/*Obtain boot loader version */
 	if (!flash_blver_w9020(wac_i2c, &iBLVer)) {
 		input_err(true, &client->dev,
-			  "%s failed to get Boot Loader version\n", __func__);
+				"%s failed to get Boot Loader version\n", __func__);
 		return -EXIT_FAIL_GET_BOOT_LOADER_VERSION;
 	}
 	input_info(true, &client->dev, "BL version: %x\n", iBLVer);
@@ -522,14 +526,23 @@ static int wacom_i2c_flash_w9020(struct wacom_i2c *wac_i2c, unsigned char *fw_da
 	/*Obtain MPUtype: this can be manually done in user space */
 	if (!flash_mputype_w9020(wac_i2c, &iMpuType)) {
 		input_err(true, &client->dev,
-			  "%s failed to get MPU type\n", __func__);
+				"%s failed to get MPU type\n", __func__);
 		return -EXIT_FAIL_GET_MPU_TYPE;
 	}
+
+#ifdef CONFIG_EPEN_WACOM_W9021
+	if (iMpuType != MPU_W9021) {
+		input_err(true, &client->dev,
+				"MPU is not for W9021 : %x\n", iMpuType);
+		return -EXIT_FAIL_GET_MPU_TYPE;
+	}
+#else
 	if (iMpuType != MPU_W9020) {
 		input_err(true, &client->dev,
-			  "MPU is not for W9020 : %x\n", iMpuType);
+				"MPU is not for W9020 : %x\n", iMpuType);
 		return -EXIT_FAIL_GET_MPU_TYPE;
 	}
+#endif
 	input_info(true, &client->dev, "MPU type: %x\n", iMpuType);
 
 	/*-----------------------------------*/
@@ -537,37 +550,37 @@ static int wacom_i2c_flash_w9020(struct wacom_i2c *wac_i2c, unsigned char *fw_da
 
 	/*Erase the current loaded program */
 	input_info(true, &client->dev,
-		   "%s erasing the current firmware\n", __func__);
+			"%s erasing the current firmware\n", __func__);
 	bRet = flash_erase_all(wac_i2c);
 	if (!bRet) {
 		input_err(true, &client->dev,
-			  "%s failed to erase the user program\n", __func__);
+				"%s failed to erase the user program\n", __func__);
 		return -EXIT_FAIL_ERASE;
 	}
 
 	/*Write the new program */
 	input_info(true, &client->dev, "%s writing new firmware\n",
-		   __func__);
+			__func__);
 	bRet = flash_write_w9020(wac_i2c, wac_i2c->fw_data, start_address,
-			      &max_address);
+			&max_address);
 	if (!bRet) {
 		input_err(true, &client->dev,
-			  "%s failed to write firmware\n", __func__);
+				"%s failed to write firmware\n", __func__);
 		return -EXIT_FAIL_WRITE_FIRMWARE;
 	}
 
 	/*Return to the user mode */
 	input_info(true, &client->dev, "%s closing the boot mode\n",
-		   __func__);
+			__func__);
 	bRet = flash_end_w9020(wac_i2c);
 	if (!bRet) {
 		input_err(true, &client->dev,
-			  "%s closing boot mode failed\n", __func__);
+				"%s closing boot mode failed\n", __func__);
 		return -EXIT_FAIL_WRITING_MARK_NOT_SET;
 	}
 
 	input_info(true, &client->dev,
-		   "%s write and verify completed\n", __func__);
+			"%s write and verify completed\n", __func__);
 
 	return EXIT_OK;
 }
@@ -578,7 +591,7 @@ int wacom_i2c_flash(struct wacom_i2c *wac_i2c)
 
 	if (wac_i2c->fw_data == NULL) {
 		input_err(true, &wac_i2c->client->dev,
-			  "epen:Data is NULL. Exit.\n");
+				"epen:Data is NULL. Exit.\n");
 		return -EINVAL;
 	}
 
@@ -588,7 +601,7 @@ int wacom_i2c_flash(struct wacom_i2c *wac_i2c)
 	ret = wacom_flash_cmd(wac_i2c);
 	if (ret < 0) {
 		input_err(true, &wac_i2c->client->dev,
-			  "epen:%s cannot send flash command\n", __func__);
+				"epen:%s cannot send flash command\n", __func__);
 		ret = -EXIT_FAIL;
 		goto out;
 	}
@@ -596,7 +609,7 @@ int wacom_i2c_flash(struct wacom_i2c *wac_i2c)
 	ret = flash_query_w9020(wac_i2c);
 	if (ret < 0) {
 		input_err(true, &wac_i2c->client->dev,
-			  "epen:%s Error: cannot send query\n", __func__);
+				"epen:%s Error: cannot send query\n", __func__);
 		ret = -EXIT_FAIL;
 		goto out;
 	}
@@ -604,7 +617,7 @@ int wacom_i2c_flash(struct wacom_i2c *wac_i2c)
 	ret = wacom_i2c_flash_w9020(wac_i2c, wac_i2c->fw_data);
 	if (ret < 0) {
 		input_err(true, &wac_i2c->client->dev,
-			  "epen:%s Error: flash failed\n", __func__);
+				"epen:%s Error: flash failed\n", __func__);
 		ret = -EXIT_FAIL;
 		goto out;
 	}

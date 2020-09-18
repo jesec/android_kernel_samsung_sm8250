@@ -163,9 +163,9 @@
 		samsung,support_gpara;
 		samsung,support_pac;
 		samsung,wait_after_sleep_out_delay = <220>;
-		samsung,support_mdnie_lite;
+		//samsung,support_mdnie_lite;
 		samsung,elvss_interpolation_temperature = <(-20)>;
-		samsung,support-optical-fingerprint;
+		//samsung,support-optical-fingerprint;
 
 		/*samsung ESD pin*/
 		//samsung,esd-irq-gpio1 = <&tlmm 5 0>;
@@ -174,6 +174,7 @@
 		/*samsung,support_factory_panel_swap;*/
 
 		/*samsung,line_split;*/
+		samsung,not-support-single-tx; /* ANAPASS DDI does not support single tx */
 
 		/*
 		the last byte in read commands	represent READ LENGH,
@@ -272,9 +273,12 @@
 		 * *************************************************************
 		 */
 
-		 /*
-		 *  Below is common data for interpolation(FLASH and NO FLASH)
+		/* set flash gamma type
+		 * flash : use flash gamma (read gamma data from flash)
+		 * table : use table gamma (Do not read gamma data from flash)
 		 */
+		samsung,flash_gamma_type = "table";
+
 		samsung,hbm_brightness = <
 			500 483 465 448 430 413 395 378
 			>;
@@ -309,6 +313,30 @@
 		samsung,flash_table_hmd_gamma_offset = <0x0>;
 		samsung,flash_table_hmd_aor_offset = <0x0>;
 
+#if 0
+		/* please refer to ss_panel_parse_dt_flash_gamma()
+		 * If VRR is not supported, implement for only default(60hz) node.
+		 */
+		samsung,br_tables {
+			vrr60@0 {
+				samsung,refresh_rate = <60>;
+
+				samsung,flash_table_hbm_aor_offset = <0x0861>;
+				samsung,flash_table_hbm_vint_offset = <0x00>;
+				samsung,flash_table_hbm_elvss_offset = <0x08F3>;
+				samsung,flash_table_hbm_irc_offset = <0x00>;
+
+				samsung,flash_table_normal_gamma_offset = <0x0000>;
+				samsung,flash_table_normal_aor_offset = <0x0871>;
+				samsung,flash_table_normal_vint_offset = <0x0>;
+				samsung,flash_table_normal_elvss_offset = <0x090B>;
+				samsung,flash_table_normal_irc_offset = <0x00>;
+
+				samsung,flash_table_hmd_gamma_offset = <0x0>;
+				samsung,flash_table_hmd_aor_offset = <0x0>;
+			};
+		};
+#endif
 
 		/*
 		* ************************************************************************************************************************
@@ -744,8 +772,8 @@
 
 		/*
 		* ************************************************************************************************************************
-		* MULTI_RESOLUTION (DSC configs were moved all to below timing set)
-		* (C10P does not support MULTI_RESOLUTION, only FHD.)
+		* DMS (Dynamic Mode Switch)
+		* (TABS6 does not support MULTI_RESOLUTION, only FHD.)
 		* ************************************************************************************************************************
 		*/
 

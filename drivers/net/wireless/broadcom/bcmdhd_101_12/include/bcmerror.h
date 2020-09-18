@@ -134,8 +134,10 @@ typedef int bcmerror_t;
 #define BCME_NOCHAN			-70	/* Registration with 0 chans in list */
 #define BCME_PKTTOSS			-71	/* Pkt tossed */
 #define BCME_DNGL_DEVRESET		-72	/* dongle re-attach during DEVRESET */
+#define BCME_ROAM			-73	/* Roam related failures */
+#define BCME_NO_SIG_FILE		-74	/* Signature file is missing */
 
-#define BCME_LAST			BCME_DNGL_DEVRESET
+#define BCME_LAST			BCME_NO_SIG_FILE
 
 #define BCME_NOTENABLED BCME_DISABLED
 
@@ -199,36 +201,39 @@ typedef int bcmerror_t;
 	"WLCMD ioctl error",		\
 	"RWL serial port error",	\
 	"Disabled",			\
-	"Decrypt error", \
-	"Encrypt error", \
-	"MIC error", \
-	"Replay", \
-	"IE not found", \
-	"Data not found", \
-	"NOT GC", \
-	"PRS REQ FAILED", \
-	"NO P2P SubElement", \
-	"NOA Pending", \
-	"FRAG Q FAILED", \
-	"GET ActionFrame failed", \
-	"scheduler not ready", \
-	"Last IOV batched sub-cmd", \
-	"Mini PMU Cal failed", \
-	"R-cal failed", \
-	"LPF RC Cal failed", \
-	"DAC buf RC Cal failed", \
-	"VCO Cal failed", \
-	"band locked", \
+	"Decrypt error",		\
+	"Encrypt error",		\
+	"MIC error",			\
+	"Replay",			\
+	"IE not found",			\
+	"Data not found",		\
+	"NOT GC",			\
+	"PRS REQ FAILED",		\
+	"NO P2P SubElement",		\
+	"NOA Pending",			\
+	"FRAG Q FAILED",		\
+	"GET ActionFrame failed",	\
+	"scheduler not ready",		\
+	"Last IOV batched sub-cmd",	\
+	"Mini PMU Cal failed",		\
+	"R-cal failed",			\
+	"LPF RC Cal failed",		\
+	"DAC buf RC Cal failed",	\
+	"VCO Cal failed",		\
+	"band locked",			\
 	"Recieved ie with invalid data", \
-	"registration failed", \
+	"registration failed",		\
 	"Registration with zero channels", \
-	"pkt toss", \
-	"Dongle Devreset", \
+	"pkt toss",			\
+	"Dongle Devreset",		\
+	"Critical roam in progress",	\
+	"Signature file is missing",	\
 }
 
 /** status - TBD BCME_ vs proxd status - range reserved for BCME_ */
 enum {
-	WL_PROXD_E_LAST			= -1056,
+	WL_PROXD_E_LAST			= -1057,
+	WL_PROXD_E_ASSOC_INPROG		= -1057,
 	WL_PROXD_E_NOAVAIL		= -1056,
 	WL_PROXD_E_EXT_SCHED		= -1055,
 	WL_PROXD_E_NOT_BCM		= -1054,
@@ -416,7 +421,11 @@ enum {
 	/* user not configured password */
 	WL_SAE_E_AUTH_PASSWORD_NOT_CONFIGURED	= -3094,
 	/* user not configured password ID */
-	WL_SAE_E_AUTH_PWDID_NOT_CONFIGURED	= -3095
+	WL_SAE_E_AUTH_PWDID_NOT_CONFIGURED	= -3095,
+	/* Anti-clogging token mismatch */
+	WL_SAE_E_AUTH_ANTI_CLOG_MISMATCH	= -3096,
+	/* SAE PWE method mismatch */
+	WL_SAE_E_AUTH_PWE_MISMATCH              = -3097
 };
 
 /*
@@ -477,6 +486,15 @@ enum {
 	/* OTP read error */
 	BCM_FWSIGN_E_OTP_READ			= -4112,
 
+	/* heap address overlaps with FW address space */
+	BCM_FWSIGN_E_HEAP_OVR_FW		= -4113,
+
+	/* heap address overlaps with bootloader data/bss region */
+	BCM_FWSIGN_E_HEAP_OVR_BSS		= -4114,
+
+	/* heap address overlaps with bootloader stack region */
+	BCM_FWSIGN_E_HEAP_OVR_STACK		= -4115,
+
 	/* last error */
 	BCM_FWSIGN_E_LAST			= -5119
 };
@@ -508,6 +526,28 @@ enum {
 
 	/* Failure to get NAF3 params */
 	WL_SOE_E_NAF3_PARAMS_GET_ERROR		= -6147
+};
+
+/* BCM crypto ASN.1 status codes. */
+/* Reserved range is from -7168 to -8291 */
+enum {
+	/* tag mismatch */
+	BCM_CRYPTO_E_ASN1_TAG_MISMATCH		= -7168,
+
+	/* OID mismatch */
+	BCM_CRYPTO_E_ASN1_OID_MISMATCH		= -7169,
+
+	/* Bad key type */
+	BCM_CRYPTO_E_ASN1_BAD_KEY_TYPE		= -7170,
+
+	/* value length is invalid */
+	BCM_CRYPTO_E_ASN1_INVALID_LENGTH	= -7171,
+
+	/* Invalid public key length */
+	BCM_CRYPTO_E_ASN1_INVALID_PKLEN		= -7172,
+
+	/* Unsupported elliptic curve group */
+	BCM_CRYPTO_E_ASN1_UNSUPPORTED_ECG	= -7173
 };
 
 #endif	/* BCMUTILS_ERR_CODES */

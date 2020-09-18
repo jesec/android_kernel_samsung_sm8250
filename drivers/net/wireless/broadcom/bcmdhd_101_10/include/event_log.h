@@ -1,7 +1,7 @@
 /*
  * EVENT_LOG system definitions
  *
- * Copyright (C) 2019, Broadcom.
+ * Copyright (C) 2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,7 +18,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Open:>>
+ * <<Broadcom-WL-IPTag/Dual:>>
  */
 
 #ifndef _EVENT_LOG_H_
@@ -47,7 +47,7 @@
 #define EVENT_LOG_PSM_BLOCK_SIZE	0x200
 #define EVENT_LOG_MEM_API_BLOCK_SIZE	0x200
 #define EVENT_LOG_BUS_BLOCK_SIZE	0x200
-#define EVENT_LOG_ERROR_BLOCK_SIZE	0x200
+#define EVENT_LOG_ERROR_BLOCK_SIZE	0x400
 #define EVENT_LOG_MSCH_BLOCK_SIZE	0x400
 #define EVENT_LOG_WBUS_BLOCK_SIZE	0x100
 #define EVENT_LOG_PRSV_PERIODIC_BLOCK_SIZE (0x200u)
@@ -70,6 +70,11 @@
 #define EVENT_LOG_EXT_HDR_BIN_FMT_NUM	(0x3FFE << 2)
 
 #define EVENT_LOGSET_ID_MASK	0x3F
+/* For event_log_get iovar, set values from 240 to 255 mean special commands for a group of sets */
+#define EVENT_LOG_GET_IOV_CMD_MASK	(0xF0u)
+#define EVENT_LOG_GET_IOV_CMD_ID_MASK	(0xFu)
+#define EVENT_LOG_GET_IOV_CMD_ID_FORCE_FLUSH_PRSRV	(0xEu) /* 240 + 14 = 254 */
+#define EVENT_LOG_GET_IOV_CMD_ID_FORCE_FLUSH_ALL	(0xFu) /* 240 + 15 = 255 */
 
 /*
  * There are multiple levels of objects define here:
@@ -639,7 +644,7 @@ extern int event_log_get_set_for_buffer(const void *buf);
 
 extern int event_log_flush_multiple_sets(const int *sets, uint16 num_sets);
 extern int event_log_force_flush_preserve_all(void);
-
+extern int event_log_get_iovar_handler(int set);
 #endif /* EVENT_LOG_COMPILE */
 
 #endif
