@@ -39,6 +39,7 @@
 #include <linux/wakelock.h>
 #include <linux/workqueue.h>
 #include <linux/power_supply.h>
+#include <linux/proc_fs.h>
 
 #ifdef CONFIG_SAMSUNG_TUI
 #include "stui_inf.h"
