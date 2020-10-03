@@ -32,6 +32,9 @@
 #include <linux/list_lru.h>
 #include "internal.h"
 #include "mount.h"
+#ifdef CONFIG_KDP_NS
+u8 ns_prot = 0;
+#endif
 
 /*
  * Usage:
@@ -3115,11 +3118,13 @@ void __init vfs_caches_init_early(void)
 {
 	int i;
 
+	set_memsize_kernel_type(MEMSIZE_KERNEL_VFSHASH);
 	for (i = 0; i < ARRAY_SIZE(in_lookup_hashtable); i++)
 		INIT_HLIST_BL_HEAD(&in_lookup_hashtable[i]);
 
 	dcache_init_early();
 	inode_init_early();
+	set_memsize_kernel_type(MEMSIZE_KERNEL_OTHERS);
 }
 
 void __init vfs_caches_init(void)
@@ -3134,4 +3139,7 @@ void __init vfs_caches_init(void)
 	mnt_init();
 	bdev_cache_init();
 	chrdev_init();
+#ifdef CONFIG_KDP_NS
+	ns_prot = 1;
+#endif
 }

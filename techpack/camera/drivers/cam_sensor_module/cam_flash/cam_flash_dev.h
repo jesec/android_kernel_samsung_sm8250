@@ -214,6 +214,9 @@ int cam_flash_i2c_pkt_parser(struct cam_flash_ctrl *fctrl, void *arg);
 int cam_flash_pmic_apply_setting(struct cam_flash_ctrl *fctrl, uint64_t req_id);
 int cam_flash_i2c_apply_setting(struct cam_flash_ctrl *fctrl, uint64_t req_id);
 int cam_flash_off(struct cam_flash_ctrl *fctrl);
+#if defined(CONFIG_LEDS_PMIC_QPNP)
+int cam_torch_off(struct cam_flash_ctrl *flash_ctrl);
+#endif
 int cam_flash_pmic_power_ops(struct cam_flash_ctrl *fctrl,
 	bool regulator_enable);
 int cam_flash_i2c_power_ops(struct cam_flash_ctrl *fctrl,

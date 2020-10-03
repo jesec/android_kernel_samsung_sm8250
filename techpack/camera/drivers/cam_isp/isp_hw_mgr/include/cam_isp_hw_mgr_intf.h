@@ -30,6 +30,7 @@ enum cam_isp_hw_event_type {
 	CAM_ISP_HW_EVENT_EPOCH,
 	CAM_ISP_HW_EVENT_EOF,
 	CAM_ISP_HW_EVENT_DONE,
+	CAM_ISP_HW_EVENT_OVERFLOW_DEBUG_DATA,
 	CAM_ISP_HW_EVENT_MAX
 };
 
@@ -119,6 +120,8 @@ struct cam_isp_bw_config_internal {
  * @packet_opcode_type:     Packet header opcode in the packet header
  *                          this opcode defines, packet is init packet or
  *                          update packet
+ * @frame_header_cpu_addr:  Frame header cpu addr
+ * @out_res_id:             Out port res_id corresponding to frame header
  * @bw_config_version:      BW config version indicator
  * @bw_config:              BW config information
  * @bw_config_v2:           BW config info for AXI bw voting v2
@@ -131,6 +134,8 @@ struct cam_isp_bw_config_internal {
 struct cam_isp_prepare_hw_update_data {
 	struct cam_ife_hw_mgr_ctx            *ife_mgr_ctx;
 	uint32_t                              packet_opcode_type;
+	uint32_t                              *frame_header_cpu_addr;
+	uint32_t                              out_res_id;
 	uint32_t                              bw_config_version;
 	struct cam_isp_bw_config_internal     bw_config[CAM_IFE_HW_NUM_MAX];
 	struct cam_isp_bw_config_internal_v2  bw_config_v2[CAM_IFE_HW_NUM_MAX];
@@ -168,10 +173,11 @@ struct cam_isp_hw_reg_update_event_data {
  * struct cam_isp_hw_epoch_event_data - Event payload for CAM_HW_EVENT_EPOCH
  *
  * @timestamp:     Time stamp for the epoch event
- *
+ * @frame_id_meta: Frame id value corresponding to this frame
  */
 struct cam_isp_hw_epoch_event_data {
 	uint64_t       timestamp;
+	uint32_t       frame_id_meta;
 };
 
 /**

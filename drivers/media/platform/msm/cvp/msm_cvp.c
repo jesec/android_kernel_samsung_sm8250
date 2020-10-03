@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2018-2019, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2018-2020, The Linux Foundation. All rights reserved.
  */
 
 #include "msm_cvp.h"
 #include "cvp_hfi.h"
 #include <synx_api.h>
 #include "cvp_core_hfi.h"
+#include "cvp_hfi_helper.h"
+
 
 struct cvp_power_level {
 	unsigned long core_sum;
@@ -1318,6 +1320,7 @@ static int msm_cvp_session_process_hfi_fence(
 	struct cvp_kmd_hfi_packet *in_pkt;
 	unsigned int signal, offset, buf_num, in_offset, in_buf_num;
 	struct msm_cvp_inst *s;
+	unsigned int max_buf_num;
 	struct msm_cvp_fence_thread_data *fence_thread_data;
 
 	dprintk(CVP_DBG, "%s: Enter inst = %#x", __func__, inst);
@@ -1362,6 +1365,22 @@ static int msm_cvp_session_process_hfi_fence(
 		offset = in_offset;
 		buf_num = in_buf_num;
 	}
+
+	max_buf_num = sizeof(struct cvp_kmd_hfi_packet)
+						/ sizeof(struct cvp_buf_type);
+
+	if (buf_num > max_buf_num) {
+		rc = -EINVAL;
+		goto free_and_exit;
+	}
+
+
+	if ((offset + buf_num * sizeof(struct cvp_buf_type))
+		> sizeof(struct cvp_kmd_hfi_packet)) {
+		rc = -EINVAL;
+		goto free_and_exit;
+	}
+
 
 	rc = msm_cvp_map_buf(inst, in_pkt, offset, buf_num);
 	if (rc)

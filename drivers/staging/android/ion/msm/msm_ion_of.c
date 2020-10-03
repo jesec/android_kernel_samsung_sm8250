@@ -14,6 +14,12 @@
 #include <linux/cma.h>
 #include "../ion.h"
 
+#ifdef CONFIG_ION_RBIN_HEAP_EXCEPTION
+#include <linux/of_fdt.h>
+#include <linux/mm.h>
+#include <linux/memblock.h>
+#endif
+
 #define ION_COMPAT_STR	"qcom,msm-ion"
 
 static struct ion_device *idev;
@@ -57,6 +63,10 @@ static struct ion_heap_desc ion_heap_meta[] = {
 		.name	= ION_SPSS_HEAP_NAME,
 	},
 	{
+		.id	= ION_CAMERA_HEAP_ID,
+		.name	= ION_CAMERA_HEAP_NAME,
+	},
+	{
 		.id	= ION_ADSP_HEAP_ID,
 		.name	= ION_ADSP_HEAP_NAME,
 	},
@@ -86,6 +96,7 @@ static struct heap_types_info {
 	MAKE_HEAP_TYPE_MAPPING(SYSTEM),
 	MAKE_HEAP_TYPE_MAPPING(SYSTEM_CONTIG),
 	MAKE_HEAP_TYPE_MAPPING(CARVEOUT),
+	MAKE_HEAP_TYPE_MAPPING(RBIN),
 	MAKE_HEAP_TYPE_MAPPING(SECURE_CARVEOUT),
 	MAKE_HEAP_TYPE_MAPPING(CHUNK),
 	MAKE_HEAP_TYPE_MAPPING(DMA),
@@ -176,6 +187,25 @@ static int msm_ion_get_heap_dt_data(struct device_node *node,
 				ret = 0;
 		}
 
+#ifdef CONFIG_ION_RBIN_HEAP_EXCEPTION
+		if (of_get_property(pnode, "ion,recyclable", NULL) &&
+				need_ion_rbin_heap()) {
+			const __be32 *rbin_size;
+
+			rbin_size = of_get_property(pnode, "rbin_size", NULL);
+			if (rbin_size) {
+				u64 new_size = be32_to_cpup(rbin_size);
+				phys_addr_t s = base + new_size;
+				phys_addr_t e = base + size;
+
+				memblock_free(s, size - new_size);
+				free_reserved_area((void *)phys_to_virt(s),
+						   (void *)phys_to_virt(e),
+						   0, "rbin exception");
+				size = new_size;
+			}
+		}
+#endif
 		if (!ret) {
 			heap->base = base;
 			heap->size = size;

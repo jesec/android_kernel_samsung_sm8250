@@ -29,16 +29,21 @@
 #include <linux/rcupdate.h>
 #include "input-compat.h"
 
+#include <linux/input/input_booster.h>
+
 MODULE_AUTHOR("Vojtech Pavlik <vojtech@suse.cz>");
 MODULE_DESCRIPTION("Input core");
 MODULE_LICENSE("GPL");
 
 #define INPUT_MAX_CHAR_DEVICES		1024
 #define INPUT_FIRST_DYNAMIC_DEV		256
+
 static DEFINE_IDA(input_ida);
 
 static LIST_HEAD(input_dev_list);
 static LIST_HEAD(input_handler_list);
+
+struct ib_info ib_infos[MAX_BOOSTER_CNT];
 
 /*
  * input_mutex protects access to both input_dev_list and input_handler_list.
@@ -252,7 +257,8 @@ static int input_handle_abs_event(struct input_dev *dev,
 	}
 
 	/* Flush pending "slot" event */
-	if (is_mt_event && mt && mt->slot != input_abs_get_val(dev, ABS_MT_SLOT)) {
+	if (is_mt_event && mt && mt->slot !=
+		input_abs_get_val(dev, ABS_MT_SLOT)) {
 		input_abs_set_val(dev, ABS_MT_SLOT, mt->slot);
 		return INPUT_PASS_TO_HANDLERS | INPUT_SLOT;
 	}
@@ -397,16 +403,570 @@ static void input_handle_event(struct input_dev *dev,
 	}
 
 	if (disposition & INPUT_FLUSH) {
-		if (dev->num_vals >= 2)
+		if (dev->num_vals >= 2) {
 			input_pass_values(dev, dev->vals, dev->num_vals);
+			dev->prev_num_vals = dev->num_vals;
+		}
 		dev->num_vals = 0;
 	} else if (dev->num_vals >= dev->max_vals - 2) {
 		dev->vals[dev->num_vals++] = input_value_sync;
 		input_pass_values(dev, dev->vals, dev->num_vals);
+		dev->prev_num_vals = dev->num_vals;
 		dev->num_vals = 0;
 	}
 
 }
+
+// ********** Define Timeout Functions ********** //
+DECLARE_TIMEOUT_FUNC(touch);
+DECLARE_TIMEOUT_FUNC(multitouch);
+DECLARE_TIMEOUT_FUNC(key);
+DECLARE_TIMEOUT_FUNC(touchkey);
+DECLARE_TIMEOUT_FUNC(keyboard);
+DECLARE_TIMEOUT_FUNC(mouse);
+DECLARE_TIMEOUT_FUNC(mouse_wheel);
+DECLARE_TIMEOUT_FUNC(pen);
+DECLARE_TIMEOUT_FUNC(hover);
+
+// ********** Define Set Booster Functions ********** //
+DECLARE_SET_BOOSTER_FUNC(touch);
+DECLARE_SET_BOOSTER_FUNC(multitouch);
+DECLARE_SET_BOOSTER_FUNC(key);
+DECLARE_SET_BOOSTER_FUNC(touchkey);
+DECLARE_SET_BOOSTER_FUNC(keyboard);
+DECLARE_SET_BOOSTER_FUNC(mouse);
+DECLARE_SET_BOOSTER_FUNC(mouse_wheel);
+DECLARE_SET_BOOSTER_FUNC(pen);
+DECLARE_SET_BOOSTER_FUNC(hover);
+
+// ********** Define State Functions ********** //
+DECLARE_STATE_FUNC(idle)
+{
+	struct t_input_booster *_this = (struct t_input_booster *)(__this);
+	int ib_idx = _this->index;
+	struct delayed_work *dw;
+	int work_time = 0;
+
+	glGage = HEADGAGE;
+
+	if (input_booster_event == BOOSTER_ON) {
+
+		int i;
+		int max_size = 0;
+
+		pr_booster(" %s, State : IDLE, event(%d), idx : %d\n",
+			glGage, input_booster_event, ib_idx);
+
+		_this->index = 0;
+		ib_idx = _this->index;
+		_this->level = -1;
+		work_time = _this->param[ib_idx].time;
+
+		pr_booster("      cpu : %d, time : %d\n",
+			_this->param[ib_idx].cpu_freq, work_time);
+
+		GET_MAX_SIZE(_this->ib_timeout_work, struct delayed_work);
+
+		for (i = 0; i < max_size; i++) {
+			dw = &_this->ib_timeout_work[i];
+			if (delayed_work_pending(dw)) {
+				pr_booster(" cancel the pending workqueue\n");
+				cancel_delayed_work(dw);
+			}
+		}
+		SET_BOOSTER;
+		dw = &_this->ib_timeout_work[ib_idx];
+		schedule_delayed_work(dw, msecs_to_jiffies(work_time));
+		_this->index++;
+		CHANGE_STATE_TO(press);
+
+	} else if (input_booster_event == BOOSTER_OFF) {
+		pr_booster(" %s Skipped | ib_event : %d\n",
+			glGage, input_booster_event);
+		pr_booster(" idx : %d, cpu : %d\n",
+			ib_idx, _this->param[ib_idx].cpu_freq);
+
+		pr_booster("\n");
+	}
+}
+
+DECLARE_STATE_FUNC(press)
+{
+	struct t_input_booster *_this = (struct t_input_booster *)(__this);
+	int idx = _this->index, pre_idx = 0;
+	int work_time = _this->param[idx].time, pre_work_time;
+	struct delayed_work *dw = &_this->ib_timeout_work[idx];
+	struct delayed_work *pre_dw = &_this->ib_timeout_work[idx];
+
+	glGage = TAILGAGE;
+
+	if (input_booster_event == BOOSTER_OFF) {
+		pr_booster(" %s, State : PRESS, idx : %d, time : %d\n",
+			glGage, idx, work_time);
+
+		/*
+		 * Currently two timeout_works are same.
+		 * So if index is below 2, it will be set as 0 temporarily.
+		 * In the future, if boost type is increased,
+		 * over 2 number of index might be used.
+		 */
+		if (_this->multi_events > 0 || idx >= 2)
+			return;
+
+		pre_idx = (idx) ? idx-1 : 0;
+		pre_dw = &_this->ib_timeout_work[pre_idx];
+		pre_work_time = _this->param[pre_idx].time;
+
+		if (delayed_work_pending(pre_dw) || pre_work_time == 0) {
+			if (_this->change_on_release || pre_work_time == 0) {
+				pr_booster(" %s || cancle pending workq\n",
+					glGage);
+				cancel_delayed_work(pre_dw);
+				SET_BOOSTER;
+			}
+
+			schedule_delayed_work(dw,
+				msecs_to_jiffies(work_time));
+
+			pr_booster(" %s           %s : %d\n",
+				glGage,
+				"schedule_delayed_work again    time",
+				work_time);
+
+			if (!delayed_work_pending(dw) && work_time > 0) {
+				pr_booster(" %s           %s : %d\n",
+					glGage,
+					"schedule_delayed_work Re-again   time",
+					pre_work_time);
+
+				schedule_delayed_work(pre_dw,
+					msecs_to_jiffies(pre_work_time));
+			}
+		} else if (work_time > 0) {
+			schedule_delayed_work(dw,
+				msecs_to_jiffies(work_time));
+		} else {
+			schedule_delayed_work(pre_dw,
+				msecs_to_jiffies(pre_work_time));
+		}
+		_this->index++;
+		_this->multi_events =
+			(_this->multi_events > 0) ? 0 : _this->multi_events;
+		CHANGE_STATE_TO(idle);
+
+	} else if (input_booster_event == BOOSTER_ON) {
+		if (delayed_work_pending(dw)) {
+
+			pr_booster(" %s           %s\n", glGage,
+				"cancel the pending workq for multi events");
+
+			cancel_delayed_work(dw);
+			schedule_delayed_work(pre_dw,
+				msecs_to_jiffies(pre_work_time));
+		} else {
+			pr_booster(" %s, State : Press  idx(%d), time(%d)\n",
+				glGage, idx, work_time);
+		}
+	}
+}
+
+int chk_next_data(struct input_dev *dev, int idx, int input_type)
+{
+	int ret_val = 0;
+	int next_type = -1;
+	int next_code = -1;
+
+	if (idx+1 >= dev->prev_num_vals || idx >= dev->max_vals)
+		return ret_val;
+
+	next_type = dev->vals[idx+1].type;
+	next_code = dev->vals[idx+1].code;
+
+	switch (input_type) {
+	case BTN_TOUCH:
+		if (next_type == EV_ABS && next_code == ABS_PRESSURE)
+			ret_val = 1;
+		break;
+	case EV_KEY:
+		ret_val = 1;
+		break;
+	default:
+		break;
+	}
+
+	return ret_val;
+}
+
+int chk_boost_on_off(struct input_dev *dev, int idx, int dev_type)
+{
+	int ret_val = -1;
+	struct t_input_booster *ib;
+	
+	if (dev_type < 0)
+		return ret_val;
+
+	ib = ib_infos[dev_type].input_booster;
+
+	/* In case of SPEN or HOVER, it must be empty multi event
+	 * Before starting input booster.
+	 */
+	if (dev_type == SPEN || dev_type == HOVER) {
+		if (!ib->multi_events && dev->vals[idx].value)
+			ret_val = 1;
+		else if(ib->multi_events && !dev->vals[idx].value)
+			ret_val = 0;
+	} else if (dev->vals[idx].value)
+		ret_val = 1;
+	else if (!dev->vals[idx].value)
+		ret_val = 0;
+
+	return ret_val;
+}
+
+/*
+ * get_device_type : Define type of device for input_booster.
+ * dev : Current device that in which input events triggered.
+ * trgt_gender : The device_tree_gender struct of target device
+ *	to change device information while input_booster works.
+ * trgt_booster : The device_booster struct of targer device
+ *	to change device information same as trget_gender.
+ * ret_val : Booster_ON : 1, Booster_OFF : 0.
+ */
+
+int get_device_type(struct input_dev *dev)
+{
+	int i;
+	int ret_val = -1;
+	int dev_type = NONE_TYPE_DEVICE;
+
+	if (dev == NULL)
+		return ret_val;
+
+	/* Initializing device type before finding the proper device type. */
+	dev->device_type = dev_type;
+
+	for (i = 0; i < dev->prev_num_vals && i < MAX_EVENTS; i++) {
+
+		pr_booster(" %s Type : %d, Code : %d, Value : %d\n",
+			"|| Input Data ||", dev->vals[i].type,
+			dev->vals[i].code, dev->vals[i].value);
+
+		if (dev_type != NONE_TYPE_DEVICE &&
+			dev_type != TOUCH &&
+			dev_type != MULTI_TOUCH) {
+
+			pr_booster("Dev type Find(%d), enable(%d)\n",
+				dev_type, ret_val);
+			dev->device_type = dev_type;
+
+			return ret_val;
+		}
+		if (dev->vals[i].type == EV_KEY) {
+			switch (dev->vals[i].code) {
+			case BTN_TOUCH:
+				if (!chk_next_data(dev, i, BTN_TOUCH))
+					break;
+				dev_type = SPEN;
+				ret_val = chk_boost_on_off(dev, i, dev_type);
+				break;
+			case BTN_TOOL_PEN:
+				dev_type = HOVER;
+				ret_val = chk_boost_on_off(dev, i, dev_type);
+				break;
+			case KEY_BACK:
+			case KEY_HOMEPAGE:
+			case KEY_RECENT:
+				dev_type = TOUCH_KEY;
+				ret_val = chk_boost_on_off(dev, i, dev_type);
+				break;
+			case KEY_VOLUMEUP:
+			case KEY_VOLUMEDOWN:
+			case KEY_POWER:
+			case KEY_WINK:
+				dev_type = KEY;
+				ret_val = chk_boost_on_off(dev, i, dev_type);
+				break;
+			default:
+				break;
+			}
+		} else if (dev->vals[i].type == EV_ABS) {
+			switch (dev->vals[i].code) {
+			case ABS_MT_TRACKING_ID:
+				/* Checking if Touch-Slot Exists */
+				if (dev->vals[i].value >= 0)
+					dev->touch_slot_cnt++;
+				else
+					dev->touch_slot_cnt--;
+
+				if (dev->touch_slot_cnt > MAX_EVENTS)
+					break;
+
+				if (dev->vals[i].value > 0 &&
+					dev->touch_slot_cnt == 1) {
+					ret_val = 1;
+					dev_type = TOUCH;
+				} else if (dev->vals[i].value > 0 &&
+						dev->touch_slot_cnt >= 2) {
+					ret_val = 1;
+					dev_type = MULTI_TOUCH;
+				} else if (dev->vals[i].value <= 0 &&
+						dev->touch_slot_cnt == 0) {
+					ret_val = 0;
+					dev_type = TOUCH;
+				} else if (dev->vals[i].value <= 0 &&
+						dev->touch_slot_cnt == 1) {
+					ret_val = 0;
+					dev_type = MULTI_TOUCH;
+				}
+				break;
+			}
+		} else if (dev->vals[i].type == EV_MSC &&
+					dev->vals[i].code == MSC_SCAN) {
+			if (!chk_next_data(dev, i, EV_KEY))
+				return ret_val;
+
+			switch (dev->vals[i+1].code) {
+			case BTN_LEFT: /* Checking Touch Button Event */
+			case BTN_RIGHT:
+			case BTN_MIDDLE:
+				dev_type = MOUSE;
+				ret_val =
+					chk_boost_on_off(dev, i+1, dev_type);
+				break;
+			default: /* Checking Keyboard Event */
+				dev_type = KEYBOARD;
+				ret_val =
+					chk_boost_on_off(dev, i+1, dev_type);
+				break;
+			}
+		} else if (dev->vals[i].type == EV_REL &&
+					dev->vals[i].code == REL_WHEEL &&
+					dev->vals[i].value) {
+			dev_type = MOUSH_WHEEL;
+			ret_val = chk_boost_on_off(dev, i, dev_type);
+		}
+	}
+	dev->device_type = dev_type;
+	return ret_val;
+}
+
+// ********** Detect Events ********** //
+void input_booster(struct input_dev *dev)
+{
+	int dev_type = 0;
+	struct t_input_booster *ib;
+	struct t_ib_dev_tree_gender *ib_dt;
+
+	if (dev == NULL && !is_ib_init_succeed() ) {
+		pr_err(ITAG" dev is Null OR dt_infor hasn't mem alloc");
+		return;
+	}
+
+	int enable = get_device_type(dev);
+
+	dev_type = dev->device_type;
+
+	if (dev_type <= NONE_TYPE_DEVICE ||
+		dev_type >= MAX_BOOSTER_CNT ||
+		enable < 0){
+		return;
+	}
+
+	ib = ib_infos[dev_type].input_booster;
+	ib_dt = ib_infos[dev_type].input_booster_dt;
+
+	pr_booster("%s EVENT - %s\n",
+				ib_dt->pDT->label,
+				(enable) ? "PRESS" : "RELEASE");
+
+	if (ib_dt->level > 0) {
+		ib->event_type = enable;
+		if (enable == BOOSTER_ON) {
+			ib->level = -1;
+			ib->multi_events++;
+		} else {
+			ib->multi_events--;
+		}
+
+		schedule_work(&(ib->input_booster_set_booster_work));
+	}
+}
+
+// ********** Init Booster ********** //
+void input_booster_init(void)
+{
+	// ********** Load Frequncy data from DTSI **********
+	struct device_node *np;
+	int nlevels = 0, i;
+	int tree_param_size = sizeof(struct t_ib_dev_tree_param);
+	int tree_info_size = sizeof(struct t_ib_dev_tree_info);
+
+	pm_qos_add_request(&lpm_bias_pm_qos_request,
+		PM_QOS_BIAS_HYST, PM_QOS_BIAS_HYST_DEFAULT_VALUE);
+
+	if (device_tree_infor != NULL)
+		device_tree_infor = NULL;
+
+	np = of_find_compatible_node(NULL, NULL, "input_booster");
+
+	if (np == NULL) {
+		ndevice_in_dt = 0;
+		return;
+	}
+
+	// Geting the count of devices.
+	ndevice_in_dt = of_get_child_count(np);
+	pr_info(ITAG" %s   ndevice_in_dt : %d\n",
+		__func__, ndevice_in_dt);
+
+	device_tree_infor = kcalloc(ABS_CNT,
+		tree_info_size * ndevice_in_dt, GFP_KERNEL);
+	if (device_tree_infor == NULL) {
+		pr_err(ITAG" dt_infor mem alloc fail");
+		goto out;
+	}
+
+	struct device_node *cnp;
+	int device_count = 0;
+
+	for_each_child_of_node(np, cnp) {
+		struct t_ib_dev_tree_info *dt_infor =
+			(device_tree_infor + device_count);
+		const u32 *plevels = NULL;
+
+		/* Geting label. */
+		dt_infor->label =
+			of_get_property(cnp, "input_booster,label", NULL);
+		pr_info(ITAG" %s   dt_infor->label : %s\n",
+			__func__, dt_infor->label);
+
+		if (of_property_read_u32(cnp, "input_booster,type",
+			&dt_infor->type)) {
+			pr_err(ITAG" Failed to get type property\n");
+			break;
+		}
+
+		// Geting the count of levels.
+		plevels = of_get_property(cnp, "input_booster,levels",
+			&nlevels);
+
+		if (plevels && nlevels) {
+			dt_infor->nlevels = nlevels / sizeof(u32);
+		} else {
+			pr_err(ITAG" Failed to calc number of freq.\n");
+			break;
+		}
+
+		// Allocation the param table.
+		dt_infor->param_tables = kcalloc(ABS_CNT,
+			tree_param_size * dt_infor->nlevels, GFP_KERNEL);
+		if (!dt_infor->param_tables) {
+			pr_err(ITAG" Fail to alloc memory of freq_table\n");
+			break;
+		}
+
+		// fill the param table
+		pr_info(ITAG" dev_type:%d, label :%s, n_level[%d]\n",
+			dt_infor->type, dt_infor->label, dt_infor->nlevels);
+
+		for (i = 0; i < dt_infor->nlevels; i++) {
+			u32 temp;
+			int err = 0;
+
+			err = of_property_read_u32_index(cnp,
+				"input_booster,levels", i, &temp);
+			dt_infor->param_tables[i].ilevels = (u8)temp;
+
+			DTSI_TO;
+			if (err)
+				pr_warn(ITAG" No [%d] param table\n", i);
+		}
+
+		device_count++;
+	}
+
+ out:
+	/* Initialize Booster */
+	INIT_BOOSTER(touch)
+	INIT_BOOSTER(multitouch)
+	INIT_BOOSTER(key)
+	INIT_BOOSTER(touchkey)
+	INIT_BOOSTER(keyboard)
+	INIT_BOOSTER(mouse)
+	INIT_BOOSTER(mouse_wheel)
+	INIT_BOOSTER(pen)
+	INIT_BOOSTER(hover)
+
+	multitouch_booster.change_on_release = 1;
+
+	// ********** Initialize Sysfs **********
+	{
+		struct class *sysfs_class;
+
+		sysfs_class = class_create(THIS_MODULE, "input_booster");
+		if (IS_ERR(sysfs_class)) {
+			pr_err(ITAG" Failed to create class\n");
+			return;
+		}
+		if (is_ib_init_succeed()) {
+			INIT_SYSFS_CLASS(enable_event)
+			INIT_SYSFS_CLASS(debug_level)
+			INIT_SYSFS_CLASS(head)
+			INIT_SYSFS_CLASS(tail)
+			INIT_SYSFS_CLASS(level)
+
+			INIT_SYSFS_DEVICE(touch)
+			INIT_SYSFS_DEVICE(multitouch)
+			INIT_SYSFS_DEVICE(key)
+			INIT_SYSFS_DEVICE(touchkey)
+			INIT_SYSFS_DEVICE(keyboard)
+			INIT_SYSFS_DEVICE(mouse)
+			INIT_SYSFS_DEVICE(mouse_wheel)
+			INIT_SYSFS_DEVICE(pen)
+			INIT_SYSFS_DEVICE(hover)
+		}
+	}
+
+	//Input Device Info Initialize
+	ib_infos[TOUCH].input_booster = &touch_booster;
+	ib_infos[TOUCH].input_booster_dt = &touch_booster_dt;
+	ib_infos[MULTI_TOUCH].input_booster = &multitouch_booster;
+	ib_infos[MULTI_TOUCH].input_booster_dt = &multitouch_booster_dt;
+	ib_infos[KEY].input_booster = &key_booster;
+	ib_infos[KEY].input_booster_dt = &key_booster_dt;
+	ib_infos[TOUCH_KEY].input_booster = &touchkey_booster;
+	ib_infos[TOUCH_KEY].input_booster_dt = &touchkey_booster_dt;
+	ib_infos[KEYBOARD].input_booster = &keyboard_booster;
+	ib_infos[KEYBOARD].input_booster_dt = &keyboard_booster_dt;
+	ib_infos[MOUSE].input_booster = &mouse_booster;
+	ib_infos[MOUSE].input_booster_dt = &mouse_booster_dt;
+	ib_infos[MOUSH_WHEEL].input_booster = &mouse_wheel_booster;
+	ib_infos[MOUSH_WHEEL].input_booster_dt = &mouse_wheel_booster_dt;
+	ib_infos[SPEN].input_booster = &pen_booster;
+	ib_infos[SPEN].input_booster_dt = &pen_booster_dt;
+	ib_infos[HOVER].input_booster = &hover_booster;
+	ib_infos[HOVER].input_booster_dt = &hover_booster_dt;
+
+#if defined(CONFIG_ARCH_QCOM)
+	fill_bus_vector();
+	for (i = 0; i < touch_reg_bus_scale_table.num_usecases; i++) {
+		touch_reg_bus_usecases[i].num_paths = 1;
+		touch_reg_bus_usecases[i].vectors = &touch_reg_bus_vectors[i];
+	}
+
+	bus_hdl = msm_bus_scale_register_client(&touch_reg_bus_scale_table);
+#endif
+}
+
+#if defined(CONFIG_ARCH_QCOM)
+void input_booster_exit(void)
+{
+	msm_bus_scale_unregister_client(bus_hdl);
+	pm_qos_remove_request(&lpm_bias_pm_qos_request);
+}
+#else
+void input_booster_exit(void) { }
+#endif
 
 /**
  * input_event() - report new input event
@@ -434,6 +994,14 @@ void input_event(struct input_dev *dev,
 
 		spin_lock_irqsave(&dev->event_lock, flags);
 		input_handle_event(dev, type, code, value);
+
+		if (device_tree_infor != NULL) {
+			if (dev->num_vals == 0 && dev->prev_num_vals > 0) {
+				pr_booster("==============================\n");
+				input_booster(dev);
+				dev->prev_num_vals = 0;
+			}
+		}
 		spin_unlock_irqrestore(&dev->event_lock, flags);
 	}
 }
@@ -466,6 +1034,15 @@ void input_inject_event(struct input_handle *handle,
 			input_handle_event(dev, type, code, value);
 		rcu_read_unlock();
 
+		if (device_tree_infor != NULL) {
+			if (enable_event_booster &&
+					dev->num_vals == 0 &&
+					dev->prev_num_vals > 0) {
+				pr_booster("==============================\n");
+				input_booster(dev);
+				dev->prev_num_vals = 0;
+			}
+		}
 		spin_unlock_irqrestore(&dev->event_lock, flags);
 	}
 }
@@ -607,11 +1184,14 @@ int input_open_device(struct input_handle *handle)
 
 	handle->open++;
 
-	if (!dev->users++ && dev->open)
+	dev->users_private++;
+	if (!dev->disabled && !dev->users++ && dev->open)
 		retval = dev->open(dev);
 
 	if (retval) {
-		dev->users--;
+		dev->users_private--;
+		if (!dev->disabled)
+			dev->users--;
 		if (!--handle->open) {
 			/*
 			 * Make sure we are not delivering any more events
@@ -659,7 +1239,8 @@ void input_close_device(struct input_handle *handle)
 
 	__input_release_device(handle);
 
-	if (!--dev->users && dev->close)
+	--dev->users_private;
+	if (!dev->disabled && !--dev->users && dev->close)
 		dev->close(dev);
 
 	if (!--handle->open) {
@@ -674,6 +1255,50 @@ void input_close_device(struct input_handle *handle)
 	mutex_unlock(&dev->mutex);
 }
 EXPORT_SYMBOL(input_close_device);
+
+static int input_enable_device(struct input_dev *dev)
+{
+	int retval;
+
+	retval = mutex_lock_interruptible(&dev->mutex);
+	if (retval)
+		return retval;
+
+	if (!dev->disabled)
+		goto out;
+
+	if (dev->users_private && dev->open) {
+		retval = dev->open(dev);
+		if (retval)
+			goto out;
+	}
+	dev->users = dev->users_private;
+	dev->disabled = false;
+
+out:
+	mutex_unlock(&dev->mutex);
+
+	return retval;
+}
+
+static int input_disable_device(struct input_dev *dev)
+{
+	int retval;
+
+	retval = mutex_lock_interruptible(&dev->mutex);
+	if (retval)
+		return retval;
+
+	if (!dev->disabled) {
+		dev->disabled = true;
+		if (dev->users && dev->close)
+			dev->close(dev);
+		dev->users = 0;
+	}
+
+	mutex_unlock(&dev->mutex);
+	return 0;
+}
 
 /*
  * Simulate keyup events for all keys that are marked as pressed.
@@ -858,16 +1483,18 @@ static int input_default_setkeycode(struct input_dev *dev,
 		}
 	}
 
-	__clear_bit(*old_keycode, dev->keybit);
-	__set_bit(ke->keycode, dev->keybit);
-
-	for (i = 0; i < dev->keycodemax; i++) {
-		if (input_fetch_keycode(dev, i) == *old_keycode) {
-			__set_bit(*old_keycode, dev->keybit);
-			break; /* Setting the bit twice is useless, so break */
+	if (*old_keycode <= KEY_MAX) {
+		__clear_bit(*old_keycode, dev->keybit);
+		for (i = 0; i < dev->keycodemax; i++) {
+			if (input_fetch_keycode(dev, i) == *old_keycode) {
+				__set_bit(*old_keycode, dev->keybit);
+				/* Setting the bit twice is useless, so break */
+				break;
+			}
 		}
 	}
 
+	__set_bit(ke->keycode, dev->keybit);
 	return 0;
 }
 
@@ -923,9 +1550,13 @@ int input_set_keycode(struct input_dev *dev,
 	 * Simulate keyup event if keycode is not present
 	 * in the keymap anymore
 	 */
-	if (test_bit(EV_KEY, dev->evbit) &&
-	    !is_event_supported(old_keycode, dev->keybit, KEY_MAX) &&
-	    __test_and_clear_bit(old_keycode, dev->key)) {
+	if (old_keycode > KEY_MAX) {
+		dev_warn(dev->dev.parent ?: &dev->dev,
+			 "%s: got too big old keycode %#x\n",
+			 __func__, old_keycode);
+	} else if (test_bit(EV_KEY, dev->evbit) &&
+		   !is_event_supported(old_keycode, dev->keybit, KEY_MAX) &&
+		   __test_and_clear_bit(old_keycode, dev->key)) {
 		struct input_value vals[] =  {
 			{ EV_KEY, old_keycode, 0 },
 			input_value_sync
@@ -1391,16 +2022,50 @@ static ssize_t input_dev_show_properties(struct device *dev,
 }
 static DEVICE_ATTR(properties, S_IRUGO, input_dev_show_properties, NULL);
 
+static ssize_t input_dev_show_enabled(struct device *dev,
+					 struct device_attribute *attr,
+					 char *buf)
+{
+	struct input_dev *input_dev = to_input_dev(dev);
+
+	return scnprintf(buf, PAGE_SIZE, "%d\n", !input_dev->disabled);
+}
+
+static ssize_t input_dev_store_enabled(struct device *dev,
+				       struct device_attribute *attr,
+				       const char *buf, size_t size)
+{
+	int ret;
+	bool enable;
+	struct input_dev *input_dev = to_input_dev(dev);
+
+	ret = strtobool(buf, &enable);
+	if (ret)
+		return ret;
+
+	if (enable)
+		ret = input_enable_device(input_dev);
+	else
+		ret = input_disable_device(input_dev);
+	if (ret)
+		return ret;
+
+	return size;
+}
+
+static DEVICE_ATTR(enabled, S_IRUGO | S_IWUSR,
+		   input_dev_show_enabled, input_dev_store_enabled);
 static struct attribute *input_dev_attrs[] = {
 	&dev_attr_name.attr,
 	&dev_attr_phys.attr,
 	&dev_attr_uniq.attr,
 	&dev_attr_modalias.attr,
 	&dev_attr_properties.attr,
+	&dev_attr_enabled.attr,
 	NULL
 };
 
-static const struct attribute_group input_dev_attr_group = {
+static struct attribute_group input_dev_attr_group = {
 	.attrs	= input_dev_attrs,
 };
 
@@ -1427,7 +2092,7 @@ static struct attribute *input_dev_id_attrs[] = {
 	NULL
 };
 
-static const struct attribute_group input_dev_id_attr_group = {
+static struct attribute_group input_dev_id_attr_group = {
 	.name	= "id",
 	.attrs	= input_dev_id_attrs,
 };
@@ -1497,7 +2162,7 @@ static struct attribute *input_dev_caps_attrs[] = {
 	NULL
 };
 
-static const struct attribute_group input_dev_caps_attr_group = {
+static struct attribute_group input_dev_caps_attr_group = {
 	.name	= "capabilities",
 	.attrs	= input_dev_caps_attrs,
 };
@@ -1687,7 +2352,7 @@ static int input_dev_suspend(struct device *dev)
 	 * Keys that are pressed now are unlikely to be
 	 * still pressed when we resume.
 	 */
-	input_dev_release_keys(input_dev);
+	/* input_dev_release_keys(input_dev); */
 
 	/* Turn off LEDs and sounds, if any are active. */
 	input_dev_toggle(input_dev, false);
@@ -1751,7 +2416,7 @@ static const struct dev_pm_ops input_dev_pm_ops = {
 };
 #endif /* CONFIG_PM */
 
-static const struct device_type input_dev_type = {
+static struct device_type input_dev_type = {
 	.groups		= input_dev_attr_groups,
 	.release	= input_dev_release,
 	.uevent		= input_dev_uevent,
@@ -1951,7 +2616,8 @@ void input_set_capability(struct input_dev *dev, unsigned int type, unsigned int
 		break;
 
 	default:
-		pr_err("%s: unknown type %u (code %u)\n", __func__, type, code);
+		pr_err("input_set_capability: unknown type %u (code %u)\n",
+		       type, code);
 		dump_stack();
 		return;
 	}
@@ -2439,6 +3105,8 @@ static int __init input_init(void)
 		pr_err("unable to register char major %d", INPUT_MAJOR);
 		goto fail2;
 	}
+
+	input_booster_init();
 
 	return 0;
 

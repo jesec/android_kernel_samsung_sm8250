@@ -17,6 +17,10 @@
 #include "sde_hw_uidle.h"
 #include "sde_connector.h"
 
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+#include "ss_dsi_panel_common.h"
+#endif
+
 /*************************************************************
  * MACRO DEFINITION
  *************************************************************/
@@ -4526,6 +4530,33 @@ struct sde_mdss_cfg *sde_hw_catalog_init(struct drm_device *dev, u32 hw_rev)
 	rc = sde_top_parse_dt(np, sde_cfg);
 	if (rc)
 		goto end;
+
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+	{
+		/* sde_hw_catalog_init() be called once for dual dsi,
+		 * and two vdds share same sde_kms pointer.
+		 * get sde_kms from primary vdd, then call ss_callback
+		 * for primary and secondary vdd, respectively.
+		 */
+		struct samsung_display_driver_data *vdd = ss_get_vdd(PRIMARY_DISPLAY_NDX);
+		struct sde_kms *sde_kms = NULL;
+
+		if (IS_ERR_OR_NULL(vdd))
+			goto done;
+
+		sde_kms = GET_SDE_KMS(vdd);
+
+		if (IS_ERR_OR_NULL(sde_kms) ||
+				IS_ERR_OR_NULL(sde_kms->base.funcs->ss_callback))
+			goto done;
+
+		sde_kms->base.funcs->ss_callback(PRIMARY_DISPLAY_NDX,
+				SS_EVENT_SDE_HW_CATALOG_INIT, (void *)sde_cfg);
+		sde_kms->base.funcs->ss_callback(SECONDARY_DISPLAY_NDX,
+				SS_EVENT_SDE_HW_CATALOG_INIT, (void *)sde_cfg);
+	}
+done:
+#endif
 
 	rc = sde_perf_parse_dt(np, sde_cfg);
 	if (rc)

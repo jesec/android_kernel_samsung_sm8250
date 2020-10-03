@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2011-2019, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2011-2020, The Linux Foundation. All rights reserved.
  */
 
 #include <linux/compat.h>
@@ -19,6 +19,13 @@
 #include "kgsl_pwrctrl.h"
 #include "kgsl_sharedmem.h"
 #include "kgsl_trace.h"
+
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+#if defined(CONFIG_SEC_ABC)
+#include <linux/sti/abc_common.h>
+#endif
+#include "../../../techpack/display/msm/samsung/ss_dpui_common.h"
+#endif
 
 #define _IOMMU_PRIV(_mmu) (&((_mmu)->priv.iommu))
 
@@ -746,6 +753,7 @@ static int kgsl_iommu_fault_handler(struct iommu_domain *domain,
 	u64 ptbase;
 	u32 contextidr;
 	pid_t pid = 0;
+	pid_t tid = 0;
 	pid_t ptname;
 	struct _mem_entry prev, next;
 	int write;
@@ -785,6 +793,7 @@ static int kgsl_iommu_fault_handler(struct iommu_domain *domain,
 
 	if (private) {
 		pid = private->pid;
+		tid = private->tid;
 		comm = private->comm;
 	}
 
@@ -820,8 +829,8 @@ static int kgsl_iommu_fault_handler(struct iommu_domain *domain,
 
 	if (!no_page_fault_log && __ratelimit(&_rs)) {
 		dev_crit(ctx->kgsldev->dev,
-			"GPU PAGE FAULT: addr = %lX pid= %d name=%s\n", addr,
-			ptname, comm);
+			"GPU PAGE FAULT: addr = %lX pid= %d tid= %d name=%s\n",
+			addr, ptname, tid, comm);
 		dev_crit(ctx->kgsldev->dev,
 			"context=%s TTBR0=0x%llx CIDR=0x%x (%s %s fault)\n",
 			ctx->name, ptbase, contextidr,
@@ -858,6 +867,23 @@ static int kgsl_iommu_fault_handler(struct iommu_domain *domain,
 			else
 				dev_err(ctx->kgsldev->dev, "*EMPTY*\n");
 		}
+
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+#if defined(CONFIG_SEC_ABC)
+		sec_abc_send_event("MODULE=gpu_qc@ERROR=gpu_page_fault");
+#endif
+		inc_dpui_u32_field(DPUI_KEY_QCT_GPU_PF, 1);
+
+		{
+			/* To print gpuaddr info */
+			extern void kgsl_svm_addr_mapping_check(pid_t pid, unsigned long fault_addr);
+			extern void kgsl_svm_addr_mapping_log(struct kgsl_device *device, pid_t pid);
+
+			kgsl_svm_addr_mapping_log(device, ptname);
+			kgsl_svm_addr_mapping_check(ptname, addr);
+		}
+#endif
+
 	}
 
 
@@ -1203,8 +1229,8 @@ static int _init_global_pt(struct kgsl_mmu *mmu, struct kgsl_pagetable *pt)
 		goto done;
 	}
 
-	if (!MMU_FEATURE(mmu, KGSL_MMU_GLOBAL_PAGETABLE) &&
-		scm_is_call_available(SCM_SVC_MP, CP_SMMU_APERTURE_ID)) {
+	if (kgsl_mmu_is_perprocess(mmu) && MMU_FEATURE(mmu,
+				KGSL_MMU_SMMU_APERTURE)) {
 		struct scm_desc desc = {0};
 
 		desc.args[0] = 0xFFFF0000 | ((CP_APERTURE_REG & 0xff) << 8) |
@@ -1222,7 +1248,7 @@ static int _init_global_pt(struct kgsl_mmu *mmu, struct kgsl_pagetable *pt)
 			dev_err(device->dev,
 				"SMMU aperture programming call failed with error %d\n",
 				ret);
-			return ret;
+			goto done;
 		}
 	}
 
@@ -2081,6 +2107,15 @@ kgsl_iommu_get_current_ttbr0(struct kgsl_mmu *mmu)
 		return 0;
 
 	kgsl_iommu_enable_clk(mmu);
+
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+	if (ctx->regbase == NULL) {
+		WARN(1, "regbase seems not to be initialzed yet\n");
+		kgsl_iommu_disable_clk(mmu);
+		return 0;
+	}
+#endif
+
 	val = KGSL_IOMMU_GET_CTX_REG_Q(ctx, TTBR0);
 	kgsl_iommu_disable_clk(mmu);
 	return val;
@@ -2446,37 +2481,13 @@ out:
 	return ret;
 }
 
-static int get_gpuaddr(struct kgsl_pagetable *pagetable,
-		struct kgsl_memdesc *memdesc, u64 start, u64 end,
-		u64 size, unsigned int align)
-{
-	u64 addr;
-	int ret;
-
-	spin_lock(&pagetable->lock);
-	addr = _get_unmapped_area(pagetable, start, end, size, align);
-	if (addr == (u64) -ENOMEM) {
-		spin_unlock(&pagetable->lock);
-		return -ENOMEM;
-	}
-
-	ret = _insert_gpuaddr(pagetable, addr, size);
-	spin_unlock(&pagetable->lock);
-
-	if (ret == 0) {
-		memdesc->gpuaddr = addr;
-		memdesc->pagetable = pagetable;
-	}
-
-	return ret;
-}
 
 static int kgsl_iommu_get_gpuaddr(struct kgsl_pagetable *pagetable,
 		struct kgsl_memdesc *memdesc)
 {
 	struct kgsl_iommu_pt *pt = pagetable->priv;
 	int ret = 0;
-	u64 start, end, size;
+	uint64_t addr, start, end, size;
 	unsigned int align;
 
 	if (WARN_ON(kgsl_memdesc_use_cpu_map(memdesc)))
@@ -2506,13 +2517,23 @@ static int kgsl_iommu_get_gpuaddr(struct kgsl_pagetable *pagetable,
 	if (kgsl_memdesc_is_secured(memdesc))
 		start += secure_global_size;
 
-	ret = get_gpuaddr(pagetable, memdesc, start, end, size, align);
-	/* if OoM, retry once after flushing mem_wq */
-	if (ret == -ENOMEM) {
-		flush_workqueue(kgsl_driver.mem_workqueue);
-		ret = get_gpuaddr(pagetable, memdesc, start, end, size, align);
+	spin_lock(&pagetable->lock);
+
+	addr = _get_unmapped_area(pagetable, start, end, size, align);
+
+	if (addr == (uint64_t) -ENOMEM) {
+		ret = -ENOMEM;
+		goto out;
 	}
 
+	ret = _insert_gpuaddr(pagetable, addr, size);
+	if (ret == 0) {
+		memdesc->gpuaddr = addr;
+		memdesc->pagetable = pagetable;
+	}
+
+out:
+	spin_unlock(&pagetable->lock);
 	return ret;
 }
 

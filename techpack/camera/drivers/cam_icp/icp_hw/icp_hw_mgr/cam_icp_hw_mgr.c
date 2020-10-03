@@ -2361,10 +2361,6 @@ static int cam_icp_mgr_process_fatal_error(
 
 	if (event_notify->event_id == HFI_EVENT_SYS_ERROR) {
 		CAM_INFO(CAM_ICP, "received HFI_EVENT_SYS_ERROR");
-		if (event_notify->event_data1 == HFI_ERR_SYS_FATAL) {
-			CAM_ERR(CAM_ICP, "received HFI_ERR_SYS_FATAL");
-			BUG();
-		}
 		rc = cam_icp_mgr_trigger_recovery(hw_mgr);
 		cam_icp_mgr_process_dbg_buf(icp_hw_mgr.a5_dbg_lvl);
 	}
@@ -3034,7 +3030,7 @@ static int cam_icp_mgr_hfi_resume(struct cam_icp_hw_mgr *hw_mgr)
 static int cam_icp_retry_wait_for_abort(
 	struct cam_icp_hw_ctx_data *ctx_data)
 {
-	int retry_cnt = 1;
+	int retry_cnt = 4;
 	unsigned long rem_jiffies;
 	int timeout = 1000;
 
@@ -3158,8 +3154,7 @@ static int cam_icp_mgr_abort_handle(
 	if (!rem_jiffies) {
 		rc = cam_icp_retry_wait_for_abort(ctx_data);
 		if (rc) {
-			CAM_ERR(CAM_ICP,
-				"FW timeout/err in abort handle command ctx: %u",
+			CAM_ERR(CAM_ICP, "FW timeout/err in abort handle command ctx: %u",
 				ctx_data->ctx_id);
 			cam_icp_mgr_process_dbg_buf(icp_hw_mgr.a5_dbg_lvl);
 			cam_hfi_queue_dump();
@@ -3861,10 +3856,10 @@ static int cam_icp_mgr_config_hw(void *hw_mgr_priv, void *config_hw_args)
 			CAM_ERR(CAM_ICP, "Fail to send reconfig io cmd");
 	}
 
-	if (req_id <= ctx_data->last_flush_req)
+	if ((uint32_t)req_id <= ctx_data->last_flush_req)
 		CAM_WARN(CAM_ICP,
-			"Anomaly submitting flushed req %llu [last_flush %llu] in ctx %u",
-			req_id, ctx_data->last_flush_req, ctx_data->ctx_id);
+		"Anomaly detected submitting flushed req %llu",
+		req_id);
 
 	rc = cam_icp_mgr_enqueue_config(hw_mgr, config_args);
 	if (rc)
@@ -4609,6 +4604,8 @@ static void cam_icp_mgr_print_io_bufs(struct cam_packet *packet,
 
 		}
 	}
+	cam_packet_dump_patch_info(packet, icp_hw_mgr.iommu_hdl,
+		icp_hw_mgr.iommu_sec_hdl);
 }
 
 static int cam_icp_mgr_config_stream_settings(
@@ -4903,13 +4900,13 @@ static void cam_icp_mgr_flush_info_dump(
 	int i;
 
 	for (i = 0; i < flush_args->num_req_active; i++) {
-		CAM_DBG(CAM_ICP, "Flushing active request %lld in ctx %u",
+		CAM_INFO(CAM_ICP, "Flushing active request %lld in ctx %u",
 			*(int64_t *)flush_args->flush_req_active[i],
 			ctx_id);
 	}
 
 	for (i = 0; i < flush_args->num_req_pending; i++) {
-		CAM_DBG(CAM_ICP, "Flushing pending request %lld in ctx %u",
+		CAM_INFO(CAM_ICP, "Flushing pending request %lld in ctx %u",
 			*(int64_t *)flush_args->flush_req_pending[i],
 			ctx_id);
 	}
@@ -4942,8 +4939,7 @@ static int cam_icp_mgr_enqueue_abort(
 	if (!rem_jiffies) {
 		rc = cam_icp_retry_wait_for_abort(ctx_data);
 		if (rc) {
-			CAM_ERR(CAM_ICP,
-				"FW timeout/err in abort handle command ctx: %u",
+			CAM_ERR(CAM_ICP, "FW timeout/err in abort handle command ctx: %u",
 				ctx_data->ctx_id);
 			cam_icp_mgr_process_dbg_buf(icp_hw_mgr.a5_dbg_lvl);
 			cam_hfi_queue_dump();
@@ -5726,7 +5722,7 @@ static int cam_icp_mgr_cmd(void *hw_mgr_priv, void *cmd_args)
 	switch (hw_cmd_args->cmd_type) {
 	case CAM_HW_MGR_CMD_DUMP_PF_INFO:
 		cam_icp_mgr_print_io_bufs(
-			hw_cmd_args->u.pf_args.pf_data.packet,
+			hw_cmd_args->u.pf_args.packet,
 			hw_mgr->iommu_hdl,
 			hw_mgr->iommu_sec_hdl,
 			hw_cmd_args->u.pf_args.buf_info,

@@ -101,8 +101,6 @@ struct cam_ife_hw_mgr_debug {
  * @list:                   used by the ctx list.
  * @common:                 common acquired context data
  * @ctx_index:              acquired context id.
- * @master_hw_idx:          hw index for master core
- * @slave_hw_idx:           hw index for slave core
  * @hw_mgr:                 IFE hw mgr which owns this context
  * @ctx_in_use:             flag to tell whether context is active
  * @res_list_ife_in:        Starting resource(TPG,PHY0, PHY1...) Can only be
@@ -139,6 +137,7 @@ struct cam_ife_hw_mgr_debug {
  * @init_done               indicate whether init hw is done
  * @is_fe_enable            indicate whether fetch engine\read path is enabled
  * @is_dual                 indicate whether context is in dual VFE mode
+ * @custom_enabled          update the flag if context is connected to custom HW
  * @ts                      captured timestamp when the ctx is acquired
  */
 struct cam_ife_hw_mgr_ctx {
@@ -146,8 +145,6 @@ struct cam_ife_hw_mgr_ctx {
 	struct cam_isp_hw_mgr_ctx       common;
 
 	uint32_t                        ctx_index;
-	uint32_t                        master_hw_idx;
-	uint32_t                        slave_hw_idx;
 	struct cam_ife_hw_mgr          *hw_mgr;
 	uint32_t                        ctx_in_use;
 
@@ -186,6 +183,7 @@ struct cam_ife_hw_mgr_ctx {
 	bool                            init_done;
 	bool                            is_fe_enable;
 	bool                            is_dual;
+	bool                            custom_enabled;
 	struct timespec64               ts;
 };
 

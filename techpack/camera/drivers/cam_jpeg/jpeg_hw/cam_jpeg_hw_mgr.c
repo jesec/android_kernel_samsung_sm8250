@@ -177,9 +177,7 @@ static int cam_jpeg_mgr_process_irq(void *priv, void *data)
 		PTR_TO_U64(p_cfg_req->hw_cfg_args.priv);
 	ctx_data->ctxt_event_cb(ctx_data->context_priv, 0, &buf_data);
 
-	mutex_lock(&g_jpeg_hw_mgr.hw_mgr_mutex);
 	list_add_tail(&p_cfg_req->list, &hw_mgr->free_req_list);
-	mutex_unlock(&g_jpeg_hw_mgr.hw_mgr_mutex);
 	return rc;
 }
 
@@ -1500,7 +1498,7 @@ static int cam_jpeg_mgr_cmd(void *hw_mgr_priv, void *cmd_args)
 	switch (hw_cmd_args->cmd_type) {
 	case CAM_HW_MGR_CMD_DUMP_PF_INFO:
 		cam_jpeg_mgr_print_io_bufs(
-			hw_cmd_args->u.pf_args.pf_data.packet,
+			hw_cmd_args->u.pf_args.packet,
 			hw_mgr->iommu_hdl,
 			hw_mgr->iommu_sec_hdl,
 			hw_cmd_args->u.pf_args.buf_info,

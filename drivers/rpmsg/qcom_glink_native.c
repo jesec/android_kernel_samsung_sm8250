@@ -127,6 +127,9 @@ struct qcom_glink {
 	struct device *dev;
 
 	const char *name;
+#ifdef CONFIG_SEC_PM	
+	char irq_name[32];
+#endif
 
 	struct mbox_client mbox_client;
 	struct mbox_chan *mbox_chan;
@@ -1962,10 +1965,18 @@ struct qcom_glink *qcom_glink_native_probe(struct device *dev,
 		dev_err(dev, "failed to register early notif %d\n", ret);
 
 	irq = of_irq_get(dev->of_node, 0);
+#ifdef CONFIG_SEC_PM
+	snprintf(glink->irq_name, 32, "glink-native-%s", glink->name);
+	ret = devm_request_irq(dev, irq,
+			       qcom_glink_native_intr,
+			       IRQF_NO_SUSPEND | IRQF_SHARED,
+			       glink->irq_name, glink);
+#else
 	ret = devm_request_irq(dev, irq,
 			       qcom_glink_native_intr,
 			       IRQF_NO_SUSPEND | IRQF_SHARED,
 			       "glink-native", glink);
+#endif	
 	if (ret) {
 		dev_err(dev, "failed to request IRQ\n");
 		goto unregister;

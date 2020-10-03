@@ -111,6 +111,7 @@ struct dsi_display_boot_param {
 struct dsi_display_clk_info {
 	struct dsi_clk_link_set src_clks;
 	struct dsi_clk_link_set mux_clks;
+	struct dsi_clk_link_set cphy_clks;
 	struct dsi_clk_link_set shadow_clks;
 };
 
@@ -722,4 +723,10 @@ int dsi_display_cont_splash_config(void *display);
 int dsi_display_get_panel_vfp(void *display,
 	int h_active, int v_active);
 
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+int dsi_display_ctrl_init(struct dsi_display *display);
+int dsi_display_ctrl_deinit(struct dsi_display *display);
+#endif
+
+int dsi_display_pm_runtime_update(struct dsi_display *display, bool enable);
 #endif /* _DSI_DISPLAY_H_ */

@@ -254,7 +254,7 @@ struct cam_icp_hw_ctx_data {
 	struct cam_req_mgr_timer *watch_dog;
 	uint32_t watch_dog_reset_counter;
 	struct cam_icp_acquire_dev_info icp_dev_io_info;
-	uint64_t last_flush_req;
+	uint32_t last_flush_req;
 };
 
 /**

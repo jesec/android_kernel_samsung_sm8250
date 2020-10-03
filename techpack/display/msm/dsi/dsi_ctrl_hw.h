@@ -31,6 +31,7 @@
 /**
  * enum dsi_ctrl_version - version of the dsi host controller
  * @DSI_CTRL_VERSION_UNKNOWN: Unknown controller version
+ * @DSI_CTRL_VERSION_1_3:     DSI host v1.3 controller
  * @DSI_CTRL_VERSION_1_4:     DSI host v1.4 controller
  * @DSI_CTRL_VERSION_2_0:     DSI host v2.0 controller
  * @DSI_CTRL_VERSION_2_2:     DSI host v2.2 controller
@@ -40,6 +41,7 @@
  */
 enum dsi_ctrl_version {
 	DSI_CTRL_VERSION_UNKNOWN,
+	DSI_CTRL_VERSION_1_3,
 	DSI_CTRL_VERSION_1_4,
 	DSI_CTRL_VERSION_2_0,
 	DSI_CTRL_VERSION_2_2,
@@ -667,6 +669,8 @@ struct dsi_ctrl_hw_ops {
 	 * Return: List of active error interrupts.
 	 */
 	u64 (*get_error_status)(struct dsi_ctrl_hw *ctrl);
+	void (*dma_read_before_trigger)(struct dsi_ctrl_hw *ctrl);
+	u32 (*read_mdp_line_count)(struct dsi_ctrl_hw *ctrl);
 
 	/**
 	 * clear_error_status() - clears the specified errors

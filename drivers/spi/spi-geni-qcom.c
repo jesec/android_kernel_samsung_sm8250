@@ -94,6 +94,16 @@
 #define MAX_TX_SG		(3)
 #define NUM_SPI_XFER		(8)
 
+/* SPI sampling registers */
+#define SE_GENI_CGC_CTRL (0x28)
+#define SE_GENI_CFG_SEQ_START (0x84)
+#define SE_GENI_CFG_REG108 (0x2B0)
+#define SE_GENI_CFG_REG109 (0x2B4)
+#define CPOL_CTRL 1
+#define RX_SI_EN2IO_DELAY 12
+#define RX_IO_EN2CORE_EN_DELAY 8
+#define RX_IO_POS_FF_EN_SEL 4
+
 struct gsi_desc_cb {
 	struct spi_master *spi;
 	struct spi_transfer *xfer;
@@ -151,6 +161,8 @@ struct spi_geni_master {
 	bool shared_se;
 	bool dis_autosuspend;
 	bool cmd_done;
+	bool set_miso_sampling;
+	u32 miso_sampling_ctrl_val;
 };
 
 static struct spi_master *get_spi_master(struct device *dev)
@@ -755,6 +767,7 @@ static int spi_geni_prepare_transfer_hardware(struct spi_master *spi)
 	int ret = 0, count = 0;
 	u32 max_speed = spi->cur_msg->spi->max_speed_hz;
 	struct se_geni_rsc *rsc = &mas->spi_rsc;
+	u32 cpol, cpha, cfg_reg108, cfg_reg109, cfg_seq_start;
 
 	/* Adjust the IB based on the max speed of the slave.*/
 	rsc->ib = max_speed * DEFAULT_BUS_WIDTH;
@@ -869,6 +882,55 @@ setup_ipc:
 			GENI_SE_DBG(mas->ipc, false, mas->dev,
 				"%s:Major:%d Minor:%d step:%dos%d\n",
 			__func__, major, minor, step, mas->oversampling);
+		}
+		if (mas->set_miso_sampling) {
+			cpol = geni_read_reg(mas->base, SE_SPI_CPOL);
+			cpha = geni_read_reg(mas->base, SE_SPI_CPHA);
+			cfg_reg108 = geni_read_reg(mas->base,
+			SE_GENI_CFG_REG108);
+			cfg_reg109 = geni_read_reg(mas->base,
+			SE_GENI_CFG_REG109);
+			/* clear CPOL bit */
+			cfg_reg108 &= ~(1 << CPOL_CTRL);
+
+			if (major == 1 && minor == 0) {
+				/* Write 1 to RX_SI_EN2IO_DELAY reg */
+				cfg_reg108 &= ~(0x7 << RX_SI_EN2IO_DELAY);
+				cfg_reg108 |= (1 << RX_SI_EN2IO_DELAY);
+				/* Write 0 to RX_IO_POS_FF_EN_SEL reg */
+				cfg_reg108 &= ~(1 << RX_IO_POS_FF_EN_SEL);
+			} else if ((major < 2) || (major == 2 && minor < 5)) {
+				/* Write 0 to RX_IO_EN2CORE_EN_DELAY reg */
+				cfg_reg108 &= ~(0x7 << RX_IO_EN2CORE_EN_DELAY);
+			} else {
+				/*
+				* Write miso_sampling_ctrl_set to
+				* RX_IO_EN2CORE_EN_DELAY reg
+				*/
+				cfg_reg108 &= ~(0x7 << RX_IO_EN2CORE_EN_DELAY);
+				cfg_reg108 |= (mas->miso_sampling_ctrl_val <<
+				RX_IO_EN2CORE_EN_DELAY);
+			}
+
+			geni_write_reg(cfg_reg108, mas->base, SE_GENI_CFG_REG108);
+			/* Ensure reg write went through */
+			mb();
+
+			if (cpol == 0 && cpha == 0)
+				cfg_reg109 = 1;
+			else if (cpol == 1 && cpha == 0)
+				cfg_reg109 = 0;
+			geni_write_reg(cfg_reg109, mas->base, SE_GENI_CFG_REG109);
+
+			if (!(major == 1 && minor == 0))
+				geni_write_reg(1, mas->base, SE_GENI_CFG_SEQ_START);
+			cfg_reg108 = geni_read_reg(mas->base, SE_GENI_CFG_REG108);
+			cfg_reg109 = geni_read_reg(mas->base, SE_GENI_CFG_REG109);
+			cfg_seq_start = geni_read_reg(mas->base, SE_GENI_CFG_SEQ_START);
+
+			GENI_SE_DBG(mas->ipc, false, mas->dev,
+					"%s cfg108: 0x%x cfg109: 0x%x cfg_seq_start: 0x%x\n",
+					__func__, cfg_reg108, cfg_reg109, cfg_seq_start);
 		}
 		mas->shared_se =
 			(geni_read_reg(mas->base, GENI_IF_FIFO_DISABLE_RO) &
@@ -1056,6 +1118,21 @@ static void handle_fifo_timeout(struct spi_geni_master *mas,
 				"Failed to cancel/abort m_cmd\n");
 	}
 	if (mas->cur_xfer_mode == SE_DMA) {
+		/* DMA engine should be reset in case of error. */
+		if (xfer->tx_buf) {
+			reinit_completion(&mas->xfer_done);
+			writel_relaxed(1, mas->base + SE_DMA_TX_FSM_RST);
+			timeout = wait_for_completion_timeout(&mas->xfer_done, HZ);
+			if (!timeout)
+				dev_err(mas->dev,"DMA TX RESET failed\n");
+		}
+		if (xfer->rx_buf) {
+			reinit_completion(&mas->xfer_done);
+			writel_relaxed(1, mas->base + SE_DMA_RX_FSM_RST);
+			timeout = wait_for_completion_timeout(&mas->xfer_done, HZ);
+			if (!timeout)
+				dev_err(mas->dev,"DMA RX RESET failed\n");
+		}
 		if (xfer->tx_buf)
 			geni_se_tx_dma_unprep(mas->wrapper_dev,
 					xfer->tx_dma, xfer->len);
@@ -1388,6 +1465,12 @@ static int spi_geni_probe(struct platform_device *pdev)
 
 	rsc->geni_gpio_active = pinctrl_lookup_state(rsc->geni_pinctrl,
 							PINCTRL_DEFAULT);
+#if defined(CONFIG_NFC_FEATURE_SN100U)
+	if (of_property_read_bool(pdev->dev.of_node, "sec,pinctrl_active")) {
+		rsc->geni_gpio_active = pinctrl_lookup_state(rsc->geni_pinctrl,
+				"active");
+	}
+#endif
 	if (IS_ERR_OR_NULL(rsc->geni_gpio_active)) {
 		dev_err(&pdev->dev, "No default config specified!\n");
 		ret = PTR_ERR(rsc->geni_gpio_active);
@@ -1401,6 +1484,27 @@ static int spi_geni_probe(struct platform_device *pdev)
 		ret = PTR_ERR(rsc->geni_gpio_sleep);
 		goto spi_geni_probe_err;
 	}
+#if defined(CONFIG_SENSORS_VL53L5)
+	/* This is control pins of Range sensor to avoid MISO's floating */
+	if (of_property_read_bool(pdev->dev.of_node, "vl53l5,pinctrl_vddoff")) {
+		struct pinctrl_state *geni_gpio_vddoff = NULL;
+		dev_info(&pdev->dev, "pinctrl for vl53l5 vddoff state\n");
+		
+		geni_gpio_vddoff = pinctrl_lookup_state(rsc->geni_pinctrl,"vddoff");
+		if (IS_ERR_OR_NULL(geni_gpio_vddoff)) {
+			dev_err(&pdev->dev, "Failed pinctrl_lookup:vl53l5 vddoff\n");
+		}
+		else {
+			ret = pinctrl_select_state(rsc->geni_pinctrl, geni_gpio_vddoff);
+			if (ret)
+				dev_err(&pdev->dev, "Failed pinctrl_select:vl53l5 vddoff\n");
+		}
+	}
+	else {
+#endif
+#if defined(CONFIG_NFC_FEATURE_SN100U)
+	if (!of_property_read_bool(pdev->dev.of_node, "sec,pinctrl_skip_sleep")) {
+#endif
 
 	ret = pinctrl_select_state(rsc->geni_pinctrl,
 					rsc->geni_gpio_sleep);
@@ -1408,6 +1512,13 @@ static int spi_geni_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "Failed to set sleep configuration\n");
 		goto spi_geni_probe_err;
 	}
+
+#if defined(CONFIG_NFC_FEATURE_SN100U)
+	}
+#endif
+#if defined(CONFIG_SENSORS_VL53L5)
+	}
+#endif
 
 	rsc->se_clk = devm_clk_get(&pdev->dev, "se-clk");
 	if (IS_ERR(rsc->se_clk)) {
@@ -1459,6 +1570,15 @@ static int spi_geni_probe(struct platform_device *pdev)
 	geni_mas->dis_autosuspend =
 		of_property_read_bool(pdev->dev.of_node,
 				"qcom,disable-autosuspend");
+	geni_mas->set_miso_sampling = of_property_read_bool(pdev->dev.of_node,
+			"qcom,set-miso-sampling");
+	if (geni_mas->set_miso_sampling) {
+		if (!of_property_read_u32(pdev->dev.of_node,
+				"qcom,miso-sampling-ctrl-val",
+				&geni_mas->miso_sampling_ctrl_val))
+			dev_info(&pdev->dev, "MISO_SAMPLING_SET: %d\n",
+		geni_mas->miso_sampling_ctrl_val);
+	}
 	geni_mas->phys_addr = res->start;
 	geni_mas->size = resource_size(res);
 	geni_mas->base = devm_ioremap(&pdev->dev, res->start,

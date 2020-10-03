@@ -30,7 +30,7 @@
 #define CAM_SOC_MAX_BASE            CAM_SOC_MAX_BLOCK
 
 /* maximum number of device regulator */
-#define CAM_SOC_MAX_REGULATOR       5
+#define CAM_SOC_MAX_REGULATOR       11
 
 /* maximum number of device clock */
 #define CAM_SOC_MAX_CLK             32
@@ -382,7 +382,7 @@ long cam_soc_util_get_clk_round_rate(struct cam_hw_soc_info *soc_info,
  * @return:             success or failure
  */
 int cam_soc_util_set_src_clk_rate(struct cam_hw_soc_info *soc_info,
-	int32_t clk_rate);
+	int64_t clk_rate);
 
 /**
  * cam_soc_util_get_option_clk_by_name()
@@ -624,7 +624,7 @@ int cam_soc_util_clk_enable_default(struct cam_hw_soc_info *soc_info,
 	enum cam_vote_level clk_level);
 
 int cam_soc_util_get_clk_level(struct cam_hw_soc_info *soc_info,
-	int32_t clk_rate, int clk_idx, int32_t *clk_lvl);
+	int64_t clk_rate, int clk_idx, int32_t *clk_lvl);
 
 /* Callback to get reg space data for specific HW */
 typedef int (*cam_soc_util_regspace_data_cb)(uint32_t reg_base_type,
@@ -649,4 +649,10 @@ int cam_soc_util_reg_dump_to_cmd_buf(void *ctx,
 	struct cam_cmd_buf_desc *cmd_desc, uint64_t req_id,
 	cam_soc_util_regspace_data_cb reg_data_cb);
 
+#if defined(CONFIG_SAMSUNG_ACTUATOR_PREVENT_SHAKING)
+int cam_soc_util_force_regulator_disable(struct regulator *rgltr,
+	const char *rgltr_name, uint32_t rgltr_min_volt,
+	uint32_t rgltr_max_volt, uint32_t rgltr_op_mode,
+	uint32_t rgltr_delay_ms);
+#endif
 #endif /* _CAM_SOC_UTIL_H_ */

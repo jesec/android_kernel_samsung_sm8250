@@ -345,7 +345,7 @@ int diag_md_copy_to_user(char __user *buf, int *pret, size_t buf_size,
 			peripheral = diag_md_get_peripheral(entry->ctx);
 			if (peripheral < 0) {
 				spin_unlock_irqrestore(&ch->lock, flags);
-				goto drop_data;
+ 				goto drop_data;
 			}
 			spin_unlock_irqrestore(&ch->lock, flags);
 			session_info =

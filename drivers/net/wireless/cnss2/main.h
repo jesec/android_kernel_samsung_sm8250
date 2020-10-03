@@ -21,12 +21,18 @@
 #define QMI_WLFW_MAX_BUILD_ID_LEN	128
 #define CNSS_RDDM_TIMEOUT_MS		20000
 #define RECOVERY_TIMEOUT		60000
+#define WLAN_WD_TIMEOUT_MS		60000
 #define TIME_CLOCK_FREQ_HZ		19200000
+#define CNSS_RAMDUMP_MAGIC		0x574C414E
+#define CNSS_RAMDUMP_VERSION		0
+#define MAX_FIRMWARE_NAME_LEN		30
 
 #define CNSS_EVENT_SYNC   BIT(0)
 #define CNSS_EVENT_UNINTERRUPTIBLE BIT(1)
+#define CNSS_EVENT_UNKILLABLE BIT(2)
 #define CNSS_EVENT_SYNC_UNINTERRUPTIBLE (CNSS_EVENT_SYNC | \
 				CNSS_EVENT_UNINTERRUPTIBLE)
+#define CNSS_EVENT_SYNC_UNKILLABLE (CNSS_EVENT_SYNC | CNSS_EVENT_UNKILLABLE)
 
 enum cnss_dev_bus_type {
 	CNSS_BUS_NONE = -1,
@@ -164,6 +170,21 @@ enum cnss_fw_dump_type {
 	CNSS_FW_IMAGE,
 	CNSS_FW_RDDM,
 	CNSS_FW_REMOTE_HEAP,
+	CNSS_FW_DUMP_TYPE_MAX,
+};
+
+struct cnss_dump_entry {
+	u32 type;
+	u32 entry_start;
+	u32 entry_num;
+};
+
+struct cnss_dump_meta_info {
+	u32 magic;
+	u32 version;
+	u32 chipset;
+	u32 total_entries;
+	struct cnss_dump_entry entry[CNSS_FW_DUMP_TYPE_MAX];
 };
 
 enum cnss_driver_event_type {
@@ -206,6 +227,8 @@ enum cnss_driver_state {
 	CNSS_IMS_CONNECTED,
 	CNSS_IN_SUSPEND_RESUME,
 	CNSS_IN_REBOOT,
+	CNSS_COLD_BOOT_CAL_DONE,
+	CNSS_IN_PANIC,
 };
 
 struct cnss_recovery_data {
@@ -348,7 +371,7 @@ struct cnss_plat_data {
 	u8 *diag_reg_read_buf;
 	u8 cal_done;
 	u8 powered_on;
-	char firmware_name[13];
+	char firmware_name[MAX_FIRMWARE_NAME_LEN];
 	struct completion rddm_complete;
 	struct completion recovery_complete;
 	struct cnss_control_params ctrl_params;
@@ -364,6 +387,8 @@ struct cnss_plat_data {
 	u8 use_nv_mac;
 	u8 set_wlaon_pwr_ctrl;
 	struct kobject *shutdown_kobj;
+
+	struct kobject *wifi_kobj;
 };
 
 #ifdef CONFIG_ARCH_QCOM

@@ -38,6 +38,11 @@ else
 
 endif
 
+# clang+kasan stack usage bug. Worked around with KASAN_THREAD_SHIFT.
+ifneq ($(CONFIG_FRAME_WARN),0)
+CFLAGS_KASAN += -Wno-error=frame-larger-than=
+endif
+
 ifdef CONFIG_KASAN_EXTRA
 CFLAGS_KASAN += $(call cc-option, -fsanitize-address-use-after-scope)
 endif

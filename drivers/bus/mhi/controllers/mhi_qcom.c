@@ -117,6 +117,8 @@ static int mhi_init_pci_dev(struct mhi_controller *mhi_cntrl)
 		MHI_ERR("Error ioremap region\n");
 		goto error_ioremap;
 	}
+	
+	mhi_cntrl->len = len;
 
 	ret = pci_alloc_irq_vectors(pci_dev, mhi_cntrl->msi_required,
 				    mhi_cntrl->msi_required, PCI_IRQ_MSI);
@@ -161,6 +163,9 @@ static int mhi_init_pci_dev(struct mhi_controller *mhi_cntrl)
 	pm_runtime_mark_last_busy(&pci_dev->dev);
 	pm_runtime_put_noidle(&pci_dev->dev);
 
+	MHI_ERR("pcidev usage_cnt: %d, pcidev runtime_auto: %d\n",
+			atomic_read(&mhi_dev->pci_dev->dev.power.usage_count),
+			mhi_dev->pci_dev->dev.power.runtime_auto);
 	return 0;
 
 error_get_irq_vec:
@@ -313,7 +318,9 @@ int mhi_system_suspend(struct device *dev)
 	struct mhi_dev *mhi_dev = mhi_controller_get_devdata(mhi_cntrl);
 	int ret;
 
-	MHI_LOG("Entered\n");
+	MHI_LOG("Entered, pcidev usage_cnt: %d, pcidev runtime_auto: %d\n",
+			atomic_read(&mhi_dev->pci_dev->dev.power.usage_count),
+			mhi_dev->pci_dev->dev.power.runtime_auto);
 
 	mutex_lock(&mhi_cntrl->pm_mutex);
 
@@ -411,7 +418,7 @@ static int mhi_force_suspend(struct mhi_controller *mhi_cntrl)
 		if (!ret || ret != -EBUSY)
 			break;
 
-		MHI_LOG("MHI busy, sleeping and retry\n");
+		MHI_ERR("MHI busy, sleeping and retry\n");
 		msleep(delayms);
 	}
 
@@ -419,7 +426,7 @@ static int mhi_force_suspend(struct mhi_controller *mhi_cntrl)
 		MHI_ERR("Force suspend ret with %d\n", ret);
 		goto exit_force_suspend;
 	}
-
+	
 	mhi_dev->suspend_mode = MHI_DEFAULT_SUSPEND;
 	ret = mhi_arch_link_suspend(mhi_cntrl);
 
@@ -557,6 +564,9 @@ static void mhi_status_cb(struct mhi_controller *mhi_cntrl,
 		}
 		pm_runtime_put(dev);
 		mhi_arch_mission_mode_enter(mhi_cntrl);
+		MHI_ERR("mission mode : pcidev usage_cnt: %d, pcidev runtime_auto: %d\n",
+			atomic_read(&mhi_dev->pci_dev->dev.power.usage_count),
+			mhi_dev->pci_dev->dev.power.runtime_auto);
 		break;
 	default:
 		MHI_ERR("Unhandled cb:0x%x\n", reason);
@@ -776,7 +786,7 @@ static struct mhi_controller *mhi_register_controller(struct pci_dev *pci_dev)
 		MHI_ERR("Error while creating the sysfs group\n");
 
 	return mhi_cntrl;
-
+	
 error_free_wq:
 	destroy_workqueue(mhi_cntrl->offload_wq);
 error_register:

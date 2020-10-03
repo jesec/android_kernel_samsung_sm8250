@@ -31,6 +31,7 @@
 #define BUS_INTERVAL_FULL_SPEED 1000 /* in us */
 #define BUS_INTERVAL_HIGHSPEED_AND_ABOVE 125 /* in us */
 #define MAX_BINTERVAL_ISOC_EP 16
+#define DEV_RELEASE_WAIT_TIMEOUT 10000 /* in ms */
 
 #define SND_PCM_CARD_NUM_MASK 0xffff0000
 #define SND_PCM_DEV_NUM_MASK 0xff00
@@ -882,6 +883,7 @@ static void uaudio_disconnect_cb(struct snd_usb_audio *chip)
 		disconnect_ind.slot_id = dev->udev->slot_id;
 		disconnect_ind.controller_num = dev->usb_core_id;
 		disconnect_ind.controller_num_valid = 1;
+
 		ret = qmi_send_indication(svc->uaudio_svc_hdl, &svc->client_sq,
 				QMI_UADUIO_STREAM_IND_V01,
 				QMI_UAUDIO_STREAM_IND_MSG_V01_MAX_MSG_LEN,
@@ -890,12 +892,17 @@ static void uaudio_disconnect_cb(struct snd_usb_audio *chip)
 		if (ret < 0)
 			uaudio_err("qmi send failed with err: %d\n", ret);
 
-		ret = wait_event_interruptible(dev->disconnect_wq,
-				!atomic_read(&dev->in_use));
-		if (ret < 0) {
-			uaudio_dbg("failed with ret %d\n", ret);
-			return;
+		ret = wait_event_interruptible_timeout(dev->disconnect_wq,
+				!atomic_read(&dev->in_use),
+				msecs_to_jiffies(DEV_RELEASE_WAIT_TIMEOUT));
+		if (!ret) {
+			uaudio_err("timeout while waiting for dev_release\n");
+			atomic_set(&dev->in_use, 0);
+		} else if (ret < 0) {
+			uaudio_err("failed with ret %d\n", ret);
+			atomic_set(&dev->in_use, 0);
 		}
+
 		mutex_lock(&chip->dev_lock);
 	}
 
@@ -1084,6 +1091,7 @@ static void handle_uaudio_stream_req(struct qmi_handle *handle,
 	}
 
 	mutex_lock(&chip->dev_lock);
+	pr_info("%s : inside mutex\n", __func__);
 	info_idx = info_idx_from_ifnum(pcm_card_num, subs->interface,
 		req_msg->enable);
 	if (atomic_read(&chip->shutdown) || !subs->stream || !subs->stream->pcm
@@ -1146,25 +1154,28 @@ static void handle_uaudio_stream_req(struct qmi_handle *handle,
 	}
 
 	ret = snd_usb_enable_audio_stream(subs, datainterval, req_msg->enable);
+	pr_info("%s : snd_usb_enable_audio_stream : ret = %d\n", __func__, ret);
 
 	if (!ret && req_msg->enable)
 		ret = prepare_qmi_response(subs, req_msg, &resp, info_idx);
 
+	pr_info("%s : prepare_qmi_response : ret = %d\n", __func__, ret);
 	mutex_unlock(&chip->dev_lock);
 
 response:
-	if (!req_msg->enable && ret != -EINVAL) {
+	pr_info("%s : response : ret = %d\n", __func__, ret);
+	if (!req_msg->enable && (ret != -EINVAL && ret != -ENODEV)) {
+		mutex_lock(&chip->dev_lock);
 		if (info_idx >= 0) {
-			mutex_lock(&chip->dev_lock);
 			info = &uadev[pcm_card_num].info[info_idx];
 			uaudio_dev_intf_cleanup(uadev[pcm_card_num].udev, info);
 			uaudio_dbg("release resources: intf# %d card# %d\n",
 					subs->interface, pcm_card_num);
-			mutex_unlock(&chip->dev_lock);
 		}
 		if (atomic_read(&uadev[pcm_card_num].in_use))
 			kref_put(&uadev[pcm_card_num].kref,
 					uaudio_dev_release);
+		mutex_unlock(&chip->dev_lock);
 	}
 
 	resp.usb_token = req_msg->usb_token;

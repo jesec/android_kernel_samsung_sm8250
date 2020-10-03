@@ -259,6 +259,7 @@ struct mhi_controller {
 
 	/* mmio base */
 	phys_addr_t base_addr;
+	unsigned int len;
 	void __iomem *regs;
 	void __iomem *bhi;
 	void __iomem *bhie;
@@ -373,7 +374,6 @@ struct mhi_controller {
 			struct mhi_link_info *link_info);
 	void (*write_reg)(struct mhi_controller *mhi_cntrl, void __iomem *base,
 			u32 offset, u32 val);
-
 	/* channel to control DTR messaging */
 	struct mhi_device *dtr_dev;
 
@@ -896,12 +896,7 @@ char *mhi_get_restart_reason(const char *name);
 
 #else
 
-#define MHI_VERB(fmt, ...) do { \
-		if (mhi_cntrl->log_buf && \
-		    (mhi_cntrl->log_lvl <= MHI_MSG_LVL_VERBOSE)) \
-			ipc_log_string(mhi_cntrl->log_buf, "[D][%s] " fmt, \
-				       __func__, ##__VA_ARGS__); \
-} while (0)
+#define MHI_VERB(fmt, ...)
 
 #endif
 

@@ -14,6 +14,9 @@
 #include "cam_context.h"
 #include "cam_isp_hw_mgr_intf.h"
 
+#define CAM_IFE_QTIMER_MUL_FACTOR        10000
+#define CAM_IFE_QTIMER_DIV_FACTOR        192
+
 /*
  * Maximum hw resource - This number is based on the maximum
  * output port resource. The current maximum resource number
@@ -30,7 +33,7 @@
 /*
  * Maximum entries in state monitoring array for error logging
  */
-#define CAM_ISP_CTX_STATE_MONITOR_MAX_ENTRIES   40
+#define CAM_ISP_CTX_STATE_MONITOR_MAX_ENTRIES   100
 
 /* forward declaration */
 struct cam_isp_context;
@@ -146,25 +149,16 @@ struct cam_isp_context_state_monitor {
 	uint64_t                             req_id;
 	int64_t                              frame_id;
 	unsigned int                         evt_time_stamp;
+	struct timespec64                    ts;
 };
 
 /**
- * struct cam_isp_context_req_id_info - ISP context request id
- *                     information for bufdone.
- *
- *@last_bufdone_req_id:   Last bufdone request id
- *
- */
-
-struct cam_isp_context_req_id_info {
-	int64_t                          last_bufdone_req_id;
-};
-/**
- *
  * struct cam_isp_context   -  ISP context object
  *
  * @base:                      Common context object pointer
  * @frame_id:                  Frame id tracking for the isp context
+ * @frame_id_meta:             Frame id read every epoch for the ctx
+							   meta from the sensor
  * @substate_actiavted:        Current substate for the activated state.
  * @process_bubble:            Atomic variable to check if ctx is still
  *                             processing bubble.
@@ -182,13 +176,13 @@ struct cam_isp_context_req_id_info {
  *                             will invoke CRM cb at those event.
  * @last_applied_req_id:       Last applied request id
  * @state_monitor_head:        Write index to the state monitoring array
- * @req_info                   Request id information about last buf done
  * @cam_isp_ctx_state_monitor: State monitoring array
  * @rdi_only_context:          Get context type information.
  *                             true, if context is rdi only context
  * @hw_acquired:               Indicate whether HW resources are acquired
  * @init_received:             Indicate whether init config packet is received
  * @split_acquire:             Indicate whether a separate acquire is expected
+ * @custom_enabled:            Custom HW enabled for this ctx
  * @init_timestamp:            Timestamp at which this context is initialized
  *
  */
@@ -196,9 +190,10 @@ struct cam_isp_context {
 	struct cam_context                   *base;
 
 	int64_t                               frame_id;
+	uint32_t                              frame_id_meta;
 	enum cam_isp_ctx_activated_substate   substate_activated;
 	atomic_t                              process_bubble;
-	uint32_t                              bubble_frame_cnt;
+	uint32_t                         bubble_frame_cnt;
 	struct cam_ctx_ops                   *substate_machine;
 	struct cam_isp_ctx_irq_ops           *substate_machine_irq;
 
@@ -215,12 +210,14 @@ struct cam_isp_context {
 	atomic64_t                            state_monitor_head;
 	struct cam_isp_context_state_monitor  cam_isp_ctx_state_monitor[
 		CAM_ISP_CTX_STATE_MONITOR_MAX_ENTRIES];
-	struct cam_isp_context_req_id_info    req_info;
 	bool                                  rdi_only_context;
 	bool                                  hw_acquired;
 	bool                                  init_received;
 	bool                                  split_acquire;
+	bool                                  custom_enabled;
 	unsigned int                          init_timestamp;
+	struct cam_buf_done_info              info;
+	uint64_t                            last_buf_done_req_id;
 };
 
 /**

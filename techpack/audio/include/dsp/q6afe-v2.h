@@ -403,6 +403,11 @@ int afe_spk_prot_get_calib_data(struct afe_spkr_prot_get_vi_calib *calib);
 int afe_port_stop_nowait(int port_id);
 int afe_apply_gain(u16 port_id, u16 gain);
 int afe_q6_interface_prepare(void);
+int afe_q6_update_dyn_bitrate(uint32_t bitrate);
+int afe_q6_slimbus_update_dyn_bitrate(uint32_t bitrate);
+int afe_q6_update_mtu(int mtu);
+int afe_q6_update_a2dp_suspend(int a2dp_suspend);
+int afe_q6_update_enc_format(uint32_t enc_format);
 int afe_get_port_type(u16 port_id);
 int q6afe_audio_client_buf_alloc_contiguous(unsigned int dir,
 			struct afe_audio_client *ac,

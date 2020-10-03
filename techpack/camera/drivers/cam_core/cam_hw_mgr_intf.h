@@ -101,6 +101,7 @@ struct cam_hw_done_event_data {
  * @num_acq:               Total number of acquire in the payload
  * @acquire_info:          Acquired resource array pointer
  * @ctxt_to_hw_map:        HW context (returned)
+ * @custom_enabled:        ctx has custom enabled
  * @acquired_hw_id:        Acquired hardware mask
  * @acquired_hw_path:      Acquired path mask for an input
  *                         if input splits into multiple paths,
@@ -115,6 +116,7 @@ struct cam_hw_acquire_args {
 	uint32_t                     acquire_info_size;
 	uintptr_t                    acquire_info;
 	void                        *ctxt_to_hw_map;
+	bool                         custom_enabled;
 
 	uint32_t    acquired_hw_id[CAM_MAX_ACQ_RES];
 	uint32_t    acquired_hw_path[CAM_MAX_ACQ_RES][CAM_MAX_HW_SPLIT];
@@ -159,6 +161,27 @@ struct cam_hw_stop_args {
 	void              *args;
 };
 
+struct cam_buf_done_plane_io_cfg {
+	uint32_t mem_hdl;
+	dma_addr_t io_addr;
+	uint32_t width;
+	uint32_t height;
+	uint32_t stride;
+	uint32_t offset;
+	size_t size;
+};
+
+struct cam_buf_done_port_io_cfg {
+	uint32_t portID;
+	uint32_t plane;
+	struct cam_buf_done_plane_io_cfg plane_cfg[CAM_PACKET_MAX_PLANES];
+};
+
+struct cam_buf_done_info {
+	uint32_t num_ports;
+	struct timespec64 ts;
+	struct cam_buf_done_port_io_cfg port_cfg[30];
+};
 
 /**
  * struct cam_hw_mgr_dump_pf_data - page fault debug data
@@ -167,6 +190,7 @@ struct cam_hw_stop_args {
  */
 struct cam_hw_mgr_dump_pf_data {
 	void    *packet;
+	struct cam_buf_done_info info;
 };
 
 /**
@@ -284,10 +308,10 @@ struct cam_hw_flush_args {
  *
  */
 struct cam_hw_dump_pf_args {
-	struct cam_hw_mgr_dump_pf_data  pf_data;
-	unsigned long                   iova;
-	uint32_t                        buf_info;
-	bool                           *mem_found;
+	void                            *packet;
+	unsigned long                    iova;
+	uint32_t                         buf_info;
+	bool                            *mem_found;
 };
 
 /**

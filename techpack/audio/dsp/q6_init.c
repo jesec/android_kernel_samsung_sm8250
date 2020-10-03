@@ -24,11 +24,18 @@ static int __init audio_q6_init(void)
 	avtimer_init();
 	msm_mdf_init();
 	voice_mhi_init();
+#ifdef CONFIG_SEC_SND_ADAPTATION
+	sec_soc_platform_init();
+#endif /* CONFIG_SEC_SND_ADAPTATION */
+
 	return 0;
 }
 
 static void __exit audio_q6_exit(void)
 {
+#ifdef CONFIG_SEC_SND_ADAPTATION
+		sec_soc_platform_exit();
+#endif /* CONFIG_SEC_SND_ADAPTATION */
 	msm_mdf_exit();
 	avtimer_exit();
 	audio_slimslave_exit();

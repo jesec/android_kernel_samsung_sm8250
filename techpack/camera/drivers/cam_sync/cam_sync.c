@@ -426,26 +426,38 @@ static int cam_sync_handle_create(struct cam_private_ioctl_arg *k_ioctl)
 	struct cam_sync_info sync_create;
 	int result;
 
-	if (k_ioctl->size != sizeof(struct cam_sync_info))
+	if (k_ioctl->size != sizeof(struct cam_sync_info)) {
+		CAM_ERR(CAM_SYNC, "size mismatch ioctl size:%d sync size:%d",
+			k_ioctl->size, sizeof(struct cam_sync_info));
 		return -EINVAL;
+	}
 
-	if (!k_ioctl->ioctl_ptr)
+	if (!k_ioctl->ioctl_ptr) {
+		CAM_ERR(CAM_SYNC, "in valid ioctl param");
 		return -EINVAL;
+	}
 
 	if (copy_from_user(&sync_create,
 		u64_to_user_ptr(k_ioctl->ioctl_ptr),
-		k_ioctl->size))
+		k_ioctl->size)) {
+		CAM_ERR(CAM_SYNC, "copy from user failed size:%d",
+			k_ioctl->size);
 		return -EFAULT;
+	}
 
 	result = cam_sync_create(&sync_create.sync_obj,
 		sync_create.name);
 
-	if (!result)
+	if (!result) {
 		if (copy_to_user(
 			u64_to_user_ptr(k_ioctl->ioctl_ptr),
 			&sync_create,
-			k_ioctl->size))
+			k_ioctl->size)) {
+			CAM_ERR(CAM_SYNC, "copy to user failed size:%d",
+				k_ioctl->size);
 			return -EFAULT;
+		}
+	}
 
 	return result;
 }
@@ -717,11 +729,15 @@ static long cam_sync_dev_ioctl(struct file *filep, void *fh,
 		return -EINVAL;
 	}
 
-	if (!arg)
+	if (!arg) {
+		CAM_ERR(CAM_SYNC, "arg is NULL");
 		return -EINVAL;
+	}
 
-	if (cmd != CAM_PRIVATE_IOCTL_CMD)
+	if (cmd != CAM_PRIVATE_IOCTL_CMD) {
+		CAM_ERR(CAM_SYNC, "Not a CAM_PRIVATE_IOCTL_CMD cmd:%d ", cmd);
 		return -ENOIOCTLCMD;
+	}
 
 	k_ioctl = *(struct cam_private_ioctl_arg *)arg;
 

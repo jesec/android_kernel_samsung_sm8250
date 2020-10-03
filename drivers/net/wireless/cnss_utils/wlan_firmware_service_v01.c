@@ -431,6 +431,32 @@ static struct qmi_elem_info wlfw_fw_version_info_s_v01_ei[] = {
 	},
 };
 
+static struct qmi_elem_info wlfw_host_ddr_range_s_v01_ei[] = {
+	{
+		.data_type      = QMI_UNSIGNED_8_BYTE,
+		.elem_len       = 1,
+		.elem_size      = sizeof(u64),
+		.array_type       = NO_ARRAY,
+		.tlv_type       = 0,
+		.offset         = offsetof(struct wlfw_host_ddr_range_s_v01,
+					   start),
+	},
+	{
+		.data_type      = QMI_UNSIGNED_8_BYTE,
+		.elem_len       = 1,
+		.elem_size      = sizeof(u64),
+		.array_type       = NO_ARRAY,
+		.tlv_type       = 0,
+		.offset         = offsetof(struct wlfw_host_ddr_range_s_v01,
+					   size),
+	},
+	{
+		.data_type      = QMI_EOTI,
+		.array_type       = NO_ARRAY,
+		.tlv_type       = QMI_COMMON_TLV_TYPE,
+	},
+};
+
 struct qmi_elem_info wlfw_ind_register_req_msg_v01_ei[] = {
 	{
 		.data_type      = QMI_OPT_FLAG,
@@ -2558,6 +2584,61 @@ struct qmi_elem_info wlfw_host_cap_req_msg_v01_ei[] = {
 		.tlv_type       = 0x1D,
 		.offset         = offsetof(struct wlfw_host_cap_req_msg_v01,
 					   cal_duration),
+	},
+	{
+		.data_type      = QMI_OPT_FLAG,
+		.elem_len       = 1,
+		.elem_size      = sizeof(u8),
+		.array_type       = NO_ARRAY,
+		.tlv_type       = 0x1E,
+		.offset         = offsetof(struct wlfw_host_cap_req_msg_v01,
+					   platform_name_valid),
+	},
+	{
+		.data_type      = QMI_STRING,
+		.elem_len       = QMI_WLFW_MAX_PLATFORM_NAME_LEN_V01 + 1,
+		.elem_size      = sizeof(char),
+		.array_type       = NO_ARRAY,
+		.tlv_type       = 0x1E,
+		.offset         = offsetof(struct wlfw_host_cap_req_msg_v01,
+					   platform_name),
+	},
+	{
+		.data_type      = QMI_OPT_FLAG,
+		.elem_len       = 1,
+		.elem_size      = sizeof(u8),
+		.array_type       = NO_ARRAY,
+		.tlv_type       = 0x1F,
+		.offset         = offsetof(struct wlfw_host_cap_req_msg_v01,
+					   ddr_range_valid),
+	},
+	{
+		.data_type      = QMI_STRUCT,
+		.elem_len       = QMI_WLFW_MAX_HOST_DDR_RANGE_SIZE_V01,
+		.elem_size      = sizeof(struct wlfw_host_ddr_range_s_v01),
+		.array_type       = STATIC_ARRAY,
+		.tlv_type       = 0x1F,
+		.offset         = offsetof(struct wlfw_host_cap_req_msg_v01,
+					   ddr_range),
+		.ei_array      = wlfw_host_ddr_range_s_v01_ei,
+	},
+	{
+		.data_type      = QMI_OPT_FLAG,
+		.elem_len       = 1,
+		.elem_size      = sizeof(u8),
+		.array_type       = NO_ARRAY,
+		.tlv_type       = 0x20,
+		.offset         = offsetof(struct wlfw_host_cap_req_msg_v01,
+					   host_build_type_valid),
+	},
+	{
+		.data_type      = QMI_SIGNED_4_BYTE_ENUM,
+		.elem_len       = 1,
+		.elem_size      = sizeof(enum wlfw_host_build_type_v01),
+		.array_type       = NO_ARRAY,
+		.tlv_type       = 0x20,
+		.offset         = offsetof(struct wlfw_host_cap_req_msg_v01,
+					   host_build_type),
 	},
 	{
 		.data_type      = QMI_EOTI,

@@ -58,6 +58,10 @@
 
 #define IPA_SUSPEND_BUSY_TIMEOUT (msecs_to_jiffies(10))
 
+#define DEFAULT_MPM_RING_SIZE_UL 6
+#define DEFAULT_MPM_RING_SIZE_DL 16
+#define DEFAULT_MPM_TETH_AGGR_SIZE 24
+#define DEFAULT_MPM_UC_THRESH_SIZE 4
 /*
  * The following for adding code (ie. for EMULATION) not found on x86.
  */
@@ -123,6 +127,7 @@ static DECLARE_WORK(ipa3_fw_loading_work, ipa3_load_ipa_fw);
 static void ipa_dec_clients_disable_clks_on_wq(struct work_struct *work);
 static DECLARE_DELAYED_WORK(ipa_dec_clients_disable_clks_on_wq_work,
 	ipa_dec_clients_disable_clks_on_wq);
+	
 
 static void ipa_inc_clients_enable_clks_on_wq(struct work_struct *work);
 static DECLARE_WORK(ipa_inc_clients_enable_clks_on_wq_work,
@@ -5960,7 +5965,7 @@ static int ipa3_post_init(const struct ipa3_plat_drv_res *resource_p,
 	gsi_props.rel_clk_cb = NULL;
 	gsi_props.clk_status_cb = ipa3_active_clks_status;
 	gsi_props.enable_clk_bug_on = ipa3_handle_gsi_differ_irq;
-
+ 
 	if (ipa3_ctx->ipa_config_is_mhi) {
 		gsi_props.mhi_er_id_limits_valid = true;
 		gsi_props.mhi_er_id_limits[0] = resource_p->mhi_evid_limits[0];
@@ -6559,6 +6564,12 @@ static int ipa3_pre_init(const struct ipa3_plat_drv_res *resource_p,
 	ipa3_ctx->do_ram_collection_on_crash =
 		resource_p->do_ram_collection_on_crash;
 	ipa3_ctx->lan_rx_napi_enable = resource_p->lan_rx_napi_enable;
+	ipa3_ctx->mpm_ring_size_ul_cache = DEFAULT_MPM_RING_SIZE_UL;
+	ipa3_ctx->mpm_ring_size_ul = DEFAULT_MPM_RING_SIZE_UL;
+	ipa3_ctx->mpm_ring_size_dl_cache = DEFAULT_MPM_RING_SIZE_DL;
+	ipa3_ctx->mpm_ring_size_dl = DEFAULT_MPM_RING_SIZE_DL;
+	ipa3_ctx->mpm_teth_aggr_size = DEFAULT_MPM_TETH_AGGR_SIZE;
+	ipa3_ctx->mpm_uc_thresh = DEFAULT_MPM_UC_THRESH_SIZE;
 
 	if (ipa3_ctx->secure_debug_check_action == USE_SCM) {
 		if (ipa_is_mem_dump_allowed())
@@ -8704,3 +8715,17 @@ module_param(emulation_type, uint, 0000);
 MODULE_PARM_DESC(
 	emulation_type,
 	"emulation_type=N N can be 13 for IPA 3.5.1, 14 for IPA 4.0, 17 for IPA 4.5");
+
+#if defined(CONFIG_RMNET_ARGOS)
+void ipa3_set_napi_chained_rx(bool enable)
+{
+	if (!ipa3_ctx)
+		return;
+
+	if (enable && !ipa3_ctx->enable_napi_chain)
+		ipa3_ctx->enable_napi_chain = 1;
+	else if (!enable && ipa3_ctx->enable_napi_chain)
+		ipa3_ctx->enable_napi_chain = 0;
+}
+EXPORT_SYMBOL(ipa3_set_napi_chained_rx);
+#endif

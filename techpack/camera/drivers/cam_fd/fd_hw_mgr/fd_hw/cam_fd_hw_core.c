@@ -681,6 +681,8 @@ int cam_fd_hw_init(void *hw_priv, void *init_hw_args, uint32_t arg_size)
 
 	cam_fd_hw_util_enable_power_on_settings(fd_hw);
 
+	init_args->reset_hw = true;
+
 cdm_streamon:
 	fd_hw->open_count++;
 	CAM_DBG(CAM_FD, "FD HW Init ref count after %d", fd_hw->open_count);

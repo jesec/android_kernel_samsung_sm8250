@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2016-2019, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2016-2020, The Linux Foundation. All rights reserved.
  */
 
 #include <asm/cacheflush.h>
@@ -13,8 +13,15 @@
 #include "kgsl_pool.h"
 #include "kgsl_sharedmem.h"
 
+#ifdef CONFIG_HUGEPAGE_POOL
+#include <linux/hugepage_pool.h>
+#define KGSL_MAX_POOLS 5
+#define KGSL_MAX_POOL_ORDER 9
+#else
 #define KGSL_MAX_POOLS 4
 #define KGSL_MAX_POOL_ORDER 8
+#endif
+
 #define KGSL_MAX_RESERVED_PAGES 4096
 
 /**
@@ -48,6 +55,12 @@ static struct kgsl_page_pool *
 _kgsl_get_pool_from_order(unsigned int order)
 {
 	int i;
+
+#ifdef CONFIG_HUGEPAGE_POOL
+	if (order == HUGEPAGE_ORDER &&
+	    !is_hugepage_allowed(current, order, false, HPAGE_GPU))
+		return NULL;
+#endif
 
 	for (i = 0; i < kgsl_num_pools; i++) {
 		if (kgsl_pools[i].pool_order == order)
@@ -389,7 +402,15 @@ int kgsl_pool_alloc_page(int *page_size, struct page **pages,
 			goto eagain;
 		}
 
+#ifdef CONFIG_HUGEPAGE_POOL
+		if (order == HUGEPAGE_ORDER)
+			page = alloc_zeroed_hugepage(gfp_mask, order, false,
+						     HPAGE_GPU);
+		else
+			page = alloc_pages(gfp_mask, order);
+#else
 		page = alloc_pages(gfp_mask, order);
+#endif
 
 		if (!page) {
 			if (pool_idx > 0) {
@@ -508,9 +529,6 @@ static unsigned long
 kgsl_pool_shrink_count_objects(struct shrinker *shrinker,
 					struct shrink_control *sc)
 {
-	/* Trigger mem_workqueue flush to free memory */
-	kgsl_schedule_work(&kgsl_driver.mem_work);
-
 	/* Return total pool size as everything in pool can be freed */
 	return kgsl_pool_size_total();
 }

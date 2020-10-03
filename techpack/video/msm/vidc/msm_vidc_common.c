@@ -1334,6 +1334,11 @@ static int wait_for_sess_signal_receipt(struct msm_vidc_inst *inst,
 	if (!rc) {
 		s_vpr_e(inst->sid, "Wait interrupted or timed out: %d\n",
 				SESSION_MSG_INDEX(cmd));
+		rc = call_hfi_op(hdev, core_ping, hdev->hfi_device_data, inst->sid);
+		rc = wait_for_completion_timeout(
+				&inst->completions[SYS_MSG_INDEX(HAL_SYS_PING_ACK)],
+				msecs_to_jiffies(
+				inst->core->resources.msm_vidc_hw_rsp_timeout));
 		msm_comm_kill_session(inst);
 		rc = -EIO;
 	} else {
@@ -1942,6 +1947,28 @@ static void handle_stop_done(enum hal_command_response cmd, void *data)
 	put_inst(inst);
 }
 
+static void handle_ping_done(enum hal_command_response cmd, void *data)
+{
+	struct msm_vidc_cb_cmd_done *response = data;
+	struct msm_vidc_inst *inst;
+
+	if (!response) {
+		d_vpr_e("Failed to get valid response for stop\n");
+		return;
+	}
+
+	inst = get_inst(get_vidc_core(response->device_id),
+			response->inst_id);
+	if (!inst) {
+		d_vpr_e("Got a response for an inactive session\n");
+		return;
+	}
+
+	s_vpr_l(inst->sid, "handled: SYS_PING_DONE\n");
+	complete(&inst->completions[SYS_MSG_INDEX(HAL_SYS_PING_ACK)]);
+	put_inst(inst);
+}
+
 static void handle_release_res_done(enum hal_command_response cmd, void *data)
 {
 	struct msm_vidc_cb_cmd_done *response = data;
@@ -1968,9 +1995,19 @@ void msm_comm_validate_output_buffers(struct msm_vidc_inst *inst)
 {
 	struct internal_buf *binfo;
 	u32 buffers_owned_by_driver = 0;
-	struct msm_vidc_format *fmt;
+	struct hal_buffer_requirements *dpb = NULL;
+	u32 i;
 
-	fmt = &inst->fmts[OUTPUT_PORT];
+	for (i = 0; i < HAL_BUFFER_MAX; i++) {
+		if (inst->buff_req.buffer[i].buffer_type == HAL_BUFFER_OUTPUT) {
+			dpb = &inst->buff_req.buffer[i];
+			break;
+		}
+	}
+	if (!dpb) {
+		s_vpr_e(inst->sid, "Couldn't retrieve dpb buf req\n");
+		return;
+	}
 
 	mutex_lock(&inst->outputbufs.lock);
 	if (list_empty(&inst->outputbufs.list)) {
@@ -1989,11 +2026,10 @@ void msm_comm_validate_output_buffers(struct msm_vidc_inst *inst)
 	}
 	mutex_unlock(&inst->outputbufs.lock);
 
-	/* Only minimum number of DPBs are allocated */
-	if (buffers_owned_by_driver != fmt->count_min) {
+	if (buffers_owned_by_driver != dpb->buffer_count_actual) {
 		s_vpr_e(inst->sid, "OUTPUT Buffer count mismatch %d of %d\n",
 			buffers_owned_by_driver,
-			fmt->count_min);
+			dpb->buffer_count_actual);
 		msm_vidc_handle_hw_error(inst->core);
 	}
 }
@@ -2734,6 +2770,9 @@ void handle_cmd_response(enum hal_command_response cmd, void *data)
 	case HAL_SESSION_ABORT_DONE:
 		handle_session_close(cmd, data);
 		break;
+	case HAL_SYS_PING_ACK:
+		handle_ping_done(cmd, data);
+		break;
 	case HAL_SESSION_EVENT_CHANGE:
 		handle_event_change(cmd, data);
 		break;
@@ -3247,6 +3286,7 @@ int msm_comm_update_dpb_bufreqs(struct msm_vidc_inst *inst)
 
 	fmt = &inst->fmts[OUTPUT_PORT];
 	/* For DPB buffers, Always use min count */
+	req->buffer_count_min = req->buffer_count_min_host =
 	req->buffer_count_actual = fmt->count_min;
 
 	hfi_fmt = msm_comm_convert_color_fmt(inst->clk_data.dpb_fourcc,

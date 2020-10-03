@@ -21,6 +21,11 @@
 
 #include "sde_hdcp_2x.h"
 
+#ifdef CONFIG_SEC_DISPLAYPORT
+#include <linux/secdp_logger.h>
+#include "dp/secdp.h"
+#endif
+
 /* all message IDs */
 #define INVALID_MESSAGE        0
 #define AKE_INIT               2

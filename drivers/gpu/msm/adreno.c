@@ -28,6 +28,10 @@
 /* Include the master list of GPU cores that are supported */
 #include "adreno-gpulist.h"
 
+#if defined(CONFIG_SEC_ABC)
+#include <linux/sti/abc_common.h>
+#endif
+
 static void adreno_input_work(struct work_struct *work);
 static unsigned int counter_delta(struct kgsl_device *device,
 	unsigned int reg, unsigned int *counter);
@@ -339,6 +343,7 @@ void adreno_fault_detect_stop(struct adreno_device *adreno_dev)
 /* Send an NMI to the GMU */
 void adreno_gmu_send_nmi(struct adreno_device *adreno_dev)
 {
+	u32 val;
 	/* Mask so there's no interrupt caused by NMI */
 	adreno_write_gmureg(adreno_dev,
 			ADRENO_REG_GMU_GMU2HOST_INTR_MASK, 0xFFFFFFFF);
@@ -348,9 +353,10 @@ void adreno_gmu_send_nmi(struct adreno_device *adreno_dev)
 	if (ADRENO_QUIRK(adreno_dev, ADRENO_QUIRK_HFI_USE_REG))
 		adreno_write_gmureg(adreno_dev,
 				ADRENO_REG_GMU_NMI_CONTROL_STATUS, 0);
-	adreno_write_gmureg(adreno_dev,
-			ADRENO_REG_GMU_CM3_CFG,
-			(1 << GMU_CM3_CFG_NONMASKINTR_SHIFT));
+
+	adreno_read_gmureg(adreno_dev, ADRENO_REG_GMU_CM3_CFG, &val);
+	val |= 1 << GMU_CM3_CFG_NONMASKINTR_SHIFT;
+	adreno_write_gmureg(adreno_dev, ADRENO_REG_GMU_CM3_CFG, val);
 
 	/* Make sure the NMI is invoked before we proceed*/
 	wmb();
@@ -557,6 +563,9 @@ void adreno_hang_int_callback(struct adreno_device *adreno_dev, int bit)
 {
 	dev_crit_ratelimited(KGSL_DEVICE(adreno_dev)->dev,
 				"MISC: GPU hang detected\n");
+#if defined(CONFIG_SEC_ABC)
+        sec_abc_send_event("MODULE=gpu_qc@ERROR=gpu_fault");
+#endif
 	adreno_irqctrl(adreno_dev, 0);
 
 	/* Trigger a fault in the dispatcher - this will effect a restart */
@@ -647,6 +656,7 @@ static irqreturn_t adreno_irq_handler(struct kgsl_device *device)
 	}
 
 	adreno_readreg(adreno_dev, ADRENO_REG_RBBM_INT_0_STATUS, &status);
+	gpudev->rbbm_status = status;
 
 	/*
 	 * Clear all the interrupt bits but ADRENO_INT_RBBM_AHB_ERROR. Because
@@ -1426,6 +1436,9 @@ static int adreno_probe(struct platform_device *pdev)
 	 */
 	if (adreno_support_64bit(adreno_dev))
 		device->mmu.features |= KGSL_MMU_64BIT;
+
+	if (adreno_is_a6xx(adreno_dev))
+		device->mmu.features |= KGSL_MMU_SMMU_APERTURE;
 
 	device->pwrctrl.bus_width = adreno_dev->gpucore->bus_width;
 
@@ -3034,7 +3047,7 @@ void adreno_spin_idle_debug(struct adreno_device *adreno_dev,
 	unsigned int status, status3, intstatus;
 	unsigned int hwfault;
 
-	dev_err(device->dev, str);
+	dev_err(device->dev, "%s", str);
 
 	adreno_readreg(adreno_dev, ADRENO_REG_CP_RB_RPTR, &rptr);
 	adreno_readreg(adreno_dev, ADRENO_REG_CP_RB_WPTR, &wptr);

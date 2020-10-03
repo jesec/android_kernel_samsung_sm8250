@@ -362,6 +362,9 @@ static struct cam_ife_csid_common_reg_offset
 	.crop_shift                                   = 16,
 	.ipp_irq_mask_all                             = 0x7FFF,
 	.rdi_irq_mask_all                             = 0x7FFF,
+#if defined(CONFIG_SAMSUNG_SBI)
+	.udi_irq_mask_all                             = 0x7FFF,
+#endif
 	.ppp_irq_mask_all                             = 0xFFFF,
 	.measure_en_hbi_vbi_cnt_mask                  = 0xC,
 	.format_measure_en_val                        = 1,

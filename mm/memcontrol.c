@@ -207,7 +207,11 @@ static struct move_charge_struct {
  * Maximum loops in mem_cgroup_hierarchical_reclaim(), used for soft
  * limit reclaim to prevent infinite loops, if they ever occur.
  */
+#ifdef CONFIG_MEMCG_HEIMDALL
+#define	MEM_CGROUP_MAX_RECLAIM_LOOPS		10
+#else
 #define	MEM_CGROUP_MAX_RECLAIM_LOOPS		100
+#endif
 #define	MEM_CGROUP_MAX_SOFT_LIMIT_RECLAIM_LOOPS	2
 
 enum charge_type {
@@ -2842,6 +2846,11 @@ unsigned long mem_cgroup_soft_limit_reclaim(pg_data_t *pgdat, int order,
 	if (order > 0)
 		return 0;
 
+#ifdef CONFIG_MEMCG_HEIMDALL
+	if (!current_is_kswapd())
+		return 0;
+#endif
+
 	mctz = soft_limit_tree_node(pgdat->node_id);
 
 	/*
@@ -3526,7 +3535,17 @@ static int memcg_stat_show(struct seq_file *m, void *v)
 
 	return 0;
 }
+static u64 mem_cgroup_vmpressure_read(struct cgroup_subsys_state *css,
+				      struct cftype *cft)
+{
+	struct mem_cgroup *memcg = mem_cgroup_from_css(css);
+	struct vmpressure *vmpr = memcg_to_vmpressure(memcg);
+	unsigned long vmpressure;
 
+	vmpressure = vmpr->pressure;
+
+	return vmpressure;
+}
 static u64 mem_cgroup_swappiness_read(struct cgroup_subsys_state *css,
 				      struct cftype *cft)
 {
@@ -4290,6 +4309,10 @@ static struct cftype mem_cgroup_legacy_files[] = {
 	},
 	{
 		.name = "pressure_level",
+	},
+	{
+		.name = "vmpressure",
+		.read_u64 = mem_cgroup_vmpressure_read,
 	},
 #ifdef CONFIG_NUMA
 	{

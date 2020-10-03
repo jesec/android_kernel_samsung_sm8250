@@ -378,6 +378,17 @@ struct cam_sensor_acquire_dev {
 } __attribute__((packed));
 
 /**
+ * cam_sensor_release_dev : Updates sensor acuire cmd
+ * @session_handle :    Session handle for acquiring device
+ * @device_handle  :    Updates device handle
+ *
+ */
+struct cam_sensor_release_dev {
+	uint32_t    session_handle;
+	uint32_t    device_handle;
+} __attribute__((packed));
+
+/**
  * cam_sensor_streamon_dev : StreamOn command for the sensor
  * @session_handle :    Session handle for acquiring device
  * @device_handle  :    Updates device handle

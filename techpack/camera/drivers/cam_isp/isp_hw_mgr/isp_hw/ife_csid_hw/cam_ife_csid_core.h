@@ -367,11 +367,14 @@ struct cam_ife_csid_common_reg_offset {
 	uint32_t ipp_irq_mask_all;
 	uint32_t rdi_irq_mask_all;
 	uint32_t ppp_irq_mask_all;
-	uint32_t udi_irq_mask_all;
 	uint32_t measure_en_hbi_vbi_cnt_mask;
 	uint32_t format_measure_en_val;
 	uint32_t num_bytes_out_shift_val;
+#if defined(CONFIG_SAMSUNG_SBI)
+	uint32_t udi_irq_mask_all;
+#endif
 };
+
 
 /**
  * struct cam_ife_csid_reg_offset- CSID instance register info
@@ -392,6 +395,7 @@ struct cam_ife_csid_reg_offset {
 	const struct cam_ife_csid_rdi_reg_offset *rdi_reg[CAM_IFE_CSID_RDI_MAX];
 	const struct cam_ife_csid_udi_reg_offset *udi_reg[CAM_IFE_CSID_UDI_MAX];
 	const struct cam_ife_csid_csi2_tpg_reg_offset *tpg_reg;
+	struct cam_isp_resource_node     udi_res[CAM_IFE_CSID_UDI_MAX];
 };
 
 
@@ -452,6 +456,7 @@ struct cam_ife_csid_tpg_cfg  {
  * @cnt:              Cid resource reference count.
  * @tpg_set:          Tpg used for this cid resource
  * @is_valid_vc1_dt1: Valid vc1 and dt1
+ * @init_cnt          cid resource init count
  *
  */
 struct cam_ife_csid_cid_data {
@@ -462,6 +467,7 @@ struct cam_ife_csid_cid_data {
 	uint32_t                     cnt;
 	uint32_t                     tpg_set;
 	uint32_t                     is_valid_vc1_dt1;
+	uint32_t                     init_cnt;
 };
 
 
@@ -545,6 +551,7 @@ struct cam_ife_csid_path_cfg {
  * @clk_rate                  Clock rate
  * @sof_irq_triggered:        Flag is set on receiving event to enable sof irq
  *                            incase of SOF freeze.
+ * @is_resetting:             informs whether reset is started or not.
  * @irq_debug_cnt:            Counter to track sof irq's when above flag is set.
  * @error_irq_count           Error IRQ count, if continuous error irq comes
  *                            need to stop the CSID and mask interrupts.
@@ -553,6 +560,7 @@ struct cam_ife_csid_path_cfg {
  *
  * @first_sof_ts              first bootime stamp at the start
  * @prev_qtimer_ts            stores csid timestamp
+ * @cust_node                 indicates csid is for custom
  */
 struct cam_ife_csid_hw {
 	struct cam_hw_intf              *hw_intf;
@@ -578,6 +586,7 @@ struct cam_ife_csid_hw {
 	uint64_t                         csid_debug;
 	uint64_t                         clk_rate;
 	bool                             sof_irq_triggered;
+	bool                             is_resetting;
 	uint32_t                         irq_debug_cnt;
 	uint32_t                         error_irq_count;
 	uint32_t                         device_enabled;
@@ -586,15 +595,26 @@ struct cam_ife_csid_hw {
 	uint32_t                         binning_supported;
 	uint64_t                         prev_boot_timestamp;
 	uint64_t                         prev_qtimer_ts;
+	bool                             cust_node;
 };
 
+#if defined(CONFIG_SAMSUNG_SBI)
 int cam_ife_csid_hw_probe_init(struct cam_hw_intf  *csid_hw_intf,
 	uint32_t csid_idx, bool is_custom);
-
-int cam_ife_csid_hw_deinit(struct cam_ife_csid_hw *ife_csid_hw);
-
 int cam_ife_csid_cid_reserve(struct cam_ife_csid_hw *csid_hw,
 	struct cam_csid_hw_reserve_resource_args  *cid_reserv);
+
+int cam_ife_csid_path_reserve(struct cam_ife_csid_hw *csid_hw,
+	struct cam_csid_hw_reserve_resource_args  *reserve);
+#else
+int cam_ife_csid_hw_probe_init(struct cam_hw_intf  *csid_hw_intf,
+	uint32_t csid_idx);
+int cam_ife_csid_cid_reserve(
+	struct cam_ife_csid_hw *csid_hw,
+	struct cam_csid_hw_reserve_resource_args *cid_reserv);
+#endif
+
+int cam_ife_csid_hw_deinit(struct cam_ife_csid_hw *ife_csid_hw);
 
 int cam_ife_csid_path_reserve(struct cam_ife_csid_hw *csid_hw,
 	struct cam_csid_hw_reserve_resource_args  *reserve);

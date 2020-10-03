@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2002,2007-2019, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2002,2007-2020, The Linux Foundation. All rights reserved.
  */
 
 #include <asm/cacheflush.h>
@@ -889,7 +889,6 @@ kgsl_sharedmem_page_alloc_user(struct kgsl_memdesc *memdesc,
 	unsigned int pcount = 0;
 	size_t len;
 	unsigned int align;
-	bool memwq_flush_done = false;
 
 	static DEFINE_RATELIMIT_STATE(_rs,
 					DEFAULT_RATELIMIT_INTERVAL,
@@ -901,6 +900,21 @@ kgsl_sharedmem_page_alloc_user(struct kgsl_memdesc *memdesc,
 
 	align = (memdesc->flags & KGSL_MEMALIGN_MASK) >> KGSL_MEMALIGN_SHIFT;
 
+#ifdef CONFIG_HUGEPAGE_POOL
+	/*
+	 * As 2MB is the max supported page size, use the alignment
+	 * corresponding to 2MB page to make sure higher order pages
+	 * are used if possible for a given memory size. Also, we
+	 * don't need to update alignment in memdesc flags in case
+	 * higher order page is used, as memdesc flags represent the
+	 * virtual alignment specified by the user which is anyways
+	 * getting satisfied.
+	 */
+	if (align < ilog2(SZ_2M))
+		align = ilog2(SZ_2M);
+
+	page_size = kgsl_get_page_size(size, align);
+#else
 	/*
 	 * As 1MB is the max supported page size, use the alignment
 	 * corresponding to 1MB page to make sure higher order pages
@@ -914,6 +928,7 @@ kgsl_sharedmem_page_alloc_user(struct kgsl_memdesc *memdesc,
 		align = ilog2(SZ_1M);
 
 	page_size = kgsl_get_page_size(size, align);
+#endif
 
 	/*
 	 * The alignment cannot be less than the intended page size - it can be
@@ -964,13 +979,6 @@ kgsl_sharedmem_page_alloc_user(struct kgsl_memdesc *memdesc,
 		if (page_count <= 0) {
 			if (page_count == -EAGAIN)
 				continue;
-
-			/* if OoM, retry once after flushing mem_wq */
-			if (page_count == -ENOMEM && !memwq_flush_done) {
-				flush_workqueue(kgsl_driver.mem_workqueue);
-				memwq_flush_done = true;
-				continue;
-			}
 
 			/*
 			 * Update sglen and memdesc size,as requested allocation

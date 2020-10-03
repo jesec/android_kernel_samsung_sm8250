@@ -31,6 +31,7 @@
 #include <linux/pci.h>
 #include <linux/scatterlist.h>
 #include <linux/vmalloc.h>
+#include <linux/msm_dma_iommu_mapping.h>
 
 #define IOMMU_MAPPING_ERROR	0
 
@@ -317,31 +318,6 @@ int iommu_dma_init_domain(struct iommu_domain *domain, dma_addr_t base,
 EXPORT_SYMBOL(iommu_dma_init_domain);
 
 /*
- * Should be called prior to using dma-apis
- */
-int iommu_dma_reserve_iova(struct device *dev, dma_addr_t base,
-			   u64 size)
-{
-	struct iommu_domain *domain;
-	struct iova_domain *iovad;
-	unsigned long pfn_lo, pfn_hi;
-
-	domain = iommu_get_domain_for_dev(dev);
-	if (!domain || !domain->iova_cookie)
-		return -EINVAL;
-
-	iovad = &((struct iommu_dma_cookie *)domain->iova_cookie)->iovad;
-
-	/* iova will be freed automatically by put_iova_domain() */
-	pfn_lo = iova_pfn(iovad, base);
-	pfn_hi = iova_pfn(iovad, base + size - 1);
-	if (!reserve_iova(iovad, pfn_lo, pfn_hi))
-		return -EINVAL;
-
-	return 0;
-}
-
-/*
  * Should be called prior to using dma-apis.
  */
 int iommu_dma_enable_best_fit_algo(struct device *dev)
@@ -357,6 +333,7 @@ int iommu_dma_enable_best_fit_algo(struct device *dev)
 	iovad->best_fit = true;
 	return 0;
 }
+EXPORT_SYMBOL(iommu_dma_enable_best_fit_algo);
 
 /**
  * dma_info_to_prot - Translate DMA API directions and attributes to IOMMU API
@@ -856,15 +833,21 @@ int iommu_dma_map_sg(struct device *dev, struct scatterlist *sg,
 	iova_len = iommu_dma_prepare_map_sg(dev, iovad, sg, nents);
 
 	iova = iommu_dma_alloc_iova(domain, iova_len, dma_get_mask(dev), dev);
-	if (!iova)
+	if (!iova) {
+		pr_err("DEBUG: Alloc iova failed for len 0x%zx\n", iova_len);
+		msm_dma_debug_count_buffers(dev);
 		goto out_restore_sg;
+	}
 
 	/*
 	 * We'll leave any physical concatenation to the IOMMU driver's
 	 * implementation - it knows better than we do.
 	 */
-	if (iommu_map_sg(domain, iova, sg, nents, prot) < iova_len)
+	if (iommu_map_sg(domain, iova, sg, nents, prot) < iova_len) {
+		pr_err("DEBUG: Map failed for DMAADDR=0x%pad\n", iova);
+		msm_dma_debug_count_buffers(dev);
 		goto out_free_iova;
+	}
 
 	return iommu_dma_finalise_sg(dev, sg, nents, iova);
 

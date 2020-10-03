@@ -16,6 +16,10 @@
 #include "mhi_internal.h"
 
 static void mhi_special_events_pending(struct mhi_controller *mhi_cntrl);
+#ifdef CONFIG_SEC_DEBUG_MDM_FILE_INFO
+#include <linux/sec_debug.h>
+static char mdmerr_info[128]; /* sec_debug_summary_data_apss */
+#endif
 
 /*
  * Not all MHI states transitions are sync transitions. Linkdown, SSR, and
@@ -251,6 +255,17 @@ int mhi_ready_state_transition(struct mhi_controller *mhi_cntrl)
 	struct mhi_event *mhi_event;
 	enum MHI_PM_STATE cur_state;
 	int ret, i;
+
+#ifdef CONFIG_SEC_DEBUG_MDM_FILE_INFO
+	if (mhi_cntrl->name && 
+		!strncmp("esoc0", mhi_cntrl->name, sizeof("esoc0"))) {
+		snprintf(mdmerr_info, sizeof(mdmerr_info),
+					"%x\n", mhi_cntrl->session_id);
+		sec_set_mdm_summary_info(mdmerr_info);
+
+		MHI_ERR("MDM session ID : %s\n", mdmerr_info);
+	}
+#endif
 
 	MHI_LOG("Waiting to enter READY state\n");
 
@@ -526,6 +541,7 @@ static int mhi_pm_mission_mode_transition(struct mhi_controller *mhi_cntrl)
 
 	/* setup support for additional features */
 	mhi_init_sfr(mhi_cntrl);
+	
 
 	if (MHI_REG_ACCESS_VALID(mhi_cntrl->pm_state))
 		mhi_timesync_log(mhi_cntrl);
@@ -603,7 +619,13 @@ static void mhi_pm_disable_transition(struct mhi_controller *mhi_cntrl,
 	/* trigger MHI RESET so device will not access host ddr */
 	if (MHI_REG_ACCESS_VALID(prev_state)) {
 		u32 in_reset = -1;
-		unsigned long timeout = msecs_to_jiffies(mhi_cntrl->timeout_ms);
+		/* MHI_RESET always timed-out, give 500 msec for graceful reset */
+		unsigned long timeout = msecs_to_jiffies(500);
+		
+		if (system_state == SYSTEM_POWER_OFF) {
+			MHI_ERR("Do not Trigger device MHI_RESET, late shutdown\n"); 
+			goto tsklet_kill;
+		}
 
 		MHI_LOG("Trigger device into MHI_RESET\n");
 		mhi_set_mhi_state(mhi_cntrl, MHI_STATE_RESET);
@@ -628,6 +650,7 @@ static void mhi_pm_disable_transition(struct mhi_controller *mhi_cntrl,
 		mhi_cntrl->write_reg(mhi_cntrl, mhi_cntrl->bhi, BHI_INTVEC, 0);
 	}
 
+tsklet_kill:
 	MHI_LOG("Waiting for all pending event ring processing to complete\n");
 	mhi_event = mhi_cntrl->mhi_event;
 	for (i = 0; i < mhi_cntrl->total_ev_rings; i++, mhi_event++) {
@@ -936,6 +959,12 @@ int mhi_async_power_up(struct mhi_controller *mhi_cntrl)
 		goto error_bhi_offset;
 	}
 
+	if (val >= mhi_cntrl->len) {
+               write_unlock_irq(&mhi_cntrl->pm_lock);
+               MHI_ERR("Invalid bhi offset:%x\n", val);
+               goto error_bhi_offset;
+    }
+
 	mhi_cntrl->bhi = mhi_cntrl->regs + val;
 
 	/* setup bhie offset if not set */
@@ -946,6 +975,11 @@ int mhi_async_power_up(struct mhi_controller *mhi_cntrl)
 			MHI_ERR("Error getting bhie offset\n");
 			goto error_bhi_offset;
 		}
+        if (val >= mhi_cntrl->len) {
+                write_unlock_irq(&mhi_cntrl->pm_lock);
+                MHI_ERR("Invalid bhie offset:%x\n", val);
+                goto error_bhi_offset;
+        }
 
 		mhi_cntrl->bhie = mhi_cntrl->regs + val;
 	}
@@ -1009,6 +1043,19 @@ void mhi_control_error(struct mhi_controller *mhi_cntrl)
 		pr_err("mhi: %s sfr: %s\n", mhi_cntrl->name,
 		       sfr_info->buf_addr);
 	}
+
+#ifdef CONFIG_SEC_DEBUG_MDM_FILE_INFO
+	if (mhi_cntrl->name && 
+		!strncmp("esoc0", mhi_cntrl->name, sizeof("esoc0"))) {
+		snprintf(mdmerr_info, sizeof(mdmerr_info),
+					"%x, Failure reason: %s\n",
+					mhi_cntrl->session_id,
+					mhi_get_restart_reason(mhi_cntrl->name));
+		sec_set_mdm_summary_info(mdmerr_info);
+
+		MHI_ERR("MDM session ID : %s\n", mdmerr_info);
+	}
+#endif
 
 	/* link is not down if device is in RDDM */
 	transition_state = (mhi_cntrl->ee == MHI_EE_RDDM) ?

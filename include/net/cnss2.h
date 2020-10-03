@@ -21,7 +21,8 @@ enum cnss_bus_width_type {
 	CNSS_BUS_WIDTH_LOW,
 	CNSS_BUS_WIDTH_MEDIUM,
 	CNSS_BUS_WIDTH_HIGH,
-	CNSS_BUS_WIDTH_VERY_HIGH
+	CNSS_BUS_WIDTH_VERY_HIGH,
+	CNSS_BUS_WIDTH_LOW_LATENCY
 };
 
 enum cnss_platform_cap_flag {
@@ -67,6 +68,25 @@ struct cnss_wlan_runtime_ops {
 	int (*runtime_resume)(struct pci_dev *pdev);
 };
 
+enum cnss_driver_status {
+	CNSS_UNINITIALIZED,
+	CNSS_INITIALIZED,
+	CNSS_LOAD_UNLOAD,
+	CNSS_RECOVERY,
+	CNSS_FW_DOWN,
+	CNSS_HANG_EVENT,
+};
+
+struct cnss_hang_event {
+	void *hang_event_data;
+	u16 hang_event_data_len;
+};
+
+struct cnss_uevent_data {
+	enum cnss_driver_status status;
+	void *data;
+};
+
 struct cnss_wlan_driver {
 	char *name;
 	int  (*probe)(struct pci_dev *pdev, const struct pci_device_id *id);
@@ -83,16 +103,10 @@ struct cnss_wlan_driver {
 	int  (*resume_noirq)(struct pci_dev *pdev);
 	void (*modem_status)(struct pci_dev *pdev, int state);
 	void (*update_status)(struct pci_dev *pdev, uint32_t status);
+	int  (*update_event)(struct pci_dev *pdev,
+			     struct cnss_uevent_data *uevent);
 	struct cnss_wlan_runtime_ops *runtime_ops;
 	const struct pci_device_id *id_table;
-};
-
-enum cnss_driver_status {
-	CNSS_UNINITIALIZED,
-	CNSS_INITIALIZED,
-	CNSS_LOAD_UNLOAD,
-	CNSS_RECOVERY,
-	CNSS_FW_DOWN,
 };
 
 struct cnss_ce_tgt_pipe_cfg {
@@ -222,5 +236,8 @@ extern int cnss_athdiag_write(struct device *dev, uint32_t offset,
 			      uint32_t mem_type, uint32_t data_len,
 			      uint8_t *input);
 extern int cnss_set_fw_log_mode(struct device *dev, uint8_t fw_log_mode);
+
+extern int cnss_sysfs_get_pm_info(void);
+extern void cnss_sysfs_update_driver_status(int32_t new_status, void *version, void *softap);
 
 #endif /* _NET_CNSS2_H */

@@ -331,9 +331,6 @@ static int dsi_phy_settings_init(struct platform_device *pdev,
 			"qcom,dsi-phy-regulator-min-datarate-bps",
 			&phy->regulator_min_datarate_bps);
 
-	phy->cfg.force_clk_lane_hs = of_property_read_bool(pdev->dev.of_node,
-			"qcom,panel-force-clock-lane-hs");
-
 	return 0;
 err:
 	lane->count_per_lane = 0;
@@ -1272,6 +1269,19 @@ void dsi_phy_set_continuous_clk(struct msm_dsi_phy *phy, bool enable)
 	mutex_unlock(&phy->phy_lock);
 
 }
+
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+void dsi_phy_store_str(struct msm_dsi_phy *phy, u32 *val)
+{
+	if (phy->hw.ops.store_str)
+		phy->hw.ops.store_str(&phy->hw, val);
+}
+void dsi_phy_store_emphasis(struct msm_dsi_phy *phy, u32 *val)
+{
+	if (phy->hw.ops.store_emphasis)
+		phy->hw.ops.store_emphasis(&phy->hw, val);
+}
+#endif
 
 void dsi_phy_drv_register(void)
 {
