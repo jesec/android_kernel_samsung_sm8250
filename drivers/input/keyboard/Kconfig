@@ -241,8 +241,7 @@ config WACOM_HALL
 	  Enable WACOM Hall Feature
 
 config WACOM_HALL_SUPPORT_COVER_DETECT
-	tristate "WACOM HALL SUPPORTING COVER DETECTION"
-	bool "WACOM HALL which also can detect cover attachment"
+	tristate "WACOM HALL which also can detect cover attachment"
 	default n
 	help
 	  Enable input event report in WACOM Hall IC driver
