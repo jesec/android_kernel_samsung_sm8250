@@ -2,7 +2,7 @@
 /*
  * QTI CE device driver.
  *
- * Copyright (c) 2010-2019, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2010-2020, The Linux Foundation. All rights reserved.
  */
 
 #include <linux/mman.h>
