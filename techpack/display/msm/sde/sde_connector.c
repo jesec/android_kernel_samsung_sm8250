@@ -2191,6 +2191,7 @@ static int sde_connector_atomic_check(struct drm_connector *connector,
 					CONNECTOR_PROP_QSYNC_MODE);
 
 	SDE_DEBUG("has_modeset %d qsync_dirty %d\n", has_modeset, qsync_dirty);
+	SDE_EVT32(connector->base.id, has_modeset, has_modeset);
 	if (has_modeset && qsync_dirty) {
 		SDE_ERROR("invalid qsync update during modeset\n");
 		return -EINVAL;

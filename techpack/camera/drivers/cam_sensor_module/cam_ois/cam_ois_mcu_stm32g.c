@@ -2213,7 +2213,7 @@ int cam_ois_shift_calibration(struct cam_ois_ctrl_t *o_ctrl, uint16_t af_positio
 		if (rc < 0)
 			CAM_ERR(CAM_OIS, "write module#1 ois shift calibration error");
 	}
-#if !(defined(CONFIG_SEC_Z3Q_PROJECT) || defined(CONFIG_SEC_C2Q_PROJECT) || defined(CONFIG_SEC_R8Q_PROJECT))
+#if !(defined(CONFIG_SEC_Z3Q_PROJECT) || defined(CONFIG_SEC_C2Q_PROJECT))
 	else if (subdev_id == 2) {
 		CAM_DBG(CAM_OIS, "write for TELE %d", subdev_id);
 

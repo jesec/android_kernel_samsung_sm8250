@@ -61,6 +61,7 @@ static struct device_attribute ccic_attributes[] = {
 	CCIC_SYSFS_ATTR(sbu_adc),
 	CCIC_SYSFS_ATTR(vsafe0v_status),
 	CCIC_SYSFS_ATTR(ovp_ic_shutdown),
+	CCIC_SYSFS_ATTR(hmd_power),
 };
 
 static ssize_t ccic_sysfs_show_property(struct device *dev,

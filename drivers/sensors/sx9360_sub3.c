@@ -141,6 +141,11 @@ struct sx9360_p {
 	char hall_ic_fold[2];
 	bool hall_ic_fold_status;
 #endif
+#if !defined(CONFIG_SEC_FACTORY) && defined(CONFIG_SUPPORT_MCC_THRESHOLD_CHANGE)
+	int mcc;
+	u8 default_threshold;
+	u8 mcc_threshold;
+#endif
 };
 
 static int sx9360_check_hallic_state(char *file_path, char hall_ic_status[], int size)
@@ -977,6 +982,52 @@ static ssize_t sx9360_onoff_store(struct device *dev,
 	return count;
 }
 
+#if !defined(CONFIG_SEC_FACTORY) && defined(CONFIG_SUPPORT_MCC_THRESHOLD_CHANGE)
+static ssize_t sx9360_mcc_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t count)
+{
+	int ret, mcc;
+	u8 threshold;
+	struct sx9360_p *data = dev_get_drvdata(dev);
+
+	ret = kstrtoint(buf, 10, &mcc);
+	if (ret) {
+		pr_err("[SX9360_SUB3]: %s - Invalid Argument\n", __func__);
+		return ret;
+	}
+
+	data->mcc = mcc;
+
+	pr_info("[SX9360_SUB3]: %s - mcc value %d\n", __func__, data->mcc);
+
+	// 001 : call box, 440/441 : jpn, 450 : kor, 460 : chn
+	if (data->mcc != 450) {
+		pr_info("[SX9360_SUB3]: %s - default threshold %u\n", __func__, data->default_threshold);
+		threshold = data->default_threshold; /* DEFAULT KOR THRESHOLD > 1912  */
+		sx9360_i2c_write(data, SX9360_PROXCTRL5_REG, threshold);
+	} else {
+		threshold = data->mcc_threshold;
+		sx9360_i2c_write(data, SX9360_PROXCTRL5_REG, threshold);
+	}
+
+	pr_info("[SX9360_SUB3]: %s - change threshold %u\n", __func__, threshold);
+	setup_reg[SX9360_PROXTHRESH_REG_IDX].val = threshold;
+
+	return count;
+}
+
+static ssize_t sx9360_mcc_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	struct sx9360_p *data = dev_get_drvdata(dev);
+
+	return snprintf(buf, PAGE_SIZE, "%d\n", data->mcc);
+}
+
+static DEVICE_ATTR(mcc, S_IRUGO | S_IWUSR | S_IWGRP,
+		sx9360_mcc_show, sx9360_mcc_store);
+#endif
+
 static DEVICE_ATTR(menual_calibrate, S_IRUGO | S_IWUSR | S_IWGRP,
 		sx9360_get_offset_calibration_show,
 		sx9360_set_offset_calibration_store);
@@ -1043,6 +1094,9 @@ static struct device_attribute *sensor_attrs[] = {
 	&dev_attr_resolution,
 	&dev_attr_adc_filt,
 	&dev_attr_useful_filt,
+#if !defined(CONFIG_SEC_FACTORY) && defined(CONFIG_SUPPORT_MCC_THRESHOLD_CHANGE)
+	&dev_attr_mcc,
+#endif
 	NULL,
 };
 
@@ -1379,8 +1433,17 @@ static int sx9360_parse_dt(struct sx9360_p *data, struct device *dev)
 		setup_reg[SX9360_GAINRAWFILT_REG_IDX].val = (u8)val;
 	if (!sx9360_read_setupreg(dNode, SX9360_HYST, &val))
 		setup_reg[SX9360_HYST_REG_IDX].val = (u8)val;
-	if (!sx9360_read_setupreg(dNode, SX9360_PROXTHRESH, &val))
+	if (!sx9360_read_setupreg(dNode, SX9360_PROXTHRESH, &val)) {
 		setup_reg[SX9360_PROXTHRESH_REG_IDX].val = (u8)val;
+#if !defined(CONFIG_SEC_FACTORY) && defined(CONFIG_SUPPORT_MCC_THRESHOLD_CHANGE)
+		data->default_threshold = val;
+	}
+	if (!sx9360_read_setupreg(dNode, SX9360_PROXTHRESH_MCC, &val)) {
+		data->mcc_threshold = val;
+	} else {
+		data->mcc_threshold = data->default_threshold;
+#endif
+	}
 
 	return 0;
 }

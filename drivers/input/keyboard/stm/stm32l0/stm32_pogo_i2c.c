@@ -18,13 +18,14 @@
 
 static struct stm32_pogo_notifier pogo_notifier;
 
-int g_tc_resolution_x;
+struct stm32_tc_resolution g_tc_resolution;
 
-int pogo_get_tc_resolution_x(void)
+void pogo_get_tc_resolution(int *x, int *y)
 {
-	return g_tc_resolution_x;
+	*x = g_tc_resolution.x;
+	*y = g_tc_resolution.y;
 }
-EXPORT_SYMBOL(pogo_get_tc_resolution_x);
+EXPORT_SYMBOL(pogo_get_tc_resolution);
 
 static void pogo_set_conn_state(int state)
 {
@@ -488,20 +489,18 @@ static int stm32_read_version(struct stm32_dev *stm32)
 
 static int stm32_read_tc_resolution(struct stm32_dev *stm32)
 {
-	int ret, tc_resolution_x, tc_resolution_y;
+	int ret;
 	u8 rbuf[4] = { 0 };
 
 	ret = stm32_i2c_reg_read(stm32->client, ID_TOUCHPAD, STM32_CMD_GET_TC_RESOLUTION, 4, rbuf);
 	if (ret < 0)
 		return ret;
 
-	tc_resolution_x = rbuf[3] << 8 | rbuf[2];
-	tc_resolution_y = rbuf[1] << 8 | rbuf[0];
-
-	g_tc_resolution_x = tc_resolution_x;
+	g_tc_resolution.x = rbuf[3] << 8 | rbuf[2];
+	g_tc_resolution.y = rbuf[1] << 8 | rbuf[0];
 
 	input_info(true, &stm32->client->dev,
-			"%s: x:%d, y:%d\n", __func__, tc_resolution_x, tc_resolution_y);
+			"%s: x:%d, y:%d\n", __func__, g_tc_resolution.x, g_tc_resolution.y);
 	return 0;
 }
 
@@ -729,8 +728,7 @@ static int stm32_set_mode(struct stm32_dev *stm32, int mode)
 		return ret;
 	}
 
-	input_info(true, &stm32->client->dev, "%s: [MODE] %d\n",
-			__func__, buff);
+	input_info(true, &stm32->client->dev, "[MODE] %d\n", buff);
 
 	if (buff != mode && buff != MODE_EXCEPTION) {
 		stm32->hall_flag = false;
@@ -1803,6 +1801,24 @@ static ssize_t stm32_dev_fw_update(struct device *dev,
 		return snprintf(buf, 3, "NG");
 }
 
+static ssize_t get_mcu_fw_ver(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	struct stm32_dev *stm32 = dev_get_drvdata(dev);
+	int ret = 0;
+
+	if (stm32->connect_state)
+		return snprintf(buf, 3, "NG");
+
+	ret = stm32_dev_get_ic_ver(stm32);
+	if (ret < 0)
+		return snprintf(buf, 3, "NG");
+
+	if (stm32->mdata.phone_ver[3] == stm32->mdata.ic_ver[3])
+		return snprintf(buf, 3, "%2x", stm32->mdata.ic_ver[3]);
+	else
+		return snprintf(buf, 3, "NG");
+}
 
 static DEVICE_ATTR(keyboard_connected, 0644, keyboard_connected_show, keyboard_connected_store);
 static DEVICE_ATTR(hw_reset, 0444, hw_reset_show, NULL);
@@ -1820,6 +1836,8 @@ static DEVICE_ATTR(read_cmd, 0200, NULL, pogo_i2c_read);
 static DEVICE_ATTR(get_tc_fw_ver_bin, 0444, pogo_get_tc_fw_ver_bin, NULL);
 static DEVICE_ATTR(get_tc_fw_ver_ic, 0444, pogo_get_tc_fw_ver_ic, NULL);
 static DEVICE_ATTR(get_tc_crc, 0444, pogo_get_tc_crc, NULL);
+static DEVICE_ATTR(get_mcu_fw_ver, 0444, get_mcu_fw_ver, NULL);
+
 
 static struct attribute *key_attributes[] = {
 	&dev_attr_keyboard_connected.attr,
@@ -1838,6 +1856,7 @@ static struct attribute *key_attributes[] = {
 	&dev_attr_get_tc_fw_ver_bin.attr,
 	&dev_attr_get_tc_fw_ver_ic.attr,
 	&dev_attr_get_tc_crc.attr,
+	&dev_attr_get_mcu_fw_ver.attr,
 	NULL,
 };
 
@@ -1957,7 +1976,8 @@ static int stm32_dev_probe(struct i2c_client *client,
 
 	i2c_set_clientdata(client, device_data);
 	i2c_set_clientdata(device_data->client_boot, device_data);
-	g_tc_resolution_x = 0;
+	g_tc_resolution.x = 0;
+	g_tc_resolution.y = 0;
 	device_data->check_ic_flag = false;
 
 	device_data->dev_irq = gpio_to_irq(device_data->dtdata->gpio_int);

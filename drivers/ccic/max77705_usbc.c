@@ -69,6 +69,7 @@
 #ifdef MAX77705_SYS_FW_UPDATE
 #include <linux/spu-verify.h>
 #endif
+#include <linux/string.h>
 
 static enum ccic_sysfs_property max77705_sysfs_properties[] = {
 	CCIC_SYSFS_PROP_CHIP_NAME,
@@ -93,6 +94,7 @@ static enum ccic_sysfs_property max77705_sysfs_properties[] = {
 	CCIC_SYSFS_PROP_SBU_ADC,
 	CCIC_SYSFS_PROP_VSAFE0V_STATUS,
 	CCIC_SYSFS_PROP_OVP_IC_SHUTDOWN,
+	CCIC_SYSFS_PROP_HMD_POWER,
 	CCIC_SYSFS_PROP_MAX_COUNT,
 };
 
@@ -1346,6 +1348,126 @@ static int max77705_sysfs_get_local_prop(struct _ccic_data_t *pccic_data,
 	return retval;
 }
 
+/*
+ * assume that 1 HMD device has name(14),vid(4),pid(4) each, then
+ * max 32 HMD devices(name,vid,pid) need 806 bytes including TAG, NUM, comba
+ */
+#define MAX_HMD_POWER_STORE_LEN	1024
+enum {
+	HMD_POWER_MON = 0,	/* monitor name field */
+	HMD_POWER_VID,		/* vid field */
+	HMD_POWER_PID,		/* pid field */
+	HMD_POWER_FIELD_MAX,
+};
+
+/* convert VID/PID string to uint in hexadecimal */
+static int _max77705_strtoint(char *tok, uint *result)
+{
+	int  ret = 0;
+
+	if (!tok || !result) {
+		msg_maxim("invalid arg!");
+		ret = -EINVAL;
+		goto end;
+	}
+
+	if (strlen(tok) == 5 && tok[4] == 0xa/*LF*/) {
+		/* continue since it's ended with line feed */
+	} else if (strlen(tok) != 4) {
+		msg_maxim("%s should have 4 len, but %lu!", tok, strlen(tok));
+		ret = -EINVAL;
+		goto end;
+	}
+
+	ret = kstrtouint(tok, 16, result);
+	if (ret) {
+		msg_maxim("fail to convert %s! ret:%d", tok, ret);
+		goto end;
+	}
+end:
+	return ret;
+}
+
+int max77705_store_hmd_dev(struct max77705_usbc_platform_data *usbc_data, char *str, size_t len, int num_hmd)
+{
+	struct max77705_hmd_power_dev *hmd_list;
+	char *tok;
+	int  i, j, ret = 0, rmdr;
+	uint value;
+
+	if (num_hmd <= 0 || num_hmd > MAX_NUM_HMD) {
+		msg_maxim("invalid num_hmd! %d", num_hmd);
+		ret = -EINVAL;
+		goto end;
+	}
+
+	hmd_list = usbc_data->hmd_list;
+	if (!hmd_list) {
+		msg_maxim("hmd_list is null!");
+		ret = -ENOMEM;
+		goto end;
+	}
+
+	msg_maxim("+++ %s, %lu, %d", str, len, num_hmd);
+
+	/* reset */
+	for (i = 0; i < MAX_NUM_HMD; i++) {
+		memset(hmd_list[i].hmd_name, 0, NAME_LEN_HMD);
+		hmd_list[i].vid  = 0;
+		hmd_list[i].pid = 0;
+	}
+
+	tok = strsep(&str, ",");
+	i = 0, j = 0;
+	while (tok != NULL && *tok != 0xa/*LF*/) {
+		if (i > num_hmd * HMD_POWER_FIELD_MAX) {
+			msg_maxim("num of tok cannot exceed <%dx%d>!",
+				num_hmd, HMD_POWER_FIELD_MAX);
+			break;
+		}
+		if (j > MAX_NUM_HMD) {
+			msg_maxim("num of HMD cannot exceed %d!",
+				MAX_NUM_HMD);
+			break;
+		}
+
+		rmdr = i % HMD_POWER_FIELD_MAX;
+
+		switch (rmdr) {
+		case HMD_POWER_MON:
+			strlcpy(hmd_list[j].hmd_name, tok, NAME_LEN_HMD);
+			break;
+
+		case HMD_POWER_VID:
+		case HMD_POWER_PID:
+			ret = _max77705_strtoint(tok, &value);
+			if (ret)
+				goto end;
+
+			if (rmdr == HMD_POWER_VID) {
+				hmd_list[j].vid  = value;
+			} else {
+				hmd_list[j].pid = value;
+				j++;	/* move next */
+			}
+			break;
+		}
+
+		tok = strsep(&str, ",");
+		i++;
+	}
+	for (i = 0; i < MAX_NUM_HMD; i++) {
+		if (strlen(hmd_list[i].hmd_name) > 0)
+			msg_maxim("%s,0x%04x,0x%04x",
+				hmd_list[i].hmd_name,
+				hmd_list[i].vid,
+				hmd_list[i].pid);
+	}
+
+end:
+	return ret;
+}
+
 static ssize_t max77705_sysfs_set_prop(struct _ccic_data_t *pccic_data,
 				    enum ccic_sysfs_property prop,
 				    const char *buf, size_t size)
@@ -1356,7 +1478,11 @@ static ssize_t max77705_sysfs_set_prop(struct _ccic_data_t *pccic_data,
 	int ret = 0;
 	struct max77705_usbc_platform_data *usbpd_data =
 		(struct max77705_usbc_platform_data *)pccic_data->drv_data;
-	int rv;
+	int rv, len;
+	char str[MAX_HMD_POWER_STORE_LEN] = {0,}, *p, *tok;
+#if defined(CONFIG_USB_NOTIFY_LAYER)
+	struct otg_notify *o_notify = get_otg_notify();
+#endif
 
 	if (!usbpd_data) {
 		msg_maxim("usbpd_data is null : request prop = %d", prop);
@@ -1465,6 +1591,54 @@ static ssize_t max77705_sysfs_set_prop(struct _ccic_data_t *pccic_data,
 		if (ret)
 			return -ENODATA;
 		break;
+	case CCIC_SYSFS_PROP_HMD_POWER:
+		if (size >= MAX_HMD_POWER_STORE_LEN) {
+			msg_maxim("too long args! %lu", size);
+			return -EOVERFLOW;
+		}		
+		mutex_lock(&usbpd_data->hmd_power_lock);
+		memcpy(str, buf, size);
+		p	= str;
+		tok = strsep(&p, ",");
+		len = strlen(tok);
+		msg_maxim("tok: %s, len: %d", tok, len);
+	
+		if (!strncmp(TAG_HMD, tok, len)) {
+			/* called by HmtManager to inform list of supported HMD devices
+			 *
+			 * Format :
+			 *	 HMD,NUM,NAME01,VID01,PID01,NAME02,VID02,PID02,...
+			 *
+			 *	 HMD  : tag
+			 *	 NUM  : num of HMD dev ..... max 2 bytes to decimal (max 32)
+			 *	 NAME : name of HMD ...... max 14 bytes, char string
+			 *	 VID  : vendor	id ....... 4 bytes to hexadecimal
+			 *	 PID  : product id ....... 4 bytes to hexadecimal
+			 *
+			 * ex) HMD,2,PicoVR,2d40,0000,Nreal light,0486,573c
+			 *
+			 * call hmd store function with tag(HMD),NUM removed
+			 */
+			int num_hmd = 0, sz = 0;
+	
+			tok = strsep(&p, ",");
+			sz	= strlen(tok);
+			kstrtouint(tok, 10, &num_hmd);
+			msg_maxim("HMD num: %d, sz:%d", num_hmd, sz);
+	
+			max77705_store_hmd_dev(usbpd_data, str + (len + sz + 2), size - (len + sz + 2),
+				num_hmd);
+
+			if (usbpd_data->acc_type == CCIC_DOCK_NEW && max77705_check_hmd_dev(usbpd_data)) {
+#if defined(CONFIG_USB_NOTIFY_LAYER)
+				send_otg_notify(o_notify, NOTIFY_EVENT_HMD_EXT_CURRENT, 1);
+#endif
+			}
+			mutex_unlock(&usbpd_data->hmd_power_lock);
+			return size;
+		}
+		mutex_unlock(&usbpd_data->hmd_power_lock);
+		break;
 	default:
 		pr_info("%s prop write not supported prop (%d)\n", __func__, prop);
 		retval = -ENODATA;
@@ -1494,6 +1668,7 @@ static int max77705_sysfs_is_writeonly(struct _ccic_data_t *pccic_data,
 	case CCIC_SYSFS_PROP_FW_UPDATE:
 	case CCIC_SYSFS_PROP_DEX_FAN_UVDM:
 	case CCIC_SYSFS_PROP_OVP_IC_SHUTDOWN:
+	case CCIC_SYSFS_PROP_HMD_POWER:
 		return 1;
 	default:
 		return 0;
@@ -2635,8 +2810,13 @@ static void max77705_uic_op_send_work_func(
 
 static void max77705_reset_ic(struct max77705_usbc_platform_data *usbc_data)
 {
-	max77705_write_reg(usbc_data->muic, 0x80, 0x0F);
+	struct max77705_dev *max77705 = usbc_data->max77705;
+
+	//gurantee to block i2c trasaction during ccic reset
+	mutex_lock(&max77705->i2c_lock);
+	max77705_write_reg_nolock(usbc_data->muic, 0x80, 0x0F);
 	msleep(100); /* need 100ms delay */
+	mutex_unlock(&max77705->i2c_lock);
 }
 
 void max77705_usbc_check_sysmsg(struct max77705_usbc_platform_data *usbc_data, u8 sysmsg)
@@ -2678,7 +2858,9 @@ void max77705_usbc_check_sysmsg(struct max77705_usbc_platform_data *usbc_data, u
 		max77705_write_reg(usbc_data->muic, REG_PD_INT_M, REG_PD_INT_M_INIT);
 		max77705_write_reg(usbc_data->muic, REG_VDM_INT_M, REG_VDM_INT_M_INIT);
 		/* clear UIC_INT to prevent infinite sysmsg irq*/
+	        g_usbc_data->max77705->enable_nested_irq = 1;
 		max77705_read_reg(usbc_data->muic, MAX77705_USBC_REG_UIC_INT, &interrupt);
+		g_usbc_data->max77705->usbc_irq = interrupt & 0xBF; //clear the USBC SYSTEM IRQ
 		max77705_usbc_clear_queue(usbc_data);
 		usbc_data->is_first_booting = 1;
 		max77705_init_opcode(usbc_data, 1);
@@ -2707,7 +2889,9 @@ void max77705_usbc_check_sysmsg(struct max77705_usbc_platform_data *usbc_data, u
 		max77705_write_reg(usbc_data->muic, REG_PD_INT_M, REG_PD_INT_M_INIT);
 		max77705_write_reg(usbc_data->muic, REG_VDM_INT_M, REG_VDM_INT_M_INIT);
 		/* clear UIC_INT to prevent infinite sysmsg irq */
+	        g_usbc_data->max77705->enable_nested_irq = 1;
 		max77705_read_reg(usbc_data->muic, MAX77705_USBC_REG_UIC_INT, &interrupt);
+		g_usbc_data->max77705->usbc_irq = interrupt & 0xBF; //clear the USBC SYSTEM IRQ
 		msg_maxim("SYSERROR_BOOT_POR: %d, UIC_INT:0x%02x", usbc_data->por_count, interrupt);
 		max77705_usbc_clear_queue(usbc_data);
 		usbc_data->is_first_booting = 1;
@@ -3567,6 +3751,7 @@ static int max77705_usbc_probe(struct platform_device *pdev)
 #if defined(CONFIG_USB_HOST_NOTIFY)
 	struct otg_notify *o_notify = get_otg_notify();
 #endif
+	struct max77705_hmd_power_dev *hmd_list;
 
 	msg_maxim("Probing : %d", max77705->irq);
 	usbc_data =  kzalloc(sizeof(struct max77705_usbc_platform_data), GFP_KERNEL);
@@ -3761,6 +3946,26 @@ static int max77705_usbc_probe(struct platform_device *pdev)
 	pccic_data->misc_dev->uvdm_close = max77705_sec_uvdm_close;
 	pccic_data->misc_dev->pps_control = max77705_sec_pps_control;
 #endif
+
+	hmd_list = kzalloc(MAX_NUM_HMD * sizeof(*hmd_list),
+				GFP_KERNEL);
+	if (ZERO_OR_NULL_PTR(hmd_list)) {
+		if (hmd_list)
+			kfree(hmd_list);
+
+		usbc_data->hmd_list = NULL;
+		return -ENOMEM;
+	}
+
+	/* add default AR/VR here */
+	snprintf(hmd_list[0].hmd_name, NAME_LEN_HMD, "PicoVR");
+	hmd_list[0].vid  = 0x2d40;
+	hmd_list[0].pid = 0x0000;
+
+	usbc_data->hmd_list = hmd_list;
+	
+	mutex_init(&usbc_data->hmd_power_lock);	
+
 	/* Register ccic handler to ccic notifier block list */
 	ret = usb_external_notify_register(&usbc_data->usb_external_notifier_nb,
 		pdic_handle_usb_external_notifier_notification, EXTERNAL_NOTIFY_DEV_PDIC);
@@ -3790,6 +3995,9 @@ static int max77705_usbc_remove(struct platform_device *pdev)
 	mxim_debug_exit();
 #endif
 	sysfs_remove_group(&max77705->dev->kobj, &max77705_attr_grp);
+	kzfree(usbc_data->hmd_list);
+	usbc_data->hmd_list = NULL;
+	mutex_destroy(&usbc_data->hmd_power_lock);
 	mutex_destroy(&usbc_data->op_lock);
 	ccic_core_unregister_chip();
 #if defined(CONFIG_DUAL_ROLE_USB_INTF)

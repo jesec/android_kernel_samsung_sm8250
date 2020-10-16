@@ -10392,6 +10392,11 @@ typedef enum {
 /* Control to enable/disable periodic broadcast probe response transmission */
 #define WMI_VDEV_6GHZ_BITMAP_BCAST_PROBE_RSP                            0x10 /* deprecated */
 
+
+/** NAN vdev config Feature flags */
+#define WMI_VDEV_NAN_ALLOW_DW_CONFIG_CHANGE_IN_SYNC_ROLE                0x1
+
+
 /** the definition of different VDEV parameters */
 typedef enum {
     /** RTS Threshold */
@@ -11226,6 +11231,12 @@ typedef enum {
 
     /* Parameter used to enable/disable SRP feature */
     WMI_VDEV_PARAM_ENABLE_SRP,
+
+
+    /* vdev param to enable or disable various NAN config features
+     * param value bitmap set to 1 for enable and 0 for disable respectively
+     */
+    WMI_VDEV_PARAM_ENABLE_DISABLE_NAN_CONFIG_FEATURES,  /* 0xA3 */
 
 
     /*=== ADD NEW VDEV PARAM TYPES ABOVE THIS LINE ===
@@ -14383,6 +14394,30 @@ typedef struct {
     A_UINT32 btk[ROAM_OFFLOAD_BTK_BYTES>>2]; /* BTK offload. As this 4 byte aligned, we don't declare it as tlv array */
 } wmi_roam_ese_offload_tlv_param;
 
+typedef enum {
+    WMI_BL_REASON_NUD_FAILURE = 1,
+    WMI_BL_REASON_STA_KICKOUT,
+    WMI_BL_REASON_ROAM_HO_FAILURE,
+    /* Assoc resp with status code 71 - POOR RSSI CONDITIONS */
+    WMI_BL_REASON_ASSOC_REJECT_POOR_RSSI,
+    /* Assoc resp with status code 34 - DENIED_POOR_CHANNEL_CONDITIONS */
+    WMI_BL_REASON_ASSOC_REJECT_OCE,
+    WMI_BL_REASON_USERSPACE_BL,
+    WMI_BL_REASON_USERSPACE_AVOID_LIST,
+    WMI_BL_REASON_BTM_DIASSOC_IMMINENT,
+    WMI_BL_REASON_BTM_BSS_TERMINATION,
+    WMI_BL_REASON_BTM_MBO_RETRY,
+    /* Reassoc resp with status code 34 - DENIED_POOR_CHANNEL_CONDITIONS */
+    WMI_BL_REASON_REASSOC_RSSI_REJECT,
+    /* Reassoc resp with status code 17 - DENIED_NO_MORE_STAS */
+    WMI_BL_REASON_REASSOC_NO_MORE_STAS,
+} WMI_BLACKLIST_REASON_ID;
+
+typedef enum {
+    WMI_BL_SOURCE_HOST = 1,
+    WMI_BL_SOURCE_FW,
+} WMI_BLACKLIST_SOURCE_ID;
+
 typedef struct {
     /** TLV tag and len; tag equals WMITLV_TAG_STRUC_wmi_roam_blacklist_with_timeout_tlv_param */
     A_UINT32 tlv_header;
@@ -14392,6 +14427,18 @@ typedef struct {
     A_UINT32 timeout;
     /** rssi (dBm units) when put in blacklist */
     A_INT32 rssi;
+    /* Blacklist reason from WMI_BLACKLIST_REASON_ID */
+    A_UINT32 reason;
+    /* Source of adding AP to BL from WMI_BLACKLIST_SOURCE_ID */
+    A_UINT32 source;
+    /*
+     * timestamp is the absolute time w.r.t host timer which is synchronized
+     * between the host and target.
+     * This timestamp indicates the time when AP added to blacklist.
+     */
+    A_UINT32 timestamp;
+    /* Original timeout value in milli seconds when AP added to BL */
+    A_UINT32 original_timeout;
 } wmi_roam_blacklist_with_timeout_tlv_param;
 
 /** WMI_ROAM_BLACKLIST_EVENT: generated whenever STA needs to move AP to blacklist for a particluar time
@@ -27920,6 +27967,18 @@ typedef struct {
     A_UINT32 remaining_disallow_duration;
     /** AP will be allowed for candidate, when AP RSSI better than expected RSSI units in dBm */
     A_INT32 expected_rssi;
+    /* Blacklist reason from WMI_BLACKLIST_REASON_ID */
+    A_UINT32 reason;
+    /* Source of adding AP to BL from WMI_BLACKLIST_SOURCE_ID */
+    A_UINT32 source;
+    /*
+     * timestamp is the absolute time w.r.t host timer which is synchronized
+     * between the host and target.
+     * This timestamp indicates the time when AP added to blacklist.
+     */
+    A_UINT32 timestamp;
+    /* Original timeout value in milli seconds when AP added to BL */
+    A_UINT32 original_timeout;
 } wmi_pdev_bssid_disallow_list_config_param;
 
 typedef enum {
@@ -28121,6 +28180,10 @@ typedef struct {
      * Response status Values are enumerated in the 802.11 spec.
      */
     A_UINT32 btm_response_status_code;
+    /* BTM BSS termination timeout value in milli seconds */
+    A_UINT32 btm_bss_termination_timeout;
+    /* BTM MBO assoc retry timeout value in milli seconds */
+    A_UINT32 btm_mbo_assoc_retry_timeout;
 } wmi_roam_trigger_reason;
 
 typedef struct {
@@ -28167,6 +28230,18 @@ typedef struct {
     A_UINT32 cu_score;       /* AP current cu score */
     A_UINT32 total_score;    /* AP total score */
     A_UINT32 etp;            /* AP Estimated Throughput (ETP) value in mbps */
+    /* Blacklist reason from WMI_BLACKLIST_REASON_ID */
+    A_UINT32 bl_reason;
+    /* Source of adding AP to BL from WMI_BLACKLIST_SOURCE_ID */
+    A_UINT32 bl_source;
+    /*
+     * timestamp is the absolute time w.r.t host timer which is synchronized
+     * between the host and target.
+     * This timestamp indicates the time when AP added to blacklist.
+     */
+    A_UINT32 bl_timestamp;
+    /* Original timeout value in milli seconds when AP added to BL */
+    A_UINT32 bl_original_timeout;
 } wmi_roam_ap_info;
 
 typedef enum {

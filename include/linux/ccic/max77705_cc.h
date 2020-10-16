@@ -24,6 +24,19 @@
 #define MAX77865_IRQSRC_CHG		(1 << 0)
 #define MAX77865_IRQSRC_FG      (1 << 2)
 
+#if defined(CONFIG_CC_ATTACH_LOG)
+#define ABNORMAL_MAXTIME 2
+#define CLEAR_TIME 3
+#define ABNORMAL_COUNT 8
+#define MAX_CON_COUNT ABNORMAL_COUNT
+
+struct cc_attach_log {
+	u64 attach_time;
+	int power_role;
+	int continuous_count;
+};
+#endif
+
 struct max77705_cc_data {
 
 	/* interrupt pin */
@@ -77,5 +90,11 @@ struct max77705_cc_data {
 	struct wake_lock ccistat_wake_lock;
 	struct wake_lock ccvcnstat_wake_lock;
 	struct wake_lock ccstat_wake_lock;
+
+#if defined(CONFIG_CC_ATTACH_LOG)
+	struct cc_attach_log ccstat_attach_log[ABNORMAL_COUNT];
+	int count_index;
+	int skip_check_ccattach;
+#endif
 };
 #endif

@@ -289,6 +289,7 @@ static int p3_regulator_onoff(struct p3_data *data, int onoff)
 				__func__, rc);
 			goto done;
 		}
+		msleep(30);
 	}
 
 	P3_DBG_MSG("success\n");
@@ -423,6 +424,13 @@ static int spip3_open(struct inode *inode, struct file *filp)
 	wake_lock(&p3_dev->ese_lock);
 #endif
 
+#ifdef FEATURE_ESE_POWER_ON_OFF
+	ret = p3_regulator_onoff(p3_dev, 1);
+	if (ret < 0)
+		P3_ERR_MSG(" %s : failed to turn on LDO()\n", __func__);
+	usleep_range(2000, 2500);
+#endif
+
 #ifdef LSI_AP
 #ifdef CONFIG_ESE_SECURE
 	p3_clk_control(p3_dev, true);
@@ -430,13 +438,6 @@ static int spip3_open(struct inode *inode, struct file *filp)
 #else
 	p3_pinctrl_config(p3_dev, true);
 #endif
-#endif
-
-#ifdef FEATURE_ESE_POWER_ON_OFF
-	ret = p3_regulator_onoff(p3_dev, 1);
-	if (ret < 0)
-		P3_ERR_MSG(" %s : failed to turn on LDO()\n", __func__);
-	usleep_range(2000, 2500);
 #endif
 
 	filp->private_data = p3_dev;

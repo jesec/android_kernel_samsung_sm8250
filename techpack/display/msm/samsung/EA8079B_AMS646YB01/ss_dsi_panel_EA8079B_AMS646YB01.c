@@ -79,10 +79,48 @@ static struct dsi_panel_cmd_set *__ss_vrr(struct samsung_display_driver_data *vd
 	cur_rr = vrr->cur_refresh_rate;
 	cur_hs = vrr->cur_sot_hs_mode;
 
-	if (vdd->vrr.adjusted_refresh_rate == 60)
-		vrr_cmds->cmds[0].msg.tx_buf[1] = 0x00;
+	// Freq Setting
+	if (vdd->vrr.adjusted_refresh_rate == 120)
+		vrr_cmds->cmds[1].msg.tx_buf[1] = 0x10;
 	else
-		vrr_cmds->cmds[0].msg.tx_buf[1] = 0x10;
+		vrr_cmds->cmds[1].msg.tx_buf[1] = 0x00;
+
+	// Porch Setting
+	if (vdd->vrr.adjusted_refresh_rate == 96) {
+		vrr_cmds->cmds[3].msg.tx_buf[1] = 0xA2;
+		vrr_cmds->cmds[3].msg.tx_buf[2] = 0x68;
+	}
+	else if (vdd->vrr.adjusted_refresh_rate == 48) {
+		vrr_cmds->cmds[3].msg.tx_buf[1] = 0xAE;
+		vrr_cmds->cmds[3].msg.tx_buf[2] = 0x40;
+	}
+	else { // 60, 120
+		vrr_cmds->cmds[3].msg.tx_buf[1] = 0xA9;
+		vrr_cmds->cmds[3].msg.tx_buf[2] = 0x70;
+	}
+
+	// Freq Setting
+	if (vdd->vrr.adjusted_refresh_rate == 96) {
+		vrr_cmds->cmds[5].msg.tx_buf[1] = 0x0B;
+		vrr_cmds->cmds[5].msg.tx_buf[2] = 0xD8;
+		vrr_cmds->cmds[5].msg.tx_buf[22] = 0x24;
+		vrr_cmds->cmds[5].msg.tx_buf[23] = 0x01;
+		vrr_cmds->cmds[5].msg.tx_buf[24] = 0x80;
+	}
+	else if (vdd->vrr.adjusted_refresh_rate == 48) {
+		vrr_cmds->cmds[5].msg.tx_buf[1] = 0x17;
+		vrr_cmds->cmds[5].msg.tx_buf[2] = 0xB0;
+		vrr_cmds->cmds[5].msg.tx_buf[22] = 0x34;
+		vrr_cmds->cmds[5].msg.tx_buf[23] = 0x01;
+		vrr_cmds->cmds[5].msg.tx_buf[24] = 0xB8;
+	}
+	else { // 60, 120
+		vrr_cmds->cmds[5].msg.tx_buf[1] = 0x12;
+		vrr_cmds->cmds[5].msg.tx_buf[2] = 0xE0;
+		vrr_cmds->cmds[5].msg.tx_buf[22] = 0x34;
+		vrr_cmds->cmds[5].msg.tx_buf[23] = 0x01;
+		vrr_cmds->cmds[5].msg.tx_buf[24] = 0x80;
+	}
 
 	LCD_INFO("VRR: %s, FPS: %dHz%s (cur: %d%s, target: %d%s)\n",
 			ss_get_brr_mode_name(brr_mode),
@@ -99,6 +137,14 @@ static struct dsi_panel_cmd_set *__ss_vrr(struct samsung_display_driver_data *vd
 static struct dsi_panel_cmd_set *ss_vrr(struct samsung_display_driver_data *vdd, int *level_key)
 {
 	bool is_hbm = false;
+	bool is_hmt = false;
+
+	return __ss_vrr(vdd, level_key, is_hbm, is_hmt);
+}
+
+static struct dsi_panel_cmd_set *ss_vrr_hbm(struct samsung_display_driver_data *vdd, int *level_key)
+{
+	bool is_hbm = true;
 	bool is_hmt = false;
 
 	return __ss_vrr(vdd, level_key, is_hbm, is_hmt);
@@ -163,7 +209,7 @@ static struct dsi_panel_cmd_set * ss_brightness_gamma_mode2_normal(struct samsun
 	else
 		pcmds->cmds[0].msg.tx_buf[1] = 0x10;
 
-	pcmds->cmds[1].msg.tx_buf[1] = vdd->finger_mask_updated? 0x28 : 0x20;	/* Normal (0x20) / Smooth (0x28) */
+	pcmds->cmds[1].msg.tx_buf[1] = vdd->finger_mask_updated? 0x20 : 0x28;	/* Normal (0x20) / Smooth (0x28) */
 	pcmds->cmds[2].msg.tx_buf[6] = 0x16;
 	pcmds->cmds[3].msg.tx_buf[1] = get_bit(vdd->br_info.common_br.gm2_wrdisbv, 8, 2);
 	pcmds->cmds[3].msg.tx_buf[2] = get_bit(vdd->br_info.common_br.gm2_wrdisbv, 0, 8);
@@ -192,7 +238,7 @@ static struct dsi_panel_cmd_set * ss_brightness_gamma_mode2_hbm(struct samsung_d
 	else
 		pcmds->cmds[0].msg.tx_buf[1] = 0x10;
 
-	pcmds->cmds[1].msg.tx_buf[1] = vdd->finger_mask_updated? 0xE8 : 0xE0;		/* Normal (0xE0) / Smooth (0xE8) */
+	pcmds->cmds[1].msg.tx_buf[1] = vdd->finger_mask_updated? 0xE0 : 0xE8;			/* Normal (0xE0) / Smooth (0xE8) */
 	pcmds->cmds[2].msg.tx_buf[6] = elvss_table_hbm[vdd->br_info.common_br.gm2_wrdisbv];	/* ELVSS Value for HBM brgihtness */
 	pcmds->cmds[3].msg.tx_buf[1] = get_bit(vdd->br_info.common_br.gm2_wrdisbv, 8, 2);
 	pcmds->cmds[3].msg.tx_buf[2] = get_bit(vdd->br_info.common_br.gm2_wrdisbv, 0, 8);
@@ -710,8 +756,8 @@ static void ss_set_panel_lpm_brightness(struct samsung_display_driver_data *vdd)
 	 * cmd_list is the target cmds for searching reg value
 	 */
 	static int reg_list[2][2] = {
-		{ALPM_REG, -EINVAL},
-		{ALPM_CTRL_REG, -EINVAL}
+		{ALPM_REG, -EINVAL},		// 0x53
+		{ALPM_CTRL_REG, -EINVAL}	// 0xBB
 	};
 
 	LCD_INFO("%s++\n", __func__);
@@ -837,8 +883,8 @@ static void ss_update_panel_lpm_ctrl_cmd(struct samsung_display_driver_data *vdd
 	 * cmd_list is the target cmds for searching reg value
 	 */
 	static int reg_list[2][2] = {
-		{ALPM_REG, -EINVAL},
-		{ALPM_CTRL_REG, -EINVAL}
+		{ALPM_REG, -EINVAL},		// 0x53
+		{ALPM_CTRL_REG, -EINVAL}	// 0xBB
 	};
 
 	static int off_reg_list[1][2] = { {ALPM_CTRL_REG, -EINVAL} };
@@ -1077,6 +1123,7 @@ static void samsung_panel_init(struct samsung_display_driver_data *vdd)
 	vdd->panel_func.samsung_hbm_gamma = ss_brightness_gamma_mode2_hbm;
 	vdd->panel_func.samsung_hbm_acl_on = ss_acl_on_hbm;
 	vdd->panel_func.samsung_hbm_acl_off = ss_acl_off;
+	vdd->panel_func.samsung_brightness_vrr_hbm = ss_vrr_hbm;
 
 	/* Event */
 	vdd->panel_func.samsung_change_ldi_fps = NULL;
@@ -1149,8 +1196,8 @@ static void samsung_panel_init(struct samsung_display_driver_data *vdd)
 
 	/* SAMSUNG_FINGERPRINT */
 	vdd->panel_hbm_entry_delay = 2;
-	vdd->panel_hbm_entry_after_te = 2000;
-	vdd->panel_hbm_exit_delay = 0;
+	vdd->panel_hbm_entry_after_te = 0;
+	vdd->panel_hbm_exit_delay = 1;
 
 	/* VRR */
 	ss_vrr_init(&vdd->vrr);

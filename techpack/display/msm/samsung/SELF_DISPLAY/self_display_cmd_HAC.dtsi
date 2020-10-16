@@ -22,7 +22,7 @@
 
 		samsung,self_dispaly_on_revA = [
 			29 01 00 00 00 00 03 F0 5A 5A	/* TEST KEY Enable */
-			29 01 00 00 00 00 05 76 13 1C 00 11	/* SELF_HBP, SELF_VBP */
+			29 01 00 00 00 00 05 76 13 1F 00 11	/* SELF_HBP, SELF_VBP */
 			29 01 00 00 00 00 03 F0 A5 A5	/* TEST KEY Disable */
 		];
 
@@ -35,7 +35,7 @@
 			29 01 00 00 00 00 03 80 00 00	/* Digital Clock Off */
 			29 01 00 00 00 00 03 81 00 00	/* Timer Off */
 			29 01 00 00 00 00 02 85 00		/* Partial HLPM & Scan Off */
-			29 01 00 00 00 00 05 76 13 1C 00 00	/* SELF_HBP, SELF_VBP */
+			29 01 00 00 00 00 05 76 13 1F 00 00	/* SELF_HBP, SELF_VBP */
 			29 01 00 00 00 00 02 75 01 		/* AC_SEL(1) */
 			29 01 00 00 00 00 03 F0 A5 A5	/* TEST KEY Disable */
 			29 01 00 00 00 00 03 FC A5 A5	/* TEST KEY Disable */

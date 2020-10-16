@@ -329,31 +329,48 @@ static ssize_t light_lcd_onoff_store(struct device *dev,
 	struct device_attribute *attr, const char *buf, size_t size)
 {
 	struct adsp_data *data = dev_get_drvdata(dev);
-	int32_t msg_buf[2];
 	int new_value;
 
 	if (sysfs_streq(buf, "0"))
 		new_value = 0;
 	else if (sysfs_streq(buf, "1"))
 		new_value = 1;
+	else if (sysfs_streq(buf, "2"))
+		new_value = 2;
 	else
 		return size;
 
-	if (new_value)
-		prev_brightness_data[0] = prev_brightness_data[2] = -1;
+	if (new_value == 2) {
+		int32_t msg_buf[3];
 
-	pr_info("[FACTORY] %s: new_value %d\n", __func__, new_value);
-	msg_buf[0] = OPTION_TYPE_LCD_ONOFF;
-	msg_buf[1] = new_value;
+		pr_info("[FACTORY] %s: active screen main %d\n", __func__, new_value);
+		msg_buf[0] = data->brightness_info[0];
+		msg_buf[1] = data->brightness_info[1];
+		msg_buf[2] = 2;
 
-	mutex_lock(&data->light_factory_mutex);
-	adsp_unicast(msg_buf, sizeof(msg_buf),
-		MSG_SSC_CORE, 0, MSG_TYPE_OPTION_DEFINE);
+		mutex_lock(&data->light_factory_mutex);
+		adsp_unicast(msg_buf, sizeof(msg_buf),
+			MSG_VIR_OPTIC, 0, MSG_TYPE_SET_CAL_DATA);
+		mutex_unlock(&data->light_factory_mutex);
+	} else {
+		int32_t msg_buf[2];
+
+		if (new_value)
+			prev_brightness_data[0] = prev_brightness_data[2] = -1;
+
+		pr_info("[FACTORY] %s: new_value %d\n", __func__, new_value);
+		msg_buf[0] = OPTION_TYPE_LCD_ONOFF;
+		msg_buf[1] = new_value;
+
+		mutex_lock(&data->light_factory_mutex);
+		adsp_unicast(msg_buf, sizeof(msg_buf),
+			MSG_SSC_CORE, 0, MSG_TYPE_OPTION_DEFINE);
 #ifdef CONFIG_SUPPORT_DUAL_DDI_COPR_FOR_LIGHT_SENSOR
-	adsp_unicast(msg_buf, sizeof(msg_buf),
-		MSG_DDI, 0, MSG_TYPE_OPTION_DEFINE);
+		adsp_unicast(msg_buf, sizeof(msg_buf),
+			MSG_DDI, 0, MSG_TYPE_OPTION_DEFINE);
 #endif
-	mutex_unlock(&data->light_factory_mutex);
+		mutex_unlock(&data->light_factory_mutex);
+	}
 
 	return size;
 }
@@ -377,7 +394,7 @@ static ssize_t light_circle_show(struct device *dev,
 	return snprintf(buf, PAGE_SIZE, "45.2 7.3 2.5\n");
 #elif defined(CONFIG_SEC_BLOOMXQ_PROJECT)
 	return snprintf(buf, PAGE_SIZE, "34.1 11.6 2.4\n");
-#elif defined(CONFIG_SEC_F2Q_PROJECT)
+#elif defined(CONFIG_SEC_F2Q_PROJECT) || defined(CONFIG_SEC_VICTORY_PROJECT)
 #ifdef CONFIG_SUPPORT_DUAL_OPTIC
 	struct adsp_data *data = dev_get_drvdata(dev);
 	if (data->fac_fstate == FSTATE_INACTIVE || data->fac_fstate == FSTATE_FAC_INACTIVE || data->fac_fstate == FSTATE_FAC_INACTIVE_2)
@@ -844,10 +861,6 @@ void light_cal_init_work(struct adsp_data *data)
 	old_fs = get_fs();
 	set_fs(KERNEL_DS);
 
-	light_set_cal_data(LIGHT_FACTORY_CAL_PATH, init_data, true);
-	light_set_cal_data(SUB_LIGHT_FACTORY_CAL_PATH, init_data, true);
-	light_set_cal_data(MAIN2_LIGHT_FACTORY_CAL_PATH, init_data, true);
-#if 0
 	// main light sensor
 	cal_filp = filp_open(LIGHT_FACTORY_CAL_PATH, O_RDONLY, 0440);
 	if (PTR_ERR(cal_filp) == -ENOENT || PTR_ERR(cal_filp) == -ENXIO) {
@@ -939,7 +952,7 @@ void light_cal_init_work(struct adsp_data *data)
 		}
 		filp_close(cal_filp, current->files);
 	}
-#endif
+
 	// main ub
 	cal_filp = filp_open(LIGHT_UB_CELL_ID_PATH, O_RDONLY, 0440);
 	if (PTR_ERR(cal_filp) == -ENOENT || PTR_ERR(cal_filp) == -ENXIO) {

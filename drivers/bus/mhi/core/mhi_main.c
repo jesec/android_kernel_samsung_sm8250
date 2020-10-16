@@ -515,8 +515,10 @@ int mhi_queue_skb(struct mhi_device *mhi_dev,
 	mhi_add_ring_element(mhi_cntrl, tre_ring);
 	mhi_add_ring_element(mhi_cntrl, buf_ring);
 
-	if (mhi_chan->dir == DMA_TO_DEVICE)
+	if (mhi_chan->dir == DMA_TO_DEVICE) {
 		atomic_inc(&mhi_cntrl->pending_pkts);
+		mhi_chan->pending_pkts++;
+	}
 
 	if (likely(MHI_DB_ACCESS_VALID(mhi_cntrl))) {
 		read_lock_bh(&mhi_chan->lock);
@@ -613,8 +615,10 @@ int mhi_queue_dma(struct mhi_device *mhi_dev,
 	mhi_add_ring_element(mhi_cntrl, tre_ring);
 	mhi_add_ring_element(mhi_cntrl, buf_ring);
 
-	if (mhi_chan->dir == DMA_TO_DEVICE)
+	if (mhi_chan->dir == DMA_TO_DEVICE) {
 		atomic_inc(&mhi_cntrl->pending_pkts);
+		mhi_chan->pending_pkts++;
+	}
 
 	if (likely(MHI_DB_ACCESS_VALID(mhi_cntrl)) && ring_db) {
 		read_lock_bh(&mhi_chan->lock);
@@ -714,8 +718,10 @@ int mhi_queue_buf(struct mhi_device *mhi_dev,
 	/* toggle wake to exit out of M2 */
 	mhi_cntrl->wake_toggle(mhi_cntrl);
 
-	if (mhi_chan->dir == DMA_TO_DEVICE)
+	if (mhi_chan->dir == DMA_TO_DEVICE) {
 		atomic_inc(&mhi_cntrl->pending_pkts);
+		mhi_chan->pending_pkts++;
+	}
 
 	if (likely(MHI_DB_ACCESS_VALID(mhi_cntrl))) {
 		unsigned long flags;
@@ -1064,8 +1070,11 @@ static int parse_xfer_event(struct mhi_controller *mhi_cntrl,
 			/* notify client */
 			mhi_chan->xfer_cb(mhi_chan->mhi_dev, &result);
 
-			if (mhi_chan->dir == DMA_TO_DEVICE)
+			if (mhi_chan->dir == DMA_TO_DEVICE) {
 				atomic_dec(&mhi_cntrl->pending_pkts);
+				mhi_chan->pending_pkts--;
+				mhi_cntrl->pp_abort_counter = 0;
+			}
 
 			/*
 			 * recycle the buffer if buffer is pre-allocated,
@@ -1126,7 +1135,7 @@ static int parse_xfer_event(struct mhi_controller *mhi_cntrl,
 		MHI_ASSERT(1, "Received BAD TRE event for ring");
 		break;
 	default:
-		MHI_CRITICAL("Unknown TX completion.\n");
+		MHI_ASSERT(1, "Unknown TX completion: %d ev_code\n", ev_code);
 
 		break;
 	} /* switch(MHI_EV_READ_CODE(EV_TRB_CODE,event)) */
@@ -2085,8 +2094,11 @@ static void mhi_reset_data_chan(struct mhi_controller *mhi_cntrl,
 	while (tre_ring->rp != tre_ring->wp) {
 		struct mhi_buf_info *buf_info = buf_ring->rp;
 
-		if (mhi_chan->dir == DMA_TO_DEVICE)
+		if (mhi_chan->dir == DMA_TO_DEVICE) {
 			atomic_dec(&mhi_cntrl->pending_pkts);
+			mhi_chan->pending_pkts--;
+			mhi_cntrl->pp_abort_counter = 0;
+		}
 
 		if (!buf_info->pre_mapped)
 			mhi_cntrl->unmap_single(mhi_cntrl, buf_info);
@@ -2223,6 +2235,9 @@ int mhi_debugfs_mhi_states_show(struct seq_file *m, void *d)
 		   atomic_read(&mhi_cntrl->dev_wake),
 		   atomic_read(&mhi_cntrl->alloc_size),
 		   atomic_read(&mhi_cntrl->pending_pkts));
+
+	mhi_debug_context_dump(mhi_cntrl);
+
 	return 0;
 }
 
@@ -2754,6 +2769,59 @@ error_unlock:
 	return ret;
 }
 EXPORT_SYMBOL(mhi_get_remote_time);
+
+void mhi_debug_context_dump(struct mhi_controller *mhi_cntrl)
+{
+	struct mhi_event *mhi_event;
+	struct mhi_event_ctxt *er_ctxt;
+	struct mhi_chan *mhi_chan;
+	struct mhi_chan_ctxt *chan_ctxt;
+	int i;
+
+	if (!mhi_cntrl->mhi_ctxt) {
+		MHI_ERR("No MHI context\n");
+		return;
+	}
+
+	MHI_ERR("cntrl pending_pkts:%u\n",
+		atomic_read(&mhi_cntrl->pending_pkts));
+
+	er_ctxt = mhi_cntrl->mhi_ctxt->er_ctxt;
+	mhi_event = mhi_cntrl->mhi_event;
+	for (i = 0; i < mhi_cntrl->total_ev_rings; i++, er_ctxt++,
+		     mhi_event++) {
+		struct mhi_ring *ring = &mhi_event->ring;
+
+		if (mhi_event->offload_ev)
+			continue;
+
+		MHI_ERR("Idx:%d rp:0x%llx wp:0x%llx local_rp:0x%llx db:0x%llx\n",
+			i, er_ctxt->rp, er_ctxt->wp,
+			mhi_to_physical(ring, ring->rp),
+			mhi_event->db_cfg.db_val);
+	}
+
+	mhi_chan = mhi_cntrl->mhi_chan;
+	chan_ctxt = mhi_cntrl->mhi_ctxt->chan_ctxt;
+	for (i = 0; i < mhi_cntrl->max_chan; i++, chan_ctxt++, mhi_chan++) {
+		struct mhi_ring *ring = &mhi_chan->tre_ring;
+
+		if (mhi_chan->offload_ch || !mhi_chan->mhi_dev)
+			continue;
+
+		MHI_ERR("chan:%u state:0x%x er:%u pending_pkts:%u\n",
+			mhi_chan->chan, chan_ctxt->chstate, chan_ctxt->erindex,
+			mhi_chan->pending_pkts);
+		MHI_ERR("base:0x%llx len:0x%llx wp:0x%llx rp:0x%llx local: rp:0x%llx wp:0x%llx db:0x%llx\n",
+			chan_ctxt->rbase, chan_ctxt->rlen, chan_ctxt->wp,
+			chan_ctxt->rp,
+			mhi_to_physical(ring, ring->rp),
+			mhi_to_physical(ring, ring->wp),
+			mhi_chan->db_cfg.db_val);
+	}
+
+	return;
+}
 
 void mhi_debug_reg_dump(struct mhi_controller *mhi_cntrl)
 {

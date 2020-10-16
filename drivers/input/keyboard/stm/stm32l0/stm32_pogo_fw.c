@@ -1159,4 +1159,23 @@ int stm32_dev_firmware_update_menu(struct stm32_dev *data, int update_type)
 	return ret;
 }
 
+int stm32_dev_get_ic_ver(struct stm32_dev *data)
+{
+	int ret;
 
+	ret = stm32_sysboot_mcu_validation(data);
+	if (ret < 0) {
+		input_err(true, &data->client->dev, "%s: Failed mcu validation\n", __func__);
+		return ret;
+	}
+
+	ret = stm32_sysboot_i2c_read(data, STM32_IC_VERSION_OFFSET, data->mdata.ic_ver, STM32_DEV_FW_VER_SIZE);
+	if (ret < 0) {
+		data->mdata.ic_ver[3] = 0;
+		input_err(true, &data->client->dev, "%s Failed to read firmware ic ver :%d info (%d)\n",
+				__func__, data->mdata.ic_ver[3], ret);
+	}
+
+	stm32_sysboot_disconnect(data);
+	return ret;
+}

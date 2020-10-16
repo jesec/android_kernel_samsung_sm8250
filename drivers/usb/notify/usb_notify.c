@@ -133,7 +133,7 @@ static int check_event_type(enum otg_notify_events event)
 	case NOTIFY_EVENT_SMSC_OVC:
 	case NOTIFY_EVENT_SMTD_EXT_CURRENT:
 	case NOTIFY_EVENT_MMD_EXT_CURRENT:
-	case NOTIFY_EVENT_NREALAR_EXT_CURRENT:
+	case NOTIFY_EVENT_HMD_EXT_CURRENT:
 	case NOTIFY_EVENT_DEVICE_CONNECT:
 	case NOTIFY_EVENT_GAMEPAD_CONNECT:
 	case NOTIFY_EVENT_LANHUB_CONNECT:
@@ -255,8 +255,8 @@ const char *event_string(enum otg_notify_events event)
 		return "smtd_ext_current";
 	case NOTIFY_EVENT_MMD_EXT_CURRENT:
 		return "mmd_ext_current";
-	case NOTIFY_EVENT_NREALAR_EXT_CURRENT:
-		return "nrealar_ext_current";
+	case NOTIFY_EVENT_HMD_EXT_CURRENT:
+		return "hmd_ext_current";
 	case NOTIFY_EVENT_DEVICE_CONNECT:
 		return "device_connect";
 	case NOTIFY_EVENT_GAMEPAD_CONNECT:
@@ -1028,6 +1028,40 @@ err:
 }
 EXPORT_SYMBOL(send_usb_err_uevent);
 
+void send_usb_itracker_uevent(int err_type)
+{
+	struct otg_notify *o_notify = get_otg_notify();
+	char *envp[4];
+	char *type = {"TYPE=usbtracker"};
+	char *state = {"STATE=ADD"};
+	char *words;
+	int index = 0;
+
+	envp[index++] = type;
+	envp[index++] = state;
+
+	switch (err_type) {
+	case NOTIFY_USB_CC_REPEAT:
+		words = "WORDS=repeat_ccirq";
+		break;
+	default:
+		pr_err("%s invalid input\n", __func__);
+		goto err;
+	}
+
+	envp[index++] = words;
+	envp[index++] = NULL;
+
+	if (send_usb_notify_uevent(o_notify, envp)) {
+		pr_err("%s error\n", __func__);
+		goto err;
+	}
+	pr_info("%s: %s\n", __func__, words);
+err:
+	return;
+}
+EXPORT_SYMBOL(send_usb_itracker_uevent);
+
 int get_class_index(int ch9_class_num)
 {
 	int internal_class_index;
@@ -1614,10 +1648,10 @@ static void extra_notify_state(struct otg_notify *n,
 			n->set_battcall
 				(NOTIFY_EVENT_MMD_EXT_CURRENT, enable);
 		break;
-	case NOTIFY_EVENT_NREALAR_EXT_CURRENT:
+	case NOTIFY_EVENT_HMD_EXT_CURRENT:
 		if (n->set_battcall)
 			n->set_battcall
-				(NOTIFY_EVENT_NREALAR_EXT_CURRENT, enable);
+				(NOTIFY_EVENT_HMD_EXT_CURRENT, enable);
 		break;
 	case NOTIFY_EVENT_DEVICE_CONNECT:
 		if (!u_notify->is_device) {

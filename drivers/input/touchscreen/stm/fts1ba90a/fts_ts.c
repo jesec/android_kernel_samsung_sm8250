@@ -1920,7 +1920,6 @@ static u8 fts_event_handler_type_b(struct fts_ts_info *info)
 					info->finger[TouchID].action = FTS_COORDINATE_ACTION_NONE;
 					info->finger[TouchID].mcount = 0;
 					info->finger[TouchID].palm_count = 0;
-					info->finger[TouchID].prev_ttype = 0;
 					info->finger[TouchID].noise_level = 0;
 					info->finger[TouchID].max_strength = 0;
 					info->finger[TouchID].hover_id_num = 0;
@@ -1965,21 +1964,21 @@ static u8 fts_event_handler_type_b(struct fts_ts_info *info)
 
 #if !defined(CONFIG_SAMSUNG_PRODUCT_SHIP)
 					input_info(true, &info->client->dev,
-							"[P] tID:%d.%d x:%d y:%d z:%d major:%d minor:%d loc:%s tc:%d p:%d nlvl:%d maxS:%d hid:%d\n",
+							"[P] tID:%d.%d x:%d y:%d z:%d major:%d minor:%d loc:%s tc:%d type:%d p:%d nlvl:%d maxS:%d hid:%d\n",
 							TouchID, (info->input_dev->mt->trkid - 1) & TRKID_MAX,
 							info->finger[TouchID].x, info->finger[TouchID].y,
 							info->finger[TouchID].z,
 							info->finger[TouchID].major, info->finger[TouchID].minor,
-							location, info->touch_count,
+							location, info->touch_count, info->finger[TouchID].ttype,
 							info->finger[TouchID].palm_count, info->finger[TouchID].noise_level,
 							info->finger[TouchID].max_strength, info->finger[TouchID].hover_id_num);
 #else
 					input_info(true, &info->client->dev,
-							"[P] tID:%d.%d z:%d major:%d minor:%d loc:%s tc:%d p:%d nlvl:%d maxS:%d hid:%d\n",
+							"[P] tID:%d.%d z:%d major:%d minor:%d loc:%s tc:%d type:%d p:%d nlvl:%d maxS:%d hid:%d\n",
 							TouchID, (info->input_dev->mt->trkid - 1) & TRKID_MAX,
 							info->finger[TouchID].z,
 							info->finger[TouchID].major, info->finger[TouchID].minor,
-							location, info->touch_count,
+							location, info->touch_count, info->finger[TouchID].ttype,
 							info->finger[TouchID].palm_count, info->finger[TouchID].noise_level,
 							info->finger[TouchID].max_strength, info->finger[TouchID].hover_id_num);
 #endif
@@ -2028,16 +2027,7 @@ static u8 fts_event_handler_type_b(struct fts_ts_info *info)
 							"%s: do not support coordinate action(%d)\n",
 							__func__, info->finger[TouchID].action);
 				}
-/*
-				if ((info->finger[TouchID].action == FTS_COORDINATE_ACTION_PRESS) ||
-						(info->finger[TouchID].action == FTS_COORDINATE_ACTION_MOVE)) {
-					if (info->finger[TouchID].ttype != prev_ttype) {
-						input_info(true, &info->client->dev, "%s : tID:%d ttype(%x->%x)\n",
-								__func__, info->finger[TouchID].id,
-								prev_ttype, info->finger[TouchID].ttype);
-					}
-				}
-*/
+
 				if (info->finger[TouchID].prev_ttype != info->finger[TouchID].ttype)
 					input_info(true, &info->client->dev, "%s: tID:%d ttype(%c->%c) : %s\n",
 							__func__, info->finger[TouchID].id,

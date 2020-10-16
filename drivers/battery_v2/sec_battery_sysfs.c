@@ -2125,7 +2125,7 @@ ssize_t sec_bat_store_attrs(
 				if (battery->pdata->wpc_en)
 					gpio_direction_output(battery->pdata->wpc_en, 1);
 #endif
-				pr_info("%s: WC CONTROL: Disable", __func__);
+				pr_info("%s: WC CONTROL: Disable\n", __func__);
 				mutex_unlock(&battery->wclock);
 			} else if (x == 1) {
 				mutex_lock(&battery->wclock);
@@ -2143,7 +2143,7 @@ ssize_t sec_bat_store_attrs(
 				if (battery->pdata->wpc_en)
 					gpio_direction_output(battery->pdata->wpc_en, 0);
 #endif
-				pr_info("%s: WC CONTROL: Enable", __func__);
+				pr_info("%s: WC CONTROL: Enable\n", __func__);
 				mutex_unlock(&battery->wclock);
 			} else {
 				dev_info(battery->dev,

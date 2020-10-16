@@ -108,6 +108,7 @@ struct dp_rx_desc_dbg_info {
  * @in_use		  rx_desc is in use
  * @unmapped		  used to mark rx_desc an unmapped if the corresponding
  *			  nbuf is already unmapped
+ * @in_err_state	: Nbuf sanity failed for this descriptor.
  */
 struct dp_rx_desc {
 	qdf_nbuf_t nbuf;
@@ -119,7 +120,8 @@ struct dp_rx_desc {
 	struct dp_rx_desc_dbg_info *dbg_info;
 #endif
 	uint8_t	in_use:1,
-	unmapped:1;
+	unmapped:1,
+	in_err_state:1;
 };
 
 /* RX Descriptor Multi Page memory alloc related */
@@ -540,10 +542,9 @@ static inline QDF_STATUS
 dp_rx_cookie_check_and_invalidate(hal_ring_desc_t ring_desc)
 {
 	if (qdf_unlikely(HAL_RX_REO_BUF_COOKIE_INVALID_GET(ring_desc)))
-	return QDF_STATUS_E_FAILURE;
+		return QDF_STATUS_E_FAILURE;
 
 	HAL_RX_REO_BUF_COOKIE_INVALID_SET(ring_desc);
-	
 	return QDF_STATUS_SUCCESS;
 }
 #else
@@ -686,6 +687,20 @@ void dp_rx_deliver_raw(struct dp_vdev *vdev, qdf_nbuf_t nbuf_list,
 				struct dp_peer *peer);
 
 #ifdef RX_DESC_DEBUG_CHECK
+/**
+ * dp_rx_desc_paddr_sanity_check() - paddr sanity for ring desc vs rx_desc
+ * @rx_desc: rx descriptor
+ * @ring_paddr: paddr obatined from the ring
+ *
+ * Returns: QDF_STATUS
+ */
+static inline
+bool dp_rx_desc_paddr_sanity_check(struct dp_rx_desc *rx_desc,
+				   uint64_t ring_paddr)
+{
+	return (ring_paddr == qdf_nbuf_get_frag_paddr(rx_desc->nbuf, 0));
+}
+
 /*
  * dp_rx_desc_alloc_dbg_info() - Alloc memory for rx descriptor debug
  *  structure

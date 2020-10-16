@@ -17,10 +17,10 @@
 
 		qcom,mdss-dsi-bpp = <24>;
 
-		qcom,mdss-dsi-h-pulse-width = <88>;
+		qcom,mdss-dsi-h-pulse-width = <92>;
 		qcom,mdss-dsi-h-back-porch = <92>;
-		qcom,mdss-dsi-h-front-porch = <90>;
-		qcom,mdss-dsi-v-pulse-width = <2>;
+		qcom,mdss-dsi-h-front-porch = <92>;
+		qcom,mdss-dsi-v-pulse-width = <8>;
 		qcom,mdss-dsi-v-back-porch = <12>;
 		qcom,mdss-dsi-v-front-porch = <4>;
 
@@ -29,7 +29,7 @@
 		qcom,mdss-dsi-v-top-border = <0>;
 		qcom,mdss-dsi-v-bottom-border = <0>;
 
-		qcom,mdss-dsi-panel-phy-timings = [00 25 0A 0A 27 24 0A 0A 07 02 04 00 1F 1A];	// 1176.5 Mbps
+		qcom,mdss-dsi-panel-phy-timings = [00 25 0A 0A 27 24 0A 0A 09 02 04 00 1F 1A];	// 1110 Mbps
 
 		qcom,mdss-dsi-underflow-color = <0xFF>;
 		qcom,mdss-dsi-border-color = <0>;
@@ -1203,14 +1203,16 @@
 		 */
 
 		samsung,fd_on_tx_cmds_revA = [
-			29 01 00 00 00 00 03 F0 5A 5A
-			29 01 00 00 00 00 0B D5 82 FF 5C 44 BF 89 00 00 03 01
-			29 01 00 00 78 00 03 F0 A5 A5
+			29 00 00 00 00 00 03 F0 5A 5A
+			29 00 00 00 00 00 02 B0 0A
+			29 00 00 00 00 00 02 D5 01
+			29 01 00 00 00 00 03 F0 A5 A5
 		];
 
 		samsung,fd_off_tx_cmds_revA = [
-			29 01 00 00 00 00 03 F0 5A 5A
-			29 01 00 00 00 00 0B D5 82 FF 5C 44 BF 89 00 00 03 02
+			29 00 00 00 00 00 03 F0 5A 5A
+			29 00 00 00 00 00 02 B0 0A
+			29 00 00 00 00 00 02 D5 02
 			29 01 00 00 00 00 03 F0 A5 A5
 		];
 
@@ -1221,28 +1223,21 @@
 
 		samsung,lpm_on_tx_cmds_revA = [ // TX_LPM_ON
 			/* Image write for HLPM/ALPM Mode */
-			29 00 00 00 00 00 03 F0 5A 5A	/* TEST KEY Enable */
+			29 00 00 00 00 00 03 F0 5A 5A
 			29 00 00 00 00 00 02 E3 00	/* HLPM Select : HLPM(00)/ALPM(01) */
 			29 00 00 00 00 00 02 60 10
 			29 00 00 00 00 00 02 B0 0B	/* Global Para */
 			29 00 00 00 00 00 03 BB 00 14	/* HLPM AOR Setting */
-			/* === OSC 89.9Mhz === */
-			29 00 00 00 00 00 02 B0 5C 		/* Global Para */
-			29 00 00 00 00 00 08 C0 63 28 00 00 03 38 3E	/* HLPM Setting */
-			29 00 00 00 00 00 02 B0 09 		/* Global Para */
-			29 00 00 00 00 00 03 D9 78 3D	/* HLPM Setting */
-			29 00 00 00 00 00 02 C0 01 		/* HLPM Update */
-			/* === OSC 89.9Mhz === */
 			29 00 00 00 01 00 02 53 23		/* HLPM On Setting */
-			29 01 00 00 11 00 03 F0 A5 A5	/* TEST KEY Disable */
+			29 01 00 00 11 00 03 F0 A5 A5
 		];
 
 		samsung,lpm_off_tx_cmds_revA = [
 			/* Image write for Normal Mode */
-			29 00 00 00 00 00 03 F0 5A 5A	/* TEST KEY Enable */
-			29 00 00 00 00 00 0A D5 82 FF 5C 44 BF 89 00 00 00		/* Normal ASWIRE No Pulse */
+			29 00 00 00 00 00 03 F0 5A 5A
+			29 00 00 00 00 00 07 B7 01 5C CB 0D C0 16	/* Elvss Return */
 			29 00 00 00 01 00 02 53 20		/* ALPM/HLPM off */
-			29 01 00 00 00 00 03 F0 A5 A5	/* TEST KEY Disable */
+			29 01 00 00 00 00 03 F0 A5 A5
 		];
 
 		/* ALPM/HLPM 2nit or 60nit On Commands */
@@ -1271,7 +1266,18 @@
 		 * **************************************************************
 		 */
 		samsung,vrr_tx_cmds_revA = [
-			29 01 00 00 00 00 02 60 10
+			29 00 00 00 00 00 03 F0 5A 5A
+			29 00 00 00 00 00 02 60 00
+			29 00 00 00 00 00 02 B0 0B
+			29 00 00 00 00 00 03 D8 A9 70
+			29 00 00 00 00 00 02 B0 D4
+			29 00 00 00 00 00 19 BA
+				12 E0 09 70 09 70 09 70
+				09 70 09 70 09 70 09 70
+				09 70 09 70 09 34 01 80
+			29 00 00 00 00 00 08 BB 70 09 34 01 80 20 80
+			29 00 00 00 00 00 02 F7 03
+			29 01 00 00 00 00 03 F0 A5 A5
 		];
 
 		samsung,support_vrr_based_bl; /* VRR Variable Refresh Rate */
@@ -1290,12 +1296,12 @@
 				qcom,mdss-dsi-panel-width = <1080>;
 				qcom,mdss-dsi-panel-height = <2400>;
 
-				qcom,mdss-dsi-h-pulse-width = <88>;
+				qcom,mdss-dsi-h-pulse-width = <92>;
 				qcom,mdss-dsi-h-back-porch = <92>;
 				qcom,mdss-dsi-h-front-porch = <92>;
 				qcom,mdss-dsi-h-sync-skew = <0>;
 
-				qcom,mdss-dsi-v-pulse-width = <4>;
+				qcom,mdss-dsi-v-pulse-width = <8>;
 				qcom,mdss-dsi-v-back-porch = <12>;
 				qcom,mdss-dsi-v-front-porch = <4>;
 
@@ -1303,8 +1309,8 @@
 				qcom,mdss-dsi-panel-framerate = <120>;
 				qcom,mdss-mdp-transfer-time-us = <7533>; /* transfer time: 48Hz: 20032, 60Hz: 15866, 96Hz: 9616, 120Hz: 7533 */
 
-				qcom,mdss-dsi-panel-clockrate = <1100000000>; /* 1100 Mbps*/
-				qcom,mdss-dsi-panel-phy-timings = [00 25 0A 0A 27 24 0A 0A 09 02 04 00 1F 1A];	// 1100 Mbps
+				qcom,mdss-dsi-panel-clockrate = <1110000000>; /* 1110 Mbps*/
+				qcom,mdss-dsi-panel-phy-timings = [00 25 0A 0A 27 24 0A 0A 09 02 04 00 1F 1A];	// 1110 Mbps
 
 				/*qcom,mdss-dsi-timing-switch-command; use samsung,panel_multires_XXX instead*/
 				/*qcom,mdss-dsi-timing-switch-command-state;*/
@@ -1314,17 +1320,6 @@
 
 				qcom,mdss-dsi-t-clk-pre = <0x1F>;
 				qcom,mdss-dsi-t-clk-post = <0x1A>;
-
-				/*only for factory binary*/
-				qcom,mdss-fd-on-command = [
-					29 01 00 00 00 00 03 F1 5A 5A	/* TEST KEY Enable */
-					29 01 00 00 00 00 02 D0 08
-					29 01 00 00 00 00 03 F1 A5 A5
-					29 01 00 00 00 00 03 F0 5A 5A
-					29 01 00 00 00 00 02 B0 03
-					29 01 00 00 00 00 02 CD 04
-					29 01 00 00 00 00 03 F0 A5 A5	/* TEST KEY Disable */
-				];
 
 				qcom,mdss-dsi-on-command = [
 					/* Sleep out, wait 10ms(0x0A) */
@@ -1339,9 +1334,30 @@
 					29 00 00 00 00 00 05 2A 00 00 04 37
 					29 01 00 00 00 00 05 2B 00 00 09 5F
 
+					/* ERR_FG Setting */
+					29 00 00 00 00 00 03 F0 5A 5A
+					29 00 00 00 00 00 0F EC 00 00 00 C0 42 00 00 00 20 00 00 00 00 19
+					29 00 00 00 00 00 03 F0 A5 A5
+
+					/* Vsync Setting */
+					29 00 00 00 00 00 03 F0 5A 5A
+					29 00 00 00 00 00 02 B0 01
+					29 00 00 00 00 00 02 E6 01
+					29 01 00 00 00 00 03 F0 A5 A5
+
 					/* PCD Setting */
 					29 00 00 00 00 00 03 F0 5A 5A
 					29 00 00 00 00 00 03 E8 55 12 // Default Low(55) / Disable SW Reset (12)
+					29 01 00 00 00 00 03 F0 A5 A5
+
+					/* ACL Setting Value */
+					29 00 00 00 00 00 03 F0 5A 5A
+					29 00 00 00 00 00 02 B0 CA
+					29 00 00 00 00 00 02 BB 0B
+					29 00 00 00 00 00 02 B0 CF
+					29 00 00 00 00 00 03 BB 41 FF
+					29 00 00 00 00 00 02 B0 D9
+					29 00 00 00 00 00 02 BB 20
 					29 01 00 00 00 00 03 F0 A5 A5
 
 					/* DSC Setting */
@@ -1367,6 +1383,18 @@
 						00 00 00 00 00 00 00
 						00 00 00 00 00 00 00
 						00 00
+					29 01 00 00 00 00 03 F0 A5 A5
+
+					/* TE Setting */
+					29 00 00 00 00 00 03 F0 5A 5A
+					29 00 00 00 00 00 02 B0 04
+					29 00 00 00 00 00 04 DF 95 80 0C
+					29 01 00 00 00 00 03 F0 A5 A5
+
+					/* Smooth Dimming Setting */
+					29 00 00 00 00 00 03 F0 5A 5A
+					29 00 00 00 00 00 02 B0 06
+					29 00 00 00 00 00 02 B7 08
 					29 01 00 00 00 00 03 F0 A5 A5
 
 					/* Brightness */
@@ -1405,20 +1433,20 @@
 				qcom,mdss-dsi-panel-width = <1080>;
 				qcom,mdss-dsi-panel-height = <2400>;
 
-				qcom,mdss-dsi-h-pulse-width = <88>;
+				qcom,mdss-dsi-h-pulse-width = <92>;
 				qcom,mdss-dsi-h-back-porch = <92>;
 				qcom,mdss-dsi-h-front-porch = <92>;
 				qcom,mdss-dsi-h-sync-skew = <0>;
 
-				qcom,mdss-dsi-v-pulse-width = <4>;
+				qcom,mdss-dsi-v-pulse-width = <8>;
 				qcom,mdss-dsi-v-back-porch = <12>;
 				qcom,mdss-dsi-v-front-porch = <2420>;
 
 				samsung,mdss-dsi-sot-hs-mode; // HS Setting
 				qcom,mdss-dsi-panel-framerate = <60>;
 				qcom,mdss-mdp-transfer-time-us = <7533>; /* transfer time: 48Hz: 20032, 60Hz: 15866, 96Hz: 9616, 120Hz: 7533 */
-				qcom,mdss-dsi-panel-clockrate = <1100000000>; /* 1100 Mbps*/
-				qcom,mdss-dsi-panel-phy-timings = [00 25 0A 0A 27 24 0A 0A 09 02 04 00 1F 1A];	// 1100 Mbps
+				qcom,mdss-dsi-panel-clockrate = <1110000000>; /* 1110 Mbps*/
+				qcom,mdss-dsi-panel-phy-timings = [00 25 0A 0A 27 24 0A 0A 09 02 04 00 1F 1A];	// 1110 Mbps
 
 				/*qcom,mdss-dsi-timing-switch-command; use samsung,panel_multires_XXX instead*/
 				/*qcom,mdss-dsi-timing-switch-command-state;*/
@@ -1428,17 +1456,6 @@
 
 				qcom,mdss-dsi-t-clk-pre = <0x1F>;
 				qcom,mdss-dsi-t-clk-post = <0x1A>;
-
-				/*only for factory binary*/
-				qcom,mdss-fd-on-command = [
-					29 01 00 00 00 00 03 F1 5A 5A	/* TEST KEY Enable */
-					29 01 00 00 00 00 02 D0 08
-					29 01 00 00 00 00 03 F1 A5 A5
-					29 01 00 00 00 00 03 F0 5A 5A
-					29 01 00 00 00 00 02 B0 03
-					29 01 00 00 00 00 02 CD 04
-					29 01 00 00 00 00 03 F0 A5 A5	/* TEST KEY Disable */
-				];
 
 				qcom,mdss-dsi-on-command = [
 					/* Sleep out, wait 10ms(0x0A) */
@@ -1453,9 +1470,30 @@
 					29 00 00 00 00 00 05 2A 00 00 04 37
 					29 01 00 00 00 00 05 2B 00 00 09 5F
 
+					/* ERR_FG Setting */
+					29 00 00 00 00 00 03 F0 5A 5A
+					29 00 00 00 00 00 0F EC 00 00 00 C0 42 00 00 00 20 00 00 00 00 19
+					29 00 00 00 00 00 03 F0 A5 A5
+
+					/* Vsync Setting */
+					29 00 00 00 00 00 03 F0 5A 5A
+					29 00 00 00 00 00 02 B0 01
+					29 00 00 00 00 00 02 E6 01
+					29 01 00 00 00 00 03 F0 A5 A5
+
 					/* PCD Setting */
 					29 00 00 00 00 00 03 F0 5A 5A
 					29 00 00 00 00 00 03 E8 55 12 // Default Low(55) / Disable SW Reset (12)
+					29 01 00 00 00 00 03 F0 A5 A5
+
+					/* ACL Setting Value */
+					29 00 00 00 00 00 03 F0 5A 5A
+					29 00 00 00 00 00 02 B0 CA
+					29 00 00 00 00 00 02 BB 0B
+					29 00 00 00 00 00 02 B0 CF
+					29 00 00 00 00 00 03 BB 41 FF
+					29 00 00 00 00 00 02 B0 D9
+					29 00 00 00 00 00 02 BB 20
 					29 01 00 00 00 00 03 F0 A5 A5
 
 					/* DSC Setting */
@@ -1481,6 +1519,32 @@
 						00 00 00 00 00 00 00
 						00 00 00 00 00 00 00
 						00 00
+					29 01 00 00 00 00 03 F0 A5 A5
+
+					/* A-sync Setting */
+					29 01 00 00 00 00 03 F0 5A 5A
+					29 00 00 00 00 00 02 60 00		/* 0x00 : 96/60/48 Hz */
+					29 00 00 00 00 00 02 B0 0B
+					29 00 00 00 00 00 03 D8 A9 70
+					29 00 00 00 00 00 02 B0 D4
+					29 00 00 00 00 00 19 BA
+						12 E0 09 70 09 70 09 70
+						09 70 09 70 09 70 09 70
+						09 70 09 70 09 34 01 80
+					29 00 00 00 00 00 08 BB 70 09 34 01 80 20 80
+					29 00 00 00 00 00 02 F7 03
+					29 01 00 00 00 00 03 F0 A5 A5
+
+					/* TE Setting */
+					29 00 00 00 00 00 03 F0 5A 5A
+					29 00 00 00 00 00 02 B0 04
+					29 00 00 00 00 00 04 DF 95 80 0C
+					29 01 00 00 00 00 03 F0 A5 A5
+
+					/* Smooth Dimming Setting */
+					29 00 00 00 00 00 03 F0 5A 5A
+					29 00 00 00 00 00 02 B0 06
+					29 00 00 00 00 00 02 B7 08
 					29 01 00 00 00 00 03 F0 A5 A5
 
 					/* Brightness */

@@ -906,6 +906,41 @@ void hdd_get_transmit_mac_addr(struct hdd_adapter *adapter, struct sk_buff *skb,
 	}
 }
 
+#ifdef HANDLE_BROADCAST_EAPOL_TX_FRAME
+/**
+ * wlan_hdd_fix_broadcast_eapol() - Fix broadcast eapol
+ * @adapter: pointer to adapter
+ * @skb: pointer to OS packet (sk_buff)
+ *
+ * Override DA of broadcast eapol with bssid addr.
+ *
+ * Return: None
+ */
+static void wlan_hdd_fix_broadcast_eapol(struct hdd_adapter *adapter,
+					 struct sk_buff *skb)
+{
+	struct ethhdr *eh = (struct ethhdr *)skb->data;
+	unsigned char *ap_mac_addr =
+		&adapter->session.station.conn_info.bssid.bytes[0];
+
+	if (qdf_unlikely((QDF_NBUF_CB_GET_PACKET_TYPE(skb) ==
+			  QDF_NBUF_CB_PACKET_TYPE_EAPOL) &&
+			 QDF_NBUF_CB_GET_IS_BCAST(skb))) {
+		hdd_debug("SA: "QDF_MAC_ADDR_STR " override DA: "QDF_MAC_ADDR_STR " with AP mac address "QDF_MAC_ADDR_STR,
+			  QDF_MAC_ADDR_ARRAY(&eh->h_source[0]),
+			  QDF_MAC_ADDR_ARRAY(&eh->h_dest[0]),
+			  QDF_MAC_ADDR_ARRAY(ap_mac_addr));
+
+		qdf_mem_copy(&eh->h_dest, ap_mac_addr, QDF_MAC_ADDR_SIZE);
+	}
+}
+#else
+static void wlan_hdd_fix_broadcast_eapol(struct hdd_adapter *adapter,
+					 struct sk_buff *skb)
+{
+}
+#endif /* HANDLE_BROADCAST_EAPOL_TX_FRAME */
+
 /**
  * __hdd_hard_start_xmit() - Transmit a frame
  * @skb: pointer to OS packet (sk_buff)
@@ -928,7 +963,7 @@ static void __hdd_hard_start_xmit(struct sk_buff *skb,
 	struct hdd_adapter *adapter = WLAN_HDD_GET_PRIV_PTR(dev);
 	bool granted;
 	struct hdd_station_ctx *sta_ctx = &adapter->session.station;
-	struct qdf_mac_addr *mac_addr;
+	struct qdf_mac_addr mac_addr;
 	struct qdf_mac_addr mac_addr_tx_allowed = QDF_MAC_ADDR_ZERO_INIT;
 	uint8_t pkt_type = 0;
 	bool is_arp = false;
@@ -945,7 +980,7 @@ static void __hdd_hard_start_xmit(struct sk_buff *skb,
 
 	++adapter->hdd_stats.tx_rx_stats.tx_called;
 	adapter->hdd_stats.tx_rx_stats.cont_txtimeout_cnt = 0;
-	mac_addr = (struct qdf_mac_addr *)skb->data;
+	qdf_mem_copy(mac_addr.bytes, skb->data, sizeof(mac_addr.bytes));
 
 	if (cds_is_driver_recovering() || cds_is_driver_in_bad_state() ||
 	    cds_is_load_or_unload_in_progress()) {
@@ -984,7 +1019,7 @@ static void __hdd_hard_start_xmit(struct sk_buff *skb,
 		goto drop_pkt;
 	}
 
-	hdd_get_tx_resource(adapter, mac_addr,
+	hdd_get_tx_resource(adapter, &mac_addr,
 			    WLAN_HDD_TX_FLOW_CONTROL_OS_Q_BLOCK_TIME);
 
 	/* Get TL AC corresponding to Qdisc queue index/AC. */
@@ -1082,7 +1117,7 @@ static void __hdd_hard_start_xmit(struct sk_buff *skb,
 
 	vdev = hdd_objmgr_get_vdev(adapter);
 	if (vdev) {
-		ucfg_tdls_update_tx_pkt_cnt(vdev, mac_addr);
+		ucfg_tdls_update_tx_pkt_cnt(vdev, &mac_addr);
 		hdd_objmgr_put_vdev(vdev);
 	}
 
@@ -1136,11 +1171,13 @@ static void __hdd_hard_start_xmit(struct sk_buff *skb,
 		goto drop_pkt_and_release_skb;
 	}
 
+	wlan_hdd_fix_broadcast_eapol(adapter, skb);
+
 	if (adapter->tx_fn(soc, adapter->vdev_id, (qdf_nbuf_t)skb)) {
 		QDF_TRACE(QDF_MODULE_ID_HDD_DATA, QDF_TRACE_LEVEL_INFO_HIGH,
 			  "%s: Failed to send packet to txrx for sta_id: "
 			  QDF_MAC_ADDR_STR,
-			  __func__, QDF_MAC_ADDR_ARRAY(mac_addr->bytes));
+			  __func__, QDF_MAC_ADDR_ARRAY(mac_addr.bytes));
 		++adapter->hdd_stats.tx_rx_stats.tx_dropped_ac[ac];
 		goto drop_pkt_and_release_skb;
 	}
@@ -1572,7 +1609,7 @@ static QDF_STATUS hdd_gro_rx_bh_disable(struct hdd_adapter *adapter,
 	gro_res = napi_gro_receive(napi_to_use, skb);
 
 	if (hdd_get_current_throughput_level(hdd_ctx) == PLD_BUS_WIDTH_IDLE ||
-	    !rx_aggregation) {
+	    !rx_aggregation || adapter->gro_disallowed[rx_ctx_id]) {
 		if (gro_res != GRO_DROP && gro_res != GRO_NORMAL) {
 			adapter->hdd_stats.tx_rx_stats.
 					rx_gro_low_tput_flush++;
@@ -1580,6 +1617,8 @@ static QDF_STATUS hdd_gro_rx_bh_disable(struct hdd_adapter *adapter,
 		}
 		if (!rx_aggregation)
 			hdd_ctx->dp_agg_param.gro_force_flush[rx_ctx_id] = 1;
+		if (adapter->gro_disallowed[rx_ctx_id])
+			adapter->gro_flushed[rx_ctx_id] = 1;
 	}
 	local_bh_enable();
 
@@ -1975,6 +2014,98 @@ QDF_STATUS hdd_rx_deliver_to_stack(struct hdd_adapter *adapter,
 	return status;
 }
 #else
+
+#if defined(WLAN_SUPPORT_RX_FISA)
+/**
+ * hdd_set_fisa_disallowed_for_vdev() - Set fisa disallowed bit for a vdev
+ * @soc: DP soc handle
+ * @vdev_id: Vdev id
+ * @rx_ctx_id: rx context id
+ * @val: Enable or disable
+ *
+ * The function sets the fisa disallowed flag for a given vdev
+ *
+ * Return: None
+ */
+static inline
+void hdd_set_fisa_disallowed_for_vdev(ol_txrx_soc_handle soc, uint8_t vdev_id,
+				      uint8_t rx_ctx_id, uint8_t val)
+{
+	dp_set_fisa_disallowed_for_vdev(soc, vdev_id, rx_ctx_id, val);
+}
+#else
+static inline
+void hdd_set_fisa_disallowed_for_vdev(ol_txrx_soc_handle soc, uint8_t vdev_id,
+				      uint8_t rx_ctx_id, uint8_t val)
+{
+}
+#endif
+
+/**
+ * hdd_rx_check_qdisc_for_adapter() - Check if any ingress qdisc is configured
+ *  for given adapter
+ * @adapter: pointer to HDD adapter context
+ * @rx_ctx_id: Rx context id
+ *
+ * The function checks if ingress qdisc is registered for a given
+ * net device.
+ *
+ * Return: None
+ */
+static void
+hdd_rx_check_qdisc_for_adapter(struct hdd_adapter *adapter, uint8_t rx_ctx_id)
+{
+	ol_txrx_soc_handle soc = cds_get_context(QDF_MODULE_ID_SOC);
+	struct netdev_queue *ingress_q;
+	struct Qdisc *ingress_qdisc;
+	bool is_qdisc_ingress = false;
+
+	/*
+	 * This additional ingress_queue NULL check is to avoid
+	 * doing RCU lock/unlock in the common scenario where
+	 * ingress_queue is not configured by default
+	 */
+	if (qdf_likely(!adapter->dev->ingress_queue))
+		goto reset_wl;
+
+	rcu_read_lock();
+	ingress_q = rcu_dereference(adapter->dev->ingress_queue);
+
+	if (qdf_unlikely(!ingress_q))
+		goto reset;
+
+	ingress_qdisc = rcu_dereference(ingress_q->qdisc);
+	if (!ingress_qdisc)
+		goto reset;
+
+	is_qdisc_ingress = qdf_str_eq(ingress_qdisc->ops->id, "ingress");
+	if (!is_qdisc_ingress)
+		goto reset;
+
+	rcu_read_unlock();
+
+	if (adapter->gro_disallowed[rx_ctx_id])
+		return;
+
+	hdd_debug("ingress qdisc configured disable GRO");
+	adapter->gro_disallowed[rx_ctx_id] = 1;
+	hdd_set_fisa_disallowed_for_vdev(soc, adapter->vdev_id, rx_ctx_id, 1);
+
+	return;
+
+reset:
+	rcu_read_unlock();
+
+reset_wl:
+	if (adapter->gro_disallowed[rx_ctx_id]) {
+		hdd_debug("ingress qdisc removed enable GRO");
+		hdd_set_fisa_disallowed_for_vdev(soc, adapter->vdev_id,
+						 rx_ctx_id, 0);
+		adapter->gro_disallowed[rx_ctx_id] = 0;
+		adapter->gro_flushed[rx_ctx_id] = 0;
+	}
+}
+
 QDF_STATUS hdd_rx_deliver_to_stack(struct hdd_adapter *adapter,
 				   struct sk_buff *skb)
 {
@@ -1984,12 +2115,15 @@ QDF_STATUS hdd_rx_deliver_to_stack(struct hdd_adapter *adapter,
 	bool skb_receive_offload_ok = false;
 	uint8_t rx_ctx_id = QDF_NBUF_CB_RX_CTX_ID(skb);
 
+	hdd_rx_check_qdisc_for_adapter(adapter, rx_ctx_id);
+
 	if (QDF_NBUF_CB_RX_TCP_PROTO(skb) &&
 	    !QDF_NBUF_CB_RX_PEER_CACHED_FRM(skb))
 		skb_receive_offload_ok = true;
 
 	if (skb_receive_offload_ok && hdd_ctx->receive_offload_cb &&
-	    !hdd_ctx->dp_agg_param.gro_force_flush[rx_ctx_id]) {
+	    !hdd_ctx->dp_agg_param.gro_force_flush[rx_ctx_id] &&
+	    !adapter->gro_flushed[rx_ctx_id]) {
 		status = hdd_ctx->receive_offload_cb(adapter, skb);
 
 		if (QDF_IS_STATUS_SUCCESS(status)) {

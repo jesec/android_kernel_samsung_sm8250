@@ -38,11 +38,7 @@
 #if defined(CONFIG_SAMSUNG_OIS_RUMBA_S4)
 #define MAX_BRIDGE_COUNT (1)
 #else
-#if defined(CONFIG_SEC_C2Q_PROJECT)
-#define MAX_BRIDGE_COUNT (3)
-#else
 #define MAX_BRIDGE_COUNT (2)
-#endif
 #endif
 
 #define OIS_VER_SIZE  (8)

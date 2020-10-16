@@ -1130,11 +1130,16 @@ int dsi_display_set_power(struct drm_connector *connector,
 		rc = dsi_panel_set_lp2(display->panel);
 		break;
 	case SDE_MODE_DPMS_ON:
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+	case SDE_MODE_DPMS_OFF:
+#endif
 		if ((display->panel->power_mode == SDE_MODE_DPMS_LP1) ||
 			(display->panel->power_mode == SDE_MODE_DPMS_LP2))
 			rc = dsi_panel_set_nolp(display->panel);
 		break;
+#if !defined(CONFIG_DISPLAY_SAMSUNG)
 	case SDE_MODE_DPMS_OFF:
+#endif
 	default:
 		return rc;
 	}
@@ -7177,11 +7182,14 @@ static void dsi_display_handle_lp_rx_timeout(struct work_struct *work)
 		struct samsung_display_driver_data *vdd;
 		struct sde_connector *conn;
 
-		DSI_INFO("recovery display for cmd panel\n");
-
 		vdd = display->panel->panel_private;
 		if (!vdd) {
 			LCD_ERR("invalid vdd\n");
+			return;
+		}
+
+		if (!vdd->support_lp_rx_err_recovery) {
+			LCD_INFO("do not support LP RX timeout recovery\n");
 			return;
 		}
 
@@ -7190,6 +7198,8 @@ static void dsi_display_handle_lp_rx_timeout(struct work_struct *work)
 			LCD_ERR("invalid conn\n");
 			return;
 		}
+
+		DSI_INFO("recovery display for cmd panel\n");
 
 		vdd->esd_recovery.esd_irq_enable(false, true, (void *)vdd);
 		vdd->panel_lpm.esd_recovery = true;

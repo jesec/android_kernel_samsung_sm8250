@@ -15,6 +15,7 @@ struct mhi_buf_info;
 struct mhi_sfr_info;
 
 #define REG_WRITE_QUEUE_LEN 1024
+#define MHI_MAX_PP_ABORT_COUNT 100
 
 /**
  * enum MHI_CB - MHI callback
@@ -336,6 +337,7 @@ struct mhi_controller {
 	atomic_t dev_wake;
 	atomic_t alloc_size;
 	atomic_t pending_pkts;
+	u32 pp_abort_counter;
 	struct list_head transition_list;
 	spinlock_t transition_lock;
 	spinlock_t wlock;

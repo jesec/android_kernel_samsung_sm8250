@@ -10124,7 +10124,7 @@ static int ufs_read_device_desc_data(struct ufs_hba *hba)
 	err = ufshcd_read_string_desc(hba, serial_num_index,
 			str_desc_buf, hba->desc_size.str_desc, UTF16_STD);
 	if (err)
-		goto out_free_str_desc_buf;
+		goto out;
 
 	str_desc_buf[hba->desc_size.str_desc] = '\0';
 
@@ -10136,7 +10136,7 @@ static int ufs_read_device_desc_data(struct ufs_hba *hba)
 			err = -ENOMEM;
 			dev_err(hba->dev,
 				"%s: Failed to allocate health_buf\n", __func__);
-			goto out_free_str_desc_buf;
+			goto out;
 		}
 	}
 	err = ufshcd_read_desc(hba, QUERY_DESC_IDN_HEALTH, 0, health_buf,
@@ -10147,15 +10147,18 @@ static int ufs_read_device_desc_data(struct ufs_hba *hba)
 				__func__, err);
 	} else {
 		hba->dev_info.i_lt = health_buf[HEALTH_DESC_PARAM_LIFE_TIME_EST_A];
-		dev_err(hba->dev, "LT: 0x%01x%01x\n", health_buf[HEALTH_DESC_PARAM_LIFE_TIME_EST_A],
+		dev_info(hba->dev, "LT: 0x%01x%01x\n", health_buf[HEALTH_DESC_PARAM_LIFE_TIME_EST_A],
 				health_buf[HEALTH_DESC_PARAM_LIFE_TIME_EST_B]);
 	}
-	kfree(health_buf);
 
-out_free_str_desc_buf:
-	kfree(str_desc_buf);
 out:
-	kfree(desc_buf);
+	if (health_buf)
+		kfree(health_buf);
+	if (str_desc_buf)
+		kfree(str_desc_buf);
+	if (desc_buf)
+		kfree(desc_buf);
+
 	return err;
 }
 
@@ -11976,33 +11979,6 @@ int ufshcd_system_resume(struct ufs_hba *hba)
 	else
 		ret = ufshcd_resume(hba, UFS_SYSTEM_PM);
 
-	if (!ret) {
-		int err = 0;
-		u8 *health_buf = NULL;
-
-		if (hba->desc_size.hlth_desc) {
-			health_buf = kmalloc(hba->desc_size.hlth_desc, GFP_KERNEL);
-			if (!health_buf) {
-				err = -ENOMEM;
-				dev_err(hba->dev,
-						"%s: Failed to allocate health_buf\n", __func__);
-				goto out_invalid_lt;
-			}
-		}
-		err = ufshcd_read_desc(hba, QUERY_DESC_IDN_HEALTH, 0, health_buf,
-				hba->desc_size.hlth_desc);
-out_invalid_lt:
-		if (err) {
-			hba->dev_info.i_lt = 0x0;
-			dev_err(hba->dev, "%s: HEALTH desc read fail, err = %d\n",
-					__func__, err);
-		} else {
-			hba->dev_info.i_lt = health_buf[HEALTH_DESC_PARAM_LIFE_TIME_EST_A];
-			dev_err(hba->dev, "LT: 0x%01x%01x\n", health_buf[HEALTH_DESC_PARAM_LIFE_TIME_EST_A],
-					health_buf[HEALTH_DESC_PARAM_LIFE_TIME_EST_B]);
-		}
-	}
-
 out:
 	trace_ufshcd_system_resume(dev_name(hba->dev), ret,
 		ktime_to_us(ktime_sub(ktime_get(), start)),
@@ -12410,7 +12386,6 @@ static DEVICE_ATTR(SEC_UFS_HPB_err_info, 0444, SEC_UFS_HPB_error_show, NULL);
 #endif
 
 UFS_DEV_ATTR(capabilities, "%08x\n", hba->capabilities);
-UFS_DEV_ATTR(lt, "%01x\n", hba->dev_info.i_lt);
 UFS_DEV_ATTR(gear, "%01x\n", hba->pwr_info.gear_rx);
 UFS_DEV_ATTR(man_id, "%04x\n", hba->dev_info.w_manufacturer_id);
 UFS_DEV_ATTR(man_date, "%04X\n", hba->dev_info.w_manufacturer_date);
@@ -12459,14 +12434,55 @@ static ssize_t ufs_lc_info_store(struct device *dev,
 
 static DEVICE_ATTR(lc, 0664, ufs_lc_info_show, ufs_lc_info_store);
 
+static ssize_t ufs_lt_info_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	struct Scsi_Host *host = container_of(dev, struct Scsi_Host, shost_dev);
+	struct ufs_hba *hba = shost_priv(host);
+	int err = 0;
+	u8 *health_buf = NULL;
+
+	if (hba->desc_size.hlth_desc) {
+		health_buf = kmalloc(hba->desc_size.hlth_desc, GFP_KERNEL);
+		if (!health_buf) {
+			err = -ENOMEM;
+			dev_err(hba->dev,
+					"%s: Failed to allocate health_buf\n", __func__);
+			goto out_invalid_lt;
+		}
+	}
+
+	pm_runtime_get_sync(hba->dev);
+	err = ufshcd_read_desc(hba, QUERY_DESC_IDN_HEALTH, 0, health_buf,
+			hba->desc_size.hlth_desc);
+	pm_runtime_put(hba->dev);
+
+out_invalid_lt:
+	if (err) {
+		hba->dev_info.i_lt = 0x0;
+		dev_err(hba->dev, "%s: HEALTH desc read fail, err = %d\n",
+				__func__, err);
+	} else {
+		hba->dev_info.i_lt = health_buf[HEALTH_DESC_PARAM_LIFE_TIME_EST_A];
+		dev_info(hba->dev, "LT: 0x%01x%01x\n", health_buf[HEALTH_DESC_PARAM_LIFE_TIME_EST_A],
+				health_buf[HEALTH_DESC_PARAM_LIFE_TIME_EST_B]);
+	}
+
+	if (health_buf)
+		kfree(health_buf);
+
+	return sprintf(buf, "%u\n", hba->dev_info.i_lt);
+}
+
+static DEVICE_ATTR(lt, 0444, ufs_lt_info_show, NULL);
+
 static struct attribute *ufs_attributes[] = {
 	&dev_attr_capabilities.attr,
-	&dev_attr_lt.attr,
 	&dev_attr_gear.attr,
 	&dev_attr_man_id.attr,
 	&dev_attr_man_date.attr,
 	&dev_attr_unique_number.attr,
 	&dev_attr_lc.attr,
+	&dev_attr_lt.attr,
 	&dev_attr_sense_err_count.attr,
 	&dev_attr_sense_err_logging.attr,
 #if defined(SEC_UFS_ERROR_COUNT)
@@ -12476,7 +12492,6 @@ static struct attribute *ufs_attributes[] = {
 	&dev_attr_SEC_UFS_fatal_cnt.attr,
 	&dev_attr_SEC_UFS_utp_cnt.attr,
 	&dev_attr_SEC_UFS_query_cnt.attr,
-
 	&dev_attr_SEC_UFS_err_sum.attr,
 #endif
 #ifdef CONFIG_BLK_TURBO_WRITE

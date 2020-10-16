@@ -795,6 +795,18 @@ static int kgsl_iommu_fault_handler(struct iommu_domain *domain,
 		pid = private->pid;
 		tid = private->tid;
 		comm = private->comm;
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+		if ((strncmp(comm, "provider@3.0-se", 15) == 0) ||
+			(strncmp(comm, "roid.app.camera", 15) == 0)) {
+			adreno_dev->ft_pf_policy = (
+				(1 << KGSL_FT_PAGEFAULT_INT_ENABLE) |
+				(1 << KGSL_FT_PAGEFAULT_GPUHALT_ENABLE));
+			device->force_panic = true;
+			dev_err(device->dev, "### comm: %s, flags: 0x%08x, ft_pf_policy : 0x%08lx\n",
+				private->comm, flags, adreno_dev->ft_pf_policy);
+			flags |= IOMMU_FAULT_TRANSACTION_STALLED;
+		}
+#endif
 	}
 
 	if (pt->name == KGSL_MMU_SECURE_PT)
@@ -2582,6 +2594,109 @@ static bool kgsl_iommu_addr_in_range(struct kgsl_pagetable *pagetable,
 
 	return false;
 }
+
+
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+void kgsl_svm_addr_hole_log(struct kgsl_device *device, pid_t pid, uint64_t memflags)
+{
+	struct kgsl_process_private *private = NULL;
+
+	struct kgsl_iommu_addr_entry *entry;
+	struct kgsl_iommu_pt *pt;
+	struct rb_node *node;
+
+	uint64_t lo, hi;
+
+	int entry_cnt = 0;
+	uint64_t biggest_hole_size = 0;
+	uint64_t biggest_hole_addr = 0;
+	uint64_t used_mem_size = 0;
+	uint64_t pre_entry_end_addr =0;
+
+	static DEFINE_RATELIMIT_STATE(_rs, 1 * HZ, 3);
+
+	if (__ratelimit(&_rs)) {
+		private = kgsl_process_private_find(pid);
+		if (IS_ERR_OR_NULL(private)) {
+			pr_err("%s : smmu fault pid killed\n", __func__);
+			return;
+		}
+
+		spin_lock(&private->mem_lock);
+
+		pt = private->pagetable->priv;
+
+		/* To check current entry boundray */
+		if ((memflags & KGSL_MEMFLAGS_FORCE_32BIT) != 0) {
+			lo = pt->compat_va_start;
+			hi = pt->compat_va_end;
+		} else {
+			lo = pt->svm_start;
+			hi = pt->svm_end;
+		}
+
+		/* init data for first node*/
+		node = rb_first(&pt->rbtree);
+		if (node) {
+			entry_cnt++;
+			entry = rb_entry(node, struct kgsl_iommu_addr_entry, node);
+
+#if !defined(CONFIG_SAMSUNG_PRODUCT_SHIP)
+			pr_err("%s pid : %d base : 0x%lx size : %ld\n", __func__,
+						pid, entry->base, entry->size);
+#endif
+			if ((entry->base >= lo) && (entry->base <= hi)) {
+				used_mem_size += entry->size;
+
+				biggest_hole_size = entry->base - lo;
+				biggest_hole_addr = entry->base;
+
+				pre_entry_end_addr = entry->base + entry->size;
+			} else {
+				biggest_hole_size = 0;
+				biggest_hole_addr = lo;
+				pre_entry_end_addr = lo;
+			}
+		}
+
+		while(node) {
+			node = rb_next(node); //update node here
+			if (node) {
+				entry_cnt++;
+				entry = rb_entry(node, struct kgsl_iommu_addr_entry, node);
+
+#if !defined(CONFIG_SAMSUNG_PRODUCT_SHIP)
+				pr_err("%s pid : %d base : 0x%lx size : %ld\n", __func__,
+						pid, entry->base, entry->size);
+#endif
+				if ((entry->base >= lo) && (entry->base <= hi)) {
+					used_mem_size += entry->size;
+
+					if (entry->base - pre_entry_end_addr > biggest_hole_size) {
+						biggest_hole_size = entry->base - pre_entry_end_addr;
+						biggest_hole_addr = entry->base;
+					}
+
+					pre_entry_end_addr = entry->base + entry->size; //update previous valid entry end address
+				}
+			}
+		}
+
+		/* To check last vm boundary */
+		if (hi - pre_entry_end_addr > biggest_hole_size) {
+			biggest_hole_size = hi - pre_entry_end_addr;
+			biggest_hole_addr = hi;
+		}
+
+		spin_unlock(&private->mem_lock);
+
+		kgsl_process_private_put(private);
+
+		pr_err("%s pid : %d entry_cnt : %d used_size : %ld biggest_size : 0x%lx 0x%lx 0x%lx 0x%lx\n", __func__,
+			pid, entry_cnt, used_mem_size, biggest_hole_size, biggest_hole_addr, lo, hi);
+	}
+}
+#endif
 
 static const struct {
 	int id;

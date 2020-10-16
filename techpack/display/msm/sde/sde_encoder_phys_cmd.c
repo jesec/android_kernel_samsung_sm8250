@@ -29,6 +29,8 @@
 
 #define PP_TIMEOUT_MAX_TRIALS	4
 
+extern int global_flag;
+
 /*
  * Tearcheck sync start and continue thresholds are empirically found
  * based on common panels In the future, may want to allow panels to override
@@ -41,6 +43,8 @@
 #define AUTOREFRESH_SEQ1_POLL_TIME	2000
 #define AUTOREFRESH_SEQ2_POLL_TIME	25000
 #define AUTOREFRESH_SEQ2_POLL_TIMEOUT	1000000
+
+int global_flag = 0;
 
 static inline int _sde_encoder_phys_cmd_get_idle_timeout(
 		struct sde_encoder_phys_cmd *cmd_enc)
@@ -179,12 +183,21 @@ static void _sde_encoder_phys_cmd_update_intf_cfg(
 static void sde_encoder_phys_cmd_pp_tx_done_irq(void *arg, int irq_idx)
 {
 	struct sde_encoder_phys *phys_enc = arg;
+	u32 scheduler_status = INVALID_CTL_STATUS;
+	struct sde_encoder_phys_cmd *cmd_enc;
+	struct sde_hw_pp_vsync_info info[MAX_CHANNELS_PER_ENC] = {{0}};
+	struct sde_hw_ctl *ctl;
 	u32 event = 0;
 
 	if (!phys_enc || !phys_enc->hw_pp)
 		return;
 
 	SDE_ATRACE_BEGIN("pp_done_irq");
+	cmd_enc = to_sde_encoder_phys_cmd(phys_enc);
+	ctl = phys_enc->hw_ctl;
+
+	if (ctl && ctl->ops.get_scheduler_status)
+		scheduler_status = ctl->ops.get_scheduler_status(ctl);
 
 	/* notify all synchronous clients first, then asynchronous clients */
 	if (phys_enc->parent_ops.handle_frame_done &&
@@ -197,8 +210,17 @@ static void sde_encoder_phys_cmd_pp_tx_done_irq(void *arg, int irq_idx)
 		spin_unlock(phys_enc->enc_spinlock);
 	}
 
+	sde_encoder_helper_get_pp_line_count(phys_enc->parent, info);
 	SDE_EVT32_IRQ(DRMID(phys_enc->parent),
-			phys_enc->hw_pp->idx - PINGPONG_0, event);
+		phys_enc->hw_pp->idx - PINGPONG_0, event,
+		info[0].pp_idx, info[0].intf_idx,
+		info[0].wr_ptr_line_count, info[0].intf_frame_count,
+		info[1].pp_idx, info[1].intf_idx,
+		info[1].wr_ptr_line_count, info[1].intf_frame_count,
+		scheduler_status);
+
+	if (scheduler_status == 0x30)
+		global_flag = 0;	//P200728-01222 disable debug patch from 04710138 due to sluggish issue.
 
 	/* Signal any waiting atomic commit thread */
 	wake_up_all(&phys_enc->pending_kickoff_wq);

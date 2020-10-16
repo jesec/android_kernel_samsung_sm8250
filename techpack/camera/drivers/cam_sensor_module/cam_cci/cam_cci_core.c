@@ -9,9 +9,6 @@
 
 #define DUMP_CCI_REGISTERS
 
-static uint32_t cam_cci_wait(struct cci_device *, enum cci_i2c_master_t,
-	enum cci_i2c_queue_t );
-
 static int32_t cam_cci_convert_type_to_num_bytes(
 	enum camera_sensor_i2c_type type)
 {
@@ -142,7 +139,24 @@ static int32_t cam_cci_validate_queue(struct cci_device *cci_dev,
 		atomic_set(&cci_dev->cci_master_info[master].q_free[queue], 1);
 		spin_unlock_irqrestore(
 			&cci_dev->cci_master_info[master].lock_q[queue], flags);
-		rc = cam_cci_wait(cci_dev, master, queue);
+		rc = wait_for_completion_timeout(
+			&cci_dev->cci_master_info[master].report_q[queue],
+			CCI_TIMEOUT);
+		if (rc <= 0) {
+			CAM_ERR(CAM_CCI,
+				"Wait timeout cci: %d, Master:%d, report_q: %d, rc: %d",
+				cci_dev->soc_info.index, master, queue, rc);
+			if (rc == 0)
+				rc = -ETIMEDOUT;
+			cam_cci_flush_queue(cci_dev, master);
+			return rc;
+		}
+		rc = cci_dev->cci_master_info[master].status;
+		if (rc < 0) {
+			CAM_ERR(CAM_CCI, "cci: %d is in error state",
+				cci_dev->soc_info.index);
+			cci_dev->cci_master_info[master].status = 0;
+		}
 	}
 
 	return rc;
@@ -278,25 +292,13 @@ static uint32_t cam_cci_wait(struct cci_device *cci_dev,
 	CAM_DBG(CAM_CCI, "wait DONE_for_completion_timeout");
 
 	if (rc <= 0) {
-		void __iomem *base = cci_dev->soc_info.reg_map[0].mem_base;
-		uint32_t reg_offset = master * 0x200 + queue * 0x100;
-		uint32_t hw_pending_cnt = cam_io_r_mb(base +
-				CCI_I2C_M0_Q0_CUR_WORD_CNT_ADDR + reg_offset);
-		/* If HW not holding any pending command and no error from HW,
-		   ignore timeout */
-		if (hw_pending_cnt == 0)
-		{
-			CAM_INFO(CAM_CCI,
-				"Ignoring timeout for cci:%d, Maser:%d, Queue:%d",
-				cci_dev->soc_info.index, master, queue);
-		}
-		else if (rc == 0) {
 #ifdef DUMP_CCI_REGISTERS
-			cam_cci_dump_registers(cci_dev, master, queue);
+		cam_cci_dump_registers(cci_dev, master, queue);
 #endif
-			CAM_ERR(CAM_CCI,
-				"wait timeout for cci:%d, Maser:%d, Queue:%d, rc=%d",
-				cci_dev->soc_info.index, master, queue, rc);
+		CAM_ERR(CAM_CCI,
+			"wait timeout for cci:%d, Maser:%d, Queue:%d, rc=%d",
+			cci_dev->soc_info.index, master, queue, rc);
+		if (rc == 0) {
 			rc = -ETIMEDOUT;
 			cam_cci_flush_queue(cci_dev, master);
 			return rc;
@@ -310,7 +312,7 @@ static uint32_t cam_cci_wait(struct cci_device *cci_dev,
 		return rc;
 	}
 
-	return rc;
+	return 0;
 }
 
 static void cam_cci_load_report_cmd(struct cci_device *cci_dev,
@@ -993,7 +995,6 @@ static int32_t cam_cci_burst_read(struct v4l2_subdev *sd,
 	mutex_unlock(&cci_dev->cci_master_info[master].mutex);
 
 	mutex_lock(&cci_dev->cci_master_info[master].mutex_q[queue]);
-	reinit_completion(&cci_dev->cci_master_info[master].rd_done);
 	reinit_completion(&cci_dev->cci_master_info[master].report_q[queue]);
 	/*
 	 * Call validate queue to make sure queue is empty before starting.

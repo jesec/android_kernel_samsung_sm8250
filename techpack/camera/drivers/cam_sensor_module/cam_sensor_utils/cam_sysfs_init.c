@@ -853,7 +853,7 @@ static ssize_t rear_early_retention_show(struct device *dev,
 	return 0;
 }
 #endif
-#if !defined(CONFIG_SAMSUNG_FRONT_TOP_EEPROM)
+#if !(defined(CONFIG_SAMSUNG_FRONT_TOP_EEPROM) || defined(CONFIG_SAMSUNG_FRONT_FIXED_FOCUS))
 uint32_t front_af_cal_pan;
 uint32_t front_af_cal_macro;
 static ssize_t front_camera_afcal_show(struct device *dev,
@@ -5908,7 +5908,7 @@ static DEVICE_ATTR(rear_f2_paf_cal_check, S_IRUGO,
 #if 0 //EARLY_RETENTION
 static DEVICE_ATTR(rear_early_retention, S_IRUGO, rear_early_retention_show, NULL);
 #endif
-#if !defined(CONFIG_SAMSUNG_FRONT_TOP_EEPROM)
+#if !(defined(CONFIG_SAMSUNG_FRONT_TOP_EEPROM) || defined(CONFIG_SAMSUNG_FRONT_FIXED_FOCUS))
 static DEVICE_ATTR(front_afcal, S_IRUGO, front_camera_afcal_show, NULL);
 #endif
 static DEVICE_ATTR(front_camtype, S_IRUGO, front_camera_type_show, NULL);
@@ -6610,7 +6610,7 @@ static int __init cam_sysfs_init(void)
 			dev_attr_front_caminfo.attr.name);
 	}
 #endif
-#if !defined(CONFIG_SAMSUNG_FRONT_TOP_EEPROM)
+#if !(defined(CONFIG_SAMSUNG_FRONT_TOP_EEPROM) || defined(CONFIG_SAMSUNG_FRONT_FIXED_FOCUS))
 	if (device_create_file(cam_dev_front, &dev_attr_front_afcal) < 0) {
 		pr_err("Failed to create device file!(%s)!\n",
 			dev_attr_front_afcal.attr.name);

@@ -23,7 +23,6 @@
 
 #define SMARTDOCK_INDEX	1
 #define MMDOCK_INDEX	2
-#define NREALAR_INDEX	3
 
 
 struct dev_table {
@@ -41,10 +40,6 @@ static struct dev_table enable_notify_hub_table[] = {
 	{ .dev = { USB_DEVICE(0x0424, 0x9512), },
 	   .index = MMDOCK_INDEX,
 	}, /* SMSC USB LAN HUB 9512 */
-	{ .dev = { USB_DEVICE(0x04b4, 0x6572), },
-	   .index = NREALAR_INDEX,
-	}, /* NREAL AR HUB */
-
 	{}
 };
 
@@ -58,15 +53,6 @@ static struct dev_table essential_device_table[] = {
 	{ .dev = { USB_DEVICE(0x0424, 0xec00), },
 	   .index = MMDOCK_INDEX,
 	}, /* SMSC LAN Driver */
-	{ .dev = { USB_DEVICE(0x05a9, 0x0680), },
-	   .index = NREALAR_INDEX,
-	}, /* NREAL AR USB Camera-OV580 */
-	{ .dev = { USB_DEVICE(0x0486, 0x573c), },
-	   .index = NREALAR_INDEX,
-	}, /* NREAL AR GLASSES */
-	{ .dev = { USB_DEVICE(0x0bda, 0x4b77), },
-	   .index = NREALAR_INDEX,
-	}, /* NREAL AR Light Audio */
 	{}
 };
 
@@ -224,9 +210,6 @@ static int call_battery_notify(struct usb_device *dev, bool on)
 			else if (index == MMDOCK_INDEX)
 				send_otg_notify(o_notify,
 					NOTIFY_EVENT_MMD_EXT_CURRENT, 1);
-			else if (index == NREALAR_INDEX)
-				send_otg_notify(o_notify,
-					NOTIFY_EVENT_NREALAR_EXT_CURRENT, 1);
 		}
 	} else {
 		if (!count) {
@@ -236,9 +219,6 @@ static int call_battery_notify(struct usb_device *dev, bool on)
 			else if (index == MMDOCK_INDEX)
 				send_otg_notify(o_notify,
 					NOTIFY_EVENT_MMD_EXT_CURRENT, 0);
-			else if (index == NREALAR_INDEX)
-				send_otg_notify(o_notify,
-					NOTIFY_EVENT_NREALAR_EXT_CURRENT, 0);
 		}
 	}
 skip:

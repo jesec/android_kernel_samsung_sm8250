@@ -325,6 +325,13 @@ static irqreturn_t max77705_irq_thread(int irq, void *data)
 					4, &irq_reg[USBC_INT]);
 			ret = max77705_read_reg(max77705->muic, MAX77705_USBC_REG_VDM_INT_M,
 					&irq_vdm_mask);
+
+		   	if(max77705->enable_nested_irq){
+				irq_reg[USBC_INT] |= max77705->usbc_irq;
+				max77705->enable_nested_irq = 0x0;
+				max77705->usbc_irq = 0x0;
+			}
+
 			if(irq_reg[USBC_INT] & BIT_VBUSDetI) {
 				ret = max77705_read_reg(max77705->muic, REG_BC_STATUS, &bc_status0);
 				ret = max77705_read_reg(max77705->muic, REG_CC_STATUS0, &cc_status0);
@@ -358,8 +365,8 @@ static irqreturn_t max77705_irq_thread(int irq, void *data)
 		pr_info("%s ic_alt_mode=%d\n", __func__, ic_alt_mode);
 	}
 
-	if ((irq_reg[USBC_INT] & BIT_SYSMsgI)
-			&& (dump_reg[1] == 0x03 /*sysmsg wdt*/)) {
+	if (((irq_reg[USBC_INT] & BIT_SYSMsgI) && (dump_reg[1] == SYSERROR_BOOT_WDT))
+		|| ((irq_reg[USBC_INT] & BIT_SYSMsgI) && (dump_reg[1] == SYSMSG_BOOT_POR))) {
 		irq_reg[CC_INT] &= ~(BIT_VCONNSCI);
 		pr_info("%s skip water detect during WDT\n", __func__);
 	}

@@ -9640,10 +9640,6 @@ static unsigned int tdm_param_set_slot_mask(u16 *slot_offset, int slot_width,
 		return slot_mask;
 	}
 
-	if (q6core_get_avcs_api_version_per_service(
-		APRV2_IDS_SERVICE_ID_ADSP_AFE_V) >= AFE_API_VERSION_V3)
-		channel_count = AFE_PORT_MAX_AUDIO_CHAN_CNT_V2;
-
 	for (i = 0; i < channel_count; i++) {
 		if (slot_offset[i] != AFE_SLOT_MAPPING_OFFSET_INVALID) {
 			slot_index = slot_offset[i] / slot_width_bytes;
@@ -9654,8 +9650,9 @@ static unsigned int tdm_param_set_slot_mask(u16 *slot_offset, int slot_width,
 				       __func__);
 				return 0;
 			}
-		} else
+		} else {
 			break;
+		}
 	}
 
 	return slot_mask;

@@ -61,6 +61,8 @@ extern unsigned int lpcharge;
 
 static int samsung_panel_on_post(struct samsung_display_driver_data *vdd)
 {
+	struct vrr_info *vrr = &vdd->vrr;
+	int cur_rr = vrr->cur_refresh_rate;
 
 	/*
 	 * self mask is enabled from bootloader.
@@ -86,6 +88,14 @@ static int samsung_panel_on_post(struct samsung_display_driver_data *vdd)
 		pull te rising timing to get more margin to mipi image tx */
 	if (lpcharge || vdd->is_recovery_mode)
 		ss_send_cmd(vdd, TX_ADJUST_TE);
+
+	if (cur_rr == 48 | cur_rr == 96) {
+		/* GAMMA MTP is reset to original MTP value by display off -> on.
+		 * In 48/96hz mode, apply compensated gamma.
+		 */
+		vrr->gm2_gamma = VRR_GM2_GAMMA_COMPENSATE;
+		LCD_INFO("compensate gamma for 48/96hz mode\n");
+	}
 
 	return true;
 }
@@ -434,6 +444,262 @@ static int ss_gm2_ddi_flash_prepare(struct samsung_display_driver_data *vdd)
 	return 0;
 }
 
+/*
+ * convert_GAMMA_to_V_XA1 : convert CA gamma reg to V format
+ * src : packed gamma value
+ * dst : extended V values (V255 ~ VT)
+ */
+static void convert_GAMMA_to_V_XA1(u8 *src, u32 *dst)
+{
+	/* i : V index
+	 * j : RGB index
+	 * k : extend V index
+	 */
+	int i, j, k = 0;
+
+	memset(dst, 0, GAMMA_V_SIZE * sizeof(int));
+
+	for (i = V255; i < V_MAX; i++) {
+		for (j = R; j < RGB_MAX; j++) {
+			if (i == V255) {
+				if (j == R)	/* k = 0 */
+					dst[k] = (GET_BITS(src[0], 4, 5) << 8) | GET_BITS(src[1], 0, 7);
+				else if (j == G)	/* k = 1 */
+					dst[k] = (GET_BITS(src[0], 2, 3) << 8) | GET_BITS(src[2], 0, 7);
+				else if (j == B)	/* k = 2 */
+					dst[k] = (GET_BITS(src[0], 0, 1) << 8) | GET_BITS(src[3], 0, 7);
+			} else if (i == V11) { /* V0 */
+				if (j == R)  /* k = 30 */
+					dst[k] |= GET_BITS(src[31], 4, 7);
+				else if (j == G) /* k = 31 */
+					dst[k] |= GET_BITS(src[31], 0, 3);
+				else if (j == B) /* k = 32 */
+					dst[k] |= GET_BITS(src[32], 4, 7);
+			} else if (i == V12) { /* VT */
+				if (j == R) /* k = 33 */
+					dst[k] |= GET_BITS(src[32], 0, 3);
+				else if (j == G) /* k = 34 */
+					dst[k] |= GET_BITS(src[33], 4, 7);
+				else if (j == B) /* k = 35 */
+					dst[k] |= GET_BITS(src[33], 0, 3);
+			} else if (i == V13) { /* k =36 */
+				dst[k] = GET_BITS(src[k - 2], 0, 7);
+			} else { /* V2 ~ V10, k = 3 ~ 29 */
+				dst[k] = GET_BITS(src[k + 1], 0, 7);
+			}
+
+			k++;
+		}
+	}
+
+	for (i = 0; i < GAMMA_SET_SIZE; i++)
+		LCD_INFO("gamma src[%d] %02x", i, src[i]);
+#if 0
+
+	for (i = 0; i < GAMMA_V_SIZE; i++)
+		LCD_INFO("gammaV dst[%d] %02x", i, dst[i]);
+#endif
+
+}
+
+/*
+ * convert_V_to_GAMMA_XA1 : convert V format to CAh gamma reg
+ * src : extended V values (V255 ~ VT)
+ * dst : packed gamma values (CAh)
+ */
+static void convert_V_to_GAMMA_XA1(u32 *src, u8 *dst)
+{
+	/* i : gamma index
+	 * k : packed gamma index
+	 */
+	int i,k = 0;
+
+	memset(dst, 0, GAMMA_SET_SIZE);
+
+	for (i = 0; i < GAMMA_SET_SIZE; i++) {
+		if (i == 0) {
+			dst[i] = GET_BITS(src[k], 8, 9) << 4;
+			dst[i] |= GET_BITS(src[k+1], 8, 9) << 2;
+			dst[i] |= GET_BITS(src[k+2], 8, 9);
+		} else if (i >= 31 && i <= 33) {
+			dst[i] = GET_BITS(src[k++], 0, 4) << 4;
+			dst[i] |= GET_BITS(src[k++], 0, 4);
+		} else {
+			dst[i] = GET_BITS(src[k++], 0, 7);
+		}
+	}
+#if 0
+	for (i = 0; i < GAMMA_V_SIZE; i++)
+		LCD_INFO("gammaV src[%d] %02x\n", i, src[i]);
+#endif
+	for (i = 0; i < GAMMA_SET_SIZE; i++)
+		LCD_INFO("gamma dst[%d] %02x\n", i, dst[i]);
+
+	return;
+}
+
+
+static u8 *get_gamma(struct mtp_gm2_info *gm2_mtp,
+		enum GAMMA_SET_VRR_MODES vrr_mode, enum GAMMA_SET_MODES gamma_mode, bool is_org)
+{
+	int offset = (vrr_mode * GAMMA_SET_MODE_MAX + gamma_mode) * GAMMA_SET_SIZE;
+
+	if (is_org)
+		return (gm2_mtp->gamma_org + offset);
+	else
+		return (gm2_mtp->gamma_comp + offset);
+}
+
+static int get_rgb_offset(enum GAMMA_SET_VRR_MODES vrr_mode, enum GAMMA_SET_MODES gamma_mode, int gamma_id)
+{
+		return rgb_offset_hs_revA[gamma_mode][gamma_id];
+}
+
+static int ss_gm2_gamma_comp_init(struct samsung_display_driver_data *vdd)
+{
+	struct mtp_gm2_info *gm2_mtp = &vdd->br_info.gm2_mtp;
+	u8 *gamma_org;
+	u8 *gamma_comp;
+	u8 readbuf[GAMMA_SET_SIZE * GAMMA_SET_VRR_MAX * GAMMA_SET_MODE_MAX]; /* 444 */
+	u8 *buf;
+	int i_mode, k;
+	u32 gammaV[GAMMA_V_SIZE];
+	struct dsi_panel_cmd_set *rx_cmds;
+
+	gm2_mtp->gamma_org = kzalloc(GAMMA_SET_SIZE * GAMMA_SET_MODE_MAX * GAMMA_SET_VRR_MAX, GFP_KERNEL);
+	if (!gm2_mtp->gamma_org) {
+		LCD_ERR("fail to allocate gamma_org\n");
+		return -ENOMEM;
+	}
+
+	gm2_mtp->gamma_comp = kzalloc(GAMMA_SET_SIZE * GAMMA_SET_MODE_MAX * GAMMA_SET_VRR_MAX, GFP_KERNEL);
+	if (!gm2_mtp->gamma_comp) {
+		LCD_ERR("fail to allocate gamma_comp\n");
+		kfree(gm2_mtp->gamma_org);
+		return -ENOMEM;
+	}
+
+	memset(readbuf, 0, GAMMA_SET_SIZE * GAMMA_SET_VRR_MAX * GAMMA_SET_MODE_MAX);
+
+	rx_cmds = ss_get_cmds(vdd, RX_SMART_DIM_MTP);
+	if (SS_IS_CMDS_NULL(rx_cmds)) {
+		LCD_ERR("No cmds for RX_SMART_DIM_MTP.. \n");
+		return -ENODEV;
+	}
+
+	/* 1. read original gamma values for each VRR modes(HS/NS) and gammam modes(0~6) */
+	/* C8h: 37 * 3 = 222 bytes
+	 * 0x6F ~0x93: HS, MODE1
+	 * 0x94 ~0xB8: HS, MODE2
+	 * 0xB9 ~0xDD: HS, MODE3
+	 */
+	rx_cmds->cmds->msg.tx_buf[0] =  0xC8;
+	rx_cmds->cmds->msg.tx_buf[1] = rx_cmds->cmds[0].msg.rx_len = GAMMA_SET_SIZE * 3; /* len */
+	rx_cmds->cmds->msg.tx_buf[2] = rx_cmds->read_startoffset = 0x6F; /* pos */
+	ss_panel_data_read(vdd, RX_SMART_DIM_MTP, readbuf, LEVEL1_KEY);
+	buf = readbuf;
+	for (i_mode = GAMMA_SET_MODE1; i_mode < GAMMA_SET_MODE4; i_mode++) {
+		gamma_org = get_gamma(gm2_mtp, GAMMA_SET_VRR_HS, i_mode, true);
+		memcpy(gamma_org, buf, GAMMA_SET_SIZE);
+		buf += GAMMA_SET_SIZE;
+	}
+
+	/* C7h
+	 * 0x13 ~0x37: HS, MODE4
+	 * 0x38 ~0x5C: HS, MODE5
+	 * 0x5D ~0x81: HS, MODE6
+	 * 0x82 ~0xA6: HS, MODE7
+	 */
+	rx_cmds->cmds->msg.tx_buf[0] =  0xC7;
+	rx_cmds->cmds->msg.tx_buf[1] = rx_cmds->cmds[0].msg.rx_len = GAMMA_SET_SIZE * 4; /* len */
+	rx_cmds->cmds->msg.tx_buf[2] = rx_cmds->read_startoffset = 0x13; /* pos */
+	ss_panel_data_read(vdd, RX_SMART_DIM_MTP, readbuf, LEVEL1_KEY);
+	buf = readbuf;
+	for (i_mode = GAMMA_SET_MODE4; i_mode < GAMMA_SET_MODE_MAX; i_mode++) {
+		gamma_org = get_gamma(gm2_mtp, GAMMA_SET_VRR_HS, i_mode, true);
+		memcpy(gamma_org, buf, GAMMA_SET_SIZE);
+		buf += GAMMA_SET_SIZE;
+	}
+
+	/* 2. compensation gamma */
+	for (i_mode = GAMMA_SET_MODE1; i_mode < GAMMA_SET_MODE_MAX; i_mode++) {
+		LCD_INFO("gamma_org GAMMA_SET_MODE%d\n", i_mode+1);
+
+		gamma_org = get_gamma(gm2_mtp, GAMMA_SET_VRR_HS, i_mode, true);
+		convert_GAMMA_to_V_XA1(gamma_org, gammaV);
+
+		for (k = 0; k < GAMMA_V_COMP_SIZE; k++)
+			gammaV[k] += get_rgb_offset(GAMMA_SET_VRR_HS, i_mode, k);
+
+		gamma_comp = get_gamma(gm2_mtp, GAMMA_SET_VRR_HS, i_mode, false);
+		
+		LCD_INFO("gamma_comp GAMMA_SET_MODE%d\n", i_mode+1);
+		convert_V_to_GAMMA_XA1(gammaV, gamma_comp);
+	}
+	return 0;
+}
+
+enum GAMMA_COMP_CMD_ID {
+	GAMMA_COMP_CMDID_C8 = 1,
+	GAMMA_COMP_CMDID_C7 = 3,
+};
+
+struct dsi_panel_cmd_set * ss_brightness_gm2_gamma_comp(struct samsung_display_driver_data *vdd, int *level_key)
+{
+	struct dsi_panel_cmd_set *pcmds = NULL;
+	struct mtp_gm2_info *gm2_mtp = &vdd->br_info.gm2_mtp;
+	struct vrr_info *vrr = &vdd->vrr;
+	u8 *gamma;
+	u8 buf[GAMMA_SET_SIZE * GAMMA_SET_VRR_MAX * GAMMA_SET_MODE_MAX]; /* 444 */
+	int pos;
+	bool is_org;
+	int j_mode;
+
+	if (vrr->gm2_gamma != VRR_GM2_GAMMA_NO_ACTION) {
+		LCD_INFO("gm2_gamma compensation(%d)\n", vrr->gm2_gamma);
+
+		pcmds = ss_get_cmds(vdd, TX_VRR_GM2_GAMMA_COMP);
+
+		if (vrr->gm2_gamma == VRR_GM2_GAMMA_COMPENSATE)
+			is_org = false;
+		else 	/* VRR_GM2_GAMMA_RESTORE_ORG */
+			is_org = true;
+
+		/* C8h: 37 * 3 = 111 bytes
+		 * 0x6F ~0x93: HS, MODE1
+		 * 0x94 ~0xB8: HS, MODE2
+		 * 0xB9 ~0xDD: HS, MODE3
+		 */
+		pos = 0;
+		for (j_mode = GAMMA_SET_MODE1; j_mode < GAMMA_SET_MODE4; j_mode++) {
+			gamma = get_gamma(gm2_mtp, GAMMA_SET_VRR_HS, j_mode, is_org);
+			memcpy(buf + pos, gamma, GAMMA_SET_SIZE);
+			pos += GAMMA_SET_SIZE;
+		}
+		memcpy(&pcmds->cmds[GAMMA_COMP_CMDID_C8].msg.tx_buf[1], buf,
+				pcmds->cmds[GAMMA_COMP_CMDID_C8].msg.tx_len - 1);
+
+		/* C7h : 37 * 4 = 148 bytes
+		 * 0x13 ~0x37: HS, MODE4
+		 * 0x38 ~0x5C: HS, MODE5
+		 * 0x5D ~0x81: HS, MODE6
+		 * 0x82 ~0xA6: HS, MODE7
+		 */
+		pos = 0;
+		for (j_mode = GAMMA_SET_MODE4; j_mode < GAMMA_SET_MODE_MAX; j_mode++) {
+			gamma = get_gamma(gm2_mtp, GAMMA_SET_VRR_HS, j_mode, is_org);
+			memcpy(buf + pos, gamma, GAMMA_SET_SIZE);
+			pos += GAMMA_SET_SIZE;
+		}
+		memcpy(&pcmds->cmds[GAMMA_COMP_CMDID_C7].msg.tx_buf[1], buf,
+				pcmds->cmds[GAMMA_COMP_CMDID_C7].msg.tx_len - 1);
+
+		vrr->gm2_gamma = VRR_GM2_GAMMA_NO_ACTION;
+	}
+
+	return pcmds;
+}
+
 enum VRR_CMD_RR {
 	/* 1Hz is PSR mode in LPM (AOD) mode, 10Hz is PSR mode in 120HS mode */
 	VRR_48HS = 0,
@@ -777,7 +1043,7 @@ static struct dsi_panel_cmd_set *ss_vrr_hbm(struct samsung_display_driver_data *
 }
 
 /* TE moudulation (reports vsync as 60hz even TE is 120hz, in 60HS mode)
- * Some HOP display, like C2 HAC UB, supports self scan function.
+ * Some HOP display, like C2 XA1 UB, supports self scan function.
  * In this case, if it sets to 60HS mode, panel fetches pixel data from GRAM in 60hz,
  * but DDI generates TE as 120hz.
  * This architecture is for preventing brightness flicker in VRR change and keep fast touch responsness.
@@ -1763,6 +2029,29 @@ static void ss_grayspot_etc(struct samsung_display_driver_data *vdd, int enable)
 	return;
 }
 
+static bool ss_check_support_mode(struct samsung_display_driver_data *vdd, enum CHECK_SUPPORT_MODE mode)
+{
+	bool is_support = true;
+	int cur_rr = vdd->vrr.cur_refresh_rate;
+	bool cur_hs = vdd->vrr.cur_sot_hs_mode;
+
+	switch (mode) {
+
+	case CHECK_SUPPORT_BRIGHTDOT:
+		if (!(cur_rr == 120 && cur_hs)) {
+			is_support = false;
+			LCD_ERR("BRIGHT DOT fail: supported on 120HS(cur: %d%s)\n",
+					cur_rr, cur_hs ? "HS" : "NS");
+		}
+		break;
+
+	default:
+		break;
+	}
+
+	return is_support;
+}
+
 static void samsung_panel_init(struct samsung_display_driver_data *vdd)
 {
 	LCD_ERR("%s\n", ss_get_panel_name(vdd));
@@ -1798,6 +2087,7 @@ static void samsung_panel_init(struct samsung_display_driver_data *vdd)
 	vdd->panel_func.samsung_brightness_vint = ss_vint;
 	vdd->panel_func.samsung_brightness_vrr = ss_vrr;
 	vdd->br_info.smart_dimming_loaded_dsi = false;
+	vdd->panel_func.samsung_brightness_gm2_gamma_comp = ss_brightness_gm2_gamma_comp;
 
 	/* HBM */
 	vdd->panel_func.samsung_hbm_gamma = ss_brightness_gamma_mode2_hbm;
@@ -1878,10 +2168,15 @@ static void samsung_panel_init(struct samsung_display_driver_data *vdd)
 	/* DDI flash test */
 	vdd->panel_func.samsung_gm2_ddi_flash_prepare = ss_gm2_ddi_flash_prepare;
 
+	/* gamma compensation for 48/96hz VRR mode in gamma mode2 */
+	vdd->panel_func.samsung_gm2_gamma_comp_init = ss_gm2_gamma_comp_init;
+
 	/* VRR */
 	vdd->panel_func.samsung_vrr_set_te_mod = ss_vrr_set_te_mode;
 	vdd->panel_func.samsung_lfd_get_base_val = ss_update_base_lfd_val;
 	ss_vrr_init(&vdd->vrr);
+
+	vdd->panel_func.samsung_check_support_mode = ss_check_support_mode;
 }
 
 static int __init samsung_panel_initialize(void)

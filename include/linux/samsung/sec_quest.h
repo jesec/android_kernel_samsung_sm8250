@@ -28,6 +28,9 @@
 #define STEP_MAIN_HLOS_TIMEOUT 	3000
 #define BUFF_SZ 			256
 #define MAX_DDR_ERR_ADDR_CNT 64
+#define CPR_BPS_SZ_BYTE		256
+#define QUEST_CPR_MODE_CNT 8
+
 
 /*
 We will determine if we insert ITEM_QUESTHLOS into STEP_SMDDL later.
@@ -207,6 +210,12 @@ enum quest_enum_err_boot_code {
 	ERR_BOOT_CODESCOUNT,
 };
 
+struct param_quest_cpr_t {
+	uint32_t Modes;
+	uint32_t Floor;
+	uint32_t Ceiling;
+	uint32_t Current;
+};
 
 
 
@@ -287,6 +296,12 @@ struct param_quest_t {
 	uint32_t smd_quefi_rework;
 	uint32_t smd_suefi_rework;
 	/* smddl information */
+
+	struct param_quest_cpr_t smd_cx_cpr[8];
+	struct param_quest_cpr_t smd_mx_cpr[8];
+
+	struct param_quest_cpr_t curr_cx_cpr[8];
+	struct param_quest_cpr_t curr_mx_cpr[8];
 
 };
 

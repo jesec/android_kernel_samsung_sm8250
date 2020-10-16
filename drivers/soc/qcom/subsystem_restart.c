@@ -534,6 +534,14 @@ static int is_ramdump_enabled(struct subsys_device *dev)
 	if (dev->desc->ramdump_disable_irq)
 		return !dev->desc->ramdump_disable;
 
+	/* 2 means only WLAN RAM dump is needed */
+	if (enable_ramdumps == 2) {
+		if (!strcmp(dev->desc->name, "wlan"))
+			return enable_ramdumps;
+		else
+			return 0;
+	}
+
 	return enable_ramdumps;
 }
 
@@ -1269,17 +1277,18 @@ int subsystem_restart_dev(struct subsys_device *dev)
 	    SEC_DEBUG_MODEM_SEPARATE_EN)
 	    && strcmp(name, "slpi")
 	    && strcmp(name, "adsp")
+	    && strcmp(name, "wlan")
 	    && strcmp(name, "cdsp")) {
 		pr_info("SSR separated by cp magic!!\n");
 		ssr_disable = sec_debug_is_enabled_for_ssr();
 	} else
 		pr_info("SSR by only ap debug level!!\n");
-
-	if (!sec_debug_is_enabled() || (!ssr_disable))
-		dev->restart_level = RESET_SUBSYS_COUPLED;
-	else
-		dev->restart_level = RESET_SOC;
-
+	if (strcmp(name, "wlan")) { 
+		if (!sec_debug_is_enabled() || (!ssr_disable))
+			dev->restart_level = RESET_SUBSYS_COUPLED;
+		else
+			dev->restart_level = RESET_SOC;
+	}
 	/* force modem silent ssr */
 	if (!strncmp(name, "esoc", 4) && silent_ssr) {
 		dev->restart_level = RESET_SUBSYS_COUPLED;
@@ -1310,9 +1319,6 @@ int subsystem_restart_dev(struct subsys_device *dev)
 		}
 	}
 #endif
-	if (!strncmp(name, "wlan", 4)) {
-		dev->restart_level = RESET_SUBSYS_COUPLED;
-	}
 	/*
 	 * If a system reboot/shutdown is underway, ignore subsystem errors.
 	 * However, print a message so that we know that a subsystem behaved

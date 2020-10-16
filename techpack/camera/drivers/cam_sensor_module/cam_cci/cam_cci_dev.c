@@ -283,9 +283,7 @@ irqreturn_t cam_cci_irq(int irq_num, void *data)
 		cam_io_w_mb(CCI_M1_RESET_RMSK, base + CCI_RESET_CMD_ADDR);
 	}
 
-	if(irq_status0) {
-		cam_io_w_mb(irq_status0, base + CCI_IRQ_CLEAR_0_ADDR);
-	}
+	cam_io_w_mb(irq_status0, base + CCI_IRQ_CLEAR_0_ADDR);
 
 	reg_bmsk = CCI_IRQ_MASK_1_RMSK;
 	if ((irq_status1 & CCI_IRQ_STATUS_1_I2C_M1_RD_THRESHOLD) &&

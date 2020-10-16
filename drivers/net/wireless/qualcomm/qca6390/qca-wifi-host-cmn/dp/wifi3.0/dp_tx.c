@@ -648,6 +648,10 @@ static QDF_STATUS dp_tx_prepare_tso(struct dp_vdev *vdev,
 }
 #endif
 
+QDF_COMPILE_TIME_ASSERT(dp_tx_htt_metadata_len_check,
+			(DP_TX_MSDU_INFO_META_DATA_DWORDS * 4 >=
+			 sizeof(struct htt_tx_msdu_desc_ext2_t)));
+
 /**
  * dp_tx_prepare_ext_desc() - Allocate and prepare MSDU extension descriptor
  * @vdev: DP Vdev handle
@@ -681,6 +685,7 @@ struct dp_tx_ext_desc_elem_s *dp_tx_prepare_ext_desc(struct dp_vdev *vdev,
 				&msdu_info->meta_data[0],
 				sizeof(struct htt_tx_msdu_desc_ext2_t));
 		qdf_atomic_inc(&vdev->pdev->num_tx_exception);
+		msdu_ext_desc->flags |= DP_TX_EXT_DESC_FLAG_METADATA_VALID;
 	}
 
 	switch (msdu_info->frm_type) {
@@ -1137,6 +1142,12 @@ static QDF_STATUS dp_tx_hw_enqueue(struct dp_soc *soc, struct dp_vdev *vdev,
 		length = HAL_TX_EXT_DESC_WITH_META_DATA;
 		type = HAL_TX_BUF_TYPE_EXT_DESC;
 		dma_addr = tx_desc->msdu_ext_desc->paddr;
+
+		if (tx_desc->msdu_ext_desc->flags &
+			DP_TX_EXT_DESC_FLAG_METADATA_VALID)
+			length = HAL_TX_EXT_DESC_WITH_META_DATA;
+		else
+			length = HAL_TX_EXTENSION_DESC_LEN_BYTES;
 	} else {
 		length = qdf_nbuf_len(tx_desc->nbuf) - tx_desc->pkt_offset;
 		type = HAL_TX_BUF_TYPE_BUFFER;
@@ -3259,6 +3270,7 @@ dp_tx_comp_process_desc(struct dp_soc *soc,
 
 /**
  * dp_tx_comp_process_tx_status() - Parse and Dump Tx completion status info
+ * @soc: DP soc handle
  * @tx_desc: software descriptor head pointer
  * @ts: Tx completion status
  * @peer: peer handle
@@ -3267,13 +3279,13 @@ dp_tx_comp_process_desc(struct dp_soc *soc,
  * Return: none
  */
 static inline
-void dp_tx_comp_process_tx_status(struct dp_tx_desc_s *tx_desc,
+void dp_tx_comp_process_tx_status(struct dp_soc *soc,
+				  struct dp_tx_desc_s *tx_desc,
 				  struct hal_tx_completion_status *ts,
 				  struct dp_peer *peer, uint8_t ring_id)
 {
 	uint32_t length;
 	qdf_ether_header_t *eh;
-	struct dp_soc *soc = NULL;
 	struct dp_vdev *vdev = tx_desc->vdev;
 	qdf_nbuf_t nbuf = tx_desc->nbuf;
 
@@ -3283,6 +3295,7 @@ void dp_tx_comp_process_tx_status(struct dp_tx_desc_s *tx_desc,
 	}
 
 	eh = (qdf_ether_header_t *)qdf_nbuf_data(nbuf);
+	length = qdf_nbuf_len(nbuf);
 
 	DPTRACE(qdf_dp_trace_ptr(tx_desc->nbuf,
 				 QDF_DP_TRACE_LI_DP_FREE_PACKET_PTR_RECORD,
@@ -3321,26 +3334,22 @@ void dp_tx_comp_process_tx_status(struct dp_tx_desc_s *tx_desc,
 				ts->tones_in_ru, ts->tsf, ts->ppdu_id,
 				ts->transmit_cnt, ts->tid, ts->peer_id);
 
-	soc = vdev->pdev->soc;
-
 	/* Update SoC level stats */
 	DP_STATS_INCC(soc, tx.dropped_fw_removed, 1,
 			(ts->status == HAL_TX_TQM_RR_REM_CMD_REM));
+
+	if (!peer) {
+		dp_err_rl("peer is null or deletion in progress");
+		DP_STATS_INC_PKT(soc, tx.tx_invalid_peer, 1, length);
+		goto out;
+	}
 
 	/* Update per-packet stats for mesh mode */
 	if (qdf_unlikely(vdev->mesh_vdev) &&
 			!(tx_desc->flags & DP_TX_DESC_FLAG_TO_FW))
 		dp_tx_comp_fill_tx_completion_stats(tx_desc, ts);
 
-	length = qdf_nbuf_len(nbuf);
 	/* Update peer level stats */
-	if (!peer) {
-		QDF_TRACE_DEBUG_RL(QDF_MODULE_ID_DP,
-				   "peer is null or deletion in progress");
-		DP_STATS_INC_PKT(soc, tx.tx_invalid_peer, 1, length);
-		goto out;
-	}
-
 	if (qdf_unlikely(peer->bss_peer && vdev->opmode == wlan_op_mode_ap)) {
 		if (ts->status != HAL_TX_TQM_RR_REM_CMD_REM) {
 			DP_STATS_INC_PKT(peer, tx.mcast, 1, length);
@@ -3369,6 +3378,7 @@ void dp_tx_comp_process_tx_status(struct dp_tx_desc_s *tx_desc,
 out:
 	return;
 }
+
 /**
  * dp_tx_comp_process_desc_list() - Tx complete software descriptor handler
  * @soc: core txrx main context
@@ -3395,7 +3405,7 @@ dp_tx_comp_process_desc_list(struct dp_soc *soc,
 	while (desc) {
 		hal_tx_comp_get_status(&desc->comp, &ts, soc->hal_soc);
 		peer = dp_peer_find_by_id(soc, ts.peer_id);
-		dp_tx_comp_process_tx_status(desc, &ts, peer, ring_id);
+		dp_tx_comp_process_tx_status(soc, desc, &ts, peer, ring_id);
 
 		netbuf = desc->nbuf;
 		/* check tx complete notification */
@@ -3494,7 +3504,7 @@ void dp_tx_process_htt_completion(struct dp_tx_desc_s *tx_desc, uint8_t *status,
 		if (qdf_likely(peer))
 			dp_peer_unref_del_find_by_id(peer);
 
-		dp_tx_comp_process_tx_status(tx_desc, &ts, peer, ring_id);
+		dp_tx_comp_process_tx_status(soc, tx_desc, &ts, peer, ring_id);
 		dp_tx_comp_process_desc(soc, tx_desc, &ts, peer);
 		dp_tx_desc_release(tx_desc, tx_desc->pool_id);
 

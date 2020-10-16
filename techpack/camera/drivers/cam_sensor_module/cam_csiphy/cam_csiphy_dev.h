@@ -72,13 +72,6 @@
 #define CDBG(fmt, args...) pr_debug(fmt, ##args)
 #endif
 
-#if defined(CONFIG_SEC_C2Q_PROJECT)
-#define ALLOW_MULTIPLE_CSIPHY_ACQRUIE
-#endif
-#if defined(ALLOW_MULTIPLE_CSIPHY_ACQRUIE)
-#define MAX_BRIDGE_COUNT (2)
-#endif
-
 enum cam_csiphy_state {
 	CAM_CSIPHY_INIT,
 	CAM_CSIPHY_ACQUIRE,
@@ -295,12 +288,7 @@ struct csiphy_device {
 	uint8_t num_irq_registers;
 	struct cam_subdev v4l2_dev_str;
 	struct cam_csiphy_param csiphy_info;
-#if defined(ALLOW_MULTIPLE_CSIPHY_ACQRUIE)
-	struct intf_params bridge_intf[MAX_BRIDGE_COUNT];
-	int bridge_cnt;
-#else
 	struct intf_params bridge_intf;
-#endif
 	uint32_t clk_lane;
 	uint32_t acquire_count;
 	uint32_t start_dev_count;

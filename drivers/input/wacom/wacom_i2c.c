@@ -82,6 +82,20 @@ int wacom_i2c_send_sel(struct wacom_i2c *wac_i2c, const char *buf, int count, bo
 	u8 *buff;
 	int i;
 
+	/* in LPM, waiting blsp block resume */
+	if (wac_i2c->pm_suspend) {
+		wake_lock_timeout(&wac_i2c->wakelock, msecs_to_jiffies(500));
+		ret = wait_for_completion_interruptible_timeout(&wac_i2c->resume_done, msecs_to_jiffies(500));
+		if (ret <= 0) {
+			input_err(true, &wac_i2c->client->dev,
+					"%s: LPM: pm resume is not handled [timeout]\n", __func__);
+			return -ENOMEM;
+		} else {
+			input_info(true, &wac_i2c->client->dev,
+					"%s: run LPM interrupt handler, %d\n", __func__, jiffies_to_msecs(ret));
+		}
+	}
+
 	buff = kzalloc(count, GFP_KERNEL);
 	if (!buff)
 		return -ENOMEM;
@@ -131,6 +145,20 @@ int wacom_i2c_recv_sel(struct wacom_i2c *wac_i2c, char *buf, int count, bool mod
 	int ret;
 	u8 *buff;
 	int i;
+
+	/* in LPM, waiting blsp block resume */
+	if (wac_i2c->pm_suspend) {
+		wake_lock_timeout(&wac_i2c->wakelock, msecs_to_jiffies(500));
+		ret = wait_for_completion_interruptible_timeout(&wac_i2c->resume_done, msecs_to_jiffies(500));
+		if (ret <= 0) {
+			input_err(true, &wac_i2c->client->dev,
+					"%s: LPM: pm resume is not handled [timeout]\n", __func__);
+			return -ENOMEM;
+		} else {
+			input_info(true, &wac_i2c->client->dev,
+					"%s: run LPM interrupt handler, %d\n", __func__, jiffies_to_msecs(ret));
+		}
+	}
 
 	buff = kzalloc(count, GFP_KERNEL);
 	if (!buff)
@@ -598,6 +626,39 @@ int wacom_i2c_set_survey_mode(struct wacom_i2c *wac_i2c, int mode)
 	return 0;
 }
 
+void wacom_pdct_survey_mode(struct wacom_i2c *wac_i2c)
+{
+	struct i2c_client *client = wac_i2c->client;
+
+	if (wac_i2c->epen_blocked ||
+			(wac_i2c->battery_saving_mode && !(wac_i2c->function_result & EPEN_EVENT_PEN_OUT))) {
+		input_info(true, &client->dev,
+				"%s: %s & garage on. garage only mode\n", __func__,
+				wac_i2c->epen_blocked ? "epen blocked" : "ps on & pen in");
+
+		mutex_lock(&wac_i2c->mode_lock);
+		wacom_i2c_set_survey_mode(wac_i2c,
+				EPEN_SURVEY_MODE_GARAGE_ONLY);
+		mutex_unlock(&wac_i2c->mode_lock);
+	} else if (wac_i2c->screen_on && wac_i2c->survey_mode) {
+		input_info(true, &client->dev,
+				"%s: ps %s & pen %s & lcd on. normal mode\n",
+				__func__, wac_i2c->battery_saving_mode? "on" : "off",
+				(wac_i2c->function_result & EPEN_EVENT_PEN_OUT) ? "out" : "in");
+
+		mutex_lock(&wac_i2c->mode_lock);
+		wacom_i2c_set_survey_mode(wac_i2c, EPEN_SURVEY_MODE_NONE);
+		mutex_unlock(&wac_i2c->mode_lock);
+	} else {
+		input_info(true, &client->dev,
+				"%s: ps %s & pen %s & lcd %s. keep current mode(%s)\n",
+				__func__, wac_i2c->battery_saving_mode? "on" : "off",
+				(wac_i2c->function_result & EPEN_EVENT_PEN_OUT) ? "out" : "in",
+				wac_i2c->screen_on ? "on" : "off",
+				wac_i2c->function_result & EPEN_EVENT_SURVEY ? "survey" : "normal");
+	}
+}
+
 void forced_release_fullscan(struct wacom_i2c *wac_i2c)
 {
 	input_info(true, &wac_i2c->client->dev, "%s: full scan OUT\n", __func__);
@@ -834,6 +895,10 @@ reset:
 	wac_i2c->screen_on = true;
 
 out_power_on:
+	if (wac_i2c->pdct_lock_fail) {
+		wacom_pdct_survey_mode(wac_i2c);
+		wac_i2c->pdct_lock_fail = false;
+	}
 	mutex_unlock(&wac_i2c->lock);
 
 	input_info(true, &client->dev, "%s: end\n", __func__);
@@ -907,6 +972,10 @@ reset:
 	wac_i2c->screen_on = false;
 
 out_power_off:
+	if (wac_i2c->pdct_lock_fail) {
+		wacom_pdct_survey_mode(wac_i2c);
+		wac_i2c->pdct_lock_fail = false;
+	}
 	mutex_unlock(&wac_i2c->lock);
 
 	input_info(true, &client->dev, "%s end\n", __func__);
@@ -1460,9 +1529,10 @@ static irqreturn_t wacom_interrupt(int irq, void *dev_id)
 		if (ret <= 0) {
 			input_err(true, &wac_i2c->client->dev, "LPM: pm resume is not handled [%d]\n", ret);
 			return IRQ_HANDLED;
+		} else {
+			input_info(true, &wac_i2c->client->dev,
+					"%s: run LPM interrupt handler, %d\n", __func__, jiffies_to_msecs(ret));
 		}
-
-		input_dbg(true, &wac_i2c->client->dev, "run LPM interrupt handler [%d]\n", jiffies_to_msecs(ret));
 	}
 
 	ret = wacom_event_handler(wac_i2c);
@@ -1529,36 +1599,11 @@ static irqreturn_t wacom_interrupt_pdct(int irq, void *dev_id)
 
 		if (!mutex_trylock(&wac_i2c->lock)) {
 			input_err(true, &client->dev, "%s: mutex lock fail!\n", __func__);
+			wac_i2c->pdct_lock_fail = true;
 			goto irq_ret;
 		}
 
-		if (wac_i2c->epen_blocked ||
-				(wac_i2c->battery_saving_mode && !(wac_i2c->function_result & EPEN_EVENT_PEN_OUT))) {
-			input_info(true, &client->dev,
-					"%s: %s & garage on. garage only mode\n", __func__,
-					wac_i2c->epen_blocked ? "epen blocked" : "ps on & pen in");
-
-			mutex_lock(&wac_i2c->mode_lock);
-			wacom_i2c_set_survey_mode(wac_i2c,
-					EPEN_SURVEY_MODE_GARAGE_ONLY);
-			mutex_unlock(&wac_i2c->mode_lock);
-		} else if (wac_i2c->screen_on && wac_i2c->survey_mode) {
-			input_info(true, &client->dev,
-					"%s: ps %s & pen %s & lcd on. normal mode\n",
-					__func__, wac_i2c->battery_saving_mode? "on" : "off",
-					(wac_i2c->function_result & EPEN_EVENT_PEN_OUT) ? "out" : "in");
-
-			mutex_lock(&wac_i2c->mode_lock);
-			wacom_i2c_set_survey_mode(wac_i2c, EPEN_SURVEY_MODE_NONE);
-			mutex_unlock(&wac_i2c->mode_lock);
-		} else {
-			input_info(true, &client->dev,
-					"%s: ps %s & pen %s & lcd %s. keep current mode(%s)\n",
-					__func__, wac_i2c->battery_saving_mode? "on" : "off",
-					(wac_i2c->function_result & EPEN_EVENT_PEN_OUT) ? "out" : "in",
-					wac_i2c->screen_on ? "on" : "off",
-					wac_i2c->function_result & EPEN_EVENT_SURVEY ? "survey" : "normal");
-		}
+		wacom_pdct_survey_mode(wac_i2c);
 		mutex_unlock(&wac_i2c->lock);
 
 	}

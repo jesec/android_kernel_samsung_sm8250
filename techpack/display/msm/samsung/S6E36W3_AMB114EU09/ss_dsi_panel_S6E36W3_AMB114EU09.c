@@ -58,22 +58,17 @@ static char ss_panel_revision(struct samsung_display_driver_data *vdd)
 	else
 		ss_panel_attach_set(vdd, true);
 
-	/* Specific colors not black (default) 
-	 * ZK : Black
-	 * ZP : Pupple
-	 * ZD : GOLD
-	 * ZA : TOM BROWN	 
+	/* Specific colors 
+	 * ZW : WHITE => transmittance 90%, use rev K 
+	 * ZA : GRAY => transmittance 60%, use rev A
+	 * ZN : BRONZE => transmittance 60%, use rev A
 	 * color rev is from rev 'K'
 	 */
 
 	LCD_ERR("window_color : %s\n", vdd->window_color);
 
-	if (!strcmp(vdd->window_color, "ZP")) {	/* PURPLE */
+	if (!strncmp(vdd->window_color, "ZW", 2)) {	/* WHITE */
 		vdd->panel_revision = 'K';
-	} else if (!strcmp(vdd->window_color, "ZD")) {	/* GOLD */
-		vdd->panel_revision = 'L';
-	} else if (!strcmp(vdd->window_color, "ZA")) {	/* TOM BROWN */
-		vdd->panel_revision = 'M';
 	} else {
 		switch (ss_panel_rev_get(vdd)) {
 		case 0x00:
@@ -379,7 +374,13 @@ static struct dsi_panel_cmd_set *ss_hbm_etc(struct samsung_display_driver_data *
 	else if (vdd->br_info.common_br.cd_level == 1000) {
 		hbm_etc_cmds->cmds[4].msg.tx_buf[3] = 0x20;
 	}
-	
+	else if (vdd->br_info.common_br.cd_level == 485) {
+		hbm_etc_cmds->cmds[4].msg.tx_buf[3] = 0xB4;
+	}
+	else if (vdd->br_info.common_br.cd_level == 730) {
+		hbm_etc_cmds->cmds[4].msg.tx_buf[3] = 0x70;
+	}
+
 	LCD_INFO("vdd->br_info.common_br.cd_level = %d\n", vdd->br_info.common_br.cd_level);
 
 	return hbm_etc_cmds;

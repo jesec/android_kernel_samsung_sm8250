@@ -1188,7 +1188,7 @@ static int cam_eeprom_update_module_info(struct cam_eeprom_ctrl_t *e_ctrl)
 	}
 
 	if (e_ctrl->soc_info.index == CAM_EEPROM_IDX_FRONT) {
-#if !defined(CONFIG_SAMSUNG_FRONT_TOP_EEPROM)
+#if !(defined(CONFIG_SAMSUNG_FRONT_TOP_EEPROM) || defined(CONFIG_SAMSUNG_FRONT_FIXED_FOCUS))
 		/* front af cal*/
 		if(isValidIdx(ADDR_M_AF, &ConfAddr) == 1)
 		{
@@ -1265,7 +1265,11 @@ static int cam_eeprom_update_module_info(struct cam_eeprom_ctrl_t *e_ctrl)
 #if defined(CONFIG_SEC_Z3Q_PROJECT) || defined(CONFIG_SEC_C2Q_PROJECT) || defined(CONFIG_SEC_R8Q_PROJECT)
 		if (e_ctrl->soc_info.index == CAM_EEPROM_IDX_BACK3) {
 			AfIdx_t rear3_idx_simple[] = {
+#if defined(CONFIG_SEC_R8Q_PROJECT)
+				{AF_CAL_D40_IDX, AF_CAL_MACRO3_OFFSET_FROM_AF},
+#else
 				{AF_CAL_MACRO_IDX, AF_CAL_MACRO3_OFFSET_FROM_AF},
+#endif
 				{AF_CAL_PAN_IDX, AF_CAL_PAN_OFFSET_FROM_AF}
 			};
 
@@ -1337,7 +1341,11 @@ static int cam_eeprom_update_module_info(struct cam_eeprom_ctrl_t *e_ctrl)
 			};
 
 			AfIdx_t rear3_idx[] = {
+#if defined(CONFIG_SEC_R8Q_PROJECT)
+				{AF_CAL_D40_IDX, AF_CAL_D80_OFFSET_FROM_AF},
+#else
 				{AF_CAL_D80_IDX, AF_CAL_D80_OFFSET_FROM_AF},
+#endif
 				{AF_CAL_PAN_IDX, AF_CAL_PAN_OFFSET_FROM_AF}
 			};
 

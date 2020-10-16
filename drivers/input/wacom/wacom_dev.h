@@ -412,6 +412,7 @@ struct wacom_i2c {
 	int irq;
 	int irq_pdct;
 	int pen_pdct;
+	bool pdct_lock_fail;
 	struct delayed_work pen_insert_dwork;
 
 	/* survey & garage */

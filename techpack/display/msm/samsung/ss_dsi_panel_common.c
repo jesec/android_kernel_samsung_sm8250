@@ -4769,6 +4769,9 @@ static void ss_panel_parse_dt(struct samsung_display_driver_data *vdd)
 		vdd->fg_err_gpio = -1; /* default 0 is valid gpio... set invalid gpio.. */
 	}
 
+	vdd->support_lp_rx_err_recovery = of_property_read_bool(np, "samsung,support_lp_rx_err_recovery");
+	LCD_INFO("support_lp_rx_err_recovery : %d\n", vdd->support_lp_rx_err_recovery);
+
 	ss_panel_parse_dt_esd(np, vdd);
 	ss_panel_parse_dt_ub_con(np, vdd);
 	ss_panel_pbaboot_config(np, vdd);

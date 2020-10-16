@@ -3273,7 +3273,8 @@ static int cnss_pci_smmu_fault_handler(struct iommu_domain *domain,
 		cnss_pr_err("pci_priv is NULL\n");
 		return -ENODEV;
 	}
-
+	
+	cnss_pci_update_status(pci_priv, CNSS_FW_DOWN);
 	cnss_force_fw_assert(&pci_priv->pci_dev->dev);
 
 	/* IOMMU driver requires non-zero return value to print debug info. */

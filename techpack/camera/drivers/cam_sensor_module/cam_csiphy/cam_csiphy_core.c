@@ -278,9 +278,6 @@ int32_t cam_csiphy_get_instance_offset(
 	int32_t dev_handle)
 {
 	int32_t i;
-#if defined(ALLOW_MULTIPLE_CSIPHY_ACQRUIE)
-	int j = 0, isFound = 0;
-#endif
 
 	if (csiphy_dev->acquire_count >
 		CSIPHY_MAX_INSTANCES) {
@@ -288,27 +285,11 @@ int32_t cam_csiphy_get_instance_offset(
 		return -EINVAL;
 	}
 
-#if defined(ALLOW_MULTIPLE_CSIPHY_ACQRUIE)
-	for (j = 0; j < MAX_BRIDGE_COUNT; j++) {
-		for (i = 0; i < csiphy_dev->acquire_count; i++) {
-			if (dev_handle ==
-				csiphy_dev->bridge_intf[j].device_hdl[i]) {
-				CAM_DBG(CAM_CSIPHY, "(j, i) (%d, %d) dev_handle 0x%x, index %d, device_handle 0x%x",
-					j, i, dev_handle, csiphy_dev->soc_info.index, csiphy_dev->bridge_intf[j].device_hdl[i]);
-				isFound = 1;
-				break;
-			}
-		}
-		if (isFound)
-			break;
-	}
-#else
 	for (i = 0; i < csiphy_dev->acquire_count; i++) {
 		if (dev_handle ==
 			csiphy_dev->bridge_intf.device_hdl[i])
 			break;
 	}
-#endif
 
 	return i;
 }
@@ -932,9 +913,6 @@ void cam_csiphy_shutdown(struct csiphy_device *csiphy_dev)
 {
 	struct cam_hw_soc_info *soc_info;
 	int32_t i = 0;
-#if defined(ALLOW_MULTIPLE_CSIPHY_ACQRUIE)
-	int j = 0;
-#endif
 
 	if (csiphy_dev->csiphy_state == CAM_CSIPHY_INIT)
 		return;
@@ -962,18 +940,6 @@ void cam_csiphy_shutdown(struct csiphy_device *csiphy_dev)
 	}
 
 	if (csiphy_dev->csiphy_state == CAM_CSIPHY_ACQUIRE) {
-#if defined(ALLOW_MULTIPLE_CSIPHY_ACQRUIE)
-		for (i = 0; i < MAX_BRIDGE_COUNT; i++) {
-			for (j = 0; j < CSIPHY_MAX_INSTANCES; j++) {
-				if (csiphy_dev->bridge_intf[i].device_hdl[j] != -1)
-					cam_destroy_device_hdl(
-						csiphy_dev->bridge_intf[i].device_hdl[j]);
-				csiphy_dev->bridge_intf[i].device_hdl[j] = -1;
-				csiphy_dev->bridge_intf[i].link_hdl[j] = -1;
-				csiphy_dev->bridge_intf[i].session_hdl[j] = -1;
-			}
-		}
-#else
 		if (csiphy_dev->bridge_intf.device_hdl[0] != -1)
 			cam_destroy_device_hdl(
 				csiphy_dev->bridge_intf.device_hdl[0]);
@@ -986,12 +952,8 @@ void cam_csiphy_shutdown(struct csiphy_device *csiphy_dev)
 		csiphy_dev->bridge_intf.link_hdl[1] = -1;
 		csiphy_dev->bridge_intf.session_hdl[0] = -1;
 		csiphy_dev->bridge_intf.session_hdl[1] = -1;
-#endif
 	}
 
-#if defined(ALLOW_MULTIPLE_CSIPHY_ACQRUIE)
-	csiphy_dev->bridge_cnt = 0;
-#endif
 	csiphy_dev->ref_count = 0;
 	csiphy_dev->is_acquired_dev_combo_mode = 0;
 	csiphy_dev->acquire_count = 0;
@@ -1048,9 +1010,6 @@ int32_t cam_csiphy_core_cfg(void *phy_dev,
 	void __iomem *csiphybase;
 	csiphybase = csiphy_dev->soc_info.reg_map[0].mem_base;
 #endif
-#if defined(ALLOW_MULTIPLE_CSIPHY_ACQRUIE)
-	int i = 0, j = 0, idx = 0;
-#endif
 
 	if (!csiphy_dev || !cmd) {
 		CAM_ERR(CAM_CSIPHY, "Invalid input args");
@@ -1073,13 +1032,6 @@ int32_t cam_csiphy_core_cfg(void *phy_dev,
 		struct cam_create_dev_hdl bridge_params;
 
 		CAM_INFO(CAM_CSIPHY, "phy ACQUIRE_DEV");
-#if defined(ALLOW_MULTIPLE_CSIPHY_ACQRUIE)
-		if (csiphy_dev->bridge_cnt >= MAX_BRIDGE_COUNT) {
-			CAM_ERR(CAM_CSIPHY, "Device is already max acquired");
-			rc = -EINVAL;
-			goto release_mutex;
-		}
-#else
 		if (csiphy_dev->csiphy_state == CAM_CSIPHY_START) {
 			CAM_ERR(CAM_CSIPHY,
 				"Not in right state to acquire : %d",
@@ -1087,7 +1039,6 @@ int32_t cam_csiphy_core_cfg(void *phy_dev,
 			rc = -EINVAL;
 			goto release_mutex;
 		}
-#endif
 
 		rc = copy_from_user(&csiphy_acq_dev,
 			u64_to_user_ptr(cmd->handle),
@@ -1106,7 +1057,7 @@ int32_t cam_csiphy_core_cfg(void *phy_dev,
 				"Failed copying from User");
 			goto release_mutex;
 		}
-#if !defined(ALLOW_MULTIPLE_CSIPHY_ACQRUIE)
+
 		if (csiphy_dev->acquire_count == 2) {
 			CAM_ERR(CAM_CSIPHY,
 					"CSIPHY device do not allow more than 2 acquires");
@@ -1134,7 +1085,7 @@ int32_t cam_csiphy_core_cfg(void *phy_dev,
 			rc = -EINVAL;
 			goto release_mutex;
 		}
-#endif
+
 		bridge_params.ops = NULL;
 		bridge_params.session_hdl = csiphy_acq_dev.session_handle;
 		bridge_params.v4l2_sub_dev_flag = 0;
@@ -1150,30 +1101,11 @@ int32_t cam_csiphy_core_cfg(void *phy_dev,
 
 		csiphy_acq_dev.device_handle =
 			cam_create_device_hdl(&bridge_params);
-#if defined(ALLOW_MULTIPLE_CSIPHY_ACQRUIE)
-		for (i = 0; i < MAX_BRIDGE_COUNT; i++) {
-			if ((csiphy_dev->bridge_intf[i].device_hdl[0] == -1) &&
-				(csiphy_dev->bridge_intf[i].device_hdl[1] == -1)) {
-				idx = i;
-				break;
-			}
-		}
-		CAM_DBG(CAM_CSIPHY, "index %d, csiphy_dev->bridge_cnt %d, device_handle 0x%x, bridge_inf idx %d",
-			csiphy_dev->soc_info.index, csiphy_dev->bridge_cnt, csiphy_acq_dev.device_handle, idx);
-
-		bridge_intf = &csiphy_dev->bridge_intf[idx];
-		bridge_intf->device_hdl[csiphy_acq_params.combo_mode]
-			= csiphy_acq_dev.device_handle;
-		bridge_intf->session_hdl[csiphy_acq_params.combo_mode] =
-			csiphy_acq_dev.session_handle;
-		csiphy_dev->bridge_cnt++;
-#else
 		bridge_intf = &csiphy_dev->bridge_intf;
 		bridge_intf->device_hdl[csiphy_acq_params.combo_mode]
 			= csiphy_acq_dev.device_handle;
 		bridge_intf->session_hdl[csiphy_acq_params.combo_mode] =
 			csiphy_acq_dev.session_handle;
-#endif
 
 		if (copy_to_user(u64_to_user_ptr(cmd->handle),
 				&csiphy_acq_dev,
@@ -1184,11 +1116,6 @@ int32_t cam_csiphy_core_cfg(void *phy_dev,
 		}
 		if (csiphy_acq_params.combo_mode == 1)
 			csiphy_dev->is_acquired_dev_combo_mode = 1;
-
-#if defined(ALLOW_MULTIPLE_CSIPHY_ACQRUIE)
-		if (csiphy_dev->bridge_cnt > 1)
-			goto release_mutex;
-#endif
 
 		csiphy_dev->acquire_count++;
 		csiphy_dev->csiphy_state = CAM_CSIPHY_ACQUIRE;
@@ -1282,45 +1209,6 @@ int32_t cam_csiphy_core_cfg(void *phy_dev,
 #if defined(CONFIG_SEC_BLOOMXQ_PROJECT)
 		phy_base[csiphy_dev->soc_info.index] = NULL;
 #endif
-#if defined(ALLOW_MULTIPLE_CSIPHY_ACQRUIE)
-		if (copy_from_user(&release,
-			u64_to_user_ptr(cmd->handle),
-			sizeof(release))) {
-			rc = -EFAULT;
-			goto release_mutex;
-		}
-
-		for (i = 0; i < MAX_BRIDGE_COUNT; i++) {
-			for (j = 0; j < CSIPHY_MAX_INSTANCES; j++) {
-				CAM_DBG(CAM_CSIPHY, "release.dev_handle 0x%x, index %d, device_handle 0x%x",
-					release.dev_handle, csiphy_dev->soc_info.index, csiphy_dev->bridge_intf[i].device_hdl[j]);
-				if (csiphy_dev->bridge_intf[i].device_hdl[j] == -1)
-					continue;
-
-				if (release.dev_handle == csiphy_dev->bridge_intf[i].device_hdl[j])
-				{
-					rc = cam_destroy_device_hdl(release.dev_handle);
-					if (rc < 0)
-						CAM_ERR(CAM_CSIPHY, "destroying the device hdl");
-					if (release.dev_handle ==
-						csiphy_dev->bridge_intf[i].device_hdl[j]) {
-						csiphy_dev->bridge_intf[i].device_hdl[j] = -1;
-						csiphy_dev->bridge_intf[i].link_hdl[j] = -1;
-						csiphy_dev->bridge_intf[i].session_hdl[j] = -1;
-						if (j == (CSIPHY_MAX_INSTANCES - 1))
-							csiphy_dev->is_acquired_dev_combo_mode = 0;
-
-						if (csiphy_dev->bridge_cnt > 0)
-							csiphy_dev->bridge_cnt--;
-						break;
-					}
-				}
-			}
-		}
-
-		if (csiphy_dev->bridge_cnt > 0)
-			goto release_mutex;
-#else
 		if (csiphy_dev->csiphy_state != CAM_CSIPHY_ACQUIRE) {
 			CAM_ERR(CAM_CSIPHY,
 				"Not in right state for release %s state %d",
@@ -1357,7 +1245,7 @@ int32_t cam_csiphy_core_cfg(void *phy_dev,
 			csiphy_dev->bridge_intf.session_hdl[1] = -1;
 			csiphy_dev->is_acquired_dev_combo_mode = 0;
 		}
-#endif
+
 		csiphy_dev->config_count--;
 		csiphy_dev->acquire_count--;
 
@@ -1374,14 +1262,6 @@ int32_t cam_csiphy_core_cfg(void *phy_dev,
 		break;
 	case CAM_CONFIG_DEV: {
 		struct cam_config_dev_cmd config;
-#if defined(ALLOW_MULTIPLE_CSIPHY_ACQRUIE)
-		if ((csiphy_dev->bridge_cnt > 1) &&
-			(csiphy_dev->config_count > 0)) {
-			CAM_INFO(CAM_CSIPHY,
-				"Already csiphy%d config done", csiphy_dev->soc_info.index);
-			goto release_mutex;
-		}
-#endif
 
 		CAM_INFO(CAM_CSIPHY, "phy CONFIG_DEV");
 		if (csiphy_dev->csiphy_state != CAM_CSIPHY_ACQUIRE) {

@@ -551,7 +551,9 @@ static void sec_bat_get_charging_current_by_siop(struct sec_battery_info *batter
 			max_charging_current = battery->pdata->siop_apdo_charging_limit_current;
 		}
 #endif
-		else {
+		else if (battery->siop_level == 5) {
+			max_charging_current = 500;
+		} else {
 			max_charging_current = 1800; /* 1 step(70) */
 		}
 
@@ -1176,7 +1178,7 @@ static void sec_bat_check_pdic_temp(struct sec_battery_info *battery, int *input
 static int sec_bat_check_pd_input_current(struct sec_battery_info *battery, int input_current)
 {
 	if (battery->current_event & SEC_BAT_CURRENT_EVENT_SELECT_PDO) {
-		input_current = battery->input_current;
+		input_current = SELECT_PDO_INPUT_CURRENT;
 		pr_info("%s: change input_current(%d), cable_type(%d)\n", __func__, input_current, battery->cable_type);
 	}
 
@@ -1377,9 +1379,8 @@ void sec_bat_set_mfc_off(struct sec_battery_info *battery, bool need_ept)
 	char wpc_en_status[2];
 
 	if (need_ept) {
-		value.intval = POWER_SUPPLY_HEALTH_WPC_EN;
 		psy_do_property(battery->pdata->wireless_charger_name, set,
-			POWER_SUPPLY_PROP_HEALTH, value);
+			POWER_SUPPLY_PROP_ONLINE, value);
 
 		msleep(300);
 	}
@@ -5396,8 +5397,10 @@ continue_monitor:
 skip_current_monitor:
 	psy_do_property(battery->pdata->charger_name, get,
 		POWER_SUPPLY_EXT_PROP_MONITOR_WORK, val);
-	psy_do_property(battery->pdata->wireless_charger_name, get,
-		POWER_SUPPLY_EXT_PROP_MONITOR_WORK, val);
+
+	if (battery->pdata->wireless_charger_name)
+		psy_do_property(battery->pdata->wireless_charger_name, get,
+			POWER_SUPPLY_EXT_PROP_MONITOR_WORK, val);
 
 	dev_dbg(battery->dev,
 		"%s: HLT(%d) HLR(%d) HT(%d), HR(%d), LT(%d), LR(%d), lpcharge(%d)\n",
@@ -9264,7 +9267,7 @@ static int sec_battery_probe(struct platform_device *pdev)
 
 #if defined(CONFIG_DISABLE_MFC_IC)
 	psy_do_property(battery->pdata->wireless_charger_name, get,
-		POWER_SUPPLY_EXT_PROP_MONITOR_WORK, value);
+		POWER_SUPPLY_EXT_PROP_WPC_EN, value);
 	sec_bat_set_current_event(battery,
 		value.intval ? SEC_BAT_CURRENT_EVENT_WPC_EN : 0, SEC_BAT_CURRENT_EVENT_WPC_EN);
 #endif

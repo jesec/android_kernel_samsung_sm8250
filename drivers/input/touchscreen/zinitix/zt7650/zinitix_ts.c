@@ -335,6 +335,11 @@ struct reg_ioctl {
 #define ZINITIX_INTERNAL_FLAG_03		0x011f
 
 #define ZT_OPTIONAL_SETTING				0x0116
+
+#define ZT_SET_SCANRATE			0x01A0
+#define ZT_SET_SCANRATE_ENABLE			0x01A1
+#define ZT_VSYNC_TEST_RESULT 			0x01A2
+
 #define ZT_COVER_CONTROL_REG			0x023E
 
 #define ZT_REJECT_ZONE_AREA			0x01AD
@@ -882,6 +887,7 @@ retry:
 	/* select register*/
 	ret = i2c_master_send(client , (u8 *)&reg , 2);
 	if (ret < 0) {
+		input_err(true, &info->client->dev, "%s: send failed %d, retry %d\n", __func__, ret, count);
 		zt_delay(1);
 
 		if (++count < 8)
@@ -894,6 +900,7 @@ retry:
 	usleep_range(DELAY_FOR_TRANSCATION, DELAY_FOR_TRANSCATION);
 	ret = i2c_master_recv(client , values , length);
 	if (ret < 0) {
+		input_err(true, &info->client->dev, "%s: recv failed %d\n", __func__, ret);
 		info->comm_err_count++;
 		return ret;
 	}
@@ -935,6 +942,7 @@ static inline s32 write_data(struct i2c_client *client,
 retry:
 	ret = i2c_master_send(client , pkt , length + 2);
 	if (ret < 0) {
+		input_err(true, &info->client->dev, "%s: failed %d, retry %d\n", __func__, ret, count);
 		usleep_range(1 * 1000, 1 * 1000);
 
 		if (++count < 8)
@@ -983,6 +991,7 @@ static inline s32 write_cmd(struct i2c_client *client, u16 reg)
 retry:
 	ret = i2c_master_send(client , (u8 *)&reg , 2);
 	if (ret < 0) {
+		input_err(true, &info->client->dev, "%s: failed %d, retry %d\n", __func__, ret, count);
 		zt_delay(1);
 
 		if (++count < 8)
@@ -1025,6 +1034,7 @@ retry:
 	/* select register */
 	ret = i2c_master_send(client , (u8 *)&reg , 2);
 	if (ret < 0) {
+		input_err(true, &info->client->dev, "%s: send failed %d, retry %d\n", __func__, ret, count);
 		zt_delay(1);
 
 		if (++count < 8)
@@ -1039,6 +1049,7 @@ retry:
 
 	ret = i2c_master_recv(client , values , length);
 	if (ret < 0) {
+		input_err(true, &info->client->dev, "%s: recv failed %d\n", __func__, ret);
 		info->comm_err_count++;
 		return ret;
 	}
@@ -1074,6 +1085,7 @@ static inline s32 read_firmware_data(struct i2c_client *client,
 	/* select register*/
 	ret = i2c_master_send(client , (u8 *)&addr , 2);
 	if (ret < 0) {
+		input_err(true, &info->client->dev, "%s: send failed %d\n", __func__, ret);
 		info->comm_err_count++;
 		return ret;
 	}
@@ -1083,6 +1095,7 @@ static inline s32 read_firmware_data(struct i2c_client *client,
 
 	ret = i2c_master_recv(client , values , length);
 	if (ret < 0) {
+		input_err(true, &info->client->dev, "%s: recv failed %d\n", __func__, ret);
 		info->comm_err_count++;
 		return ret;
 	}
@@ -1093,7 +1106,7 @@ static inline s32 read_firmware_data(struct i2c_client *client,
 
 static void zt_set_optional_mode(struct zt_ts_info *info, int event, bool enable)
 {
-	mutex_lock(&info->set_reg_lock);	
+	mutex_lock(&info->set_reg_lock);
 	if (enable)
 		zinitix_bit_set(info->m_optional_mode.select_mode.flag, event);
 	else
@@ -2614,9 +2627,9 @@ static bool ts_hw_calibration(struct zt_ts_info *info)
 
 	input_info(true, &client->dev, "%s start\n", __func__);
 
-	if (write_reg(client,
-				ZT_TOUCH_MODE, 0x07) != I2C_SUCCESS)
+	if (write_reg(client, ZT_TOUCH_MODE, 0x07) != I2C_SUCCESS)
 		return false;
+
 	zt_delay(10);
 	write_cmd(client, ZT_CLEAR_INT_STATUS_CMD);
 	zt_delay(10);
@@ -2644,10 +2657,11 @@ static bool ts_hw_calibration(struct zt_ts_info *info)
 
 		input_dbg(true, &client->dev, "touch eeprom info = 0x%04X\r\n",
 				chip_eeprom_info);
+
 		if (!zinitix_bit_test(chip_eeprom_info, 0))
 			break;
 
-		if (time_out++ == 4) {
+		if (time_out == 4) {
 			write_cmd(client, ZT_CALIBRATE_CMD);
 			zt_delay(10);
 			write_cmd(client, ZT_CLEAR_INT_STATUS_CMD);
@@ -2656,9 +2670,11 @@ static bool ts_hw_calibration(struct zt_ts_info *info)
 
 		if (time_out++ > 10) {
 			input_err(true, &client->dev, "%s: h/w calibration timeout.\n", __func__);
-			break;
+			write_reg(client, ZT_TOUCH_MODE, TOUCH_POINT_MODE);
+			zt_delay(50);
+			write_cmd(client, ZT_SWRESET_CMD);
+			return false;
 		}
-
 	} while (1);
 
 	write_reg(client, VCMD_NVM_WRITE_ENABLE, 0x0001);
@@ -3253,31 +3269,6 @@ static irqreturn_t zt_touch_work(int irq, void *data)
 			if (st < 1)
 				st = 1;
 
-			if ((info->cur_coord[i].touch_status == FINGER_PRESS) && (info->cur_coord[i].touch_status != info->old_coord[i].touch_status)) {
-				info->pressed_x[i] = x; /*for getting coordinates of pressed point*/
-				info->pressed_y[i] = y;
-				info->finger_cnt1++;
-
-				if ((info->finger_cnt1 > 4) && (info->check_multi == 0)) {
-					info->check_multi = 1;
-					info->multi_count++;
-					input_info(true, &client->dev,"data : pn=%d mc=%d \n", info->finger_cnt1, info->multi_count);
-				}
-
-				location_detect(info, location, x, y);
-#if !defined(CONFIG_SAMSUNG_PRODUCT_SHIP)
-				input_info(true, &client->dev, "[P] tID:%d,%d x:%d y:%d z:%d(st:%d) max:%d major:%d minor:%d loc:%s tc:%d touch_type:%x noise:%x\n",
-						i, info->input_dev->mt->trkid - 1, x, y, z, st, sen_max, info_major_w,
-						info_minor_w, location, info->finger_cnt1, info->cur_coord[i].ttype, info->cur_coord[i].noise);
-#else
-				input_info(true, &client->dev, "[P] tID:%d z:%d(st:%d) max:%d major:%d minor:%d loc:%s tc:%d touch_type:%x noise:%x\n",
-						i, z, st, sen_max, info_major_w,
-						info_minor_w, location, info->finger_cnt1, info->cur_coord[i].ttype, info->cur_coord[i].noise);
-#endif
-			} else if (info->cur_coord[i].touch_status == FINGER_MOVE) {
-				info->move_count[i]++;
-			}
-
 			input_mt_slot(info->input_dev, i);
 			input_mt_report_slot_state(info->input_dev, MT_TOOL_FINGER, 1);
 
@@ -3294,8 +3285,45 @@ static irqreturn_t zt_touch_work(int irq, void *data)
 			input_report_abs(info->input_dev, ABS_MT_CUSTOM, info->cur_coord[i].palm);
 
 			input_report_key(info->input_dev, BTN_TOUCH, 1);
+
+			if ((info->cur_coord[i].touch_status == FINGER_PRESS) && (info->cur_coord[i].touch_status != info->old_coord[i].touch_status)) {
+				info->pressed_x[i] = x; /*for getting coordinates of pressed point*/
+				info->pressed_y[i] = y;
+				info->finger_cnt1++;
+
+				if ((info->finger_cnt1 > 4) && (info->check_multi == 0)) {
+					info->check_multi = 1;
+					info->multi_count++;
+					input_info(true, &client->dev,"data : pn=%d mc=%d \n", info->finger_cnt1, info->multi_count);
+				}
+
+				location_detect(info, location, x, y);
+#if !defined(CONFIG_SAMSUNG_PRODUCT_SHIP)
+				input_info(true, &client->dev, "[P] tID:%d,%d x:%d y:%d z:%d(st:%d) max:%d major:%d minor:%d loc:%s tc:%d touch_type:%x noise:%x\n",
+						i, (info->input_dev->mt->trkid - 1) & TRKID_MAX, x, y, z, st, sen_max, info_major_w,
+						info_minor_w, location, info->finger_cnt1, info->cur_coord[i].ttype, info->cur_coord[i].noise);
+#else
+				input_info(true, &client->dev, "[P] tID:%d,%d z:%d(st:%d) max:%d major:%d minor:%d loc:%s tc:%d touch_type:%x noise:%x\n",
+						i, (info->input_dev->mt->trkid - 1) & TRKID_MAX, z, st, sen_max, info_major_w,
+						info_minor_w, location, info->finger_cnt1, info->cur_coord[i].ttype, info->cur_coord[i].noise);
+#endif
+			} else if (info->cur_coord[i].touch_status == FINGER_MOVE) {
+				info->move_count[i]++;
+			}
 		} else if (info->cur_coord[i].touch_status == FINGER_RELEASE) {
+			input_mt_slot(info->input_dev, i);
+			input_report_abs(info->input_dev, ABS_MT_CUSTOM, 0);
+			input_mt_report_slot_state(info->input_dev, MT_TOOL_FINGER, 0);
+
 			location_detect(info, location, info->cur_coord[i].x, info->cur_coord[i].y);
+
+			if (info->finger_cnt1 > 0)
+				info->finger_cnt1--;
+
+			if (info->finger_cnt1 == 0) {
+				input_report_key(info->input_dev, BTN_TOUCH, 0);
+				info->check_multi = 0;
+			}
 
 #if !defined(CONFIG_SAMSUNG_PRODUCT_SHIP)
 			input_info(true, &client->dev,
@@ -3316,17 +3344,7 @@ static irqreturn_t zt_touch_work(int irq, void *data)
 					info->move_count[i], info->finger_cnt1,
 					info->cur_coord[i].palm_count);
 #endif
-			if (info->finger_cnt1 > 0)
-				info->finger_cnt1--;
 
-			if (info->finger_cnt1 == 0) {
-				input_report_key(info->input_dev, BTN_TOUCH, 0);
-				info->check_multi = 0;
-			}
-
-			input_mt_slot(info->input_dev, i);
-			input_report_abs(info->input_dev, ABS_MT_CUSTOM, 0);
-			input_mt_report_slot_state(info->input_dev, MT_TOOL_FINGER, 0);
 			info->move_count[i] = 0;
 			memset(&info->cur_coord[i], 0, sizeof(struct ts_coordinate));
 		}
@@ -3353,6 +3371,16 @@ static int  zt_ts_open(struct input_dev *dev)
 	struct zt_ts_info *info = misc_info;
 	u8 prev_work_state;
 
+	if (info == NULL)
+		return 0;
+
+	if (!info->info_work_done) {
+		input_err(true, &info->client->dev, "%s not finished info work\n", __func__);
+		return 0;
+	}
+
+	input_info(true, &info->client->dev, "%s, %d \n", __func__, __LINE__);
+
 #ifdef CONFIG_TRUSTONIC_TRUSTED_UI
 	zt_delay(100);
 	if (TRUSTEDUI_MODE_TUI_SESSION & trustedui_get_current_mode()) {
@@ -3367,21 +3395,6 @@ static int  zt_ts_open(struct input_dev *dev)
 #ifdef CONFIG_INPUT_SEC_SECURE_TOUCH
 	secure_touch_stop(info, 0);
 #endif
-	if (info == NULL)
-		return 0;
-
-	if (!info->info_work_done) {
-		input_err(true, &info->client->dev, "%s not finished info work\n", __func__);
-		return 0;
-	}
-
-	input_info(true, &info->client->dev, "%s, %d \n", __func__, __LINE__);
-
-	/* Clear Ear Detection event*/
-	if (info->input_dev_proximity) {
-		input_report_abs(info->input_dev_proximity, ABS_MT_CUSTOM, 0);
-		input_sync(info->input_dev_proximity);
-	}
 
 	if (info->sleep_mode) {
 		mutex_lock(&info->work_lock);
@@ -3451,6 +3464,20 @@ static void zt_ts_close(struct input_dev *dev)
 	int i;
 	u8 prev_work_state;
 
+	if (info == NULL)
+		return;
+
+	if (!info->info_work_done) {
+		input_err(true, &info->client->dev, "%s not finished info work\n", __func__);
+		return;
+	}
+
+	input_info(true, &info->client->dev,
+			"%s, spay:%d aod:%d aot:%d singletap:%d prox:%ld pocket:%d ed:%d\n",
+			__func__, info->spay_enable, info->aod_enable,
+			info->aot_enable, info->singletap_enable, info->prox_power_off,
+			info->pocket_enable, info->ed_enable);
+
 #ifdef CONFIG_TRUSTONIC_TRUSTED_UI
 	zt_delay(100);
 	if (TRUSTEDUI_MODE_TUI_SESSION & trustedui_get_current_mode()) {
@@ -3465,20 +3492,6 @@ static void zt_ts_close(struct input_dev *dev)
 #ifdef CONFIG_INPUT_SEC_SECURE_TOUCH
 	secure_touch_stop(info, 1);
 #endif
-
-	if (info == NULL)
-		return;
-
-	if (!info->info_work_done) {
-		input_err(true, &info->client->dev, "%s not finished info work\n", __func__);
-		return;
-	}
-
-	input_info(true, &info->client->dev,
-			"%s, spay:%d aod:%d aot:%d singletap:%d prox:%ld pocket:%d ed:%d\n",
-			__func__, info->spay_enable, info->aod_enable,
-			info->aot_enable, info->singletap_enable, info->prox_power_off,
-			info->pocket_enable, info->ed_enable);
 
 #ifdef TCLM_CONCEPT
 	sec_tclm_debug_info(info->tdata);
@@ -3507,6 +3520,10 @@ static void zt_ts_close(struct input_dev *dev)
 #if ESD_TIMER_INTERVAL
 		esd_timer_stop(info);
 #endif
+
+		if (info->prox_power_off && info->aot_enable)
+			zinitix_bit_clr(info->lpm_mode, BIT_EVENT_AOT);
+
 		input_info(true, &info->client->dev,
 				"%s: write lpm_mode 0x%02x (spay:%d, aod:%d, singletap:%d, aot:%d, fod:%d, fod_lp:%d)\n",
 				__func__, info->lpm_mode,
@@ -3520,13 +3537,13 @@ static void zt_ts_close(struct input_dev *dev)
 		if (write_reg(info->client, ZT_LPM_MODE_REG, info->lpm_mode) != I2C_SUCCESS)
 			input_info(true, &info->client->dev, "%s, fail lpm mode set\n", __func__);
 
-		if (write_reg(info->client, ZT_CALL_AOT_REG, info->prox_power_off) != I2C_SUCCESS)
-			input_info(true, &info->client->dev, "%s, fail call aot set\n", __func__);
-
 		zt_set_fod_rect(info);
 
 		write_cmd(info->client, ZT_SLEEP_CMD);
 		info->sleep_mode = 1;
+
+		if (info->prox_power_off && info->aot_enable)
+			zinitix_bit_set(info->lpm_mode, BIT_EVENT_AOT);
 
 		/* clear garbage data */
 		for (i = 0; i < 2; i++) {
@@ -7160,6 +7177,46 @@ err_get_crc_check:
 	return;
 }
 
+static void run_test_vsync(void *device_data)
+{
+	struct sec_cmd_data *sec = (struct sec_cmd_data *)device_data;
+	struct zt_ts_info *info = container_of(sec, struct zt_ts_info, sec);
+	char buf[64] = { 0 };
+	u16 data = 0;
+
+	sec_cmd_set_default_result(sec);
+
+	if (write_reg(info->client, ZT_POWER_STATE_FLAG, 1) != I2C_SUCCESS) {
+		input_err(true, &info->client->dev, "%s: Fail to set ZT_POWER_STATE_FLAG 1\n", __func__);
+		snprintf(buf, sizeof(buf), "%s", "NG");
+		sec->cmd_state = SEC_CMD_STATUS_FAIL;
+		goto EXIT;
+	}
+
+	zt_delay(100);
+	if (read_data(info->client, ZT_VSYNC_TEST_RESULT, (u8 *)&data, 2) < 0) {
+		input_err(true, &info->client->dev, "%s: read crc fail", __func__);
+		snprintf(buf, sizeof(buf), "%s", "NG");
+		sec->cmd_state = SEC_CMD_STATUS_FAIL;
+		goto EXIT;
+	}
+
+	input_info(true, &info->client->dev, "%s: result %d\n", __func__, data);
+
+	snprintf(buf, sizeof(buf), "%d", data);
+	sec->cmd_state = SEC_CMD_STATUS_OK;
+
+EXIT:
+	if (write_reg(info->client, ZT_POWER_STATE_FLAG, 0) != I2C_SUCCESS)
+		input_err(true, &info->client->dev, "%s: Fail to set ZT_POWER_STATE_FLAG 0\n", __func__);
+
+	zt_delay(10);
+	
+	sec_cmd_set_cmd_result(sec, buf, strnlen(buf, sizeof(buf)));
+	if (sec->cmd_all_factory_state == SEC_CMD_STATUS_RUNNING)
+		sec_cmd_set_cmd_result_all(sec, buf, strnlen(buf, sizeof(buf)), "VSYNC");
+}
+
 static void factory_cmd_result_all(void *device_data)
 {
 	struct sec_cmd_data *sec = (struct sec_cmd_data *)device_data;
@@ -7190,6 +7247,7 @@ static void factory_cmd_result_all(void *device_data)
 	run_selfdnd_h_gap_read(sec);
 	run_self_saturation_read(sec);
 	run_charge_pump_read(sec);
+	run_test_vsync(sec);
 
 #ifdef TCLM_CONCEPT
 	run_mis_cal_read(sec);
@@ -7318,6 +7376,64 @@ static void ear_detect_enable(void *device_data)
 	input_info(true, &client->dev, "%s, %s\n", __func__, sec->cmd_result);
 
 	return;
+}
+
+/*	for game mode 
+	byte[0]: Setting for the Game Mode with 240Hz scan rate
+		- 0: Disable
+		- 1: Enable
+
+	byte[1]: Vsycn mode
+		- 0: Normal 60
+		- 1: HS60
+		- 2: HS120
+		- 3: VSYNC 48
+		- 4: VSYNC 96 
+*/
+static void set_scan_rate(void *device_data)
+{
+	struct sec_cmd_data *sec = (struct sec_cmd_data *)device_data;
+	struct zt_ts_info *info = container_of(sec, struct zt_ts_info, sec);
+	char buff[SEC_CMD_STR_LEN] = { 0 };
+	char tBuff[2] = { 0 };
+
+	sec_cmd_set_default_result(sec);
+
+	if (sec->cmd_param[0] < 0 || sec->cmd_param[0] > 1 ||
+			sec->cmd_param[1] < 0 || sec->cmd_param[1] > 4) {
+		input_err(true, &info->client->dev, "%s: not support param\n", __func__);
+		goto NG;
+	}
+
+	tBuff[0] = sec->cmd_param[0];
+	tBuff[1] = sec->cmd_param[1];
+
+	if (write_reg(info->client, ZT_SET_SCANRATE_ENABLE, tBuff[0]) != I2C_SUCCESS) {
+		input_err(true, &info->client->dev,
+				"%s: failed to set scan mode enable\n", __func__);
+		goto NG;
+	}
+
+	if (write_reg(info->client, ZT_SET_SCANRATE, tBuff[1]) != I2C_SUCCESS) {
+		input_err(true, &info->client->dev,
+				"%s: failed to set scan rate\n", __func__);
+		goto NG;
+	}
+
+	input_info(true, &info->client->dev,
+					"%s: set scan rate %d %d\n", __func__, tBuff[0], tBuff[1]);
+
+	snprintf(buff, sizeof(buff), "OK");
+	sec->cmd_state = SEC_CMD_STATUS_OK;
+	sec_cmd_set_cmd_result(sec, buff, strnlen(buff, sizeof(buff)));
+	sec_cmd_set_cmd_exit(sec);
+	return;
+
+NG:
+	snprintf(buff, sizeof(buff), "NG");
+	sec->cmd_state = SEC_CMD_STATUS_FAIL;
+	sec_cmd_set_cmd_result(sec, buff, strnlen(buff, sizeof(buff)));
+	sec_cmd_set_cmd_exit(sec);
 }
 
 static ssize_t scrub_position_show(struct device *dev,
@@ -7835,7 +7951,6 @@ static struct sec_cmd sec_cmds[] = {
 	{SEC_CMD("run_cs_delta_read_all", run_cs_delta_read_all),},
 	{SEC_CMD("run_force_calibration", run_ref_calibration),},
 	{SEC_CMD("clear_reference_data", clear_reference_data),},
-	{SEC_CMD("run_ref_calibration", run_ref_calibration),},
 	{SEC_CMD("dead_zone_enable", dead_zone_enable),},
 	{SEC_CMD("set_grip_data", set_grip_data),},
 	{SEC_CMD_H("set_touchable_area", set_touchable_area),},
@@ -7852,10 +7967,12 @@ static struct sec_cmd sec_cmds[] = {
 	{SEC_CMD_H("glove_mode", glove_mode),},
 	{SEC_CMD_H("pocket_mode_enable", pocket_mode_enable),},
 	{SEC_CMD("get_crc_check", get_crc_check),},
+	{SEC_CMD("run_test_vsync", run_test_vsync),},	
 	{SEC_CMD("factory_cmd_result_all", factory_cmd_result_all),},
 	{SEC_CMD("check_connection", check_connection),},
 	{SEC_CMD("run_prox_intensity_read_all", run_prox_intensity_read_all),},
 	{SEC_CMD_H("ear_detect_enable", ear_detect_enable),},
+	{SEC_CMD_H("set_scan_rate", set_scan_rate),},
 	{SEC_CMD("not_support_cmd", not_support_cmd),},
 };
 
@@ -7937,7 +8054,7 @@ static long ts_misc_fops_ioctl(struct file *filp,
 #endif
 
 	if (misc_info == NULL) {
-		input_err(true, &misc_info->client->dev, "%s misc device NULL?\n", __func__);
+		pr_err("%s %s misc device NULL?\n", SECLOG, __func__);
 		return -1;
 	}
 
@@ -8064,7 +8181,7 @@ fail_hw_cal:
 
 	case TOUCH_IOCTL_SET_RAW_DATA_MODE:
 		if (misc_info == NULL) {
-			input_err(true, &misc_info->client->dev, "%s misc device NULL?\n", __func__);
+			pr_err("%s %s misc device NULL?\n", SECLOG, __func__);
 			return -1;
 		}
 		if (copy_from_user(&nval, argp, sizeof(nval))) {
@@ -8078,7 +8195,7 @@ fail_hw_cal:
 
 	case TOUCH_IOCTL_GET_REG:
 		if (misc_info == NULL) {
-			input_err(true, &misc_info->client->dev, "%s misc device NULL?\n", __func__);
+			pr_err("%s %s misc device NULL?\n", SECLOG, __func__);
 			return -1;
 		}
 		mutex_lock(&misc_info->work_lock);
@@ -8165,7 +8282,7 @@ fail_hw_cal:
 		case TOUCH_IOCTL_DONOT_TOUCH_EVENT:
 
 		if (misc_info == NULL) {
-			input_err(true, &misc_info->client->dev,"%s misc device NULL?\n", __func__);
+			pr_err("%s %s misc device NULL?\n", SECLOG, __func__);
 			return -1;
 		}
 		mutex_lock(&misc_info->work_lock);
@@ -8189,7 +8306,7 @@ fail_hw_cal:
 
 		case TOUCH_IOCTL_SEND_SAVE_STATUS:
 		if (misc_info == NULL) {
-			input_info(true, &misc_info->client->dev, "%s misc device NULL?\n", __func__);
+			pr_err("%s %s misc device NULL?\n", SECLOG, __func__);
 			return -1;
 		}
 		mutex_lock(&misc_info->work_lock);
@@ -8215,7 +8332,7 @@ fail_hw_cal:
 
 		case TOUCH_IOCTL_GET_RAW_DATA:
 		if (misc_info == NULL) {
-			input_err(true, &misc_info->client->dev,"%s misc device NULL?\n", __func__);
+			pr_err("%s %s misc device NULL?\n", SECLOG, __func__);
 			return -1;
 		}
 
@@ -8844,7 +8961,7 @@ void zt_print_info(struct zt_ts_info *info)
 	fw_version =  ((info->cap_info.hw_id & 0xff) << 8) | (info->cap_info.reg_data_version & 0xff);
 
 	input_info(true, &info->client->dev,
-			"tc:%d noise:%s(%d) cover:%d lp:(%x) fod:%d ED:%d // v:%04X C%02XT%04X.%4s%s Cal_flag:%s fail_cnt:%d // #%d %d\n",
+			"tc:%d noise:%s(%d) cover:%d lp:(%x) fod:%d ED:%d // v:%04X C%02XT%04X.%4s%s // #%d %d\n",
 			info->finger_cnt1, info->noise_flag > 0 ? "ON":"OFF", info->noise_flag, info->flip_cover_flag,
 			info->lpm_mode, info->fod_mode_set, info->ed_enable,
 			fw_version,
@@ -8852,10 +8969,8 @@ void zt_print_info(struct zt_ts_info *info)
 			info->tdata->nvdata.cal_count, info->tdata->nvdata.tune_fix_ver,
 			info->tdata->tclm_string[info->tdata->nvdata.cal_position].f_name,
 			(info->tdata->tclm_level == TCLM_LEVEL_LOCKDOWN) ? ".L" : " ",
-			(info->tdata->nvdata.cal_fail_falg == SEC_CAL_PASS) ? "Success" : "Fail",
-			info->tdata->nvdata.cal_fail_cnt,
 #else
-			0,0," "," "," ",0,
+			0,0," "," ",
 #endif
 			info->print_info_cnt_open, info->print_info_cnt_release);
 }

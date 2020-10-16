@@ -7407,21 +7407,21 @@ static char DSI0_UI_AUTO_MDNIE_5[] = {
 
 static char DSI0_UI_AUTO_MDNIE_6[] = {
 	0xB2, // TCS
-	0x02, // bypass, control switch
+	0x82, // bypass, control switch
 	0x0f, // skin_boundary_parameter
 	0x05, // grass_boundary_parameter
 	0x0f, // sky_boundary_paraneter
 	0x0c, // skin_boundary_parameter
 	0x0c, // grass_boundary_parameter
 	0x0c, // sky_boundary_paraneter
-	0x09, // skin_boundary_parameter
-	0x9a,
+	0x7f, // skin_boundary_parameter
 	0x00,
-	0x15,
-	0x0b,
-	0xc0,
 	0x00,
-	0x1a,
+	0x03,
+	0x40,
+	0x00,
+	0x00,
+	0x02,
 	0x00, // grass_boundary_parameter
 	0xf0,
 	0x00,
@@ -7438,14 +7438,14 @@ static char DSI0_UI_AUTO_MDNIE_6[] = {
 	0x5a,
 	0x00,
 	0x63,
-	0x03, // skin_boundary_parameter
-	0xb4,
+	0x00, // skin_boundary_parameter
+	0xff,
 	0x00,
-	0x8b,
-	0x06,
-	0xa7,
+	0x80,
+	0x28,
+	0x7e,
 	0x00,
-	0xbc,
+	0xff,
 	0x00, // grass_boundary_parameter
 	0x9f,
 	0x00,
@@ -7463,13 +7463,13 @@ static char DSI0_UI_AUTO_MDNIE_6[] = {
 	0x00,
 	0xb3,
 	0x00, // skin_boundary_parameter
-	0xda,
-	0x11,
-	0xcb,
-	0x01,
-	0x3b,
-	0x07,
-	0xe0,
+	0x04,
+	0x93,
+	0x7a,
+	0x00,
+	0x2f,
+	0x02,
+	0x08,
 	0x0b, // grass_boundary_parameter
 	0x24,
 	0x0a,
@@ -7489,50 +7489,50 @@ static char DSI0_UI_AUTO_MDNIE_6[] = {
 	0x64, // skin_boundary_parameter
 	0x62, // grass_boundary_parameter
 	0x61, // sky_boundary_paraneter
-	0x80, // Skin Color Gain (0x00 ~ 0xFF)
+	0x20, // Skin Color Gain (0x00 ~ 0xFF)
 	0x80, // grass Color Gain (0x00 ~ 0xFF)
 	0x80, // sky Color Gain (0x00 ~ 0xFF)
-	0x73, // Target Skin Color (Cb)
+	0x8a, // Target Skin Color (Cb)
 	0x52, // Target grass Color (Cb)
 	0xae, // Target Sky Color (Cb)
-	0x90, // Target Skin Color (Cr)
+	0x80, // Target Skin Color (Cr)
 	0x69, // Target grass Color (Cr)
 	0x58, // Target Sky Color (Cr)
 	0x00, // Threshold Value of Skin Color Detection
 	0x00, // Threshold Value of grass Color Detection
 	0x00, // Threshold Value of Sky Color Detection
-	0x1e, // Minumum Y of Skin Brightness Control
+	0x32, // Minumum Y of Skin Brightness Control
 	0x1e, // Minumum Y of grass Brightness Control
 	0x1e, // Minumum Y of Sky Brightness Control
-	0xc8, // Maximum Y of Skin Brightness Control
+	0xdc, // Maximum Y of Skin Brightness Control
 	0xc8, // Maximum Y of grass Brightness Control
 	0xc8, // Maximum Y of Sky Brightness Control
-	0x78, // Reference Y of Skin Brightness Control
+	0x88, // Reference Y of Skin Brightness Control
 	0x78, // Reference Y of grass Brightness Control
 	0x78, // Reference Y of Sky Brightness Control
-	0x82, // Target Y of Skin Brihgtness Contol
+	0x8a, // Target Y of Skin Brihgtness Contol
 	0x78, // Target Y of grass Brihgtness Contol
 	0x78, // Target Y of Sky Brihgtness Contol
-	0xb6, // Brightness Parameter
+	0x24, // Brightness Parameter
 	0x00,
 	0x00,
-	0xa9,
+	0x8a,
 	0x80,
 	0x80,
-	0x04,
-	0x2b,
+	0x01,
+	0x86,
 	0x00,
 	0x00,
 	0x00,
 	0x00,
-	0x8e,
-	0x39,
+	0x82,
+	0xfa,
 	0x80,
 	0x00,
 	0x80,
 	0x00,
-	0x70,
-	0x00,
+	0x7c,
+	0xf4,
 	0x80,
 	0x00,
 	0x80,
@@ -7569,7 +7569,7 @@ static char DSI0_CAMERA_AUTO_MDNIE_5[] = {
 	0xff, // crc_lut_mode1_rr
 	0x00, // crc_lut_mode1_rg
 	0x00, // crc_lut_mode1_rb
-	0x00, // crc_lut_mode1_gr
+	0x14, // crc_lut_mode1_gr
 	0xff, // crc_lut_mode1_gg
 	0x00, // crc_lut_mode1_gb
 	0x00, // crc_lut_mode1_br
@@ -7701,21 +7701,21 @@ static char DSI0_CAMERA_AUTO_MDNIE_5[] = {
 
 static char DSI0_CAMERA_AUTO_MDNIE_6[] = {
 	0xB2, // TCS
-	0x02, // bypass, control switch
+	0x82, // bypass, control switch
 	0x0f, // skin_boundary_parameter
 	0x05, // grass_boundary_parameter
 	0x0f, // sky_boundary_paraneter
 	0x0c, // skin_boundary_parameter
 	0x0c, // grass_boundary_parameter
 	0x0c, // sky_boundary_paraneter
-	0x09, // skin_boundary_parameter
-	0x9a,
+	0x7f, // skin_boundary_parameter
 	0x00,
-	0x15,
-	0x0b,
-	0xc0,
 	0x00,
-	0x1a,
+	0x03,
+	0x40,
+	0x00,
+	0x00,
+	0x02,
 	0x00, // grass_boundary_parameter
 	0xf0,
 	0x00,
@@ -7732,14 +7732,14 @@ static char DSI0_CAMERA_AUTO_MDNIE_6[] = {
 	0x5a,
 	0x00,
 	0x63,
-	0x03, // skin_boundary_parameter
-	0xb4,
+	0x00, // skin_boundary_parameter
+	0xff,
 	0x00,
-	0x8b,
-	0x06,
-	0xa7,
+	0x80,
+	0x28,
+	0x7e,
 	0x00,
-	0xbc,
+	0xff,
 	0x00, // grass_boundary_parameter
 	0x9f,
 	0x00,
@@ -7757,13 +7757,13 @@ static char DSI0_CAMERA_AUTO_MDNIE_6[] = {
 	0x00,
 	0xb3,
 	0x00, // skin_boundary_parameter
-	0xda,
-	0x11,
-	0xcb,
-	0x01,
-	0x3b,
-	0x07,
-	0xe0,
+	0x04,
+	0x93,
+	0x7a,
+	0x00,
+	0x2f,
+	0x02,
+	0x08,
 	0x0b, // grass_boundary_parameter
 	0x24,
 	0x0a,
@@ -7783,50 +7783,50 @@ static char DSI0_CAMERA_AUTO_MDNIE_6[] = {
 	0x64, // skin_boundary_parameter
 	0x62, // grass_boundary_parameter
 	0x61, // sky_boundary_paraneter
-	0x80, // Skin Color Gain (0x00 ~ 0xFF)
+	0x20, // Skin Color Gain (0x00 ~ 0xFF)
 	0x80, // grass Color Gain (0x00 ~ 0xFF)
 	0x80, // sky Color Gain (0x00 ~ 0xFF)
-	0x73, // Target Skin Color (Cb)
+	0x8a, // Target Skin Color (Cb)
 	0x52, // Target grass Color (Cb)
 	0xae, // Target Sky Color (Cb)
-	0x90, // Target Skin Color (Cr)
+	0x80, // Target Skin Color (Cr)
 	0x69, // Target grass Color (Cr)
 	0x58, // Target Sky Color (Cr)
 	0x00, // Threshold Value of Skin Color Detection
 	0x00, // Threshold Value of grass Color Detection
 	0x00, // Threshold Value of Sky Color Detection
-	0x1e, // Minumum Y of Skin Brightness Control
+	0x32, // Minumum Y of Skin Brightness Control
 	0x1e, // Minumum Y of grass Brightness Control
 	0x1e, // Minumum Y of Sky Brightness Control
-	0xc8, // Maximum Y of Skin Brightness Control
+	0xdc, // Maximum Y of Skin Brightness Control
 	0xc8, // Maximum Y of grass Brightness Control
 	0xc8, // Maximum Y of Sky Brightness Control
-	0x78, // Reference Y of Skin Brightness Control
+	0x88, // Reference Y of Skin Brightness Control
 	0x78, // Reference Y of grass Brightness Control
 	0x78, // Reference Y of Sky Brightness Control
-	0x82, // Target Y of Skin Brihgtness Contol
+	0x8a, // Target Y of Skin Brihgtness Contol
 	0x78, // Target Y of grass Brihgtness Contol
 	0x78, // Target Y of Sky Brihgtness Contol
-	0xb6, // Brightness Parameter
+	0x24, // Brightness Parameter
 	0x00,
 	0x00,
-	0xa9,
+	0x8a,
 	0x80,
 	0x80,
-	0x04,
-	0x2b,
+	0x01,
+	0x86,
 	0x00,
 	0x00,
 	0x00,
 	0x00,
-	0x8e,
-	0x39,
+	0x82,
+	0xfa,
 	0x80,
 	0x00,
 	0x80,
 	0x00,
-	0x70,
-	0x00,
+	0x7c,
+	0xf4,
 	0x80,
 	0x00,
 	0x80,
@@ -7861,7 +7861,7 @@ static char DSI0_GALLERY_AUTO_MDNIE_5[] = {
 	0xff, // crc_lut_mode1_rr
 	0x00, // crc_lut_mode1_rg
 	0x00, // crc_lut_mode1_rb
-	0x00, // crc_lut_mode1_gr
+	0x14, // crc_lut_mode1_gr
 	0xff, // crc_lut_mode1_gg
 	0x00, // crc_lut_mode1_gb
 	0x00, // crc_lut_mode1_br
@@ -7993,21 +7993,21 @@ static char DSI0_GALLERY_AUTO_MDNIE_5[] = {
 
 static char DSI0_GALLERY_AUTO_MDNIE_6[] = {
 	0xB2, // TCS
-	0x02, // bypass, control switch
+	0x82, // bypass, control switch
 	0x0f, // skin_boundary_parameter
 	0x05, // grass_boundary_parameter
 	0x0f, // sky_boundary_paraneter
 	0x0c, // skin_boundary_parameter
 	0x0c, // grass_boundary_parameter
 	0x0c, // sky_boundary_paraneter
-	0x09, // skin_boundary_parameter
-	0x9a,
+	0x7f, // skin_boundary_parameter
 	0x00,
-	0x15,
-	0x0b,
-	0xc0,
 	0x00,
-	0x1a,
+	0x03,
+	0x40,
+	0x00,
+	0x00,
+	0x02,
 	0x00, // grass_boundary_parameter
 	0xf0,
 	0x00,
@@ -8024,14 +8024,14 @@ static char DSI0_GALLERY_AUTO_MDNIE_6[] = {
 	0x5a,
 	0x00,
 	0x63,
-	0x03, // skin_boundary_parameter
-	0xb4,
+	0x00, // skin_boundary_parameter
+	0xff,
 	0x00,
-	0x8b,
-	0x06,
-	0xa7,
+	0x80,
+	0x28,
+	0x7e,
 	0x00,
-	0xbc,
+	0xff,
 	0x00, // grass_boundary_parameter
 	0x9f,
 	0x00,
@@ -8049,13 +8049,13 @@ static char DSI0_GALLERY_AUTO_MDNIE_6[] = {
 	0x00,
 	0xb3,
 	0x00, // skin_boundary_parameter
-	0xda,
-	0x11,
-	0xcb,
-	0x01,
-	0x3b,
-	0x07,
-	0xe0,
+	0x04,
+	0x93,
+	0x7a,
+	0x00,
+	0x2f,
+	0x02,
+	0x08,
 	0x0b, // grass_boundary_parameter
 	0x24,
 	0x0a,
@@ -8075,50 +8075,50 @@ static char DSI0_GALLERY_AUTO_MDNIE_6[] = {
 	0x64, // skin_boundary_parameter
 	0x62, // grass_boundary_parameter
 	0x61, // sky_boundary_paraneter
-	0x80, // Skin Color Gain (0x00 ~ 0xFF)
+	0x20, // Skin Color Gain (0x00 ~ 0xFF)
 	0x80, // grass Color Gain (0x00 ~ 0xFF)
 	0x80, // sky Color Gain (0x00 ~ 0xFF)
-	0x73, // Target Skin Color (Cb)
+	0x8a, // Target Skin Color (Cb)
 	0x52, // Target grass Color (Cb)
 	0xae, // Target Sky Color (Cb)
-	0x90, // Target Skin Color (Cr)
+	0x80, // Target Skin Color (Cr)
 	0x69, // Target grass Color (Cr)
 	0x58, // Target Sky Color (Cr)
 	0x00, // Threshold Value of Skin Color Detection
 	0x00, // Threshold Value of grass Color Detection
 	0x00, // Threshold Value of Sky Color Detection
-	0x1e, // Minumum Y of Skin Brightness Control
+	0x32, // Minumum Y of Skin Brightness Control
 	0x1e, // Minumum Y of grass Brightness Control
 	0x1e, // Minumum Y of Sky Brightness Control
-	0xc8, // Maximum Y of Skin Brightness Control
+	0xdc, // Maximum Y of Skin Brightness Control
 	0xc8, // Maximum Y of grass Brightness Control
 	0xc8, // Maximum Y of Sky Brightness Control
-	0x78, // Reference Y of Skin Brightness Control
+	0x88, // Reference Y of Skin Brightness Control
 	0x78, // Reference Y of grass Brightness Control
 	0x78, // Reference Y of Sky Brightness Control
-	0x82, // Target Y of Skin Brihgtness Contol
+	0x8a, // Target Y of Skin Brihgtness Contol
 	0x78, // Target Y of grass Brihgtness Contol
 	0x78, // Target Y of Sky Brihgtness Contol
-	0xb6, // Brightness Parameter
+	0x24, // Brightness Parameter
 	0x00,
 	0x00,
-	0xa9,
+	0x8a,
 	0x80,
 	0x80,
-	0x04,
-	0x2b,
+	0x01,
+	0x86,
 	0x00,
 	0x00,
 	0x00,
 	0x00,
-	0x8e,
-	0x39,
+	0x82,
+	0xfa,
 	0x80,
 	0x00,
 	0x80,
 	0x00,
-	0x70,
-	0x00,
+	0x7c,
+	0xf4,
 	0x80,
 	0x00,
 	0x80,

@@ -685,6 +685,7 @@ struct mhi_chan {
 	enum dma_data_direction dir;
 	struct db_cfg db_cfg;
 	u32 ee_mask;
+	u32 pending_pkts;
 	enum MHI_XFER_TYPE xfer_type;
 	enum MHI_CH_STATE ch_state;
 	enum MHI_EV_CCS ccs;
@@ -761,6 +762,7 @@ int mhi_debugfs_trigger_reset(void *data, u64 val);
 
 void mhi_deinit_debugfs(struct mhi_controller *mhi_cntrl);
 void mhi_init_debugfs(struct mhi_controller *mhi_cntrl);
+void mhi_debug_context_dump(struct mhi_controller *mhi_cntrl);
 
 /* power management apis */
 enum MHI_PM_STATE __must_check mhi_tryset_pm_state(

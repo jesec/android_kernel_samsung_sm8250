@@ -273,8 +273,10 @@ static int sec_touch_notify_call(struct notifier_block *n, unsigned long data, v
 #if defined(CONFIG_TOUCHSCREEN_DUAL_FOLDABLE) && defined(CONFIG_FOLDER_HALL)
 	case NOTIFIER_MAIN_TOUCH_ON:
 		input_info(true, &ts->client->dev, "%s: main_tsp open\n", __func__);
+		mutex_lock(&ts->modechange);
 		ts->tsp_open_status = NOTIFIER_MAIN_TOUCH_ON;
 		sec_ts_chk_tsp_ic_status(ts, SEC_TS_STATE_CHK_POS_CLOSE);
+		mutex_unlock(&ts->modechange);
 		break;
 #endif
 	default:
@@ -2110,14 +2112,22 @@ static void sec_ts_init_proc(struct sec_ts_data *ts)
 	if (!ts->fail_hist_main_proc)
 		goto err_alloc_fail_hist_main;
 
+#ifdef CONFIG_TOUCHSCREEN_DUAL_FOLDABLE
+	entry_cmoffset_all = proc_create("tsp_cmoffset_all_sub", S_IFREG | S_IRUGO, NULL, &tsp_cmoffset_all_file_ops);
+#else
 	entry_cmoffset_all = proc_create("tsp_cmoffset_all", S_IFREG | S_IRUGO, NULL, &tsp_cmoffset_all_file_ops);
+#endif
 	if (!entry_cmoffset_all) {
 		input_err(true, &ts->client->dev, "%s: failed to create /proc/tsp_cmoffset_all\n", __func__);
 		goto err_cmoffset_proc_create;
 	}
 	proc_set_size(entry_cmoffset_all, ts->proc_cmoffset_all_size);
 
+#ifdef CONFIG_TOUCHSCREEN_DUAL_FOLDABLE
+	entry_fail_hist_all = proc_create("tsp_fail_hist_all_sub", S_IFREG | S_IRUGO, NULL, &tsp_fail_hist_all_file_ops);
+#else
 	entry_fail_hist_all = proc_create("tsp_fail_hist_all", S_IFREG | S_IRUGO, NULL, &tsp_fail_hist_all_file_ops);
+#endif
 	if (!entry_fail_hist_all) {
 		input_err(true, &ts->client->dev, "%s: failed to create /proc/tsp_fail_hist_all\n", __func__);
 		goto err_fail_hist_proc_create;
@@ -3476,7 +3486,9 @@ static void sec_ts_switching_work(struct work_struct *work)
 			/* close : sub_tsp on */
 		}
 
+		mutex_lock(&ts->modechange);
 		sec_ts_chk_tsp_ic_status(ts, SEC_TS_STATE_CHK_POS_HALL);
+		mutex_unlock(&ts->modechange);
 
 		mutex_unlock(&ts->switching_mutex);
 	}
@@ -3708,6 +3720,10 @@ static int sec_ts_input_open(struct input_dev *dev)
 		return 0;
 	}
 
+#if defined(CONFIG_TOUCHSCREEN_DUAL_FOLDABLE) && defined(CONFIG_FOLDER_HALL)
+	cancel_delayed_work_sync(&ts->switching_work);
+	mutex_lock(&ts->switching_mutex);
+#endif
 	mutex_lock(&ts->modechange);
 
 	ts->input_closed = false;
@@ -3715,10 +3731,6 @@ static int sec_ts_input_open(struct input_dev *dev)
 
 #ifdef CONFIG_INPUT_SEC_SECURE_TOUCH
 	secure_touch_stop(ts, 0);
-#endif
-#if defined(CONFIG_TOUCHSCREEN_DUAL_FOLDABLE) && defined(CONFIG_FOLDER_HALL)
-	sec_ts_chk_tsp_ic_status(ts, SEC_TS_STATE_CHK_POS_OPEN);
-	cancel_delayed_work_sync(&ts->switching_work);
 #endif
 	if (ts->power_status == SEC_TS_STATE_LPM) {
 #ifdef USE_RESET_EXIT_LPM
@@ -3739,17 +3751,19 @@ static int sec_ts_input_open(struct input_dev *dev)
 
 	sec_ts_set_temp(ts, true);
 
+#if defined(CONFIG_TOUCHSCREEN_DUAL_FOLDABLE) && defined(CONFIG_TOUCHSCREEN_SEC_TS_Y771_SUB)
+	ts->tsp_open_status = NOTIFIER_SUB_TOUCH_ON;
+#endif
 	mutex_unlock(&ts->modechange);
-
+#if defined(CONFIG_TOUCHSCREEN_DUAL_FOLDABLE) && defined(CONFIG_FOLDER_HALL)
+	mutex_unlock(&ts->switching_mutex);
+#endif
 	cancel_delayed_work(&ts->work_print_info);
 	ts->print_info_cnt_open = 0;
 	ts->print_info_cnt_release = 0;
 	if (!ts->shutdown_is_on_going)
 		schedule_work(&ts->work_print_info.work);
 
-#if defined(CONFIG_TOUCHSCREEN_DUAL_FOLDABLE) && defined(CONFIG_TOUCHSCREEN_SEC_TS_Y771_SUB)
-	ts->tsp_open_status = NOTIFIER_SUB_TOUCH_ON;
-#endif
 	return 0;
 }
 
@@ -3766,6 +3780,10 @@ static void sec_ts_input_close(struct input_dev *dev)
 		return;
 	}
 
+#if defined(CONFIG_TOUCHSCREEN_DUAL_FOLDABLE) && defined(CONFIG_FOLDER_HALL)
+	cancel_delayed_work_sync(&ts->switching_work);
+	mutex_lock(&ts->switching_mutex);
+#endif
 	mutex_lock(&ts->modechange);
 
 	ts->input_closed = true;
@@ -3792,8 +3810,6 @@ static void sec_ts_input_close(struct input_dev *dev)
 	cancel_delayed_work(&ts->reset_work);
 #endif
 #if defined(CONFIG_TOUCHSCREEN_DUAL_FOLDABLE) && defined(CONFIG_FOLDER_HALL)
-	cancel_delayed_work_sync(&ts->switching_work);
-
 	if (ts->lowpower_mode && !ts->prox_power_off &&
 			ts->flip_status_current == SEC_TS_STATUS_FOLDING)
 		sec_ts_set_lowpowermode(ts, TO_LOWPOWER_MODE);
@@ -3813,6 +3829,9 @@ static void sec_ts_input_close(struct input_dev *dev)
 		sec_ts_stop_device(ts);
 
 	mutex_unlock(&ts->modechange);
+#if defined(CONFIG_TOUCHSCREEN_DUAL_FOLDABLE) && defined(CONFIG_FOLDER_HALL)
+	mutex_unlock(&ts->switching_mutex);
+#endif
 }
 #endif
 

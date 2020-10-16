@@ -932,6 +932,8 @@ struct kgsl_process_private *kgsl_process_private_find(pid_t pid)
 }
 
 #if defined(CONFIG_DISPLAY_SAMSUNG)
+extern void kgsl_svm_addr_hole_log(struct kgsl_device *device, pid_t pid, uint64_t memflags);
+
 #define KGSL_PRCO_PATH "/sys/kernel/debug/kgsl/proc"
 #define KGSL_PROC_PID_MEM_PATH "mem"
 
@@ -4967,8 +4969,10 @@ kgsl_get_unmapped_area(struct file *file, unsigned long addr,
 					       pgoff, len, (int) val);
 
 #if defined(CONFIG_DISPLAY_SAMSUNG)
-		if (IS_ERR_VALUE(val))
+		if (IS_ERR_VALUE(val)) {
 			kgsl_svm_addr_mapping_log(device, private->pid);
+			kgsl_svm_addr_hole_log(device, private->pid, entry->memdesc.flags);
+		}
 #endif
 	}
 

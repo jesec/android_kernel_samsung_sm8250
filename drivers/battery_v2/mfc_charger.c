@@ -780,11 +780,6 @@ static void mfc_send_eop(struct mfc_charger_data *charger, int health_mode)
 			}
 		}
 		break;
-	case POWER_SUPPLY_HEALTH_WPC_EN:
-		pr_info("%s: ept-internal fault\n", __func__);
-		mfc_reg_write(charger->client, MFC_EPT_REG, MFC_WPC_EPT_INT_FAULT);
-		mfc_set_cmd_l_reg(charger, MFC_CMD_SEND_EOP_MASK, MFC_CMD_SEND_EOP_MASK);
-		break;
 	case POWER_SUPPLY_HEALTH_UNDERVOLTAGE:
 		break;
 	default:
@@ -2461,8 +2456,7 @@ static void mfc_wpc_fw_update_work(struct work_struct *work)
 
 	if (gpio_get_value(charger->pdata->wpc_en)) {
 		pr_info("%s: wpc_en disabled\n", __func__);
-		mfc_fw_update = false;
-		return;
+		goto end_of_fw_work;
 	}
 #if defined(CONFIG_DISABLE_MFC_IC)
 	mfc_set_wpc_en(charger, WPC_EN_FW, true); /* keep the wpc_en low during fw update */
@@ -2652,10 +2646,11 @@ static void mfc_wpc_fw_update_work(struct work_struct *work)
 	return;
 fw_err:
 	mfc_uno_on(charger, false);
-	mfc_fw_update = false;
 #if defined(CONFIG_DISABLE_MFC_IC)
 	mfc_set_wpc_en(charger, WPC_EN_FW, false);
 #endif
+end_of_fw_work:
+	mfc_fw_update = false;
 }
 
 /*#if !defined(CONFIG_SEC_FACTORY)
@@ -2852,9 +2847,13 @@ static int mfc_chg_get_property(struct power_supply *psy,
 		case POWER_SUPPLY_EXT_PROP_PAD_VOLT_CTRL:
 			val->intval = charger->is_afc_tx;
 			break;
-		case POWER_SUPPLY_EXT_PROP_MONITOR_WORK:
+#if defined(CONFIG_DISABLE_MFC_IC)
+		case POWER_SUPPLY_EXT_PROP_WPC_EN:
 			val->intval = gpio_get_value(charger->pdata->wpc_en);
-			if (val->intval)
+			break;
+#endif
+		case POWER_SUPPLY_EXT_PROP_MONITOR_WORK:
+			if (gpio_get_value(charger->pdata->wpc_en))
 				pr_info("%s: charger->wpc_en_flag(0x%x)\n", __func__, charger->wpc_en_flag);
 			break;
 #if defined(CONFIG_TX_GEAR_PHM_VOUT_CTRL)
@@ -3245,12 +3244,14 @@ static int mfc_chg_set_property(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_HEALTH:
 		if (val->intval == POWER_SUPPLY_HEALTH_OVERHEAT ||
 			val->intval == POWER_SUPPLY_HEALTH_OVERHEATLIMIT ||
-			val->intval == POWER_SUPPLY_HEALTH_COLD ||
-			val->intval == POWER_SUPPLY_HEALTH_WPC_EN) {
+			val->intval == POWER_SUPPLY_HEALTH_COLD) {
 			mfc_send_eop(charger, val->intval);
 		}
 		break;
 	case POWER_SUPPLY_PROP_ONLINE:
+		pr_info("%s: ept-internal fault\n", __func__);
+		mfc_reg_write(charger->client, MFC_EPT_REG, MFC_WPC_EPT_INT_FAULT);
+		mfc_set_cmd_l_reg(charger, MFC_CMD_SEND_EOP_MASK, MFC_CMD_SEND_EOP_MASK);
 		break;
 	case POWER_SUPPLY_PROP_TECHNOLOGY:
 		if (val->intval) {

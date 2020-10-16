@@ -43,6 +43,8 @@ ifeq ($(CONFIG_FIVE_USE_TRUSTONIC), y)
       PLATFORM := exynos9820
     else ifeq ($(CONFIG_SOC_EXYNOS9610), y)
       PLATFORM := exynos9610
+    else ifeq ($(CONFIG_SOC_EXYNOS1000), y)
+      PLATFORM := exynos1000
     else
       $(error "Unknown SoC")
     endif
@@ -71,10 +73,11 @@ ifeq ($(CONFIG_SOC_EXYNOS7870), y)
 endif
 
 ifeq ($(CONFIG_SOC_EXYNOS7885), y)
+  ifeq ($(CONFIG_TEEGRIS_VERSION), 2)
+    use_teegris_v2 := y
+  endif
   ifeq ($(CONFIG_TEEGRIS_VERSION), 3)
     ccflags-$(CONFIG_FIVE_USE_TZDEV) += -Idrivers/misc/tzdev/3.0/include/tzdev
-  else
-    use_teegris_v2 := y
   endif
 endif
 

@@ -1689,25 +1689,31 @@
 					29 01 00 00 00 00 03 F0 A5 A5	/* TEST KEY2 Disable */
 				];
 
-				qcom,mdss-dsi-off-command=[
+				qcom,mdss-dsi-off-command = [
 					29 01 00 00 00 00 03 9F A5 A5		/* TEST KEY1 Enable */
-					/* **** DISPLAY OFF **** */
-
-					05 00 00 00 00 00 01 28
-
-					/* **** SIGNAL DC VALUE SETTING **** */
 					29 00 00 00 00 00 03 F0 5A 5A	/* TEST KEY2 Enable */
+
+					29 00 00 00 00 00 03 B0 39 F4		/* Vaint SET(-4.2V) */
+					29 00 00 00 00 00 08 F4 80 80 80 80 80 80 80 /* 0x80 :   -4.2V */
+					29 00 00 00 00 00 03 B0 47 F4
+					29 00 00 00 00 00 08 F4 80 80 80 80 80 80 80 /* 0x80 :   -4.2V */
+
+					05 00 00 00 00 00 01 28				/* Display off */
+
+					05 01 00 00 0A 00 01 10				/* wait 10ms(0x0A) */
+
 					29 00 00 00 00 00 03 B0 0A CB	/* Signal DC Value Setting */
 					29 00 00 00 00 00 02 CB 4F
 					29 00 00 00 00 00 02 F7 0F
-					/* **** SLEEP IN **** */
-					05 01 00 00 14 00 01 10	/* wait 20ms(0x14) */
+
 					29 00 00 00 00 00 03 B0 04 F2	/* Oscillator off  & wait 120ms */
 					29 00 00 00 00 00 02 F2 02
 					29 00 00 00 00 00 02 F7 0F
+
 					29 00 00 00 00 00 03 B0 07 EF	/* power off & change GPO */
 					29 00 00 00 00 00 02 EF 55
-					29 00 00 00 00 00 02 F7 0F				
+					29 00 00 00 00 00 02 F7 0F
+
 					29 01 00 00 78 00 03 F0 A5 A5	/* TEST KEY2 Enable */
 					29 01 00 00 00 00 03 9F 5A 5A		/* TEST KEY1 disable */
 				];
@@ -1840,25 +1846,31 @@
 					29 01 00 00 00 00 03 F0 A5 A5	/* TEST KEY2 Disable */
 				];
 
-				qcom,mdss-dsi-off-command=[
+				qcom,mdss-dsi-off-command = [
 					29 01 00 00 00 00 03 9F A5 A5		/* TEST KEY1 Enable */
-					/* **** DISPLAY OFF **** */
-
-					05 00 00 00 00 00 01 28
-
-					/* **** SIGNAL DC VALUE SETTING **** */
 					29 00 00 00 00 00 03 F0 5A 5A	/* TEST KEY2 Enable */
+
+					29 00 00 00 00 00 03 B0 39 F4		/* Vaint SET(-4.2V) */
+					29 00 00 00 00 00 08 F4 80 80 80 80 80 80 80 /* 0x80 :   -4.2V */
+					29 00 00 00 00 00 03 B0 47 F4
+					29 00 00 00 00 00 08 F4 80 80 80 80 80 80 80 /* 0x80 :   -4.2V */
+
+					05 00 00 00 00 00 01 28				/* Display off */
+
+					05 01 00 00 0A 00 01 10				/* wait 10ms(0x0A) */
+
 					29 00 00 00 00 00 03 B0 0A CB	/* Signal DC Value Setting */
 					29 00 00 00 00 00 02 CB 4F
 					29 00 00 00 00 00 02 F7 0F
-					/* **** SLEEP IN **** */
-					05 01 00 00 14 00 01 10	/* wait 20ms(0x14) */
+
 					29 00 00 00 00 00 03 B0 04 F2	/* Oscillator off  & wait 120ms */
 					29 00 00 00 00 00 02 F2 02
 					29 00 00 00 00 00 02 F7 0F
+
 					29 00 00 00 00 00 03 B0 07 EF	/* power off & change GPO */
 					29 00 00 00 00 00 02 EF 55
-					29 00 00 00 00 00 02 F7 0F				
+					29 00 00 00 00 00 02 F7 0F
+
 					29 01 00 00 78 00 03 F0 A5 A5	/* TEST KEY2 Enable */
 					29 01 00 00 00 00 03 9F 5A 5A		/* TEST KEY1 disable */
 				];
@@ -1996,25 +2008,31 @@
 					29 01 00 00 00 00 03 F0 A5 A5	/* TEST KEY2 Disable */
 				];
 
-				qcom,mdss-dsi-off-command=[
+				qcom,mdss-dsi-off-command = [
 					29 01 00 00 00 00 03 9F A5 A5		/* TEST KEY1 Enable */
-					/* **** DISPLAY OFF **** */
-
-					05 00 00 00 00 00 01 28
-
-					/* **** SIGNAL DC VALUE SETTING **** */
 					29 00 00 00 00 00 03 F0 5A 5A	/* TEST KEY2 Enable */
+
+					29 00 00 00 00 00 03 B0 39 F4		/* Vaint SET(-4.2V) */
+					29 00 00 00 00 00 08 F4 80 80 80 80 80 80 80 /* 0x80 :   -4.2V */
+					29 00 00 00 00 00 03 B0 47 F4
+					29 00 00 00 00 00 08 F4 80 80 80 80 80 80 80 /* 0x80 :   -4.2V */
+
+					05 00 00 00 00 00 01 28				/* Display off */
+
+					05 01 00 00 0A 00 01 10				/* wait 10ms(0x0A) */
+
 					29 00 00 00 00 00 03 B0 0A CB	/* Signal DC Value Setting */
 					29 00 00 00 00 00 02 CB 4F
 					29 00 00 00 00 00 02 F7 0F
-					/* **** SLEEP IN **** */
-					05 01 00 00 14 00 01 10	/* wait 20ms(0x14) */
+
 					29 00 00 00 00 00 03 B0 04 F2	/* Oscillator off  & wait 120ms */
 					29 00 00 00 00 00 02 F2 02
 					29 00 00 00 00 00 02 F7 0F
+
 					29 00 00 00 00 00 03 B0 07 EF	/* power off & change GPO */
 					29 00 00 00 00 00 02 EF 55
-					29 00 00 00 00 00 02 F7 0F				
+					29 00 00 00 00 00 02 F7 0F
+
 					29 01 00 00 78 00 03 F0 A5 A5	/* TEST KEY2 Enable */
 					29 01 00 00 00 00 03 9F 5A 5A		/* TEST KEY1 disable */
 				];
@@ -2147,25 +2165,31 @@
 					29 01 00 00 00 00 03 F0 A5 A5	/* TEST KEY2 Disable */
 				];
 
-				qcom,mdss-dsi-off-command=[
+				qcom,mdss-dsi-off-command = [
 					29 01 00 00 00 00 03 9F A5 A5		/* TEST KEY1 Enable */
-					/* **** DISPLAY OFF **** */
-
-					05 00 00 00 00 00 01 28
-
-					/* **** SIGNAL DC VALUE SETTING **** */
 					29 00 00 00 00 00 03 F0 5A 5A	/* TEST KEY2 Enable */
+
+					29 00 00 00 00 00 03 B0 39 F4		/* Vaint SET(-4.2V) */
+					29 00 00 00 00 00 08 F4 80 80 80 80 80 80 80 /* 0x80 :   -4.2V */
+					29 00 00 00 00 00 03 B0 47 F4
+					29 00 00 00 00 00 08 F4 80 80 80 80 80 80 80 /* 0x80 :   -4.2V */
+
+					05 00 00 00 00 00 01 28				/* Display off */
+
+					05 01 00 00 0A 00 01 10				/* wait 10ms(0x0A) */
+
 					29 00 00 00 00 00 03 B0 0A CB	/* Signal DC Value Setting */
 					29 00 00 00 00 00 02 CB 4F
 					29 00 00 00 00 00 02 F7 0F
-					/* **** SLEEP IN **** */
-					05 01 00 00 14 00 01 10	/* wait 20ms(0x14) */
+
 					29 00 00 00 00 00 03 B0 04 F2	/* Oscillator off  & wait 120ms */
 					29 00 00 00 00 00 02 F2 02
 					29 00 00 00 00 00 02 F7 0F
+
 					29 00 00 00 00 00 03 B0 07 EF	/* power off & change GPO */
 					29 00 00 00 00 00 02 EF 55
-					29 00 00 00 00 00 02 F7 0F				
+					29 00 00 00 00 00 02 F7 0F
+
 					29 01 00 00 78 00 03 F0 A5 A5	/* TEST KEY2 Enable */
 					29 01 00 00 00 00 03 9F 5A 5A		/* TEST KEY1 disable */
 				];

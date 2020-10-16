@@ -109,9 +109,6 @@ static int32_t cam_csiphy_platform_probe(struct platform_device *pdev)
 	struct cam_cpas_register_params cpas_parms;
 	struct csiphy_device *new_csiphy_dev;
 	int32_t              rc = 0;
-#if defined(ALLOW_MULTIPLE_CSIPHY_ACQRUIE)
-	int i = 0;
-#endif
 
 	new_csiphy_dev = devm_kzalloc(&pdev->dev,
 		sizeof(struct csiphy_device), GFP_KERNEL);
@@ -162,19 +159,6 @@ static int32_t cam_csiphy_platform_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, &(new_csiphy_dev->v4l2_dev_str.sd));
 
-#if defined(ALLOW_MULTIPLE_CSIPHY_ACQRUIE)
-	for (i = 0; i < MAX_BRIDGE_COUNT; i++)
-	{
-		new_csiphy_dev->bridge_intf[i].device_hdl[0] = -1;
-		new_csiphy_dev->bridge_intf[i].device_hdl[1] = -1;
-		new_csiphy_dev->bridge_intf[i].ops.get_dev_info =
-			NULL;
-		new_csiphy_dev->bridge_intf[i].ops.link_setup =
-			NULL;
-		new_csiphy_dev->bridge_intf[i].ops.apply_req =
-			NULL;
-	}
-#else
 	new_csiphy_dev->bridge_intf.device_hdl[0] = -1;
 	new_csiphy_dev->bridge_intf.device_hdl[1] = -1;
 	new_csiphy_dev->bridge_intf.ops.get_dev_info =
@@ -183,7 +167,7 @@ static int32_t cam_csiphy_platform_probe(struct platform_device *pdev)
 		NULL;
 	new_csiphy_dev->bridge_intf.ops.apply_req =
 		NULL;
-#endif
+
 	new_csiphy_dev->acquire_count = 0;
 	new_csiphy_dev->start_dev_count = 0;
 	new_csiphy_dev->is_acquired_dev_combo_mode = 0;

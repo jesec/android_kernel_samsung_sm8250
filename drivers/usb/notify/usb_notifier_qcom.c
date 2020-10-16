@@ -383,7 +383,7 @@ static int set_online(int event, int state)
 		return -1;
 	}
 
-	if (event == NOTIFY_EVENT_NREALAR_EXT_CURRENT) {
+	if (event == NOTIFY_EVENT_HMD_EXT_CURRENT) {
 		value.intval = state;
 		psy_otg->desc->set_property(psy_otg, POWER_SUPPLY_PROP_VOLTAGE_MAX, &value);
 	}

@@ -419,35 +419,54 @@ void mhi_pm_m1_transition(struct mhi_controller *mhi_cntrl)
 	enum MHI_PM_STATE state;
 
 	write_lock_irq(&mhi_cntrl->pm_lock);
+	/* Just check if we are racing with device_wake assertion */
+	if (atomic_read(&mhi_cntrl->dev_wake))
+		MHI_VERB("M2 transition request post dev_wake:%d\n",
+			 atomic_read(&mhi_cntrl->dev_wake));
+
 	/* if it fails, means we transition to M3 */
 	state = mhi_tryset_pm_state(mhi_cntrl, MHI_PM_M2);
-	if (state == MHI_PM_M2) {
-		MHI_VERB("Entered M2 State\n");
-		mhi_set_mhi_state(mhi_cntrl, MHI_STATE_M2);
-		mhi_cntrl->dev_state = MHI_STATE_M2;
-		mhi_cntrl->M2++;
-
+	if (state != MHI_PM_M2) {
+		/* Nothing to be done, handle M3 transition later */
 		write_unlock_irq(&mhi_cntrl->pm_lock);
-		wake_up_all(&mhi_cntrl->state_event);
-
-		/* transfer pending, exit M2 immediately */
-		if (unlikely(atomic_read(&mhi_cntrl->pending_pkts) ||
-			     atomic_read(&mhi_cntrl->dev_wake))) {
-			MHI_VERB(
-				 "Exiting M2 Immediately, pending_pkts:%d dev_wake:%d\n",
-				 atomic_read(&mhi_cntrl->pending_pkts),
-				 atomic_read(&mhi_cntrl->dev_wake));
-			read_lock_bh(&mhi_cntrl->pm_lock);
-			mhi_cntrl->wake_get(mhi_cntrl, true);
-			mhi_cntrl->wake_put(mhi_cntrl, true);
-			read_unlock_bh(&mhi_cntrl->pm_lock);
-		} else {
-			mhi_cntrl->status_cb(mhi_cntrl, mhi_cntrl->priv_data,
-					     MHI_CB_IDLE);
-		}
-	} else {
-		write_unlock_irq(&mhi_cntrl->pm_lock);
+		return;
 	}
+
+	MHI_VERB("Entered M2 State\n");
+	mhi_set_mhi_state(mhi_cntrl, MHI_STATE_M2);
+	mhi_cntrl->dev_state = MHI_STATE_M2;
+	mhi_cntrl->M2++;
+
+	write_unlock_irq(&mhi_cntrl->pm_lock);
+	wake_up_all(&mhi_cntrl->state_event);
+
+	/* transfer pending, exit M2 immediately */
+	if (unlikely(atomic_read(&mhi_cntrl->pending_pkts) ||
+		     atomic_read(&mhi_cntrl->dev_wake))) {
+		MHI_VERB(
+			 "Exiting M2 Immediately, pending_pkts:%d dev_wake:%d\n",
+			 atomic_read(&mhi_cntrl->pending_pkts),
+			 atomic_read(&mhi_cntrl->dev_wake));
+		read_lock_bh(&mhi_cntrl->pm_lock);
+		mhi_cntrl->wake_get(mhi_cntrl, true);
+		mhi_cntrl->wake_put(mhi_cntrl, true);
+		read_unlock_bh(&mhi_cntrl->pm_lock);
+		if (atomic_read(&mhi_cntrl->pending_pkts))
+			mhi_cntrl->pp_abort_counter++;
+		if (mhi_cntrl->pp_abort_counter >= MHI_MAX_PP_ABORT_COUNT) {
+			mhi_cntrl->pp_abort_counter = 0;
+			/* dump mhi info here */
+			mhi_debug_context_dump(mhi_cntrl);
+			atomic_set(&mhi_cntrl->pending_pkts, 0);
+			mhi_cntrl->status_cb(mhi_cntrl, mhi_cntrl->priv_data,
+					     MHI_CB_FATAL_ERROR);
+		}
+		return;
+	}
+
+	/* reset counter here as we do not abort due to pending pkts */
+	mhi_cntrl->pp_abort_counter = 0;
+	mhi_cntrl->status_cb(mhi_cntrl, mhi_cntrl->priv_data, MHI_CB_IDLE);
 }
 
 int mhi_pm_m3_transition(struct mhi_controller *mhi_cntrl)
@@ -682,7 +701,6 @@ tsklet_kill:
 	mutex_lock(&mhi_cntrl->pm_mutex);
 
 	MHI_ASSERT(atomic_read(&mhi_cntrl->dev_wake), "dev_wake != 0");
-	MHI_ASSERT(atomic_read(&mhi_cntrl->pending_pkts), "pending_pkts != 0");
 
 	/* reset the ev rings and cmd rings */
 	MHI_LOG("Resetting EV CTXT and CMD CTXT\n");
@@ -1143,7 +1161,13 @@ int mhi_sync_power_up(struct mhi_controller *mhi_cntrl)
 			   MHI_PM_IN_ERROR_STATE(mhi_cntrl->pm_state),
 			   msecs_to_jiffies(mhi_cntrl->timeout_ms));
 
-	return (MHI_IN_MISSION_MODE(mhi_cntrl->ee)) ? 0 : -ETIMEDOUT;
+	if (MHI_IN_MISSION_MODE(mhi_cntrl->ee))
+		return 0;
+
+	MHI_ERR("MHI did not enter mission mode in %d ms\n",
+		mhi_cntrl->timeout_ms);
+
+	return -ETIMEDOUT;
 }
 EXPORT_SYMBOL(mhi_sync_power_up);
 
@@ -1164,7 +1188,9 @@ int mhi_pm_suspend(struct mhi_controller *mhi_cntrl)
 	if (atomic_read(&mhi_cntrl->dev_wake) ||
 	    atomic_read(&mhi_cntrl->pending_pkts) ||
 	    atomic_read(&mhi_dev->bus_vote)) {
-		MHI_VERB("Busy, aborting M3\n");
+		MHI_ERR("Busy, aborting M3, pending pkts:%d\n",
+			atomic_read(&mhi_cntrl->pending_pkts));
+
 		return -EBUSY;
 	}
 
@@ -1197,8 +1223,9 @@ int mhi_pm_suspend(struct mhi_controller *mhi_cntrl)
 	if (atomic_read(&mhi_cntrl->dev_wake) > 1 ||
 	    atomic_read(&mhi_cntrl->pending_pkts) ||
 	    atomic_read(&mhi_dev->bus_vote)) {
-		MHI_VERB("Busy, aborting M3\n");
 		write_unlock_irq(&mhi_cntrl->pm_lock);
+		MHI_ERR("Busy, aborting M3, pending pkts:%d\n",
+			atomic_read(&mhi_cntrl->pending_pkts));
 		ret = -EBUSY;
 		goto error_m0_entry;
 	}
@@ -1279,7 +1306,12 @@ int mhi_pm_fast_suspend(struct mhi_controller *mhi_cntrl, bool notify_client)
 
 	/* do a quick check to see if any pending votes to keep us busy */
 	if (atomic_read(&mhi_cntrl->pending_pkts)) {
-		MHI_VERB("Busy, aborting M3\n");
+		if (!mhi_cntrl->domain)
+			MHI_ERR("Busy, aborting M3, pending pkts:%d\n",
+				atomic_read(&mhi_cntrl->pending_pkts));
+		else
+			MHI_VERB("Busy, aborting M3, pending pkts:%d\n",
+				atomic_read(&mhi_cntrl->pending_pkts));
 		return -EBUSY;
 	}
 
@@ -1298,7 +1330,12 @@ int mhi_pm_fast_suspend(struct mhi_controller *mhi_cntrl, bool notify_client)
 	 * suspend.
 	 */
 	if (atomic_read(&mhi_cntrl->pending_pkts)) {
-		MHI_VERB("Busy, aborting M3\n");
+		if (!mhi_cntrl->domain)
+			MHI_ERR("Busy, aborting M3, pending pkts:%d\n",
+				atomic_read(&mhi_cntrl->pending_pkts));
+		else
+			MHI_VERB("Busy, aborting M3, pending pkts:%d\n",
+				atomic_read(&mhi_cntrl->pending_pkts));
 		ret = -EBUSY;
 		goto error_suspend;
 	}

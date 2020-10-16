@@ -168,9 +168,9 @@ ssize_t rt8547_led_store(struct device *dev,
 			else if (value <= 1002)
 				torch_step = 3;
 			else if (value <= 1004)
-				torch_step = 5;
+				torch_step = 4;
 			else if (value <= 1006)
-				torch_step = 6;
+				torch_step = 5;
 			else if (value <= 1009)
 				torch_step = 7;
 			else if (value <= 1010)
@@ -320,6 +320,43 @@ int64_t rt8547_led_mode_ctrl(int state, int value)
 	gpio_free(global_rt8547data->flash_en);
 	gpio_free(global_rt8547data->flash_control);
 
+
+	return ret;
+}
+
+int32_t rt8547_led_set_torch(int curr)
+{
+	int ret = 0;
+	unsigned long flags = 0;
+
+	if (curr == -1) {
+		spin_lock_irqsave(&global_rt8547data->int_lock, flags);
+		rt8547_led_setGpio(0);
+		spin_unlock_irqrestore(&global_rt8547data->int_lock, flags);
+
+		LED_INFO("RT8547-FLASH OFF X(%d)\n", curr);
+		return 0;
+	}
+
+	ret = gpio_request(global_rt8547data->flash_control, "rt8547_led_control");
+	if (ret) {
+		LED_ERROR("Failed to request rt8547_led_mode_ctrl\n");
+		return ret;
+	}
+
+	/* FlashLight Mode TORCH for flicker sensor */
+	LED_INFO("RT8547-FLICKERTEST ON E(%d)\n", curr);
+
+	spin_lock_irqsave(&global_rt8547data->int_lock, flags);
+	rt8547_led_write_data(RT8547_ADDR_LVP_SETTING, global_rt8547data->LVP_Voltage);
+	rt8547_led_write_data(RT8547_ADDR_CURRENT_SETTING,
+			curr|RT8547_TORCH_SELECT);
+	rt8547_led_write_data(RT8547_ADDR_FLASH_CURRENT_LEVEL_TIMEOUT_SETTING,
+		(RT8547_TIMEOUT_CURRENT_400mA << 5) | RT8547_FLASH_CURRENT_150mA);
+	spin_unlock_irqrestore(&global_rt8547data->int_lock, flags);
+	LED_INFO("RT8547-FLICKERTEST ON X(%d)\n", curr);
+
+	gpio_free(global_rt8547data->flash_control);
 
 	return ret;
 }

@@ -1673,6 +1673,9 @@ struct samsung_display_driver_data {
 	/* CABC feature */
 	int support_cabc;
 
+	/* LP RX timeout recovery */
+	bool support_lp_rx_err_recovery;
+
 	/*
 	 *  ESD
 	 */

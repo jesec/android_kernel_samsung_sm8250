@@ -1454,7 +1454,7 @@ static int __init core_factory_init(void)
 #if defined(CONFIG_SUPPORT_DEVICE_MODE) || defined(CONFIG_VBUS_NOTIFIER)
 	struct adsp_data *data = adsp_ssc_core_register(MSG_SSC_CORE, core_attrs);
 	pr_info("[FACTORY] %s\n", __func__);
-#ifdef CONFIG_SUPPORT_DEVICE_MODE
+#if defined(CONFIG_SUPPORT_DEVICE_MODE) && defined(CONFIG_FOLDER_HALL)
 	data->adsp_nb.notifier_call = sns_device_mode_notify,
 	data->adsp_nb.priority = 1,
         hall_ic_register_notify(&data->adsp_nb);
@@ -1527,7 +1527,7 @@ static void __exit core_factory_exit(void)
 {
 #if defined(CONFIG_SUPPORT_DEVICE_MODE) || defined(CONFIG_VBUS_NOTIFIER)
 	struct adsp_data *data = adsp_ssc_core_unregister(MSG_SSC_CORE);;
-#ifdef CONFIG_SUPPORT_DEVICE_MODE
+#if defined(CONFIG_SUPPORT_DEVICE_MODE) && defined(CONFIG_FOLDER_HALL)
 	hall_ic_unregister_notify(&data->adsp_nb);
 #endif
 #ifdef CONFIG_VBUS_NOTIFIER

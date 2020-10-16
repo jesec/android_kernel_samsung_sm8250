@@ -45,7 +45,7 @@ enum otg_notify_events {
 	NOTIFY_EVENT_SMSC_OVC,
 	NOTIFY_EVENT_SMTD_EXT_CURRENT,
 	NOTIFY_EVENT_MMD_EXT_CURRENT,
-	NOTIFY_EVENT_NREALAR_EXT_CURRENT,
+	NOTIFY_EVENT_HMD_EXT_CURRENT,
 	NOTIFY_EVENT_DEVICE_CONNECT,
 	NOTIFY_EVENT_GAMEPAD_CONNECT,
 	NOTIFY_EVENT_LANHUB_CONNECT,
@@ -136,6 +136,10 @@ enum usb_err_type {
 	USB_ERR_ABNORMAL_RESET,
 };
 
+enum usb_itracker_type {
+	NOTIFY_USB_CC_REPEAT,
+};
+
 enum usb_current_state {
 	NOTIFY_USB_SUSPENDED,
 	NOTIFY_USB_UNCONFIGURED,
@@ -182,6 +186,7 @@ extern const char *status_string(enum otg_notify_event_status status);
 extern void send_usb_mdm_uevent(void);
 extern void send_usb_certi_uevent(int usb_certi);
 extern void send_usb_err_uevent(int usb_certi, int mode);
+extern void send_usb_itracker_uevent(int err_type);
 extern int usb_check_whitelist_for_mdm(struct usb_device *dev);
 extern int usb_otg_restart_accessory(struct usb_device *dev);
 extern void send_otg_notify(struct otg_notify *n,
@@ -224,6 +229,7 @@ static inline const char *status_string(enum otg_notify_event_status status)
 static inline void send_usb_mdm_uevent(void) {}
 static inline void send_usb_certi_uevent(int usb_certi) {}
 static inline void send_usb_err_uevent(int usb_certi, int mode) {}
+static inline void send_usb_itracker_uevent(int err_type) {}
 static inline int usb_check_whitelist_for_mdm(struct usb_device *dev)
 			{return 0; }
 static inline int usb_otg_restart_accessory(struct usb_device *dev)

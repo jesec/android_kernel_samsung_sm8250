@@ -4387,6 +4387,10 @@ static int hdd_set_blacklist_bssid(struct hdd_context *hdd_ctx,
 					   tb2[PARAM_SET_BSSID],
 					   QDF_MAC_ADDR_SIZE);
 				ap_info.reject_ap_type = USERSPACE_AVOID_TYPE;
+				ap_info.reject_reason =
+						REASON_USERSPACE_AVOID_LIST;
+				ap_info.source = ADDED_BY_DRIVER;
+
 				/* This BSSID is avoided and not blacklisted */
 				ucfg_blm_add_bssid_to_reject_list(hdd_ctx->pdev,
 								  &ap_info);
@@ -23082,6 +23086,21 @@ hdd_convert_cfgdot11mode_to_80211mode(enum csr_cfgdot11mode mode)
 	default:
 		return QCA_WLAN_802_11_MODE_INVALID;
 	}
+}
+
+bool hdd_is_legacy_connection(struct hdd_adapter *adapter)
+{
+	struct hdd_station_ctx *sta_ctx = WLAN_HDD_GET_STATION_CTX_PTR(adapter);
+	int connection_mode;
+
+	connection_mode = hdd_convert_cfgdot11mode_to_80211mode(
+						sta_ctx->conn_info.dot11mode);
+	if (connection_mode == QCA_WLAN_802_11_MODE_11A ||
+	    connection_mode == QCA_WLAN_802_11_MODE_11B ||
+	    connection_mode == QCA_WLAN_802_11_MODE_11G)
+		return true;
+	else
+		return false;
 }
 
 /**

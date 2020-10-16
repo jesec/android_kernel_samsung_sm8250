@@ -52,6 +52,116 @@
 
 extern struct pdic_notifier_struct pd_noti;
 
+#if defined(CONFIG_CC_ATTACH_LOG)
+int prev_attach_log_index(struct max77705_cc_data *cc_data, int index)
+{
+	int ret = 0;
+	
+	if (index == 0)
+		ret = ABNORMAL_COUNT-1;
+	else
+		ret = --index;
+	return ret;
+}
+
+int next_attach_log_index(struct max77705_cc_data *cc_data, int index)
+{
+	int ret = 0;
+
+	if (index < ABNORMAL_COUNT-1)
+		ret = ++index;
+
+	return ret;
+}
+
+int check_continuous_time(struct max77705_cc_data *cc_data, u64 time)
+{
+	int ret = 0;
+	int index = next_attach_log_index(cc_data, cc_data->count_index);
+
+	if (cc_data->ccstat_attach_log[index].attach_time == 0)
+		goto skip;
+	
+	if (time_before64(time,
+		cc_data->ccstat_attach_log[index].attach_time + (ABNORMAL_MAXTIME*HZ))) {
+		msg_maxim("abnormal cc continuous attach");
+		ret = -EADV;
+	}
+skip:
+	return ret;
+}
+
+int check_clear_con_count(struct max77705_cc_data *cc_data, u64 time)
+{
+	int ret = 0;
+	int index = prev_attach_log_index(cc_data, cc_data->count_index);
+
+	if (time_after64(time,
+		cc_data->ccstat_attach_log[index].attach_time + (CLEAR_TIME*HZ))) {
+		ret = 1;
+	}
+	return ret;
+}
+
+void save_cc_attach_log(struct max77705_cc_data *cc_data, int power_role)
+{
+	u64 now = get_jiffies_64();
+	int index = cc_data->count_index;
+	int prev_index = prev_attach_log_index(cc_data, index);
+	int next_index = next_attach_log_index(cc_data, index);
+	int save_count = 0;
+//	int i;
+
+	if (power_role != cc_SINK && power_role != cc_SOURCE) {
+		goto nosave;
+	}
+
+	if (cc_data->ccstat_attach_log[prev_index].power_role != power_role) {
+		cc_data->skip_check_ccattach = 0;
+		save_count = 1;
+		goto save;
+	}
+
+	if (check_clear_con_count(cc_data, now)) {
+		cc_data->skip_check_ccattach = 0;
+		save_count = 1;
+		goto save;
+	}
+
+	if (cc_data->ccstat_attach_log[prev_index]
+				.continuous_count >= (MAX_CON_COUNT-1)) {
+		save_count = MAX_CON_COUNT;
+		if (cc_data->skip_check_ccattach)
+			goto save;
+		else {
+			if (check_continuous_time(cc_data, now)) {
+				cc_data->skip_check_ccattach = 1;
+				send_usb_itracker_uevent(NOTIFY_USB_CC_REPEAT);				
+			}
+		}					
+	} else
+		save_count = cc_data->ccstat_attach_log[prev_index]
+				.continuous_count + 1;
+save:
+	cc_data->ccstat_attach_log[index].attach_time = now;
+	cc_data->ccstat_attach_log[index].power_role = power_role;
+	cc_data->ccstat_attach_log[index].continuous_count = save_count;
+	cc_data->count_index = next_index;
+
+	msg_maxim("power_role=%s count=%d",
+		(power_role == cc_SOURCE) ? "source" : "sink", save_count);
+#if 0
+	for (i=0; i<ABNORMAL_COUNT; i++) {
+		pr_info("i=%d attach time=%llu power_role=%d count=%d\n", i,
+			cc_data->ccstat_attach_log[i].attach_time, cc_data->ccstat_attach_log[i].power_role,
+			cc_data->ccstat_attach_log[i].continuous_count);
+	}
+#endif
+nosave:
+	return;
+}
+#endif
+
 #if defined(CONFIG_CCIC_NOTIFIER)
 static void max77705_ccic_event_notifier(struct work_struct *data)
 {
@@ -630,6 +740,9 @@ static void max77705_ccstat_irq_handler(void *data, int irq)
 		if (!usbc_data->plug_attach_done) {
 			msg_maxim("PLUG_ATTACHED +++");
 			usbc_data->plug_attach_done = 1;
+#if defined(CONFIG_CC_ATTACH_LOG)
+			save_cc_attach_log(cc_data, ccstat);
+#endif
 		}
 	}
 

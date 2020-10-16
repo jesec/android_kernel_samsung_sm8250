@@ -163,7 +163,8 @@ void max77705_muic_qc_hv_set(struct max77705_muic_data *muic_data, int voltage)
 #endif
 }
 
-#if !defined(CONFIG_MACH_X1Q_JPN_SINGLE) && !defined(CONFIG_MACH_Y2Q_JPN_SINGLE)
+#if !defined(CONFIG_MACH_X1Q_JPN_SINGLE) && !defined(CONFIG_MACH_Y2Q_JPN_SINGLE) && !defined(CONFIG_MACH_C2Q_JPN_SINGLE) && \
+    !defined(CONFIG_MACH_F2Q_JPN_SINGLE)
 static void max77705_muic_handle_detect_dev_mpnack(struct max77705_muic_data *muic_data)
 {
 #if defined(CONFIG_CCIC_MAX77705)
@@ -256,7 +257,8 @@ void max77705_muic_handle_detect_dev_afc(struct max77705_muic_data *muic_data, u
 		break;
 	case 4:
 		pr_info("%s:%s MPing NACK\n", MUIC_DEV_NAME, __func__);
-#if !defined(CONFIG_MACH_X1Q_JPN_SINGLE) && !defined(CONFIG_MACH_Y2Q_JPN_SINGLE)
+#if !defined(CONFIG_MACH_X1Q_JPN_SINGLE) && !defined(CONFIG_MACH_Y2Q_JPN_SINGLE) && !defined(CONFIG_MACH_C2Q_JPN_SINGLE) && \
+    !defined(CONFIG_MACH_F2Q_JPN_SINGLE)
 		if (muic_data->pdata->afc_disable)
 			pr_info("%s:%s skip checking QC TA, just return!\n", MUIC_DEV_NAME, __func__);
 		else {

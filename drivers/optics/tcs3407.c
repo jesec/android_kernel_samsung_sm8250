@@ -49,14 +49,18 @@
 #define TCS3407_IOCTL_READ_FLICKER	_IOR(TCS3407_IOCTL_MAGIC, 0x01, int *)
 #endif
 
-#if defined(CONFIG_LEDS_S2MPB02) && !defined(CONFIG_AMS_OPTICAL_SENSOR_FIFO)
+#if (defined(CONFIG_LEDS_S2MPB02)|| defined(CONFIG_LEDS_RT8547)) && !defined(CONFIG_AMS_OPTICAL_SENSOR_FIFO)
 #define CONFIG_AMS_OPTICAL_SENSOR_EOL_MODE
 #endif
 
 #include "tcs3407.h"
 
 #ifdef CONFIG_AMS_OPTICAL_SENSOR_EOL_MODE
+#if defined(CONFIG_LEDS_RT8547)
+#include <linux/leds-rt8547.h>
+#else
 #include <linux/leds-s2mpb02.h>
+#endif
 #include <linux/pwm.h>
 
 #define DEFAULT_DUTY_50HZ		5000
@@ -2342,26 +2346,31 @@ struct device_attribute *attr, char *buf)
 }
 
 #ifdef CONFIG_AMS_OPTICAL_SENSOR_EOL_MODE
-
 static int tcs3407_eol_mode(struct tcs3407_device_data *data)
 {
+#if !defined(CONFIG_LEDS_RT8547)
+	ams_deviceCtx_t *ctx = data->deviceCtx;
+	s32 eol_led_mode;
+#endif
 	int led_curr = 0;
 	int pulse_duty = 0;
 	int curr_state = EOL_STATE_INIT;
 	int ret = 0;
-	ams_deviceCtx_t *ctx = data->deviceCtx;
 	int icRatio100 = 0;
 	int icRatio120 = 0;
 	struct pwm_state state;
 	int period_100 = 10000000; /* nano secs */
 	int period_120 = 8333333; /* nano secs */
 	int duty = 20;
-	s32 pin_eol_en = 0, eol_led_mode;
+	s32 pin_eol_en = 0;
 
 	data->eol_state = EOL_STATE_INIT;
 	data->eol_enable = 1;
 	data->eol_result_status = 1;
 
+#if defined(CONFIG_LEDS_RT8547)
+	pin_eol_en = data->pin_torch_en;
+#else
 	if (data->eol_flash_type == EOL_FLASH) {
 		ALS_dbg("%s - flash gpio", __func__);
 		pin_eol_en = data->pin_flash_en;
@@ -2371,12 +2380,16 @@ static int tcs3407_eol_mode(struct tcs3407_device_data *data)
 		pin_eol_en = data->pin_torch_en;
 		eol_led_mode = S2MPB02_TORCH_LED_1;
 	}
+#endif
 
 	if (data->pwm == NULL || debug_pwm_duty > period_100) {
 		ret = gpio_request(pin_eol_en, NULL);
 		if (ret < 0)
 			return ret;
 
+#if defined(CONFIG_LEDS_RT8547)
+		led_curr = RT8547_TORCH_CURRENT_25mA;
+#else
 		s2mpb02_led_en(eol_led_mode, led_curr, S2MPB02_LED_TURN_WAY_GPIO);
 
 		/* set min flash current */
@@ -2397,7 +2410,7 @@ static int tcs3407_eol_mode(struct tcs3407_device_data *data)
 					break;
 			}
 		}
-
+#endif
 		ALS_dbg("%s - eol_loop start",__func__);
 		while (data->eol_state < EOL_STATE_DONE) {
 			switch (data->eol_state) {
@@ -2415,7 +2428,11 @@ static int tcs3407_eol_mode(struct tcs3407_device_data *data)
 
 			if (data->eol_state >= EOL_STATE_100) {
 				if (curr_state != data->eol_state) {
+#if defined(CONFIG_LEDS_RT8547)
+					rt8547_led_set_torch(led_curr);
+#else
 					s2mpb02_led_en(eol_led_mode, led_curr, S2MPB02_LED_TURN_WAY_GPIO);
+#endif
 					curr_state = data->eol_state;
 				} else
 					gpio_direction_output(pin_eol_en, 1);
@@ -2429,7 +2446,11 @@ static int tcs3407_eol_mode(struct tcs3407_device_data *data)
 			udelay(pulse_duty);
 		}
 		ALS_dbg("%s - eol loop end",__func__);
+#if defined(CONFIG_LEDS_RT8547)
+		rt8547_led_set_torch(-1);
+#else
 		s2mpb02_led_en(eol_led_mode, 0, S2MPB02_LED_TURN_WAY_GPIO);
+#endif
 		gpio_free(pin_eol_en);
 	} else {
 		ALS_dbg("%s - PWM torch set 0x%x 0x%x\n", __func__, data->pinctrl_pwm, data->pinctrl_out);

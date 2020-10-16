@@ -2162,23 +2162,24 @@ static u8 fts_event_handler_type_b(struct fts_ts_info *info)
 		case FTS_VENDOR_EVENT: // just print message for debugging
 			if (event_buff[1] == 0x01) {  // echo event
 				input_info(true, &info->client->dev,
-						"%s: echo event %02X %02X %02X %02X %02X %02X %02X %02X\n", __func__,
-						event_buff[0], event_buff[1], event_buff[2],
-						event_buff[3], event_buff[4], event_buff[5],
-						event_buff[6], event_buff[7]);
+						"%s: echo event %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X\n",
+						__func__, event_buff[0], event_buff[1], event_buff[2], event_buff[3], event_buff[4], event_buff[5],
+						event_buff[6], event_buff[7], event_buff[8], event_buff[9], event_buff[10], event_buff[11],
+						event_buff[12], event_buff[13], event_buff[14], event_buff[15]);
 			} else {
 				input_info(true, &info->client->dev,
-						"%s: %02X %02X %02X %02X %02X %02X %02X %02X\n", __func__,
-						event_buff[0], event_buff[1], event_buff[2],
-						event_buff[3], event_buff[4], event_buff[5],
-						event_buff[6], event_buff[7]);
+						"%s: %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X\n",
+						__func__, event_buff[0], event_buff[1], event_buff[2], event_buff[3], event_buff[4], event_buff[5],
+						event_buff[6], event_buff[7], event_buff[8], event_buff[9], event_buff[10], event_buff[11],
+						event_buff[12], event_buff[13], event_buff[14], event_buff[15]);
 			}
 			break;
 		default:
 			input_info(true, &info->client->dev,
-					"%s: unknown event %02X %02X %02X %02X %02X %02X %02X %02X\n", __func__,
-					event_buff[0], event_buff[1], event_buff[2], event_buff[3],
-					event_buff[4], event_buff[5], event_buff[6], event_buff[7]);
+					"%s: unknown event %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X\n",
+						__func__, event_buff[0], event_buff[1], event_buff[2], event_buff[3], event_buff[4], event_buff[5],
+						event_buff[6], event_buff[7], event_buff[8], event_buff[9], event_buff[10], event_buff[11],
+						event_buff[12], event_buff[13], event_buff[14], event_buff[15]);
 			break;
 		}
 
@@ -2370,8 +2371,10 @@ static void fts_switching_work(struct work_struct *work)
 		mutex_unlock(&info->switching_mutex);
 	} else if (info->board->support_flex_mode) {
 		input_info(true, &info->client->dev, "%s support_flex_mode\n", __func__);
+		mutex_lock(&info->switching_mutex);
 		fts_chk_tsp_ic_status(info, FTS_STATE_CHK_POS_SYSFS);
 		sec_input_notify(&info->nb, NOTIFIER_MAIN_TOUCH_ON, NULL);
+		mutex_unlock(&info->switching_mutex);
 	}
 }
 

@@ -19500,9 +19500,7 @@ static s32 __wl_cfg80211_down(struct bcm_cfg80211 *cfg)
 		wl_cfgp2p_down(cfg);
 	}
 
-	if (timer_pending(&cfg->scan_timeout)) {
-		del_timer_sync(&cfg->scan_timeout);
-	}
+	del_timer_sync(&cfg->scan_timeout);
 
 	wl_cfg80211_clear_mgmt_vndr_ies(cfg);
 	DHD_OS_SCAN_WAKE_UNLOCK((dhd_pub_t *)(cfg->pub));

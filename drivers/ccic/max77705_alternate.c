@@ -177,10 +177,49 @@ static char DP_Pin_Assignment_Print[7][40] = {
 	{"DP_Pin_Assignment_F"},
 };
 
+bool max77705_check_hmd_dev(struct max77705_usbc_platform_data *usbpd_data) {
+	struct max77705_hmd_power_dev *hmd_list;
+	int  i;	
+	bool ret = false;
+	uint16_t vid = usbpd_data->Vendor_ID;
+	uint16_t pid = usbpd_data->Product_ID;
+
+	if (!vid && !pid)
+		return ret;
+	hmd_list = usbpd_data->hmd_list;
+	if (!hmd_list) {
+		msg_maxim("hmd_list is null!");
+		return ret;
+	}
+	for (i = 0; i < MAX_NUM_HMD; i++) {
+		if (strlen(hmd_list[i].hmd_name) > 0)
+			msg_maxim("%s,0x%04x,0x%04x",
+				hmd_list[i].hmd_name,
+				hmd_list[i].vid,
+				hmd_list[i].pid);
+	}
+	for (i = 0; i < MAX_NUM_HMD; i++) {
+		if (hmd_list[i].hmd_name[0]) {
+			if (vid == hmd_list[i].vid && pid == hmd_list[i].pid) {
+				msg_maxim("hmd found %s,0x%04x,0x%04x",
+					hmd_list[i].hmd_name,
+					hmd_list[i].vid,
+					hmd_list[i].pid);
+				ret = true;
+				break;
+			}
+			continue;
+		}
+		break;
+	}
+
+	return ret;
+}
+
 int max77705_process_check_accessory(void *data)
 {
 	struct max77705_usbc_platform_data *usbpd_data = data;
-#if defined(CONFIG_USB_HW_PARAM)
+#if defined(CONFIG_USB_HW_PARAM) || defined(CONFIG_USB_NOTIFY_LAYER)
 	struct otg_notify *o_notify = get_otg_notify();
 #endif
 	uint16_t vid = usbpd_data->Vendor_ID;
@@ -253,6 +292,15 @@ int max77705_process_check_accessory(void *data)
 		ccic_send_dock_intent(acc_type);
 
 	ccic_send_dock_uevent(vid, pid, acc_type);
+
+	mutex_lock(&usbpd_data->hmd_power_lock);
+	if (max77705_check_hmd_dev(usbpd_data)) {
+#if defined(CONFIG_USB_NOTIFY_LAYER)
+		send_otg_notify(o_notify, NOTIFY_EVENT_HMD_EXT_CURRENT, 1);
+#endif
+	}
+	mutex_unlock(&usbpd_data->hmd_power_lock);
+	
 	return 1;
 }
 
@@ -1050,6 +1098,9 @@ void max77705_acc_detach_check(struct work_struct *wk)
 		container_of(wk, struct delayed_work, work);
 	struct max77705_usbc_platform_data *usbpd_data =
 		container_of(delay_work, struct max77705_usbc_platform_data, acc_detach_work);
+#if defined(CONFIG_USB_NOTIFY_LAYER)
+	struct otg_notify *o_notify = get_otg_notify();
+#endif
 
 	pr_info("%s : pd_state : %d, acc_type : %d\n", __func__,
 		usbpd_data->pd_state, usbpd_data->acc_type);
@@ -1064,6 +1115,9 @@ void max77705_acc_detach_check(struct work_struct *wk)
 			usbpd_data->Vendor_ID = 0;
 			usbpd_data->Product_ID = 0;
 			usbpd_data->send_enter_mode_req = 0;
+#if defined(CONFIG_USB_NOTIFY_LAYER)
+			send_otg_notify(o_notify, NOTIFY_EVENT_HMD_EXT_CURRENT, 0);
+#endif
 		}
 	}
 }

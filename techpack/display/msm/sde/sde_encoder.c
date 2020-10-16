@@ -41,6 +41,8 @@
 #include "sde_hw_top.h"
 #include "sde_hw_qdss.h"
 
+extern int global_flag;
+
 #if defined(CONFIG_DISPLAY_SAMSUNG)
 #include <linux/interrupt.h>
 #include "ss_dsi_panel_common.h"
@@ -4428,14 +4430,32 @@ void sde_encoder_trigger_kickoff_pending(struct drm_encoder *drm_enc)
 {
 	struct sde_encoder_virt *sde_enc;
 	struct sde_encoder_phys *phys;
-	unsigned int i;
+	unsigned int i, partial_update = 0, count = 0;
 	struct sde_hw_ctl *ctl;
+	struct sde_rect curr_roi;
+	struct sde_rect prev_roi;
+	struct drm_display_mode *adj_mode;
+	struct drm_connector *drm_conn;
+	u32 scheduler_status = INVALID_CTL_STATUS;
 
 	if (!drm_enc) {
 		SDE_ERROR("invalid encoder\n");
 		return;
 	}
 	sde_enc = to_sde_encoder_virt(drm_enc);
+	adj_mode = &sde_enc->crtc->state->adjusted_mode;
+	drm_conn = sde_enc->cur_master->connector;
+
+	_sde_encoder_get_connector_roi(sde_enc, &curr_roi);
+	if (sde_kms_rect_is_null(&curr_roi)) {
+		curr_roi.w = adj_mode->hdisplay;
+		curr_roi.h = adj_mode->vdisplay;
+	}
+
+	memcpy(&prev_roi, &sde_enc->cur_conn_roi, sizeof(prev_roi));
+
+	if (prev_roi.w != curr_roi.w || prev_roi.h != curr_roi.h)
+		partial_update = 1;
 
 	for (i = 0; i < sde_enc->num_phys_encs; i++) {
 		phys = sde_enc->phys_encs[i];
@@ -4444,6 +4464,23 @@ void sde_encoder_trigger_kickoff_pending(struct drm_encoder *drm_enc)
 			sde_encoder_check_curr_mode(drm_enc,
 					MSM_DISPLAY_CMD_MODE)) {
 			ctl = phys->hw_ctl;
+			SDE_EVT32(prev_roi.w, prev_roi.h, curr_roi.w, curr_roi.h, global_flag, partial_update);
+			if (partial_update && global_flag) {
+				while (count < 17) {
+					if (ctl && ctl->ops.get_scheduler_status)
+						scheduler_status = ctl->ops.get_scheduler_status(ctl);
+					if (scheduler_status == 0x1)
+						break;
+					SDE_EVT32(scheduler_status, count);
+					msleep(5);
+					count++;
+				}
+				if (count >= 17){
+					SDE_ERROR("PP DONE BUT CTL is Busy!!\n");
+					SDE_DBG_DUMP("all", "dbg_bus", "vbif_dbg_bus", "panic");
+				}
+			}
+
 			if (ctl->ops.trigger_pending)
 			/* update only for command mode primary ctl */
 				ctl->ops.trigger_pending(ctl);

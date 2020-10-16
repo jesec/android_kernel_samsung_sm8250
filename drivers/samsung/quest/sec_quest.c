@@ -1025,23 +1025,53 @@ static DEVICE_ATTR(nad_acat, S_IRUGO | S_IWUSR, show_quest_acat, store_quest_aca
 //////////////////////////////////////////////////
 /////// NAD_STAT /////////////////////////////////
 //////////////////////////////////////////////////
+char str_mxcpr[CPR_BPS_SZ_BYTE] = { '\0' };
+char str_cxcpr[CPR_BPS_SZ_BYTE] = { '\0' };
+char str_bps[CPR_BPS_SZ_BYTE] = { '\0' };
+
+static void make_cpr_stat_string(char *mx_str, char *cx_str)
+{
+	int modeIdx = 0;
+	int count = 0;
+
+	for(modeIdx = 0; modeIdx < QUEST_CPR_MODE_CNT; modeIdx++)
+		count += snprintf(mx_str + count, CPR_BPS_SZ_BYTE - count, "MX%dF(%d),MX%dC(%d),MX%dR(%d),",
+			param_quest_data.smd_mx_cpr[modeIdx].Modes, param_quest_data.smd_mx_cpr[modeIdx].Floor,
+			param_quest_data.smd_mx_cpr[modeIdx].Modes, param_quest_data.smd_mx_cpr[modeIdx].Ceiling,
+			param_quest_data.smd_mx_cpr[modeIdx].Modes, param_quest_data.smd_mx_cpr[modeIdx].Current);
+
+	count = 0;
+
+	for(modeIdx = 0; modeIdx < QUEST_CPR_MODE_CNT; modeIdx++)
+		count += snprintf(cx_str + count, CPR_BPS_SZ_BYTE - count, "CX%dF(%d),CX%dC(%d),CX%dR(%d),",
+			param_quest_data.smd_cx_cpr[modeIdx].Modes, param_quest_data.smd_cx_cpr[modeIdx].Floor,
+			param_quest_data.smd_mx_cpr[modeIdx].Modes, param_quest_data.smd_cx_cpr[modeIdx].Ceiling,
+			param_quest_data.smd_mx_cpr[modeIdx].Modes, param_quest_data.smd_cx_cpr[modeIdx].Current);
+}
+
+#if defined(CONFIG_SEC_QUEST_BPS_CLASSIFIER)
+static void make_bps_stat_string(char *bps_str)
+{
+	snprintf(bps_str, CPR_BPS_SZ_BYTE, "%d_%d_%d_%d_%d_%d_%d_%d_%d_%d_%d_%d",
+			bps_envs.up_cnt.sp, bps_envs.up_cnt.wp, bps_envs.up_cnt.dp,
+			bps_envs.up_cnt.kp, bps_envs.up_cnt.mp, bps_envs.up_cnt.tp,
+			bps_envs.up_cnt.cp, bps_envs.pc_lr_cnt, bps_envs.pc_lr_last_idx,
+			bps_envs.tzerr_cnt, bps_envs.klg_cnt, bps_envs.dn_cnt);
+}
+#endif
 static void make_additional_stat_string(char *additional_str)
 {
-	char str_bps[BUFF_SZ] = { '\0' };
+	make_cpr_stat_string(str_mxcpr, str_cxcpr);
 
 #if defined(CONFIG_SEC_QUEST_BPS_CLASSIFIER)
 	/* if bps data successfully initialized and if magic needs to be checked */
 	if (sec_quest_bps_env_initialized &&
 		bps_envs.magic[1] == QUEST_BPS_CLASSIFIER_MAGIC2) {
-		snprintf(str_bps, BUFF_SZ, "%d_%d_%d_%d_%d_%d_%d_%d_%d_%d_%d_%d",
-				bps_envs.up_cnt.sp, bps_envs.up_cnt.wp, bps_envs.up_cnt.dp,
-				bps_envs.up_cnt.kp, bps_envs.up_cnt.mp, bps_envs.up_cnt.tp,
-				bps_envs.up_cnt.cp, bps_envs.pc_lr_cnt, bps_envs.pc_lr_last_idx,
-				bps_envs.tzerr_cnt, bps_envs.klg_cnt, bps_envs.dn_cnt);
+		make_bps_stat_string(str_bps);
 	}else
-		snprintf(str_bps, BUFF_SZ, "-");
+		snprintf(str_bps, CPR_BPS_SZ_BYTE, "-");
 #else
-	snprintf(str_bps, BUFF_SZ, "-");
+	snprintf(str_bps, CPR_BPS_SZ_BYTE, "-");
 #endif
 
 	snprintf(additional_str, MAX_LEN_STR,
@@ -1063,6 +1093,8 @@ static void make_additional_stat_string(char *additional_str)
 		"HST(%d),HET(%d)," \
 		"HITH(%d),HMTH(%d)," \
 		"NSR(%d)," \
+		"%s" \
+		"%s" \
 		"BPS(%s)",
 		param_quest_data.smd_quefi_init_thermal_first, param_quest_data.smd_quefi_end_thermal_first,
 		param_quest_data.smd_suefi_init_thermal_first, param_quest_data.smd_suefi_end_thermal_first,
@@ -1082,6 +1114,8 @@ static void make_additional_stat_string(char *additional_str)
 		param_quest_data.smd_hlos_start_time,param_quest_data.smd_hlos_elapsed_time,
 		param_quest_data.smd_hlos_init_thermal, param_quest_data.smd_hlos_max_thermal,
 		param_quest_data.smd_ns_repeats,
+		str_mxcpr,
+		str_cxcpr,
 		str_bps);
 
 	QUEST_PRINT("%s : additional_str : %s\n", __func__, additional_str);

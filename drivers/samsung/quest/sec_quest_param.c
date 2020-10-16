@@ -201,6 +201,8 @@ void quest_sync_param_quest_data()
 
 void quest_clear_param_quest_data()
 {
+	int modeIdx = 0;
+
 	param_quest_data.smd_item_result = 0;
 	param_quest_data.smd_subitem_result = 0;
 	param_quest_data.cal_item_result = 0;
@@ -253,6 +255,19 @@ void quest_clear_param_quest_data()
 
 	//param_quest_data.smd_quefi_rework = 0;
 	//param_quest_data.smd_suefi_rework = 0;
+
+	for(modeIdx = 0; modeIdx < QUEST_CPR_MODE_CNT; modeIdx++)
+	{
+		param_quest_data.curr_mx_cpr[modeIdx].Modes = 0;
+		param_quest_data.curr_mx_cpr[modeIdx].Floor = 0;
+		param_quest_data.curr_mx_cpr[modeIdx].Ceiling = 0;
+		param_quest_data.curr_mx_cpr[modeIdx].Current = 0;
+
+		param_quest_data.curr_cx_cpr[modeIdx].Modes = 0;
+		param_quest_data.curr_cx_cpr[modeIdx].Floor = 0;
+		param_quest_data.curr_cx_cpr[modeIdx].Ceiling = 0;
+		param_quest_data.curr_mx_cpr[modeIdx].Current = 0;
+	}
 
 	quest_sync_param_quest_data();
 }

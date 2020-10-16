@@ -24,6 +24,8 @@ else ifeq ($(PROJECT_NAME),$(filter $(PROJECT_NAME),bloomxq))
 include $(srctree)/techpack/audio/config/kona_bloomx.conf
 else ifeq ($(PROJECT_NAME),$(filter $(PROJECT_NAME),r8q))
 include $(srctree)/techpack/audio/config/kona_r8.conf
+else ifeq ($(PROJECT_NAME),$(filter $(PROJECT_NAME),victory))
+include $(srctree)/techpack/audio/config/kona_victory.conf
 else
 include $(srctree)/techpack/audio/config/konaauto.conf
 endif
@@ -72,6 +74,9 @@ LINUXINCLUDE    += \
 else ifeq ($(PROJECT_NAME),$(filter $(PROJECT_NAME),r8q))
 LINUXINCLUDE    += \
                 -include $(srctree)/techpack/audio/config/kona_r8.h
+else ifeq ($(PROJECT_NAME),$(filter $(PROJECT_NAME),victory))
+LINUXINCLUDE    += \
+                -include $(srctree)/techpack/audio/config/kona_victory.h
 else
 LINUXINCLUDE    += \
                 -include $(srctree)/techpack/audio/config/konaautoconf.h

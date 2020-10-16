@@ -163,5 +163,6 @@ struct rt8547_led_platform_data {
 };
 
 extern int64_t rt8547_led_mode_ctrl(int state, int value);
+extern int32_t rt8547_led_set_torch(int curr);
 
 #endif

@@ -103,9 +103,10 @@ struct stm32_touchpad_dev {
 	u8					button;
 	u8					button_state;
 	int					button_code;
+	bool					btn_area_flag[STM32_TOUCH_MAX_FINGER_NUM];
 };
 
-extern int pogo_get_tc_resolution_x(void);
+extern void pogo_get_tc_resolution(int *x, int *y);
 
 static void stm32_release_all_finger(struct stm32_touchpad_dev *stm32)
 {
@@ -134,6 +135,7 @@ static void stm32_release_all_finger(struct stm32_touchpad_dev *stm32)
 			stm32->prev_touch_info.coords[i].sub_status = 0;
 			stm32->move_count[i] = 0;
 		}
+		stm32->btn_area_flag[i] = false;
 	}
 	stm32->touch_count = 0;
 
@@ -166,6 +168,7 @@ static void stm32_pogo_touchpad_event(struct stm32_touchpad_dev *stm32, char *ev
 	static int latest_id = 0;
 	u8 sub_status, prev_sub_status;
 	int x, y, w, lx, ly;
+	int res_x, res_y;
 
 	if (!stm32->input_dev) {
 		input_err(true, &stm32->pdev->dev, "%s: input dev is null\n", __func__);
@@ -227,6 +230,7 @@ static void stm32_pogo_touchpad_event(struct stm32_touchpad_dev *stm32, char *ev
 				input_mt_slot(stm32->input_dev, i);
 				input_mt_report_slot_state(stm32->input_dev, MT_TOOL_FINGER, 0);
 				stm32->move_count[i] = 0;
+				stm32->btn_area_flag[i] = false;
 			}
 		}
 		memset(&stm32->prev_touch_info, 0x0, sizeof(struct stm32_point_data));
@@ -249,15 +253,19 @@ static void stm32_pogo_touchpad_event(struct stm32_touchpad_dev *stm32, char *ev
 			}
 
 			stm32_pogo_xy_convert(stm32, &x, &y);
-
+			pogo_get_tc_resolution(&res_x, &res_y);
 			if (stm32_bit_test(sub_status, SUB_BIT_DOWN)) {
 				/* press */
 				stm32->touch_count++;
 				latest_id = i;
+
+				if ((touch_info.coords[i].x < res_x / 2)  || (touch_info.coords[i].y < (res_y * 3) / 4))
+					stm32->btn_area_flag[i] = true;
+
 #ifndef CONFIG_SAMSUNG_PRODUCT_SHIP
 				input_info(true, &stm32->pdev->dev,
-						"[P] tID:%d x:%d y:%d w:%d tc:%d\n",
-						i, x, y, w, stm32->touch_count);
+						"[P] tID:%d x:%d y:%d w:%d tc:%d, btn_f:%d\n",
+						i, x, y, w, stm32->touch_count, stm32->btn_area_flag[i]);
 #else
 				input_info(true, &stm32->pdev->dev,
 						"[P] tID:%d w:%d tc:%d\n",
@@ -266,6 +274,8 @@ static void stm32_pogo_touchpad_event(struct stm32_touchpad_dev *stm32, char *ev
 			} else if (stm32_bit_test(sub_status, SUB_BIT_MOVE)) {
 				/* move */
 				stm32->move_count[i]++;
+				if ((touch_info.coords[i].x < res_x / 2)  || (touch_info.coords[i].y < (res_y * 3) / 4))
+					stm32->btn_area_flag[i] = true;
 			}
 
 			if (w == 0)
@@ -302,6 +312,7 @@ static void stm32_pogo_touchpad_event(struct stm32_touchpad_dev *stm32, char *ev
 					"[R] tID:%d mc:%d tc:%d\n",
 					i, stm32->move_count[i], stm32->touch_count);
 #endif
+			stm32->btn_area_flag[i] = false;
 			memset(&touch_info.coords[i], 0x0, sizeof(struct stm32_coord));
 			input_mt_slot(stm32->input_dev, i);
 			input_mt_report_slot_state(stm32->input_dev, MT_TOOL_FINGER, 0);
@@ -316,17 +327,11 @@ static void stm32_pogo_touchpad_event(struct stm32_touchpad_dev *stm32, char *ev
 out_sync:
 	/* decide LEFT/RIGHT button event based on coordinate of last touch id */
 	if (stm32->button_state == ICON_BUTTON_UP) {
-		int resolution_x = 0;
-
 		if (stm32->touch_count == 0) {
 			stm32->button_code = BTN_LEFT;
 			latest_id = 0;
 		} else {
-			resolution_x = pogo_get_tc_resolution_x();
-			if (resolution_x <= 0)
-				resolution_x = 1776;
-
-			if (touch_info.coords[latest_id].x < resolution_x / 2)
+			if (stm32->btn_area_flag[latest_id])
 				stm32->button_code = BTN_LEFT;
 			else
 				stm32->button_code = BTN_RIGHT;
@@ -335,7 +340,8 @@ out_sync:
 				stm32->button_state = ICON_BUTTON_DOWN;
 				input_report_key(stm32->input_dev, stm32->button_code, ICON_BUTTON_DOWN);
 				input_info(true, &stm32->pdev->dev,
-						"[BP] tID:%d 0x%X\n", latest_id, stm32->button_code);
+						"[BP] tID:%d 0x%X btn_f:%d\n", latest_id, stm32->button_code,
+						stm32->btn_area_flag[latest_id]);
 			}
 		}
 	}
