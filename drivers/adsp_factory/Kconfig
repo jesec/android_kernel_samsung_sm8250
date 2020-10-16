@@ -93,7 +93,7 @@ config SUPPORT_AMS_LIGHT_LCD_VERSION_DUALIZAION
 
 config SUPPORT_AMS_LIGHT_CALIBRATION
 	tristate "ams light cal for SSC"
-	depends on TMD490X_FACTORY
+	depends on TMD490X_FACTORY || SUPPORT_TMD4907_STK33610_FACTORY
 	default n
 	help
 	  AMS light calibration feature.
@@ -103,7 +103,7 @@ config SUPPORT_AMS_LIGHT_CALIBRATION
 
 config SUPPORT_AMS_PROX_CALIBRATION
 	tristate "ams prox cal for SSC"
-	depends on TMD490X_FACTORY
+	depends on TMD490X_FACTORY || SUPPORT_TMD4907_STK33610_FACTORY
 	default n
 	help
 	  AMS prox calibration feature.
@@ -141,7 +141,7 @@ config SUPPORT_STK33610_FACTORY
 config SUPPORT_PROX_AUTO_CAL
 	tristate "Support Auto Calibration for proximity sensor - tmd490x"
 	default n
-	depends on TMD490X_FACTORY
+	depends on TMD490X_FACTORY || SUPPORT_TMD4907_STK33610_FACTORY
 	help
 	  Support the Auto Calibration function in tmd490x.
 	  provide sysfs for factory test.
@@ -151,7 +151,7 @@ config SUPPORT_PROX_AUTO_CAL
 config SUPPORT_PROX_INIT_CAL
 	tristate "Support Init Calibration for proximity sensor - tmd490x"
 	default n
-	depends on TMD490X_FACTORY
+	depends on TMD490X_FACTORY || SUPPORT_TMD4907_STK33610_FACTORY
 	help
 	  Support the Init Calibration function in tmd490x.
 	  provide sysfs for factory test.
