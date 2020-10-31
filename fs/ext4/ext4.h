@@ -2418,6 +2418,7 @@ static inline int ext4_fname_prepare_lookup(struct inode *dir,
 	return 0;
 }
 
+
 static inline void ext4_fname_free_filename(struct ext4_filename *fname)
 {
 	struct fscrypt_name name;
