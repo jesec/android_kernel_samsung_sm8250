@@ -13013,7 +13013,7 @@ static void ufshcd_shutdown_clkscaling(struct ufs_hba *hba)
  * This function would power off both UFS device and UFS link.
  *
  * Returns 0 always to allow force shutdown even in case of errors.
- */
+*/
 int ufshcd_shutdown(struct ufs_hba *hba)
 {
 	int ret = 0;
