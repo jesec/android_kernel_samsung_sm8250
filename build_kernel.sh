@@ -27,7 +27,7 @@ case $3 in
     ;;
 esac
 
-make -j$(nproc) -C $(pwd) O=$(pwd)/out $KERNEL_MAKE_ENV vendor/kona_sec_defconfig || exit 1
+make -j$(nproc) -C $(pwd) O=$(pwd)/out $KERNEL_MAKE_ENV vendor/kona_sec_custom_defconfig || exit 1
 make -j$(nproc) -C $(pwd) O=$(pwd)/out $KERNEL_MAKE_ENV || exit 1
 
 cp $(pwd)/out/arch/$ARCH/boot/Image $(pwd)/out/Image
