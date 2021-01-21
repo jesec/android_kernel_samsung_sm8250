@@ -25,8 +25,16 @@ $(eval $(call sec_dtbo_build, \
 
 endif
 
+dts-dirs += bloomxq
+dts-dirs += c1q
+dts-dirs += c2q
+dts-dirs += f2q
+dts-dirs += gts7l
+dts-dirs += gts7xl
+dts-dirs += r8q
 dts-dirs += x1q
-
+dts-dirs += y2q
+dts-dirs += z3q
 
 always          := $(dtb-y)
 subdir-y        := $(dts-dirs)
