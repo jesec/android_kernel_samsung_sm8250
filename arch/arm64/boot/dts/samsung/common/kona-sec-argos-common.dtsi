@@ -85,9 +85,10 @@
 			net_boost,label="UFS";
 			net_boost,node="";
 			net_boost,sysnode="/sys/class/scsi_host/host0/transferred_cnt";
-			net_boost,table_size = <1>;
+			net_boost,table_size = <2>;
 			net_boost,table= <
 				800 0 0 806400 0 0 0 0 0 0
+				1200 2841600 0 0 0 0 0 0 0 0
 				>;
 		};
 		boot_device@5 {

@@ -1976,6 +1976,8 @@ static int max77705_otg_get_property(struct power_supply *psy,
 		val->intval = charger->otg_on;
 		mutex_unlock(&charger->charger_mutex);
 		break;
+	case POWER_SUPPLY_PROP_VOLTAGE_MAX:
+		break;
 	default:
 		return -EINVAL;
 	}

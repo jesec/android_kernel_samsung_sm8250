@@ -65,6 +65,8 @@ endif
 	DHDCFLAGS += -DDEBUG_DPC_THREAD_WATCHDOG
 	# KSO Attempts count
 	DHDCFLAGS += -DCUSTOM_MAX_KSO_ATTEMPTS=64
+	# Enable atomic pktget by default
+	DHDCFLAGS += -DDHD_USE_ATOMIC_PKTGET
 endif
 
 #####################
@@ -128,6 +130,8 @@ endif
 	DHDCFLAGS += -DHOST_SFH_LLC
 	# Flow ring status trace in ISR and DPC
 	DHDCFLAGS += -DDHD_FLOW_RING_STATUS_TRACE
+	# Enable internal Rx packet pool
+	DHDCFLAGS += -DRX_PKT_POOL
 endif
 
 
@@ -204,6 +208,7 @@ DHDCFLAGS += -DENABLE_FW_ROAM_SUSPEND
 DHDCFLAGS += -DDHD_LOSSLESS_ROAMING
 DHDCFLAGS += -DSKIP_ROAM_TRIGGER_RESET
 DHDCFLAGS += -DROAM_EVT_DISABLE
+DHDCFLAGS += -DDEBUG_SETROAMMODE
 
 # Enable Roam time thresh
 DHDCFLAGS += -DCUSTOM_ROAM_TIME_THRESH_IN_SUSPEND=6000
@@ -224,7 +229,8 @@ DHDCFLAGS += -DSUPPORT_DEEP_SLEEP
 DHDCFLAGS += -DSUPPORT_AMPDU_MPDU_CMD
 DHDCFLAGS += -DSOFTAP_SEND_HANGEVT
 DHDCFLAGS += -DNUM_SCB_MAX_PROBE=3
-DHDCFLAGS += -DDHD_USE_ATOMIC_PKTGET
+# Avoid overriding to GFP_ATOMIC by default only for pcie
+#DHDCFLAGS += -DDHD_USE_ATOMIC_PKTGET
 DHDCFLAGS += -DTDLS_MSG_ONLY_WFD
 DHDCFLAGS += -DCUSTOM_KEEP_ALIVE_SETTING=30000
 DHDCFLAGS += -DCUSTOM_EVENT_PM_WAKE=30
@@ -302,6 +308,9 @@ DHDCFLAGS += -DKEEP_JP_REGREV
 
 # NAN feature flags
 DHDCFLAGS += -DWL_NAN -DWL_NAN_DISC_CACHE -DWL_NAN_ENABLE_MERGE
+
+# ACS feature
+DHDCFLAGS += -DWL_5G_SOFTAP_ONLY_ON_DEF_CHAN
 
 # FCC power limit control on ch12/13.
 DHDCFLAGS += -DFCC_PWR_LIMIT_2G
@@ -564,6 +573,8 @@ endif
 # Use restricted channels on STA/SoftAP concurrent mode
   DHDCFLAGS += -DAPSTA_RESTRICTED_CHANNEL
   DHDCFLAGS += -DDHD_LOG_DUMP
+  # Enable MMIO Trace
+  DHDCFLAGS += -DDHD_MMIO_TRACE
 # Enable log print rate limit
   DHDCFLAGS += -DDHD_LOG_PRINT_RATE_LIMIT
 ifneq ($(CUSTOM_LOG_DUMP_BUFSIZE_MB),)
@@ -738,6 +749,7 @@ ifneq ($(filter y m,$(CONFIG_BCM4375)),)
  DHDCFLAGS += -DUSE_WL_FRAMEBURST
  DHDCFLAGS += -DDISABLE_WL_FRAMEBURST_SOFTAP
  DHDCFLAGS += -DDISABLE_PM_BCNRX
+ DHDCFLAGS += -DDHD_LB_HOST_CTRL
 # Debugability
  DHDCFLAGS += -DEWP_ECNTRS_LOGGING
  DHDCFLAGS += -DEWP_RTT_LOGGING
@@ -755,9 +767,13 @@ ifneq ($(filter y m,$(CONFIG_BCM4375)),)
  DHDCFLAGS += -DWL_STATIC_IFNAME_PREFIX="\"swlan0\""
  #OWE
  DHDCFLAGS += -DWL_OWE
- # Disable HE on SoftAP and P2P
+# Disable HE on P2P and SoftAP
  DHDCFLAGS += -DWL_DISABLE_HE_SOFTAP
  DHDCFLAGS += -DWL_DISABLE_HE_P2P
+ifeq ($(CONFIG_WLAN_SOFTAP_HE_ENABLE),y)
+ DHDCFLAGS := $(filter-out -DWL_DISABLE_HE_SOFTAP,$(DHDCFLAGS))
+ DHDCFLAGS += -DTPUT_DEBUG_DUMP
+endif
 # tput enhancement for PCIE
 ifeq ($(BUS_IFACE_PCIE),y)
   DHDCFLAGS += -DCUSTOM_TCPACK_SUPP_RATIO=15
@@ -1024,6 +1040,7 @@ ifneq ($(CONFIG_BCM4361),)
 DHDCFLAGS += -DWL_MBO
 DHDCFLAGS += -DWL_OCE
 DHDCFLAGS += -DWL_STATIC_IF
+DHDCFLAGS += -DWL_STATIC_IFNAME_PREFIX="\"swlan0\""
 ifneq ($(CONFIG_CFG80211_FILS_BKPORT),)
 #if kernel < 4.12, FILS patches need to be backported
 DHDCFLAGS += -DWL_FILS
@@ -1935,7 +1952,7 @@ DHDOFILES := dhd_pno.o dhd_common.o dhd_ip.o dhd_custom_gpio.o dhd_custom_sec.o 
 	wldev_common.o wl_linux_mon.o wl_roam.o dhd_linux_platdev.o dhd_linux_pktdump.o wl_cfg_btcoex.o \
 	hnd_pktq.o hnd_pktpool.o dhd_custom_cis.o dhd_debug.o dhd_debug_linux.o dhd_mschdbg.o \
 	dhd_dbg_ring.o bcmstdlib_s.o dhd_linux_exportfs.o wl_cfgnan.o bcmbloom.o bcmxtlv.o frag.o \
-	dhd_linux_tx.o
+	dhd_linux_tx.o wl_cfgdbg.o
 
 # This file will be here only for internal builds and sets flags which may
 # affect subsequent behavior. See extended comment within it for details.

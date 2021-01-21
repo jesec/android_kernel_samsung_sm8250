@@ -1915,8 +1915,8 @@ void wlan_cfg80211_inform_bss_frame(struct wlan_objmgr_pdev *pdev,
 	bss_data.frame_len = wlan_get_frame_len(scan_params);
 	bss_data.mgmt = qdf_mem_malloc_atomic(bss_data.frame_len);
 	if (!bss_data.mgmt) {
-		osif_err("mem alloc failed for bss %pM seq %d",
-			 bss_data.mgmt->bssid, scan_params->seq_num);
+		osif_err("bss mem alloc failed for seq %d",
+			 scan_params->seq_num);
 		return;
 	}
 	qdf_mem_copy(bss_data.mgmt,

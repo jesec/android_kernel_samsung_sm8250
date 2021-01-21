@@ -29,6 +29,7 @@
 #include <bcmutils.h>
 #include <bcmstdlib_s.h>
 
+#include <bcmdevs_legacy.h>
 #include <bcmdevs.h>
 #include <bcmendian.h>
 #include <dngl_stats.h>
@@ -477,6 +478,11 @@ dhd_query_bus_erros(dhd_pub_t *dhdp)
 			__FUNCTION__));
 		ret = TRUE;
 	}
+	if (dhdp->pktid_invalid_occured) {
+		DHD_ERROR_RLMT(("%s: invalid pktid, cannot proceed\n",
+			__FUNCTION__));
+		ret = TRUE;
+	}
 #endif /* PCIE_FULL_DONGLE */
 
 	if (dhdp->iface_op_failed) {
@@ -539,6 +545,7 @@ dhd_clear_bus_errors(dhd_pub_t *dhdp)
 	dhdp->d3ack_timeout_occured = FALSE;
 	dhdp->livelock_occured = FALSE;
 	dhdp->pktid_audit_failed = FALSE;
+	dhdp->pktid_invalid_occured = FALSE;
 #endif
 	dhdp->iface_op_failed = FALSE;
 	dhdp->scan_timeout_occurred = FALSE;
@@ -1138,8 +1145,8 @@ dhd_dump(dhd_pub_t *dhdp, char *buf, int buflen)
 	            dhdp->rx_ctlpkts, dhdp->rx_ctlerrs, dhdp->rx_dropped);
 	bcm_bprintf(strbuf, "rx_readahead_cnt %lu tx_realloc %lu\n",
 	            dhdp->rx_readahead_cnt, dhdp->tx_realloc);
-	bcm_bprintf(strbuf, "tx_pktgetfail %lu rx_pktgetfail %lu\n",
-	            dhdp->tx_pktgetfail, dhdp->rx_pktgetfail);
+	bcm_bprintf(strbuf, "tx_pktgetfail %lu rx_pktgetfail %lu rx_pktgetpool_fail %lu\n",
+	            dhdp->tx_pktgetfail, dhdp->rx_pktgetfail, dhdp->rx_pktgetpool_fail);
 	bcm_bprintf(strbuf, "tx_big_packets %lu\n",
 	            dhdp->tx_big_packets);
 	bcm_bprintf(strbuf, "\n");
@@ -6893,7 +6900,7 @@ int dhd_parse_map_file(osl_t *osh, void *ptr, uint32 *ramstart, uint32 *rodata_s
 	*ramstart = 0;
 	*rodata_start = 0;
 	*rodata_end = 0;
-	size = (((struct firmware *)ptr)->size);
+	size = (uint32)(((struct firmware *)ptr)->size);
 
 	/* Allocate 1 byte more than read_size to terminate it with NULL */
 	raw_fmts = MALLOCZ(osh, read_size + 1);
@@ -9075,7 +9082,7 @@ dhd_iovar(dhd_pub_t *pub, int ifidx, char *name, char *param_buf, uint param_len
 	 * to avoid the length check error in fw
 	 */
 	if (!set && !param_len) {
-		input_len += sizeof(int);
+		input_len += (uint) sizeof(int);
 	}
 	if (input_len > WLC_IOCTL_MAXLEN)
 		return BCME_BADARG;

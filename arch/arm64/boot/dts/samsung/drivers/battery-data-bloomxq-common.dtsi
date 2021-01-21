@@ -363,7 +363,7 @@
 		battery,ttf_hv_charge_current = <2000>;
 		battery,ttf_hv_12v_wireless_charge_current = <1540>;
 		battery,ttf_hv_wireless_charge_current = <1110>;
-		battery,ttf_wireless_charge_current = <830>;
+		battery,ttf_wireless_charge_current = <920>;
 
 		battery,rp_current_rp1 = <500>;
 		battery,rp_current_rp2 = <1500>;

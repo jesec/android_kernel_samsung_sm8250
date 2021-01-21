@@ -307,14 +307,6 @@ void sec_control_pm(dhd_pub_t *dhd, uint *power_mode)
 		ret = dhd_iovar(dhd, 0, "roam_off", (char *)&roamvar, sizeof(roamvar), NULL,
 				0, TRUE);
 #endif
-#ifdef DHD_ENABLE_LPC
-		/* Set lpc 0 */
-		ret = dhd_iovar(dhd, 0, "lpc", (char *)&lpc, sizeof(lpc), NULL, 0, TRUE);
-		if (ret < 0) {
-			DHD_ERROR(("[WIFI_SEC] %s: Set lpc failed  %d\n",
-			__FUNCTION__, ret));
-		}
-#endif /* DHD_ENABLE_LPC */
 #ifdef DHD_PCIE_RUNTIMEPM
 		DHD_ERROR(("[WIFI_SEC] %s : Turn Runtime PM off \n", __FUNCTION__));
 		/* Turn Runtime PM off */
@@ -353,6 +345,14 @@ void sec_control_pm(dhd_pub_t *dhd, uint *power_mode)
 			DHD_ERROR(("[WIFI_SEC] %s: WLC_DOWN faield %d\n",
 					__FUNCTION__, ret));
 		}
+#ifdef DHD_ENABLE_LPC
+		/* Set lpc 0 (after down) */
+		ret = dhd_iovar(dhd, 0, "lpc", (char *)&lpc, sizeof(lpc), NULL, 0, TRUE);
+		if (ret < 0) {
+			DHD_ERROR(("[WIFI_SEC] %s: Set lpc failed  %d\n",
+			__FUNCTION__, ret));
+		}
+#endif /* DHD_ENABLE_LPC */
 	} else {
 		dhd_wl_ioctl_cmd(dhd, WLC_SET_PM, (char *)power_mode,
 			sizeof(uint), TRUE, 0);

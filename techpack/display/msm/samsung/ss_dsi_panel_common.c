@@ -3709,7 +3709,9 @@ static void ss_panel_parse_dt_bright_tables(struct device_node *np,
 				"samsung,candela_map_table_rev", panel_rev,
 				ss_parse_candella_mapping_table);
 
-#if defined(CONFIG_MACH_X1Q_JPN_SINGLE) || (defined(CONFIG_MACH_Y2Q_JPN_SINGLE) && !defined(CONFIG_MACH_Y2Q_JPN_DCMOLY))
+#if (defined(CONFIG_MACH_X1Q_JPN_SINGLE) || \
+		(defined(CONFIG_MACH_Y2Q_JPN_SINGLE) && !defined(CONFIG_MACH_Y2Q_JPN_DCMOLY)) || \
+		defined(CONFIG_MACH_BLOOMXQ_JPN_SINGLE))
 		LCD_INFO("parse jpn AOD brightness table\n");
 		parse_dt_data(np, &info->candela_map_table[AOD][panel_rev],
 				sizeof(struct candela_map_table),
@@ -7812,6 +7814,22 @@ int ss_early_display_init(struct samsung_display_driver_data *vdd)
 				LCD_ERR("no samsung_module_info_read function\n");
 			else
 				vdd->module_info_loaded_dsi = vdd->panel_func.samsung_module_info_read(vdd);
+		}
+
+		/* MDNIE X,Y */
+		if (!vdd->mdnie_loaded_dsi) {
+			if (IS_ERR_OR_NULL(vdd->panel_func.samsung_mdnie_read))
+				LCD_ERR("no samsung_mdnie_read function\n");
+			else
+				vdd->mdnie_loaded_dsi = vdd->panel_func.samsung_mdnie_read(vdd);
+		}
+
+		/* Panel Unique Cell ID */
+		if (!vdd->cell_id_loaded_dsi) {
+			if (IS_ERR_OR_NULL(vdd->panel_func.samsung_cell_id_read))
+				LCD_ERR("no samsung_cell_id_read function\n");
+			else
+				vdd->cell_id_loaded_dsi = vdd->panel_func.samsung_cell_id_read(vdd);
 		}
 
 		/* restore panel_state to poweroff

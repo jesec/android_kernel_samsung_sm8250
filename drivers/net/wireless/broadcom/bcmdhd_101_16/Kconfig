@@ -274,3 +274,10 @@ config WLAN_BCM4375_ADVANCED_FEATURES
 	default n
 	---help---
 	Support BCM4375 Advanced Feature
+
+config WLAN_SOFTAP_HE_ENABLE
+	bool "Support BCM4375 SoftAP HE enable"
+	depends on BCM4375
+	default n
+	---help---
+	Support BCM4375 SoftAP HE Feature

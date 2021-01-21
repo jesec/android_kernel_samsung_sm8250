@@ -2319,19 +2319,6 @@ ssize_t sec_bat_store_attrs(
 				queue_delayed_work(battery->monitor_wqueue,
 					&battery->monitor_work, 0);
 			}
-#if defined(CONFIG_DISABLE_MFC_IC)
-			if (lpcharge) {
-				if (battery->lcd_status &&
-					(battery->mfc_unknown_swelling || battery->mfc_unknown_fullcharged)) {
-					sec_bat_set_mfc_on(battery, true);
-					battery->mfc_work_check = false;
-					queue_delayed_work(battery->monitor_wqueue,
-						&battery->mfc_work, msecs_to_jiffies(2000));
-				} else {
-					cancel_delayed_work(&battery->mfc_work);
-				}
-			}
-#endif
 #endif
 			ret = count;
 		}
@@ -3726,13 +3713,17 @@ ssize_t sec_bat_store_attrs(
 					0, SEC_BAT_CURRENT_EVENT_HV_DISABLE);
 
 				if (is_pd_wire_type(battery->cable_type)) {
+					int target_pd_index = 0;
+
 					battery->update_pd_list = true;
 					pr_info("%s: update pd list\n", __func__);
 #if defined(CONFIG_PDIC_PD30)
-					select_pdo(battery->pd_list.pd_info[battery->pd_list.num_fpdo - 1].pdo_index);
+					target_pd_index = battery->pd_list.num_fpdo - 1;
 #else
-					select_pdo(battery->pd_list.pd_info[battery->pd_list.max_pd_count - 1].pdo_index);
+					target_pd_index = battery->pd_list.max_pd_count - 1;
 #endif
+					if (target_pd_index >= 0 && target_pd_index < MAX_PDO_NUM)
+						select_pdo(battery->pd_list.pd_info[target_pd_index].pdo_index);
 				}
 			}
 		}

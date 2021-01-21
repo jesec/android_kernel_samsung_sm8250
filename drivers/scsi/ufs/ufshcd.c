@@ -2487,6 +2487,7 @@ static int ufshcd_devfreq_target(struct device *dev,
 	struct list_head *clk_list = &hba->clk_list_head;
 	struct ufs_clk_info *clki;
 	unsigned long irq_flags;
+	int scaling_required = 0;
 
 	if (!ufshcd_is_clkscaling_supported(hba))
 		return -EINVAL;
@@ -2515,9 +2516,13 @@ static int ufshcd_devfreq_target(struct device *dev,
 	spin_unlock_irqrestore(hba->host->host_lock, irq_flags);
 
 	start = ktime_get();
-	pm_runtime_get_sync(hba->dev);
+	if (!(ufshcd_is_ufs_dev_active(hba) || ufshcd_is_link_active(hba))) {
+		pm_runtime_get_sync(hba->dev);
+		scaling_required = 1;
+	}
 	ret = ufshcd_devfreq_scale(hba, scale_up);
-	pm_runtime_put(hba->dev);
+	if (scaling_required)
+		pm_runtime_put(hba->dev);
 	trace_ufshcd_profile_clk_scaling(dev_name(hba->dev),
 		(scale_up ? "up" : "down"),
 		ktime_to_us(ktime_sub(ktime_get(), start)), ret);

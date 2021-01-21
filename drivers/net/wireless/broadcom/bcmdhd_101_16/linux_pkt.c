@@ -134,7 +134,7 @@ BCMFASTPATH(osl_alloc_skb)(osl_t *osh, unsigned int len)
 {
 	struct sk_buff *skb;
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 25)
-	gfp_t flags = (in_atomic() || irqs_disabled()) ? GFP_ATOMIC : GFP_KERNEL;
+	gfp_t flags = CAN_SLEEP() ? GFP_KERNEL : GFP_ATOMIC;
 
 #ifdef DHD_USE_ATOMIC_PKTGET
 	flags = GFP_ATOMIC;

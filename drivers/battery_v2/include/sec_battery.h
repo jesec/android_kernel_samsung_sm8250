@@ -218,7 +218,7 @@ struct sec_bat_pdic_info {
 };
 
 struct sec_bat_pdic_list {
-	struct sec_bat_pdic_info pd_info[8]; /* 5V ~ 12V */
+	struct sec_bat_pdic_info pd_info[MAX_PDO_NUM]; /* 5V ~ 12V */
 	unsigned int now_pd_index;
 	unsigned int max_pd_count;
 #if defined(CONFIG_PDIC_PD30)
@@ -374,9 +374,6 @@ struct sec_battery_info {
 	/* keep awake until monitor is done */
 	struct wakeup_source *monitor_wake_lock;
 	struct workqueue_struct *monitor_wqueue;
-#if defined(CONFIG_DISABLE_MFC_IC)
-	struct delayed_work mfc_work;
-#endif
 	struct delayed_work monitor_work;
 #ifdef CONFIG_SAMSUNG_BATTERY_FACTORY
 	struct wakeup_source *lpm_wake_lock;
@@ -676,6 +673,7 @@ struct sec_battery_info {
 	unsigned int prev_misc_event;
 	unsigned int tx_retry_case;
 	unsigned int tx_misalign_cnt;
+	unsigned int tx_ocp_cnt;
 	struct delayed_work ext_event_work;
 	struct delayed_work misc_event_work;
 	struct wakeup_source *ext_event_wake_lock;
@@ -688,6 +686,8 @@ struct sec_battery_info {
 	struct mutex init_soc_updatelock;
 	unsigned long tx_misalign_start_time;
 	unsigned long tx_misalign_passed_time;
+	unsigned long tx_ocp_start_time;
+	unsigned long tx_ocp_passed_time;
 
 	unsigned int hiccup_status;
 	bool hiccup_clear;
@@ -705,11 +705,7 @@ struct sec_battery_info {
 	bool boot_complete;
 	int raw_bat_temp;
 
-#if defined(CONFIG_DISABLE_MFC_IC)
-	bool mfc_unknown_swelling;
-	bool mfc_unknown_fullcharged;
-	bool mfc_work_check;
-#endif
+	bool support_unknown_wpcthm;
 };
 
 /* event check */
@@ -818,6 +814,6 @@ void sec_bat_parse_mode_dt_work(struct work_struct *work);
 u8 sec_bat_get_wireless20_power_class(struct sec_battery_info *battery);
 void sec_bat_check_battery_health(struct sec_battery_info *battery);
 #if defined(CONFIG_DISABLE_MFC_IC)
-void sec_bat_set_mfc_on(struct sec_battery_info *battery, bool always_on);
+void sec_bat_set_mfc_on(struct sec_battery_info *battery);
 #endif
 #endif /* __SEC_BATTERY_H */

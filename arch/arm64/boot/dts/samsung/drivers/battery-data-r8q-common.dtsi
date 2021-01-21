@@ -363,10 +363,10 @@
 
 		battery,wireless_otg_input_current = <900>;
 
-		battery,ttf_hv_charge_current = <3000>;
-		battery,ttf_hv_wireless_charge_current = <1500>;
-		battery,ttf_wireless_charge_current = <900>;
-		battery,ttf_dc25_charge_current = <4200>;
+		battery,ttf_hv_charge_current = <2870>;
+		battery,ttf_hv_wireless_charge_current = <1450>;
+		battery,ttf_wireless_charge_current = <835>;
+		battery,ttf_dc25_charge_current = <11200>;
 
 		battery,rp_current_rp1 = <500>;
 		battery,rp_current_rp2 = <1500>;
@@ -449,6 +449,8 @@
 
 		battery,wc_current_step = <30>;
 
+		battery,support_unknown_wpcthm;
+
 		io-channels = <&pm8150l_vadc ADC_GPIO1_PU2>, <&pm8150l_vadc ADC_AMUX_THM3_PU2>, <&pm8150l_vadc ADC_GPIO1_PU2>, <&pm8150l_vadc ADC_AMUX_THM1_PU2>;
 		io-channel-names = "adc-temp", "adc-chg-temp", "adc-wpc-temp", "adc-usb-temp";
 	};
@@ -477,82 +479,49 @@
 		fuelgauge,fg_reset_wa_data = <0x0FEE 0x3200 0x03FB 0x003E 0x2534>; /* fullcapnom(=capacity), dPacc, dQacc,  rcomp0, tempco */
 		fuelgauge,discharge_temp_threshold = <600>;
 		fuelgauge,discharge_volt_threshold = <4200>;
-		fuelgauge,ttf_capacity = <4050>;
+		fuelgauge,ttf_capacity = <3770>;
 		fuelgauge,cv_data = <
-			3733	840	1462
-			3690	842	1452
-			3616	847	1432
-			3575	849	1421
-			3490	851	1411
-			3452	853	1401
-			3377	858	1381
-			3342	860	1370
-			3275	862	1360
-			3228	864	1350
-			3133	866	1340
-			3067	872	1309
-			3019	874	1299
-			2929	879	1268
-			2896	881	1258
-			2843	883	1247
-			2792	885	1237
-			2754	887	1227
-			2695	892	1196
-			2660	893	1186
-			2625	895	1176
-			2580	897	1165
-			2531	898	1155
-			2492	902	1135
-			2450	903	1125
-			2410	905	1114
-			2348	908	1094
-			2296	909	1084
-			2263	910	1073
-			2214	915	1043
-			2182	916	1032
-			2147	919	1012
-			2103	920	1002
-			2051	922	991
-			2019	924	971
-			1981	927	950
-			1948	928	940
-			1911	930	920
-			1879	932	909
-			1834	933	899
-			1795	935	879
-			1761	938	848
-			1722	942	817
-			1689	944	797
-			1649	946	776
-			1592	948	756
-			1532	950	735
-			1493	954	694
-			1462	955	684
-			1410	958	643
-			1362	959	633
-			1338	960	623
-			1291	964	572
-			1264	968	531
-			1237	968	520
-			1213	969	510
-			1169	974	449
-			1127	975	438
-			1105	975	428
-			1073	980	357
-			1049	982	326
-			1010	983	305
-			993		984	295
-			972		986	264
-			955		988	223
-			932		990	203
-			881		990	193
-			864		996	172
-			761		1000	123
-			710		1000	113
-			688		1000	103
-			668		1000	51
-			658		1000	31
-			647		1000	0
+			3879	658	3300
+			3782	670	3240
+			3441	684	3180
+			3644	699	3120
+			3654	713	3060
+			3610	728	3000
+			3595	743	2040
+			3646	755	1980
+			3657	770	1920
+			3564	784	1860
+			3636	799	1800
+			3438	813	1740
+			3080	826	1680
+			2980	838	1620
+			2690	849	1560
+			2480	860	1500
+			2235	869	1440
+			2166	878	1380
+			1972	886	1320
+			1825	894	1260
+			1742	901	1200
+			1612	907	1140
+			1616	914	1080
+			1464	919	1020
+			1260	924	960
+			1235	929	900
+			1114	934	840
+			1048	938	780
+			1028	943	720
+			922	947	660
+			702	950	600
+			688	952	540
+			648	955	480
+			617	957	420
+			613	960	360
+			562	967	300
+			566	972	240
+			514	978	180
+			483	989	120
+			458	995	60
+			464	1000	0
 		>;
 	};
 
@@ -676,7 +645,7 @@
 			vout = <5500>;
 			input_current_limit = <800>;
 			fast_charging_current = <3150>;
-			ttf_charge_current = <900>;
+			ttf_charge_current = <835>;
 			rx_power = <4500>;
 		};
 		current_group_1 {
@@ -684,7 +653,7 @@
 			vout = <10000>;
 			input_current_limit = <750>;
 			fast_charging_current = <3150>;
-			ttf_charge_current = <1500>;
+			ttf_charge_current = <1450>;
 			rx_power = <7500>;
 		};
 		current_group_2 {
@@ -692,7 +661,7 @@
 			vout = <11000>;
 			input_current_limit = <825>;
 			fast_charging_current = <3150>;
-			ttf_charge_current = <2100>;
+			ttf_charge_current = <1900>;
 			rx_power = <9075>;
 		};
 		current_group_3 {
@@ -700,7 +669,7 @@
 			vout = <11000>;
 			input_current_limit = <1000>;
 			fast_charging_current = <3150>;
-			ttf_charge_current = <2300>;
+			ttf_charge_current = <2230>;
 			rx_power = <11000>;
 		};
 	};

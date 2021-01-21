@@ -15,8 +15,10 @@
 
 #include "../common/kona-sec-common.dtsi"
 #include "kona-sec-c2q-r10.dtsi"
+#include "kona-sec-c2q-pm-jpn-r08.dtsi"
 #include "../drivers/camera_sensor_c2q_r07.dtsi"
 #include "../drivers/kona-sec-c2q-camera-sensor-pinctrl-r07.dtsi"
+#include "../../../../../../techpack/display/msm/samsung/S6E3HAC_AMB687VX01/dsi_panel_S6E3HAC_AMB687VX01_wqhd_octa_cmd_jpn.dtsi"
 / {
 	model = "Samsung C2Q PROJECT - SM-N986J_REV07C (board-id,10)";
 	compatible = "qcom,kona-mtp", "qcom,kona", "qcom,mtp";

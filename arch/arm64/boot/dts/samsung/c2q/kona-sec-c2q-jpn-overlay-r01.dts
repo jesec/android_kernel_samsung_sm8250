@@ -18,6 +18,7 @@
 #include "../drivers/camera_sensor_c2q_r01.dtsi"
 #include "../drivers/fingerprint-sensor_c2q_r01.dtsi"
 #include "../drivers/kona-sec-c2q-camera-sensor-pinctrl-r01.dtsi"
+#include "../../../../../../techpack/display/msm/samsung/S6E3HAC_AMB687VX01/dsi_panel_S6E3HAC_AMB687VX01_wqhd_octa_cmd_jpn.dtsi"
 
 / {
 	model = "Samsung C2Q PROJECT - C2_REV0.0 (board-id,1)";

@@ -22,7 +22,7 @@
 /* each bit indicates if kmalloc mock should return fail (NULL) */
 static uint64_t dsms_test_kmalloc_fail_requests;
 
-void *dsms_test_kmalloc_mock(size_t size, gfp_t flags)
+void *security_dsms_test_kmalloc_mock(size_t size, gfp_t flags)
 {
 	bool fail;
 
@@ -32,14 +32,14 @@ void *dsms_test_kmalloc_mock(size_t size, gfp_t flags)
 }
 
 /* Requests that kmalloc fails in the attempt given by argument (1 for next) */
-void dsms_test_request_kmalloc_fail_at(int attempt_no)
+void security_dsms_test_request_kmalloc_fail_at(int attempt_no)
 {
 	if (attempt_no > 0)
 		dsms_test_kmalloc_fail_requests |= (1ul << (attempt_no-1));
 }
 
 /* Cancels all kmalloc fail requests */
-void dsms_test_cancel_kmalloc_fail_requests(void)
+void security_dsms_test_cancel_kmalloc_fail_requests(void)
 {
 	dsms_test_kmalloc_fail_requests = 0;
 }
@@ -48,19 +48,19 @@ void dsms_test_cancel_kmalloc_fail_requests(void)
 /* Module test functions */
 /* -------------------------------------------------------------------------- */
 
-static void dsms_test_kmalloc_mock_test(struct test *test)
+static void security_dsms_test_kmalloc_mock_test(struct test *test)
 {
 	void *p;
 
-	dsms_test_request_kmalloc_fail_at(1);
-	dsms_test_request_kmalloc_fail_at(3);
-	EXPECT_EQ(test, p = dsms_test_kmalloc_mock(1, GFP_KERNEL), NULL);
+	security_dsms_test_request_kmalloc_fail_at(1);
+	security_dsms_test_request_kmalloc_fail_at(3);
+	EXPECT_EQ(test, p = security_dsms_test_kmalloc_mock(1, GFP_KERNEL), NULL);
 	kfree(p);
-	EXPECT_NE(test, p = dsms_test_kmalloc_mock(1, GFP_KERNEL), NULL);
+	EXPECT_NE(test, p = security_dsms_test_kmalloc_mock(1, GFP_KERNEL), NULL);
 	kfree(p);
-	EXPECT_EQ(test, p = dsms_test_kmalloc_mock(1, GFP_KERNEL), NULL);
+	EXPECT_EQ(test, p = security_dsms_test_kmalloc_mock(1, GFP_KERNEL), NULL);
 	kfree(p);
-	EXPECT_NE(test, p = dsms_test_kmalloc_mock(1, GFP_KERNEL), NULL);
+	EXPECT_NE(test, p = security_dsms_test_kmalloc_mock(1, GFP_KERNEL), NULL);
 	kfree(p);
 }
 
@@ -70,13 +70,13 @@ static void dsms_test_kmalloc_mock_test(struct test *test)
 
 static int security_dsms_test_utils_init(struct test *test)
 {
-	dsms_test_cancel_kmalloc_fail_requests();
+	security_dsms_test_cancel_kmalloc_fail_requests();
 	return 0;
 }
 
 static void security_dsms_test_utils_exit(struct test *test)
 {
-	dsms_test_cancel_kmalloc_fail_requests();
+	security_dsms_test_cancel_kmalloc_fail_requests();
 }
 
 /* -------------------------------------------------------------------------- */
@@ -84,7 +84,7 @@ static void security_dsms_test_utils_exit(struct test *test)
 /* -------------------------------------------------------------------------- */
 
 static struct test_case security_dsms_test_utils_test_cases[] = {
-	TEST_CASE(dsms_test_kmalloc_mock_test),
+	TEST_CASE(security_dsms_test_kmalloc_mock_test),
 	{},
 };
 

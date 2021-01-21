@@ -10,6 +10,8 @@ obj-$(CONFIG_SECURITY_DSMS) += dsms_init.o
 obj-$(CONFIG_SECURITY_DSMS) += dsms_kernel_api.o
 obj-$(CONFIG_SECURITY_DSMS) += dsms_policy.o
 obj-$(CONFIG_SECURITY_DSMS) += dsms_rate_limit.o
+obj-$(CONFIG_SECURITY_DSMS) += dsms_netlink.o
+obj-$(CONFIG_SECURITY_DSMS) += dsms_message_list.o
 
 # kunit tests options:
 GCOV_PROFILE := $(CONFIG_KUNIT)

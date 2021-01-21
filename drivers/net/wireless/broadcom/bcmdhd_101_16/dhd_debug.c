@@ -621,7 +621,7 @@ dhd_dbg_verboselog_printf(dhd_pub_t *dhdp, prcd_event_log_hdr_t *plog_hdr,
 #endif /* DHD_LOG_PRINT_RATE_LIMIT */
 	/* print the message out in a logprint  */
 	if ((control_logtrace == LOGTRACE_RAW_FMT) || !(raw_event->fmts)) {
-		if (dhdp->dbg) {
+		if (dhdp->dbg && dhdp->dbg->dbg_rings[FW_VERBOSE_RING_ID].state != RING_STOP) {
 			log_level = dhdp->dbg->dbg_rings[FW_VERBOSE_RING_ID].log_level;
 			for (id = 0; id < ARRAYSIZE(fw_verbose_level_map); id++) {
 				if ((fw_verbose_level_map[id].tag == plog_hdr->tag) &&
@@ -941,7 +941,9 @@ dhd_dbg_msgtrace_log_parser(dhd_pub_t *dhdp, void *event_data,
 	msg_hdr.len = sizeof(*logentry_header) + datalen;
 	memcpy(logbuf + sizeof(*logentry_header), data, datalen);
 	DHD_DBGIF(("%s: datalen %d %d\n", __FUNCTION__, msg_hdr.len, datalen));
+#ifdef DHD_DEBUGABILITY_LOG_DUMP_RING
 	dhd_dbg_push_to_ring(dhdp, FW_VERBOSE_RING_ID, &msg_hdr, logbuf);
+#endif /* DHD_DEBUGABILITY_LOG_DUMP_RING */
 
 	/* Print sequence number, originating set and length of received
 	 * event log buffer. Refer to event log buffer structure in
@@ -2647,7 +2649,7 @@ dhd_dbg_attach(dhd_pub_t *dhdp, dbg_pullreq_t os_pullreq,
 	dbg = MALLOCZ(dhdp->osh, sizeof(dhd_dbg_t));
 	if (!dbg)
 		return BCME_NOMEM;
-
+#ifdef DHD_DEBUGABILITY_LOG_DUMP_RING
 	buf = MALLOCZ(dhdp->osh, FW_VERBOSE_RING_SIZE);
 	if (!buf)
 		goto error;
@@ -2655,7 +2657,7 @@ dhd_dbg_attach(dhd_pub_t *dhdp, dbg_pullreq_t os_pullreq,
 			(uint8 *)FW_VERBOSE_RING_NAME, FW_VERBOSE_RING_SIZE, buf, FALSE);
 	if (ret)
 		goto error;
-
+#endif /* DHD_DEBUGABILITY_LOG_DUMP_RING */
 	buf = MALLOCZ(dhdp->osh, DHD_EVENT_RING_SIZE);
 	if (!buf)
 		goto error;
@@ -2684,7 +2686,6 @@ error:
 		}
 	}
 	MFREE(dhdp->osh, dbg, sizeof(dhd_dbg_t));
-
 	return ret;
 }
 

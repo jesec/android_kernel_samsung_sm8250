@@ -169,7 +169,7 @@ static ssize_t wbrc_bt_dev_write(struct file *filep, const char *buffer,
 	WBRC_LOCK(wbrc_data);
 
 	pr_info("%s Received %zu bytes\n", __func__, len);
-	if (len < WBRC_MSG_LEN) {
+	if (len != WBRC_MSG_LEN) {
 		pr_err("%s: Received malformed packet:%d\n", __func__, (int)len);
 		ret = -EFAULT;
 		goto exit;

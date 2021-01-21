@@ -144,7 +144,10 @@ typedef struct ring_sh_info {
 } ring_sh_info_t;
 #define MAX_DS_TRACE_SIZE	50
 #ifdef DHD_MMIO_TRACE
-#define MAX_MMIO_TRACE_SIZE	50
+#define MAX_MMIO_TRACE_SIZE	256
+/* Minimum of 250us should be elapsed to add new entry */
+#define MIN_MMIO_TRACE_TIME 250
+#define DHD_RING_IDX 0x00FF0000
 typedef struct _dhd_mmio_trace_t {
 	uint64  timestamp;
 	uint32	addr;
@@ -436,6 +439,7 @@ typedef struct dhd_bus {
 	uint64 dpc_exit_time;
 	uint64 resched_dpc_time;
 	uint64 last_d3_inform_time;
+	uint64 last_d3_ack_time;
 	uint64 last_process_ctrlbuf_time;
 	uint64 last_process_flowring_time;
 	uint64 last_process_txcpl_time;
@@ -759,7 +763,7 @@ extern void dhd_bus_doorbell_timeout_reset(struct dhd_bus *bus);
 #error "Not supported platform"
 #endif /* CONFIG_SOC_EXYNOSXXXX & CONFIG_MACH_UNIVERSALXXXX */
 extern void exynos_pcie_pm_suspend(int ch_num);
-extern void exynos_pcie_pm_resume(int ch_num);
+extern int exynos_pcie_pm_resume(int ch_num);
 #endif /* CONFIG_ARCH_EXYNOS */
 
 #if defined(CONFIG_ARCH_MSM)

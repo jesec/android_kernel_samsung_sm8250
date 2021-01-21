@@ -6869,6 +6869,11 @@ dhd_bus_hostready(struct  dhd_bus *bus)
 
 	dhd_bus_dump_dar_registers(bus);
 
+	if (bus->is_linkdown) {
+		DHD_ERROR(("%s: PCIe link was down before DB1\n", __FUNCTION__));
+		return;
+	}
+
 #ifdef DHD_MMIO_TRACE
 	dhd_bus_mmio_trace(bus, dhd_bus_db1_addr_get(bus), 0x1, TRUE);
 #endif /* defined(DHD_MMIO_TRACE) */
@@ -9516,7 +9521,8 @@ dhdpcie_bus_ringbell_fast(struct dhd_bus *bus, uint32 value)
 	dhd_bus_doorbell_timeout_reset(bus);
 #endif
 #ifdef DHD_MMIO_TRACE
-	dhd_bus_mmio_trace(bus, dhd_bus_db0_addr_get(bus), value, TRUE);
+	dhd_bus_mmio_trace(bus, dhd_bus_db0_addr_get(bus), value,
+		((value >> 24u) == 0xFF) ? TRUE : FALSE);
 #endif /* defined(DHD_MMIO_TRACE) */
 	if (DAR_PWRREQ(bus)) {
 		dhd_bus_pcie_pwr_req(bus);
@@ -9803,6 +9809,8 @@ dhd_bus_handle_d3_ack(dhd_bus_t *bus)
 	} else {
 		DHD_ERROR(("%s: Inducing D3 ACK timeout\n", __FUNCTION__));
 	}
+
+	bus->last_d3_ack_time = OSL_LOCALTIME_NS();
 }
 void
 dhd_bus_handle_mb_data(dhd_bus_t *bus, uint32 d2h_mb_data)
@@ -12100,9 +12108,7 @@ int
 dhdpcie_get_max_eventbufpost(struct dhd_bus *bus)
 {
 	int evt_buf_pool = EVENT_BUF_POOL_LOW;
-	if (bus->pcie_sh->flags2 & (0x0 << PCIE_SHARED_EVENT_BUF_POOL_MAX_POS)) {
-		evt_buf_pool = EVENT_BUF_POOL_LOW;
-	} else if (bus->pcie_sh->flags2 & (0x1 << PCIE_SHARED_EVENT_BUF_POOL_MAX_POS)) {
+	if (bus->pcie_sh->flags2 & (0x1 << PCIE_SHARED_EVENT_BUF_POOL_MAX_POS)) {
 		evt_buf_pool = EVENT_BUF_POOL_MEDIUM;
 	} else if (bus->pcie_sh->flags2 & (0x2 << PCIE_SHARED_EVENT_BUF_POOL_MAX_POS)) {
 		evt_buf_pool = EVENT_BUF_POOL_HIGH;
@@ -12264,11 +12270,24 @@ static void
 dhd_bus_mmio_trace(dhd_bus_t *bus, uint32 addr, uint32 value, bool set)
 {
 	uint32 cnt = bus->mmio_trace_count % MAX_MMIO_TRACE_SIZE;
-	bus->mmio_trace[cnt].timestamp = OSL_LOCALTIME_NS();
+	uint64 ts_cur = OSL_LOCALTIME_NS();
+	uint32 tmp_cnt;
+
+	tmp_cnt = (bus->mmio_trace_count) ? ((bus->mmio_trace_count - 1)
+		% MAX_MMIO_TRACE_SIZE) : cnt;
+
+	if (((DIV_U64_BY_U64(ts_cur, NSEC_PER_USEC) -
+		DIV_U64_BY_U64(bus->mmio_trace[tmp_cnt].timestamp, NSEC_PER_USEC))
+		> MIN_MMIO_TRACE_TIME) || (bus->mmio_trace[tmp_cnt].value !=
+		(value & DHD_RING_IDX))) {
+		bus->mmio_trace_count++;
+	} else {
+		cnt = tmp_cnt;
+	}
+	bus->mmio_trace[cnt].timestamp = ts_cur;
 	bus->mmio_trace[cnt].addr = addr;
 	bus->mmio_trace[cnt].set = set;
 	bus->mmio_trace[cnt].value = value;
-	bus->mmio_trace_count ++;
 }
 
 void
@@ -12284,6 +12303,8 @@ dhd_dump_bus_mmio_trace(dhd_bus_t *bus, struct bcmstrbuf *strbuf)
 		return;
 	}
 	bcm_bprintf(strbuf, "---- MMIO TRACE ------\n");
+	bcm_bprintf(strbuf, "Decoding value field, Ex: 0xFF2C00E4, 0xFF->WR/0XDD->RD "
+		"0x2C->Ringid 0x00E4->RD/WR Value\n");
 	bcm_bprintf(strbuf, "Timestamp ns\t\tAddr\t\tW/R\tValue\n");
 	for (i = 0; i < dumpsz; i ++) {
 		bcm_bprintf(strbuf, SEC_USEC_FMT"\t0x%08x\t%s\t0x%08x\n",
@@ -14332,10 +14353,13 @@ dhd_pcie_debug_info_dump(dhd_pub_t *dhd)
 			(uint)OFFSETOF(sbpcieregs_t, u.pcie2.err_hdr_logreg4),
 			si_corereg(dhd->bus->sih, dhd->bus->sih->buscoreidx,
 				OFFSETOF(sbpcieregs_t, u.pcie2.err_hdr_logreg4), 0, 0)));
-		DHD_ERROR(("err_code(0x%x)=0x%x\n",
+		DHD_ERROR(("err_code(0x%x)=0x%x PCIH2D_MailBox(%08x)=%08x\n",
 			(uint)OFFSETOF(sbpcieregs_t, u.pcie2.err_code_logreg),
 			si_corereg(dhd->bus->sih, dhd->bus->sih->buscoreidx,
-				OFFSETOF(sbpcieregs_t, u.pcie2.err_code_logreg), 0, 0)));
+				OFFSETOF(sbpcieregs_t, u.pcie2.err_code_logreg), 0, 0),
+			dhd_bus_db0_addr_get(dhd->bus),
+			si_corereg(dhd->bus->sih, dhd->bus->sih->buscoreidx,
+				dhd_bus_db0_addr_get(dhd->bus), 0, 0)));
 
 		dhd_pcie_dump_wrapper_regs(dhd);
 		dhdpcie_hw_war_regdump(dhd->bus);

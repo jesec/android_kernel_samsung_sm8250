@@ -121,10 +121,11 @@
 		zinitix,mis_cal_check;
 		support_ear_detect_mode;
 		support_dex_mode;
+		support_open_short_test;
 
 		/* calibration */
 		zinitix,tclm_level = <2>;
-		zinitix,afe_base = <0x000E>;
+		zinitix,afe_base = <0x0018>;
 		zinitix,ss_touch_num = <1>;
 	};
 };

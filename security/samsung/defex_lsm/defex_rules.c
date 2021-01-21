@@ -28,7 +28,7 @@ const struct static_rule defex_static_rules[] = {
 	{feature_safeplace_path,"/system/bin/crash_dump64"},
 	{feature_safeplace_path,"/system/bin/debuggerd"},
 	{feature_safeplace_path,"/system/bin/dnsmasq"},
-	{feature_safeplace_path,"/system/bin/umh/dsms"},
+	{feature_safeplace_path,"/system/bin/dsms"},
 	{feature_safeplace_path,"/system/bin/dumpstate"},
 	{feature_safeplace_path,"/system/bin/fsck.vfat"},
 	{feature_safeplace_path,"/system/bin/fsck.exfat"},

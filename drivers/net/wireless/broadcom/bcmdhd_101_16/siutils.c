@@ -829,6 +829,11 @@ si_doattach(si_info_t *sii, uint devid, osl_t *osh, volatile void *regs,
 			}
 		}
 
+#ifndef SOCI_NCI_BUS
+		/* If !SOCI_NCI_BUS, nci_scan(sih) is always 0. */
+		err_at = 6;
+		goto exit;
+#else
 		if ((sii->numcores = nci_scan(sih)) == 0u) {
 			err_at = 6;
 			goto exit;
@@ -837,6 +842,7 @@ si_doattach(si_info_t *sii, uint devid, osl_t *osh, volatile void *regs,
 				nci_dump_erom(sii->nci_info);
 			}
 		}
+#endif /* !SOCI_NCI_BUS */
 	} else {
 
 		if (si_alloc_coresinfo(sii, osh, cc) == NULL) {

@@ -56,8 +56,8 @@
 /* kmalloc mock */
 /* -------------------------------------------------------------------------- */
 
-extern void *dsms_test_kmalloc_mock(size_t size, gfp_t flags);
-#define kmalloc dsms_test_kmalloc_mock
+extern void *security_dsms_test_kmalloc_mock(size_t size, gfp_t flags);
+#define kmalloc security_dsms_test_kmalloc_mock
 
 /* -------------------------------------------------------------------------- */
 /* dsms_access_control */
@@ -78,14 +78,10 @@ declare_kunit_init_module(dsms_init);
 /* dsms_kernel_api */
 /* -------------------------------------------------------------------------- */
 
-extern atomic_t message_counter;
-
-extern char *dsms_alloc_user_string(const char *string);
-extern char *dsms_alloc_user_value(int64_t value);
-extern void dsms_free_user_string(const char *string);
-extern void dsms_message_cleanup(struct subprocess_info *info);
-extern int dsms_send_allowed_message(const char *feature_code,
-		const char *detail, int64_t value);
+extern atomic_t list_counter;
+extern struct dsms_message *create_message(const char *feature_code,
+		const char *detail,
+		int64_t value);
 
 /* -------------------------------------------------------------------------- */
 /* dsms_rate_limit */

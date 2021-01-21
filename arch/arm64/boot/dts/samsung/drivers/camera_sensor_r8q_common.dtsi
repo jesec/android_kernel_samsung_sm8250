@@ -477,7 +477,7 @@
 		cam,fw_write = <0>;             // 0 : N , 1 : OS , 2 : SD , 3 : ALL
 		cam,fw_dump = <0>;              // 0 : N , 1 : Y
 		cam,companion_chip = <0>;       // 0 : N , 1 : Y
-		cam,ois = <0>;                  // 0 : N , 1 : Y
+		cam,ois = <1>;                  // 0 : N , 1 : Y
 		cam,dual_open = <0>;            // 0 : N , 1 : Y
 		cam,valid = <1>;                // 0 : N , 1 : Y
 	};

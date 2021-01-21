@@ -16,12 +16,12 @@
 /* Module test functions */
 /* -------------------------------------------------------------------------- */
 
-static void find_policy_entry_test(struct test *test)
+static void security_find_policy_entry_test(struct test *test)
 {
 	EXPECT_EQ(test, NULL, find_policy_entry("test"));
 }
 
-static void compare_policy_entries_test(struct test *test)
+static void security_compare_policy_entries_test(struct test *test)
 {
 	struct dsms_policy_entry entry;
 
@@ -35,19 +35,19 @@ static void compare_policy_entries_test(struct test *test)
 	EXPECT_LT(test, compare_policy_entries("Myfunction", &entry), 0);
 }
 
-static void should_ignore_allowlist_suffix_test(struct test *test)
+static void security_should_ignore_allowlist_suffix_test(struct test *test)
 {
 	EXPECT_EQ(test, 1, should_ignore_allowlist_suffix());
 }
 
-static void dsms_policy_size_test(struct test *test)
+static void security_dsms_policy_size_test(struct test *test)
 {
 	EXPECT_EQ(test, 3, dsms_policy_size());
 	EXPECT_LT(test, 0, dsms_policy_size());
 	EXPECT_GT(test, 4, dsms_policy_size());
 }
 
-static void dsms_verify_access_test(struct test *test)
+static void security_dsms_verify_access_test(struct test *test)
 {
 	EXPECT_EQ(test, DSMS_DENY, dsms_verify_access(NULL));
 }
@@ -60,7 +60,7 @@ static void dsms_verify_access_test(struct test *test)
  * Test the case where the address passed to dsms_verify_access is not null and
  * is not in the kallsyms. It is expected to return a DSMS_DENY.
  */
-static void dsms_verify_access_address_not_in_kallsyms_test(struct test *test)
+static void security_dsms_verify_access_address_not_in_kallsyms_test(struct test *test)
 {
 	EXPECT_EQ(test, DSMS_DENY, dsms_verify_access((const void *)0x1));
 }
@@ -69,18 +69,18 @@ static void dsms_verify_access_address_not_in_kallsyms_test(struct test *test)
 /* Module definition */
 /* -------------------------------------------------------------------------- */
 
-static struct test_case dsms_access_control_test_cases[] = {
-	TEST_CASE(compare_policy_entries_test),
-	TEST_CASE(should_ignore_allowlist_suffix_test),
-	TEST_CASE(dsms_policy_size_test),
-	TEST_CASE(dsms_verify_access_test),
-	TEST_CASE(find_policy_entry_test),
-	TEST_CASE(dsms_verify_access_address_not_in_kallsyms_test),
+static struct test_case security_dsms_access_control_test_cases[] = {
+	TEST_CASE(security_compare_policy_entries_test),
+	TEST_CASE(security_should_ignore_allowlist_suffix_test),
+	TEST_CASE(security_dsms_policy_size_test),
+	TEST_CASE(security_dsms_verify_access_test),
+	TEST_CASE(security_find_policy_entry_test),
+	TEST_CASE(security_dsms_verify_access_address_not_in_kallsyms_test),
 	{},
 };
 
-static struct test_module dsms_access_control_test_module = {
+static struct test_module security_dsms_access_control_test_module = {
 	.name = "security-dsms-access-control-test",
-	.test_cases = dsms_access_control_test_cases,
+	.test_cases = security_dsms_access_control_test_cases,
 };
-module_test(dsms_access_control_test_module);
+module_test(security_dsms_access_control_test_module);

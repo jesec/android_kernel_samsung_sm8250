@@ -15,12 +15,12 @@
 /* Module test functions */
 /* -------------------------------------------------------------------------- */
 
-static void dsms_is_initialized_test(struct test *test)
+static void security_dsms_is_initialized_test(struct test *test)
 {
 	EXPECT_TRUE(test, dsms_is_initialized());
 }
 
-static void dsms_init_test(struct test *test)
+static void security_dsms_init_test(struct test *test)
 {
 	EXPECT_EQ(test, dsms_init_kunit_helper(), 0);
 }
@@ -29,14 +29,14 @@ static void dsms_init_test(struct test *test)
 /* Module definition */
 /* -------------------------------------------------------------------------- */
 
-static struct test_case dsms_init_test_cases[] = {
-	TEST_CASE(dsms_is_initialized_test),
-	TEST_CASE(dsms_init_test),
+static struct test_case security_dsms_init_test_cases[] = {
+	TEST_CASE(security_dsms_is_initialized_test),
+	TEST_CASE(security_dsms_init_test),
 	{},
 };
 
-static struct test_module dsms_init_test_module = {
+static struct test_module security_dsms_init_test_module = {
 	.name = "security-dsms-init-test",
-	.test_cases = dsms_init_test_cases,
+	.test_cases = security_dsms_init_test_cases,
 };
-module_test(dsms_init_test_module);
+module_test(security_dsms_init_test_module);

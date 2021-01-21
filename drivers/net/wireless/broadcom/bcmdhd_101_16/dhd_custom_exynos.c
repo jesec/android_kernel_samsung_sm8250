@@ -96,7 +96,7 @@ extern struct device *mmc_dev_for_wlan;
 
 #ifdef CONFIG_BCMDHD_PCIE
 extern int pcie_ch_num;
-extern void exynos_pcie_pm_resume(int);
+extern int exynos_pcie_pm_resume(int);
 extern void exynos_pcie_pm_suspend(int);
 #endif /* CONFIG_BCMDHD_PCIE */
 
@@ -215,7 +215,10 @@ dhd_wlan_init_gpio(void)
 		gpio_export_link(wlan_dev, "WLAN_REG_ON", wlan_pwr_on);
 
 #ifdef CONFIG_BCMDHD_PCIE
-	exynos_pcie_pm_resume(pcie_ch_num);
+	if (exynos_pcie_pm_resume(pcie_ch_num)) {
+		WARN(1, "pcie link up failure\n");
+		return -ENODEV;
+	}
 #endif /* CONFIG_BCMDHD_PCIE */
 
 #ifdef CONFIG_BCMDHD_OOB_HOST_WAKE

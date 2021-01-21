@@ -437,6 +437,8 @@
 		battery,batt_temp_adj_gap_dec = <100>;
 		/* battery,fake_capacity; */
 
+		battery,support_unknown_wpcthm;
+
 		io-channels = <&pm8150l_vadc ADC_GPIO1_PU2>, <&pm8150l_vadc ADC_AMUX_THM3_PU2>, <&pm8150l_vadc ADC_GPIO1_PU2>, <&pm8150l_vadc ADC_AMUX_THM1_PU2>;
 		io-channel-names = "adc-temp", "adc-chg-temp", "adc-wpc-temp", "adc-usb-temp";
 	};

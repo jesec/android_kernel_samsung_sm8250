@@ -333,12 +333,10 @@ int cam_flash_pmic_flush_request(struct cam_flash_ctrl *fctrl,
 	if (type == FLUSH_ALL) {
 	/* flush all requests*/
 		for (i = 0; i < MAX_PER_FRAME_ARRAY; i++) {
-#if defined(CONFIG_LEDS_S2MPB02)
 			if (fctrl->per_frame[i].opcode == CAMERA_SENSOR_FLASH_OP_OFF &&
 				fctrl->per_frame[i].cmn_attr.is_settings_valid == true) {
 				cam_flash_pmic_apply_setting(fctrl, fctrl->per_frame[i].cmn_attr.request_id);
 			}
-#endif
 			fctrl->per_frame[i].cmn_attr.request_id = 0;
 			fctrl->per_frame[i].cmn_attr.is_settings_valid = false;
 			fctrl->per_frame[i].cmn_attr.count = 0;

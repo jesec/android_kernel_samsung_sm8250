@@ -16,9 +16,9 @@
 /* -------------------------------------------------------------------------- */
 
 /* Requests that kmalloc fails in the attempt given by argument (1 for next) */
-void dsms_test_request_kmalloc_fail_at(int attempt_no);
+void security_dsms_test_request_kmalloc_fail_at(int attempt_no);
 
 /* Cancels all kmalloc fail requests */
-void dsms_test_cancel_kmalloc_fail_requests(void);
+void security_dsms_test_cancel_kmalloc_fail_requests(void);
 
 #endif /* _SECURITY_DSMS_TEST_UTILS_H */

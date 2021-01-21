@@ -52,6 +52,7 @@
 			battery,wireless_charger_name = "mfc-charger";
 			battery,wc_cover_rpp = <0x44>;
 			battery,oc_fod1 = <1100>;
+			battery,tx_gear_min_op_freq_delay = <4000>;
 			battery,wireless20_vout_list = <8 8 8>; /* WIRELESS_VOUT_10V, 10V, 10V */
 			battery,wireless20_vrect_list = <10 11 11>; /* MFC_AFC_CONF_12V_TX, 12.5V, 12.5V */
 			battery,wireless20_max_power_list = <2 3 3>; /* SEC_WIRELESS_RX_POWER_12W, 15W, 15W */

@@ -302,6 +302,7 @@
 		check_fw_project_id;
 		support_dex_mode;
 		enable_settings_aot;
+		novatek,scanoff_when_cover_closed; /* for tablet */
 
 		novatek-mp-criteria-720A@0 {
 			#address-cells = <1>;

@@ -105,7 +105,7 @@
 		als_rear,clear_spec = <0 500000 0 500000>;
 		als_rear,icratio_spec = <0 10000 0 10000>;
 
-		als_rear,vdd_1p8 = <&pm8150_l16>;
+		vdd_1p8-supply = <&pm8150_l16>;
 /*
 		als_rear,i2c_1p8 = <&pm8150_l16>;
 */

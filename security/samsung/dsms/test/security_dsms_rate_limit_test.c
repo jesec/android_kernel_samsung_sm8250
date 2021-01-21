@@ -19,20 +19,20 @@ static u64 start_ms;
 /* Module test functions */
 /* -------------------------------------------------------------------------- */
 
-static void round_end_ms_test(struct test *test)
+static void security_round_end_ms_test(struct test *test)
 {
 	EXPECT_EQ(test, start_ms + ((u64)(1000L)), round_end_ms(start_ms));
 	EXPECT_NE(test, start_ms + ((u64)(1001L)), round_end_ms(start_ms));
 }
 
-static void is_new_round_test(struct test *test)
+static void security_is_new_round_test(struct test *test)
 {
 	u64 now_ms = dsms_get_time_ms();
 
 	EXPECT_EQ(test, 0, is_new_round(now_ms, start_ms));
 }
 
-static void dsms_check_message_rate_limit_deny_test(struct test *test)
+static void security_dsms_check_message_rate_limit_deny_test(struct test *test)
 {
 	int failed = 0, i;
 
@@ -42,13 +42,13 @@ static void dsms_check_message_rate_limit_deny_test(struct test *test)
 	EXPECT_TRUE(test, failed);
 }
 
-static void dsms_check_message_rate_limit_success_test(struct test *test)
+static void security_dsms_check_message_rate_limit_success_test(struct test *test)
 {
 	EXPECT_EQ(test, DSMS_SUCCESS, dsms_check_message_rate_limit());
 }
 
 /* Test boundary cases (simulate clock wrapped, too many messages) */
-static void dsms_check_message_rate_limit_boundary_test(struct test *test)
+static void security_dsms_check_message_rate_limit_boundary_test(struct test *test)
 {
 	int old_count;
 
@@ -71,7 +71,7 @@ static void dsms_check_message_rate_limit_boundary_test(struct test *test)
  *
  * @param test - struct test pointer to the running test instance context.
  */
-static void dsms_check_message_rate_limit_reset_test(struct test *test)
+static void security_dsms_check_message_rate_limit_reset_test(struct test *test)
 {
 	dsms_round_start_ms = -1;
 	EXPECT_EQ(test, DSMS_SUCCESS, dsms_check_message_rate_limit());
@@ -81,7 +81,7 @@ static void dsms_check_message_rate_limit_reset_test(struct test *test)
 /* Module initialization and exit functions */
 /* -------------------------------------------------------------------------- */
 
-static int dsms_rate_test_init(struct test *test)
+static int security_dsms_rate_test_init(struct test *test)
 {
 	dsms_rate_limit_init();
 	start_ms = dsms_get_time_ms();
@@ -92,19 +92,19 @@ static int dsms_rate_test_init(struct test *test)
 /* Module definition */
 /* -------------------------------------------------------------------------- */
 
-static struct test_case dsms_rate_test_cases[] = {
-	TEST_CASE(round_end_ms_test),
-	TEST_CASE(is_new_round_test),
-	TEST_CASE(dsms_check_message_rate_limit_deny_test),
-	TEST_CASE(dsms_check_message_rate_limit_success_test),
-	TEST_CASE(dsms_check_message_rate_limit_boundary_test),
-	TEST_CASE(dsms_check_message_rate_limit_reset_test),
+static struct test_case security_dsms_rate_test_cases[] = {
+	TEST_CASE(security_round_end_ms_test),
+	TEST_CASE(security_is_new_round_test),
+	TEST_CASE(security_dsms_check_message_rate_limit_deny_test),
+	TEST_CASE(security_dsms_check_message_rate_limit_success_test),
+	TEST_CASE(security_dsms_check_message_rate_limit_boundary_test),
+	TEST_CASE(security_dsms_check_message_rate_limit_reset_test),
 	{},
 };
 
-static struct test_module dsms_rate_test_module = {
+static struct test_module security_dsms_rate_test_module = {
 	.name = "security-dsms-rate-limit-test",
-	.init = dsms_rate_test_init,
-	.test_cases = dsms_rate_test_cases,
+	.init = security_dsms_rate_test_init,
+	.test_cases = security_dsms_rate_test_cases,
 };
-module_test(dsms_rate_test_module);
+module_test(security_dsms_rate_test_module);

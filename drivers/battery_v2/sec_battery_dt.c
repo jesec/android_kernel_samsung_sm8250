@@ -740,7 +740,9 @@ int sec_bat_parse_dt(struct device *dev,
 		}
 
                 battery->wpc_vout_ctrl_lcd_on = of_property_read_bool(np,
-						     "battery,wpc_vout_ctrl_lcd_on");
+							"battery,wpc_vout_ctrl_lcd_on");
+		battery->support_unknown_wpcthm = of_property_read_bool(np,
+							"battery,support_unknown_wpcthm");
 	}
 
 	ret = of_property_read_u32(np, "battery,wc_full_input_limit_current",
