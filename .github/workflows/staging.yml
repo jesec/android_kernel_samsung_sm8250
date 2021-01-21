@@ -21,21 +21,11 @@ jobs:
           ubuntu_codename=`lsb_release -c | cut -f2`
           wget https://apt.llvm.org/llvm-snapshot.gpg.key
           sudo apt-key add llvm-snapshot.gpg.key
-          sudo add-apt-repository "deb http://apt.llvm.org/$ubuntu_codename/ llvm-toolchain-$ubuntu_codename-$LLVM_VERSION main"
+          sudo add-apt-repository "deb http://apt.llvm.org/$ubuntu_codename/ llvm-toolchain-$ubuntu_codename main"
           sudo apt-get update
-          sudo apt-get install -y clang-$LLVM_VERSION llvm-$LLVM_VERSION lld-$LLVM_VERSION
+          sudo apt-get install -y clang llvm lld
           sudo apt-get install -y binutils-aarch64-linux-gnu gcc-aarch64-linux-gnu binutils-arm-linux-gnueabi gcc-arm-linux-gnueabi
           sudo apt-get install -y libncurses-dev flex bison openssl libssl-dev dkms libelf-dev libudev-dev libpci-dev libiberty-dev autoconf
-          sudo ln -sf /usr/bin/clang-$LLVM_VERSION /usr/bin/clang
-          sudo ln -sf /usr/bin/ld.lld-$LLVM_VERSION /usr/bin/ld.lld
-          sudo ln -sf /usr/bin/llvm-ar-$LLVM_VERSION /usr/bin/llvm-ar
-          sudo ln -sf /usr/bin/llvm-nm-$LLVM_VERSION /usr/bin/llvm-nm
-          sudo ln -sf /usr/bin/llvm-objcopy-$LLVM_VERSION /usr/bin/llvm-objcopy
-          sudo ln -sf /usr/bin/llvm-objdump-$LLVM_VERSION /usr/bin/llvm-objdump
-          sudo ln -sf /usr/bin/llvm-strip-$LLVM_VERSION /usr/bin/llvm-strip
-          sudo ln -sf /usr/bin/llvm-config-$LLVM_VERSION /usr/bin/llvm-config
-        env:
-          LLVM_VERSION: 11
 
       - name: ccache cache files
         uses: actions/cache@v1
