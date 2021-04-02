@@ -952,12 +952,12 @@ static void ss_panel_debug_create(struct samsung_display_driver_data *vdd)
 	/* TBD */
 }
 
-static bool ss_read_debug_partition(struct lcd_debug_t *value)
+bool ss_read_debug_partition(struct lcd_debug_t *value)
 {
 	return read_debug_partition(debug_index_lcd_debug_info, (void *)value);
 }
 
-static bool ss_write_debug_partition(struct lcd_debug_t *value)
+bool ss_write_debug_partition(struct lcd_debug_t *value)
 {
 	return write_debug_partition(debug_index_lcd_debug_info, (void *)value);
 }
@@ -973,34 +973,156 @@ void ss_inc_ftout_debug(const char *name)
 	ss_write_debug_partition(&lcd_debug);
 }
 
+int ss_write_fw_up_debug_partition(enum FW_UP_OP op, uint32_t addr)
+{
+	int ret = 0;
+	struct lcd_debug_t lcd_debug;
+
+	/* 1st. Read from debug partition */
+	memset(&lcd_debug, 0, sizeof(struct lcd_debug_t));
+	ss_read_debug_partition(&lcd_debug);
+
+	/* 2nd. Update Value */
+	switch (op) {
+	case FW_UP_TRY:
+		lcd_debug.fw_up.try_count += 1;
+		break;
+	case FW_FAIL_LINE:
+		if (lcd_debug.fw_up.fail_count < FW_UP_MAX_RETRY)
+			lcd_debug.fw_up.fail_line[lcd_debug.fw_up.fail_line_count] = addr;
+		lcd_debug.fw_up.fail_line_count += 1;
+		break;
+	case FW_UP_FAIL:
+		if (lcd_debug.fw_up.fail_count < FW_UP_MAX_RETRY)
+			lcd_debug.fw_up.fail_address[lcd_debug.fw_up.fail_count] = addr;
+		lcd_debug.fw_up.fail_count += 1;
+		break;
+	case FW_UP_PASS:
+		lcd_debug.fw_up.pass_count += 1;
+		break;
+	case FW_UP_RESET:
+		lcd_debug.fw_up.try_count = 0;
+		lcd_debug.fw_up.fail_count = 0;
+		lcd_debug.fw_up.pass_count = 0;
+		break;
+	default:
+		LCD_ERR("Invalid Argument(%d)\n", op);
+		ret = -EINVAL;
+		goto write_skip;
+	}
+
+	/* 3rd. Write to debug partition */
+	ss_write_debug_partition(&lcd_debug);
+write_skip:
+	return ret;
+}
+
+#define FW_UP_BUF_MAX 512
+void ss_read_fw_up_debug_partition(void)
+{
+	int loop;
+	ssize_t len = 0;
+	char buf[FW_UP_BUF_MAX] = {0,};
+	struct lcd_debug_t lcd_debug;
+
+	memset(&lcd_debug, 0, sizeof(struct lcd_debug_t));
+	ss_read_debug_partition(&lcd_debug);
+
+	len += snprintf(buf + len, (FW_UP_BUF_MAX - len), "FWUP_TRY_CNT(%d) ", lcd_debug.fw_up.try_count);
+	len += snprintf(buf + len, (FW_UP_BUF_MAX - len), "FWUP_FAIL_CNT(%d) ", lcd_debug.fw_up.fail_count);
+	len += snprintf(buf + len, (FW_UP_BUF_MAX - len), "FWUP_FAIL_LINE_CNT(%d) ",
+							lcd_debug.fw_up.fail_line_count);
+	len += snprintf(buf + len, (FW_UP_BUF_MAX - len), "FWUP_FAIL_ADDR(");
+	for (loop = 0; loop < lcd_debug.fw_up.fail_count; loop++) {
+		if (loop >= FW_UP_MAX_RETRY)
+			break;
+		len += snprintf(buf + len, (FW_UP_BUF_MAX - len), "0x%x/", lcd_debug.fw_up.fail_address[loop]);
+	}
+	len += snprintf(buf + len, (FW_UP_BUF_MAX - len), ") ");
+	len += snprintf(buf + len, (FW_UP_BUF_MAX - len), "FWUP_FAIL_LINE(");
+	for (loop = 0; loop < lcd_debug.fw_up.fail_line_count; loop++) {
+		if (loop >= FW_UP_MAX_RETRY)
+			break;
+		len += snprintf(buf + len, (FW_UP_BUF_MAX - len), "0x%x/", lcd_debug.fw_up.fail_line[loop]);
+	}
+	len += snprintf(buf + len, (FW_UP_BUF_MAX - len), ") ");
+	len += snprintf(buf + len, (FW_UP_BUF_MAX - len), "FWUP_PASS_CNT(%d)\n", lcd_debug.fw_up.pass_count);
+
+	LCD_INFO("[FW_UP_INFO] %s", buf);
+}
+
 static int dpci_notifier_callback(struct notifier_block *self,
 				 unsigned long event, void *data)
 {
 	ssize_t len = 0;
 	char tbuf[SS_XLOG_DPCI_LENGTH] = {0,};
 	struct lcd_debug_t lcd_debug;
+	int loop;
+	struct samsung_display_driver_data *vdd = ss_get_vdd(COMMON_DISPLAY_NDX);
 
 	/* 1. Read */
 	ss_read_debug_partition(&lcd_debug);
-	LCD_INFO("Read Result FTOUT_CNT=%d, FTOUT_NAME=%s\n", lcd_debug.ftout.count, lcd_debug.ftout.name);
 
+	LCD_INFO("Read Result FTOUT_CNT=%d, FTOUT_NAME=%s\n", lcd_debug.ftout.count, lcd_debug.ftout.name);
+	LCD_INFO("Firmware Update TRY_CNT=%d, FAIL_CNT=%d, FAIL_LINE_CNT=%d, PASS_CNT=%d\n",
+			lcd_debug.fw_up.try_count, lcd_debug.fw_up.fail_count,
+			lcd_debug.fw_up.fail_line_count, lcd_debug.fw_up.pass_count);
+
+	if (!vdd->fw_up.is_support) {
 	/* 2. Make String */
-	if (lcd_debug.ftout.count) {
-		len += snprintf((tbuf + len), (SS_XLOG_DPCI_LENGTH - len),
-			"FTOUT CNT=%d ", lcd_debug.ftout.count);
-		lcd_debug.ftout.name[sizeof(lcd_debug.ftout.name) - 1] = '\0';
-		len += snprintf((tbuf + len), (SS_XLOG_DPCI_LENGTH - len),
-			"NAME=%s ", lcd_debug.ftout.name);
+		if (lcd_debug.ftout.count) {
+			len += snprintf((tbuf + len), (SS_XLOG_DPCI_LENGTH - len),
+				"FTOUT CNT=%d ", lcd_debug.ftout.count);
+			lcd_debug.ftout.name[sizeof(lcd_debug.ftout.name) - 1] = '\0';
+			len += snprintf((tbuf + len), (SS_XLOG_DPCI_LENGTH - len),
+				"NAME=%s ", lcd_debug.ftout.name);
+		}
 	}
 
-	/* 3. Info Clear */
+	if (vdd->fw_up.is_support) {
+	/* 2. Make String */
+		if (lcd_debug.fw_up.try_count) {
+			len += snprintf((tbuf + len), (SS_XLOG_DPCI_LENGTH - len),
+				"FWUP_TRY_CNT=%d ", lcd_debug.fw_up.try_count);
+			len += snprintf((tbuf + len), (SS_XLOG_DPCI_LENGTH - len),
+				"FAIL_LINE_CNT=%d ", lcd_debug.fw_up.fail_line_count);
+			len += snprintf((tbuf + len), (SS_XLOG_DPCI_LENGTH - len),
+				"FAIL_CNT=%d ", lcd_debug.fw_up.fail_count);
+			if (lcd_debug.fw_up.fail_count > 0) {
+				len += snprintf((tbuf + len), (SS_XLOG_DPCI_LENGTH - len), "FAIL_ADDR(");
+				for (loop = 0; loop < lcd_debug.fw_up.fail_count; loop++) {
+					if (loop >= FW_UP_MAX_RETRY)
+						break;
+					len += snprintf((tbuf + len), (SS_XLOG_DPCI_LENGTH - len),
+							"0x%x/", lcd_debug.fw_up.fail_address[loop]);
+				}
+				len += snprintf((tbuf + len), (SS_XLOG_DPCI_LENGTH - len), ")");
+
+				len += snprintf((tbuf + len), (SS_XLOG_DPCI_LENGTH - len), "FAIL_LINE(");
+				for (loop = 0; loop < lcd_debug.fw_up.fail_line_count; loop++) {
+					if (loop >= FW_UP_MAX_RETRY)
+						break;
+					len += snprintf((tbuf + len), (SS_XLOG_DPCI_LENGTH - len),
+							"0x%x/", lcd_debug.fw_up.fail_line[loop]);
+				}
+				len += snprintf((tbuf + len), (SS_XLOG_DPCI_LENGTH - len), ")");
+			}
+			len += snprintf((tbuf + len), (SS_XLOG_DPCI_LENGTH - len),
+				"FWUP_PASS_CNT=%d\n", lcd_debug.fw_up.pass_count);
+		}
+	}
+
+	LCD_INFO(" len(%ld), %s", len, tbuf);
+#if 0
+	/* 4. Info Clear */
 	memset((void *)&lcd_debug, 0, sizeof(struct lcd_debug_t));
 	ss_write_debug_partition(&lcd_debug);
+#endif
+
 	set_dpui_field(DPUI_KEY_QCT_SSLOG, tbuf, len);
 
 	return 0;
 }
-
 
 static int ss_register_dpci(struct samsung_display_driver_data *vdd)
 {

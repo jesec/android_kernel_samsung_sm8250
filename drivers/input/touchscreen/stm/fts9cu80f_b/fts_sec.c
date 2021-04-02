@@ -6468,10 +6468,6 @@ static void spay_enable(void *device_data)
 	else
 		info->lowpower_flag &= ~FTS_MODE_SPAY;
 
-	mutex_lock(&info->device_mutex);
-	fts_chk_tsp_ic_status(info, FTS_STATE_CHK_POS_SYSFS);
-	mutex_unlock(&info->device_mutex);
-
 	snprintf(buff, sizeof(buff), "OK");
 	sec->cmd_state = SEC_CMD_STATUS_OK;
 	sec_cmd_set_cmd_result(sec, buff, strnlen(buff, sizeof(buff)));
@@ -6494,10 +6490,6 @@ static void aot_enable(void *device_data)
 	else
 		info->lowpower_flag &= ~FTS_MODE_DOUBLETAP_WAKEUP;
 
-	mutex_lock(&info->device_mutex);
-	fts_chk_tsp_ic_status(info, FTS_STATE_CHK_POS_SYSFS);
-	mutex_unlock(&info->device_mutex);
-
 	snprintf(buff, sizeof(buff), "OK");
 	sec->cmd_state = SEC_CMD_STATUS_OK;
 	sec_cmd_set_cmd_result(sec, buff, strnlen(buff, sizeof(buff)));
@@ -6518,10 +6510,6 @@ static void aod_enable(void *device_data)
 	else
 		info->lowpower_flag &= ~FTS_MODE_AOD;
 
-	mutex_lock(&info->device_mutex);
-	fts_chk_tsp_ic_status(info, FTS_STATE_CHK_POS_SYSFS);
-	mutex_unlock(&info->device_mutex);
-
 	snprintf(buff, sizeof(buff), "OK");
 	sec->cmd_state = SEC_CMD_STATUS_OK;
 	sec_cmd_set_cmd_result(sec, buff, strnlen(buff, sizeof(buff)));
@@ -6541,10 +6529,6 @@ static void singletap_enable(void *device_data)
 		info->lowpower_flag |= FTS_MODE_SINGLETAP;
 	else
 		info->lowpower_flag &= ~FTS_MODE_SINGLETAP;
-
-	mutex_lock(&info->device_mutex);
-	fts_chk_tsp_ic_status(info, FTS_STATE_CHK_POS_SYSFS);
-	mutex_unlock(&info->device_mutex);
 
 	snprintf(buff, sizeof(buff), "OK");
 	sec->cmd_state = SEC_CMD_STATUS_OK;

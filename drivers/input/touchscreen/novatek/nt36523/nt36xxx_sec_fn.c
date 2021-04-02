@@ -3539,13 +3539,18 @@ static void clear_cover_mode(void *device_data)
 		ts->flip_enable = false;
 
 	/* disable tsp scan when cover is closed (for Tablet) */
-	if (ts->platdata->scanoff_cover_close && ts->flip_enable) {
-		input_info(true, &ts->client->dev, "%s: enter deep standby mode\n", __func__);
-		wbuf[0] = EVENT_MAP_HOST_CMD;
-		wbuf[1] = NVT_CMD_DEEP_SLEEP_MODE;
-		ret = nvt_ts_i2c_write(ts, I2C_FW_Address, wbuf, 2);
+	if (ts->platdata->scanoff_cover_close) {
+		if (ts->flip_enable) {
+			input_info(true, &ts->client->dev, "%s: enter deep standby mode\n", __func__);
+			wbuf[0] = EVENT_MAP_HOST_CMD;
+			wbuf[1] = NVT_CMD_DEEP_SLEEP_MODE;
+			ret = nvt_ts_i2c_write(ts, I2C_FW_Address, wbuf, 2);
 
-		nvt_ts_release_all_finger(ts);
+			nvt_ts_release_all_finger(ts);
+		} else {
+			input_info(true, &ts->client->dev, "%s: reset to normal mode\n", __func__);
+			nvt_ts_bootloader_reset(ts);
+		}
 	}
 
 	mutex_unlock(&ts->lock);
