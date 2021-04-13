@@ -4594,7 +4594,7 @@ static bool secdp_check_supported_resolution(struct dp_display_private *dp,
 			ret = true;
 
 #ifndef SECDP_IGNORE_PREFER_IF_DEX_RES_EXIST
-		if (ret) {
+		if (ret && !sec->has_prefer) {
 #else
 		if (ret && !secdp_check_dex_ratio(sec->prefer_ratio)) {
 #endif

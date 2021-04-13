@@ -1598,10 +1598,7 @@ int sec_bat_set_charging_current(struct sec_battery_info *battery)
 
 #if defined(CONFIG_DUAL_BATTERY)
 		sec_bat_divide_charging_current(battery, charging_current);
-#endif
-
-#if defined(CONFIG_DUAL_BATTERY)
-		if (battery->charging_current < charging_current)
+		if (battery->charging_current <= charging_current)
 			sec_bat_set_divide_charging_current(battery);
 #endif
 
